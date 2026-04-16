@@ -524,7 +524,7 @@ struct SettingsView: View {
                 payload["posts"] = postsSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
-                    return sanitizeForJSON(item)
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
             }
 
@@ -537,7 +537,7 @@ struct SettingsView: View {
                     var item = doc.data()
                     item["id"] = doc.documentID
                     item["postId"] = doc.reference.parent.parent?.documentID ?? ""
-                    return sanitizeForJSON(item)
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
             }
 
@@ -566,7 +566,7 @@ struct SettingsView: View {
                 payload["notifications"] = notifSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
-                    return sanitizeForJSON(item)
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
             }
 

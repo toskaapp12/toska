@@ -38,6 +38,7 @@ class PostInteractionManager {
                    return
                }
                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+               Telemetry.likeTapped()
 
         let db = Firestore.firestore()
         let likeRef = db.collection("posts").document(postId).collection("likes").document(uid)

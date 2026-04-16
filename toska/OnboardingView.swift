@@ -151,7 +151,7 @@ struct OnboardingView: View {
                                                             }
                                                         }
                                                     }
-                                                    isComplete = true
+                                                    Telemetry.onboardingCompleted(); isComplete = true
                                                 } label: {
                                                     Text("skip")
                                                         .font(.system(size: 11))
@@ -180,7 +180,7 @@ struct OnboardingView: View {
                                                             }
                                                         }
                                                     }
-                                                    isComplete = true
+                                                    Telemetry.onboardingCompleted(); isComplete = true
                                                 } label: {
                                                     Text("skip for now")
                                                         .font(.system(size: 11))
@@ -206,6 +206,7 @@ struct OnboardingView: View {
                     // User is under 17 — delete the account we just created
                     // via Apple/Google/email, sign out, and send them back to
                     // the splash screen.
+                    Telemetry.ageGateDeclined()
                     showAgeGate = false
                     declineAndSignOut()
                 }
@@ -220,6 +221,7 @@ struct OnboardingView: View {
                     showPolicyAcceptance = false
                 },
                 onDecline: {
+                    Telemetry.policyDeclined(version: currentPolicyVersion, atSignup: true)
                     showPolicyAcceptance = false
                     declineAndSignOut()
                 }
@@ -244,7 +246,7 @@ struct OnboardingView: View {
                     // Small delay so the user sees the compose dismiss
                     Task {
                                             try? await Task.sleep(nanoseconds: 400_000_000)
-                        isComplete = true
+                        Telemetry.onboardingCompleted(); isComplete = true
                     }
                 }
             )

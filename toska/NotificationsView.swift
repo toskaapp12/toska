@@ -526,6 +526,7 @@ struct NotificationsView: View {
 
                 VStack(spacing: 8) {
                     Button {
+                        Telemetry.pushPrimerDecision(accepted: true)
                         pushPrimerShown = true
                         showPushPrimer = false
                         // Trigger the actual system prompt only after the
@@ -544,6 +545,7 @@ struct NotificationsView: View {
                     }
 
                     Button {
+                        Telemetry.pushPrimerDecision(accepted: false)
                         pushPrimerShown = true
                         showPushPrimer = false
                     } label: {

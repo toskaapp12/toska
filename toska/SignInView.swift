@@ -151,8 +151,10 @@ struct SignInView: View {
             Task { @MainActor in
                 isLoading = false
                 if let error = error {
+                    Telemetry.recordError(error, context: "SignInView.emailSignIn")
                     errorMessage = friendlyAuthErrorMessage(error)
                 } else if let uid = result?.user.uid {
+                    Telemetry.signInCompleted(method: .email)
                     NotificationCenter.default.post(
                         name: NSNotification.Name("UserDidSignIn"),
                         object: nil,

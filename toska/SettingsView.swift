@@ -31,6 +31,10 @@ struct SettingsView: View {
     @State private var showChangeEmail = false
     @State private var showChangePassword = false
     @State private var showContentPolicy = false
+    // Analytics opt-out. UserDefaults-backed because the Telemetry namespace
+    // (which is non-View) reads the same key directly. Default true; flipping
+    // off short-circuits all Telemetry.* calls everywhere in the app.
+    @AppStorage("toska_shareAnonymousUsage") private var shareAnonymousUsage: Bool = true
     // Surfaced when a settings save fails so the user knows their toggle
     // didn't actually persist (otherwise the toggle silently snaps back).
     @State private var saveErrorBanner: String? = nil
@@ -87,6 +91,8 @@ struct SettingsView: View {
                                 toggleRow("allow sharing", subtitle: "let people share your words", isOn: $settings.allowSharing)
                                 Divider().padding(.leading, 14)
                                 toggleRow("show follower count", subtitle: "let others see how many people follow you", isOn: $settings.showFollowerCount)
+                                Divider().padding(.leading, 14)
+                                toggleRow("share anonymous usage data", subtitle: "helps us fix bugs and improve the app. never includes what you wrote.", isOn: $shareAnonymousUsage)
                                 Divider().padding(.leading, 14)
                                 actionRow("view content policy") { showContentPolicy = true }
                             }

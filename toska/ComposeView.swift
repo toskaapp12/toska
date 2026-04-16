@@ -643,9 +643,16 @@ struct ComposeView: View {
             db.collection("posts").addDocument(data: postData) { error in
                 Task { @MainActor in
                     self.isPosting = false
-                    if error != nil {
+                    if let error = error {
+                        Telemetry.recordError(error, context: "ComposeView.addPost")
                         self.postError = "couldnt post. try again. the feeling isnt going anywhere."
                     } else {
+                        Telemetry.postCreated(
+                            tag: self.selectedTag,
+                            isLetter: self.isLetter,
+                            isWhisper: self.isWhisper,
+                            hasGif: self.selectedGifUrl != nil
+                        )
                         RateLimiter.shared.lastPostTime = Date()
                         NotificationCenter.default.post(name: NSNotification.Name("NewPostCreated"), object: nil)
                         if let onPostSuccess = self.onPostSuccess {

@@ -86,6 +86,11 @@ class BlockedUsersCache {
         guard !userId.isEmpty,
               let uid = Auth.auth().currentUser?.uid else { return }
 
+        // Telemetry — fired before the write so it's recorded even if the
+        // network round-trip fails. The block is optimistic locally anyway,
+        // so the user-perceived block has happened by this point.
+        Telemetry.userBlocked()
+
         // 1. Optimistic local update.
         insertLocal(userId)
 

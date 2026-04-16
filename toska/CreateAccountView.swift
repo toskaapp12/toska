@@ -295,6 +295,7 @@ struct CreateAccountView: View {
                     ])
                     isLoading = false
                                         UserHandleCache.shared.startListening()
+                                        Telemetry.signupCompleted(method: .email)
                                         NotificationCenter.default.post(name: NSNotification.Name("ShowOnboarding"), object: nil)
                                         NotificationCenter.default.post(
                                             name: NSNotification.Name("UserDidSignIn"),
@@ -304,12 +305,14 @@ struct CreateAccountView: View {
                                         dismiss()
                 } catch {
                     print("⚠️ CreateAccount: user doc write failed: \(error)")
+                    Telemetry.recordError(error, context: "CreateAccount.userDocWrite")
                     isLoading = false
                     errorMessage = "account creation failed — please try again"
                     do {
                         try await Auth.auth().currentUser?.delete()
                     } catch let deleteError {
                         print("⚠️ CreateAccount: auth rollback delete failed: \(deleteError); falling back to signOut")
+                        Telemetry.recordError(deleteError, context: "CreateAccount.rollbackDelete")
                         try? Auth.auth().signOut()
                     }
                 }

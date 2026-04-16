@@ -855,7 +855,15 @@ struct PostDetailView: View {
 
             batch.commit { error in
                 Task { @MainActor in
-                    guard error == nil else { self.replyText = currentReplyText; return }
+                    if let error = error {
+                        Telemetry.recordError(error, context: "PostDetailView.postReply")
+                        self.replyText = currentReplyText
+                        return
+                    }
+                    Telemetry.replyCreated(
+                        parentIsOwn: self.authorUserId == uid,
+                        hasGif: self.replyGifUrl != nil
+                    )
                     if !self.authorUserId.isEmpty, self.authorUserId != uid {
                         self.sendNotification(toUserId: self.authorUserId, type: "reply", message: currentReplyText)
                     }

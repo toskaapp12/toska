@@ -170,12 +170,16 @@ struct SplashView: View {
     // For a returning user: just posts UserDidSignIn.
     // Any Firestore error throws and is caught by the caller.
 
-    func createUserDocumentIfNeeded(uid: String, email: String) async throws {
+    /// Method is passed in so the telemetry event reflects which provider
+    /// brought the user to this code path (currently only Google calls
+    /// this — Apple has its own helper).
+    func createUserDocumentIfNeeded(uid: String, email: String, method: Telemetry.SignupMethod) async throws {
         let db = Firestore.firestore()
         let snapshot = try await db.collection("users").document(uid).getDocumentAsync()
 
         if snapshot.exists {
             UserHandleCache.shared.startListening()
+            Telemetry.signInCompleted(method: method)
             NotificationCenter.default.post(name: .userDidSignIn, object: nil, userInfo: ["uid": uid])
             return
         }
@@ -197,6 +201,7 @@ struct SplashView: View {
         ])
 
         UserHandleCache.shared.startListening()
+        Telemetry.signupCompleted(method: method)
         NotificationCenter.default.post(name: .showOnboarding, object: nil)
         NotificationCenter.default.post(name: .userDidSignIn, object: nil, userInfo: ["uid": uid])
     }
@@ -238,8 +243,9 @@ struct SplashView: View {
                 let uid = authResult.user.uid
                 let email = authResult.user.email ?? ""
 
-                try await createUserDocumentIfNeeded(uid: uid, email: email)
+                try await createUserDocumentIfNeeded(uid: uid, email: email, method: .google)
             } catch {
+                Telemetry.recordError(error, context: "SplashView.signInWithGoogle")
                 errorMessage = friendlyAuthErrorMessage(error)
             }
             isSigningIn = false

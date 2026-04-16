@@ -144,6 +144,127 @@ func presentShareSheet(with items: [Any]) {
         static let messageLimit = 5
     }
 
+// MARK: - Telemetry
+//
+// Privacy-first analytics + crash reporting facade. Calls are safe to make
+// from anywhere — they no-op when the user has opted out via Settings, and
+// they no-op when the Firebase Analytics / Crashlytics SDKs haven't been
+// added to the Xcode project yet (see toskaApp.swift for setup steps).
+//
+// Privacy rules baked in:
+//   - Never log post/reply/message content
+//   - Never log handles, user IDs, or post IDs
+//   - Never log search queries
+//   - Properties are bounded enums or booleans, never free-form strings
+//   - Caller respects shareAnonymousUsage (default true; flipped via Settings)
+//
+// To wire to real Firebase: see the marked TODO in `event(_:parameters:)`
+// and `recordError(_:)`. Until then, DEBUG builds print to console so we
+// can verify wiring locally.
+
+enum Telemetry {
+    /// Default true. The user can flip this off via Settings → Privacy.
+    /// Read from UserDefaults directly (no @AppStorage) since this namespace
+    /// is callable from non-View contexts.
+    static var isOptedIn: Bool {
+        UserDefaults.standard.object(forKey: "toska_shareAnonymousUsage") as? Bool ?? true
+    }
+
+    /// Generic event firer. Prefer the named helpers below for type-safety.
+    static func event(_ name: String, parameters: [String: Any] = [:]) {
+        guard isOptedIn else { return }
+        // TODO: when FirebaseAnalytics SPM dependency is added, replace
+        // the print with: Analytics.logEvent(name, parameters: parameters)
+        #if DEBUG
+        print("📊 \(name) \(parameters)")
+        #endif
+    }
+
+    /// Records a non-fatal error for later crash-report aggregation.
+    /// Use this in catch blocks where we'd otherwise just print a warning.
+    static func recordError(_ error: Error, context: String? = nil) {
+        guard isOptedIn else { return }
+        // TODO: when FirebaseCrashlytics SPM dependency is added, replace
+        // the print with:
+        //   if let ctx = context { Crashlytics.crashlytics().setCustomValue(ctx, forKey: "context") }
+        //   Crashlytics.crashlytics().record(error: error)
+        #if DEBUG
+        let suffix = context.map { " [\($0)]" } ?? ""
+        print("💥 non-fatal\(suffix): \(error)")
+        #endif
+    }
+}
+
+// MARK: - Telemetry — typed event helpers
+//
+// One helper per tracked event. The bounded properties make it impossible to
+// accidentally log content. If you need a new event, add a helper here so
+// the privacy review surface stays small.
+
+extension Telemetry {
+    enum SignupMethod: String { case email, apple, google }
+
+    static func signupCompleted(method: SignupMethod) {
+        event("signup_completed", parameters: ["method": method.rawValue])
+    }
+
+    static func signInCompleted(method: SignupMethod) {
+        event("sign_in_completed", parameters: ["method": method.rawValue])
+    }
+
+    static func onboardingCompleted() {
+        event("onboarding_completed")
+    }
+
+    static func ageGateDeclined() {
+        event("age_gate_declined")
+    }
+
+    static func policyDeclined(version: Int, atSignup: Bool) {
+        event("policy_declined", parameters: ["version": version, "at_signup": atSignup])
+    }
+
+    /// Tag is bounded to the sharedTags list — safe to include because the tag
+    /// vocabulary is a known small set ("longing", "regret", etc.) chosen by the
+    /// user from a fixed picker, not free text.
+    static func postCreated(tag: String?, isLetter: Bool, isWhisper: Bool, hasGif: Bool) {
+        var params: [String: Any] = [
+            "is_letter": isLetter,
+            "is_whisper": isWhisper,
+            "has_gif": hasGif,
+            "has_tag": tag != nil
+        ]
+        if let tag = tag { params["tag"] = tag }
+        event("post_created", parameters: params)
+    }
+
+    static func replyCreated(parentIsOwn: Bool, hasGif: Bool) {
+        event("reply_created", parameters: ["parent_is_own": parentIsOwn, "has_gif": hasGif])
+    }
+
+    static func likeTapped() {
+        event("like_tapped")
+    }
+
+    static func crisisModalShown(level: CrisisLevel) {
+        event("crisis_modal_shown", parameters: ["level": level == .explicit ? "explicit" : "soft"])
+    }
+
+    enum ReportTargetType: String { case post, reply, user, conversation }
+
+    static func reportSubmitted(target: ReportTargetType, reasonCode: String) {
+        event("report_submitted", parameters: ["target_type": target.rawValue, "reason_code": reasonCode])
+    }
+
+    static func userBlocked() {
+        event("user_blocked")
+    }
+
+    static func pushPrimerDecision(accepted: Bool) {
+        event("push_primer_decision", parameters: ["accepted": accepted])
+    }
+}
+
 // MARK: - Auth Error Messages
 //
 // Firebase's `error.localizedDescription` returns strings like
@@ -376,9 +497,14 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
     guard let level = crisisLevel(for: text) else { return nil }
     switch level {
     case .explicit:
-        return .explicit   // always show — non-optional safety rail
+        // Always show — non-optional safety rail. Telemetry-counted so we can
+        // monitor how often the rail fires (no content logged, just the tier).
+        Telemetry.crisisModalShown(level: .explicit)
+        return .explicit
     case .soft:
-        return UserHandleCache.shared.gentleCheckIn ? .soft : nil
+        guard UserHandleCache.shared.gentleCheckIn else { return nil }
+        Telemetry.crisisModalShown(level: .soft)
+        return .soft
     }
 }
 
@@ -992,13 +1118,25 @@ struct ReportSheet: View {
             payload["reportedHandle"]  = otherHandle
         }
 
+        let telemetryTarget: Telemetry.ReportTargetType = {
+            switch target {
+            case .post:         return .post
+            case .reply:        return .reply
+            case .user:         return .user
+            case .conversation: return .conversation
+            }
+        }()
+
         Firestore.firestore().collection("reports").addDocument(data: payload) { error in
             Task { @MainActor in
                 isSubmitting = false
                 if let error = error {
                     print("⚠️ submitReport failed: \(error)")
+                    Telemetry.recordError(error, context: "ReportSheet.submit")
                     // Still move to thank-you state so the user isn't
                     // confused — moderation queues usually tolerate duplicates.
+                } else {
+                    Telemetry.reportSubmitted(target: telemetryTarget, reasonCode: reason.code)
                 }
                 didSubmit = true
             }

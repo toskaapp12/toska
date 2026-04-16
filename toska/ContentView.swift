@@ -93,6 +93,7 @@ struct ContentView: View {
                     showPolicyUpdate = false
                 },
                 onDecline: {
+                    Telemetry.policyDeclined(version: currentPolicyVersion, atSignup: false)
                     showPolicyUpdate = false
                     PushNotificationManager.shared.clearFCMToken()
                     try? Auth.auth().signOut()

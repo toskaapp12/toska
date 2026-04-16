@@ -115,12 +115,14 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                     "createdAt": FieldValue.serverTimestamp()
                 ])
                 UserHandleCache.shared.startListening()
+                Telemetry.signupCompleted(method: .apple)
                 NotificationCenter.default.post(
                     name: NSNotification.Name("ShowOnboarding"),
                     object: nil
                 )
             } else {
                 UserHandleCache.shared.startListening()
+                Telemetry.signInCompleted(method: .apple)
             }
 
             NotificationCenter.default.post(

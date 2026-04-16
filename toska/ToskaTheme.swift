@@ -146,6 +146,134 @@ func presentShareSheet(with items: [Any]) {
         static let messageLimit = 5
     }
 
+// MARK: - Localization Strategy
+//
+// Most user-facing strings in this app go through SwiftUI's Text(_:) and
+// .alert(_:isPresented:) initializers, both of which take LocalizedStringKey
+// and are auto-extracted by Xcode when a String Catalog is added to the
+// project. So 90% of localization-readiness is already in place — there's
+// no .xcstrings file yet, but the moment you add one, Xcode will detect
+// every Text("foo") and surface it for translation.
+//
+// What needs explicit care:
+//
+//   - Strings built via String interpolation that go into a Text don't
+//     extract well; prefer Text("\(name) joined") (auto-extractable as a
+//     keyed format string) over Text(handBuiltLocalizedString).
+//
+//   - Strings stored in @State properties or returned from helper functions
+//     bypass auto-extraction. Wrap these in String(localized: "...") so
+//     the catalog can find them. See `friendlyAuthErrorMessage` below.
+//
+//   - The voice (lowercase, intentional misspellings like "youre",
+//     "thats", "im") is the product. Bulk machine translation will
+//     destroy it. Don't ship in another language without a translator
+//     who can carry the voice. The ground rule: this codebase is
+//     localization-READY, not currently localized.
+//
+//   - Brand strings ("toska", handle prefixes like "anonymous_") should
+//     never be translated. Pass them through Text(verbatim:) to opt out
+//     of LocalizedStringKey treatment.
+//
+//   - Crisis hotlines and emergency numbers are REGIONAL, not just
+//     translated. CrisisLines below switches by Locale.current.region
+//     so a UK user gets 116 123 (Samaritans) instead of US 988.
+//
+// To enable translations later:
+//   1. In Xcode: File → New → File → String Catalog. Name it
+//      "Localizable" and add to the toska target.
+//   2. Build the project. Xcode auto-populates the catalog with every
+//      detected key.
+//   3. Add a language in the catalog UI; translators fill in the cells.
+//   4. Ship. iOS picks the right table based on the user's preferred
+//      languages with no further code changes.
+
+// MARK: - Crisis Lines (region-aware)
+//
+// 988 and 741741 are US-only numbers. A user in the UK or Australia tapping
+// "call 988" hits a dead number — that's a safety bug, not a polish issue.
+// This helper returns the right hotlines based on Locale.current.region so
+// the crisis check-in modal and the content policy show working numbers
+// regardless of where the user is.
+//
+// Verified numbers as of 2026:
+//   US:  988 (call/text), HOME → 741741 (Crisis Text Line)
+//   UK:  Samaritans 116 123 (call free), Shout text 85258
+//   CA:  988 (call/text — Canada adopted 988 in 2023)
+//   AU:  Lifeline 13 11 14 (call), 0477 13 11 14 (text)
+//   IE:  Samaritans 116 123 (call), 50808 (text HELLO)
+//   NZ:  Lifeline 0800 543 354 (call), 4357 (text HELP)
+// Every other region falls back to the international IASP directory link.
+
+struct CrisisResource {
+    let label: String           // "call 988"
+    let sublabel: String        // "suicide & crisis lifeline"
+    let url: String             // "tel://988" or "https://findahelpline.com"
+    let icon: String            // SF Symbol
+}
+
+enum CrisisLines {
+    /// Region-appropriate hotlines, in display order. CrisisCheckInView
+    /// renders these as tappable rows.
+    static var resources: [CrisisResource] {
+        let region = Locale.current.region?.identifier ?? "US"
+        switch region {
+        case "US":
+            return [
+                CrisisResource(label: "call 988", sublabel: "suicide & crisis lifeline", url: "tel://988", icon: "phone.fill"),
+                CrisisResource(label: "text 988", sublabel: "same lifeline, by text", url: "sms:988", icon: "message.fill"),
+                CrisisResource(label: "text HOME to 741741", sublabel: "crisis text line", url: "sms:741741&body=HOME", icon: "text.bubble.fill"),
+            ]
+        case "CA":
+            return [
+                CrisisResource(label: "call 988", sublabel: "suicide crisis helpline (canada)", url: "tel://988", icon: "phone.fill"),
+                CrisisResource(label: "text 988", sublabel: "same helpline, by text", url: "sms:988", icon: "message.fill"),
+            ]
+        case "GB":
+            return [
+                CrisisResource(label: "call 116 123", sublabel: "samaritans (free, 24/7)", url: "tel://116123", icon: "phone.fill"),
+                CrisisResource(label: "text SHOUT to 85258", sublabel: "shout crisis text line", url: "sms:85258&body=SHOUT", icon: "text.bubble.fill"),
+            ]
+        case "AU":
+            return [
+                CrisisResource(label: "call 13 11 14", sublabel: "lifeline australia", url: "tel://131114", icon: "phone.fill"),
+                CrisisResource(label: "text 0477 13 11 14", sublabel: "lifeline text", url: "sms:0477131114", icon: "message.fill"),
+            ]
+        case "IE":
+            return [
+                CrisisResource(label: "call 116 123", sublabel: "samaritans ireland", url: "tel://116123", icon: "phone.fill"),
+                CrisisResource(label: "text HELLO to 50808", sublabel: "text crisis line", url: "sms:50808&body=HELLO", icon: "text.bubble.fill"),
+            ]
+        case "NZ":
+            return [
+                CrisisResource(label: "call 0800 543 354", sublabel: "lifeline aotearoa", url: "tel://0800543354", icon: "phone.fill"),
+                CrisisResource(label: "text HELP to 4357", sublabel: "lifeline text", url: "sms:4357&body=HELP", icon: "text.bubble.fill"),
+            ]
+        default:
+            // Outside of the regions we have curated lines for, link to the
+            // International Association for Suicide Prevention's directory
+            // so the user can find a real local number.
+            return [
+                CrisisResource(label: "find a helpline", sublabel: "international directory", url: "https://findahelpline.com", icon: "globe"),
+            ]
+        }
+    }
+
+    /// Short emergency-call hint used in the policy text. Localized regions
+    /// have their own emergency numbers (911 in US/CA, 999 in UK/IE, 000 in
+    /// AU, 111 in NZ). EU countries can dial 112.
+    static var emergencyNumber: String {
+        let region = Locale.current.region?.identifier ?? "US"
+        switch region {
+        case "US", "CA": return "911"
+        case "GB", "IE": return "999"
+        case "AU":       return "000"
+        case "NZ":       return "111"
+        default:         return "your local emergency number (112 in the EU)"
+        }
+    }
+}
+
 // MARK: - Telemetry
 //
 // Privacy-first analytics + crash reporting facade. Calls are safe to make
@@ -277,27 +405,30 @@ extension Telemetry {
 // surface that calls Auth.auth() methods. Falls back to a generic message
 // for codes we haven't mapped — the goal is to never show raw Firebase strings.
 
+// String(localized:) wrappers below so when a future String Catalog
+// (.xcstrings) is added to the project, Xcode picks these up at build
+// time and exposes them to translators alongside Text(...) call sites.
 func friendlyAuthErrorMessage(_ error: Error) -> String {
     let nsError = error as NSError
     guard nsError.domain == "FIRAuthErrorDomain" else {
-        return "something went wrong. please try again."
+        return String(localized: "something went wrong. please try again.")
     }
     switch nsError.code {
-    case 17007: return "an account with this email already exists. try signing in."
-    case 17008: return "that email doesn't look right. check the format."
-    case 17009: return "wrong password. try again or reset it."
-    case 17010: return "too many tries. wait a minute and try again."
-    case 17011: return "we couldn't find an account with that email."
-    case 17012: return "this email is linked to a different sign-in method."
-    case 17014: return "for security, please sign out and sign back in, then try again."
-    case 17020: return "youre offline. check your connection and try again."
-    case 17023: return "this email is already linked to a different sign-in method."
-    case 17026: return "password is too weak. use at least 6 characters."
-    case 17034: return "please enter your email."
-    case 17052: return "too many requests right now. give it a minute."
-    case 17999: return "something went wrong on our end. try again."
+    case 17007: return String(localized: "an account with this email already exists. try signing in.")
+    case 17008: return String(localized: "that email doesn't look right. check the format.")
+    case 17009: return String(localized: "wrong password. try again or reset it.")
+    case 17010: return String(localized: "too many tries. wait a minute and try again.")
+    case 17011: return String(localized: "we couldn't find an account with that email.")
+    case 17012: return String(localized: "this email is linked to a different sign-in method.")
+    case 17014: return String(localized: "for security, please sign out and sign back in, then try again.")
+    case 17020: return String(localized: "youre offline. check your connection and try again.")
+    case 17023: return String(localized: "this email is already linked to a different sign-in method.")
+    case 17026: return String(localized: "password is too weak. use at least 6 characters.")
+    case 17034: return String(localized: "please enter your email.")
+    case 17052: return String(localized: "too many requests right now. give it a minute.")
+    case 17999: return String(localized: "something went wrong on our end. try again.")
     default:
-        return "couldn't sign in. try again in a moment."
+        return String(localized: "couldn't sign in. try again in a moment.")
     }
 }
 
@@ -374,24 +505,18 @@ struct CrisisCheckInView: View {
                     .padding(.horizontal, 4)
 
                 VStack(spacing: 6) {
-                    resourceRow(
-                        icon: "phone.fill",
-                        label: "call 988",
-                        sublabel: "suicide & crisis lifeline",
-                        url: "tel://988"
-                    )
-                    resourceRow(
-                        icon: "message.fill",
-                        label: "text 988",
-                        sublabel: "same lifeline, by text",
-                        url: "sms:988"
-                    )
-                    resourceRow(
-                        icon: "text.bubble.fill",
-                        label: "text HOME to 741741",
-                        sublabel: "crisis text line",
-                        url: "sms:741741&body=HOME"
-                    )
+                    // Region-aware. CrisisLines.resources picks the right
+                    // hotlines for the user's locale (988 in US/CA, 116 123
+                    // in UK/IE, 13 11 14 in AU, etc.). For unsupported
+                    // regions it falls back to findahelpline.com.
+                    ForEach(CrisisLines.resources, id: \.url) { resource in
+                        resourceRow(
+                            icon: resource.icon,
+                            label: resource.label,
+                            sublabel: resource.sublabel,
+                            url: resource.url
+                        )
+                    }
                 }
                 .padding(.top, 2)
 
@@ -549,7 +674,7 @@ toska is for your own feelings, your own story. you can say anything about your 
 we review every report we receive. we commit to reviewing reported content and taking action on violations within 24 hours. action may mean removing the post, warning the user, or suspending the account. we don't publicly discuss moderation decisions, but we respond to every report.
 
 4. safety resources
-toska is not a substitute for professional help. if you are in crisis, please reach out to the 988 suicide & crisis lifeline (call or text 988) or the crisis text line (text HOME to 741741). if you or someone else is in immediate danger, please call 911.
+toska is not a substitute for professional help. if you are in crisis, please reach out to a local crisis line — the in-app safety check-in shows the right number for where you are. if you or someone else is in immediate danger, please call \(CrisisLines.emergencyNumber).
 
 5. blocking and reporting
 you can block any user at any time from their profile or from a post. blocked users will no longer see each other's content or be able to message you. you can report any post, reply, conversation, or user — reports go to our moderation team. the "report" action is the fastest way to flag something you've seen.
@@ -668,7 +793,10 @@ struct AgeGateView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
 
-            Text("toska gets heavy. we want you to have the right support around you.\n\nif youre going through something hard right now, please talk to a trusted adult, or text 741741 for the crisis text line. youre not alone.")
+            // The age-gate off-ramp shows the under-17 user a single crisis
+            // resource. Pulled from CrisisLines so the right local number
+            // shows regardless of where the user is.
+            Text("toska gets heavy. we want you to have the right support around you.\n\nif youre going through something hard right now, please talk to a trusted adult, or reach out to \(CrisisLines.resources.first?.label ?? "a crisis line"). youre not alone.")
                 .font(.system(size: 13))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)

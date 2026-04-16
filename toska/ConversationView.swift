@@ -69,28 +69,28 @@ struct ConversationView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                     VStack(spacing: 1) {
                         Text(otherHandle)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Color(hex: "2a2a2a"))
+                            .foregroundColor(Color.toskaTextDark)
                         if isSealed {
                             Text("conversation sealed")
                                 .font(.system(size: 9))
-                                .foregroundColor(Color(hex: "c0c0c0"))
+                                .foregroundColor(Color.toskaTimestamp)
                         } else {
                             Text("\(messagesRemaining) messages left")
                                 .font(.system(size: 9))
-                                .foregroundColor(Color(hex: "9198a8"))
+                                .foregroundColor(Color.toskaBlue)
                         }
                     }
                     Spacer()
                     Button { showBlockAlert = true } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color(hex: "c0c0c0"))
+                            .foregroundColor(Color.toskaTimestamp)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -105,7 +105,7 @@ struct ConversationView: View {
                     VStack(spacing: 12) {
                         Text(errorMessage)
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "b0b0b0"))
+                            .foregroundColor(Color.toskaTextLight)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
                         Button {
@@ -119,13 +119,13 @@ struct ConversationView: View {
                         } label: {
                             Text("retry")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(hex: "9198a8"))
+                                .foregroundColor(Color.toskaBlue)
                         }
                     }
                     Spacer()
                 } else if isLoading {
                     Spacer()
-                    ProgressView().tint(Color(hex: "9198a8"))
+                    ProgressView().tint(Color.toskaBlue)
                     Spacer()
                 } else {
                     ScrollViewReader { proxy in
@@ -134,10 +134,10 @@ struct ConversationView: View {
                                 VStack(spacing: 8) {
                                     Image(systemName: "bubble.left.and.bubble.right")
                                         .font(.system(size: 20, weight: .light))
-                                        .foregroundColor(Color(hex: "d0d0d0"))
+                                        .foregroundColor(Color.toskaDivider)
                                     Text("anonymous conversation")
                                         .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(Color(hex: "b0b0b0"))
+                                        .foregroundColor(Color.toskaTextLight)
                                     Text("you each get 5 messages.\nsay what matters.")
                                         .font(.system(size: 11))
                                         .foregroundColor(Color(hex: "cccccc"))
@@ -169,14 +169,14 @@ struct ConversationView: View {
                                 if otherIsTyping && !isSealed {
                                     HStack(spacing: 0) {
                                         Rectangle()
-                                            .fill(Color(hex: "9198a8").opacity(0.3))
+                                            .fill(Color.toskaBlue.opacity(0.3))
                                             .frame(width: 2, height: 14)
                                             .cornerRadius(1)
 
                                         HStack(spacing: 3) {
                                             ForEach(0..<3, id: \.self) { i in
                                                 Circle()
-                                                    .fill(Color(hex: "9198a8").opacity(
+                                                    .fill(Color.toskaBlue.opacity(
                                                         typingDotPhase == i ? 0.8 : 0.3
                                                     ))
                                                     .frame(width: 4, height: 4)
@@ -266,7 +266,7 @@ struct ConversationView: View {
                             Spacer()
                             Text("youve said what you needed to say")
                                 .font(.system(size: 11))
-                                .foregroundColor(Color(hex: "b0b0b0"))
+                                .foregroundColor(Color.toskaTextLight)
                             Spacer()
                         }
                         .padding(.vertical, 12)
@@ -278,7 +278,7 @@ struct ConversationView: View {
                                 .foregroundColor(
                                     messagesRemaining <= 2
                                         ? Color(hex: "c49a6c")
-                                        : Color(hex: "c0c0c0")
+                                        : Color.toskaTimestamp
                                 )
                                 .frame(width: 20)
 
@@ -315,8 +315,8 @@ struct ConversationView: View {
                                 Image(systemName: "arrow.up.circle.fill")
                                     .font(.system(size: 28))
                                     .foregroundColor(canSend
-                                        ? Color(hex: "9198a8")
-                                        : Color(hex: "d0d0d0"))
+                                        ? Color.toskaBlue
+                                        : Color.toskaDivider)
                             }
                             .disabled(!canSend)
                         }

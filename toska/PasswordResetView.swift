@@ -23,7 +23,7 @@ struct PasswordResetView: View {
                         Text("back")
                             .font(.system(size: 13))
                     }
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 20)
@@ -69,10 +69,10 @@ struct PasswordResetView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                         Text("link sent")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     .padding(.bottom, 12)
                     
@@ -82,7 +82,7 @@ struct PasswordResetView: View {
                     } label: {
                         Text("didn't get it? resend")
                             .font(.system(size: 10))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                 } else {
                     Button {
@@ -99,7 +99,7 @@ struct PasswordResetView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
-                        .background(Color(hex: "9198a8"))
+                        .background(Color.toskaBlue)
                         .cornerRadius(12)
                     }
                     .disabled(email.isEmpty || isLoading)

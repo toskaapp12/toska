@@ -42,7 +42,7 @@ struct SettingsView: View {
                     Spacer()
                     Text("settings")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color(hex: "2a2a2a"))
+                        .foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Image(systemName: "xmark").font(.system(size: 13)).foregroundColor(.clear)
                 }
@@ -96,11 +96,11 @@ struct SettingsView: View {
                                     HStack {
                                         Text("blocked users")
                                             .font(.system(size: 14))
-                                            .foregroundColor(Color(hex: "2a2a2a"))
+                                            .foregroundColor(Color.toskaTextDark)
                                         Spacer()
                                         Image(systemName: "chevron.right")
                                             .font(.system(size: 10, weight: .light))
-                                            .foregroundColor(Color(hex: "d0d0d0"))
+                                            .foregroundColor(Color.toskaDivider)
                                     }
                                     .padding(.vertical, 12)
                                     .padding(.horizontal, 14)
@@ -161,7 +161,7 @@ struct SettingsView: View {
                                                     
                                                     Text("why this exists")
                                                         .font(.system(size: 10, weight: .semibold))
-                                                        .foregroundColor(Color(hex: "b0b0b0"))
+                                                        .foregroundColor(Color.toskaTextLight)
                                                     
                                                     Text("i went through a breakup. talked to everyone. they ran out of things to say and i ran out of people to say it to. everyone had moved on but i was still sad. i was on reddit at 2am, downloading random apps, watching sad tiktoks. none of it was it. i just wanted somewhere anonymous where people are going through the same thing and nobody's pretending they're not. so i built it.")
                                                         .font(.custom("Georgia", size: 12))
@@ -172,15 +172,15 @@ struct SettingsView: View {
                                                     
                                                     Text("— tess")
                                                         .font(.custom("Georgia-Italic", size: 11))
-                                                        .foregroundColor(Color(hex: "c0c0c0"))
+                                                        .foregroundColor(Color.toskaTimestamp)
                                                     
                                                     VStack(spacing: 2) {
                                                         Text("toska v1.0")
                                                             .font(.system(size: 9))
-                                                            .foregroundColor(Color(hex: "d0d0d0"))
+                                                            .foregroundColor(Color.toskaDivider)
                                                         Text("for the things you can't say out loud")
                                                             .font(.custom("Georgia-Italic", size: 9))
-                                                            .foregroundColor(Color(hex: "d0d0d0").opacity(0.5))
+                                                            .foregroundColor(Color.toskaDivider.opacity(0.5))
                                                     }
                                                     .padding(.top, 4)
                                                 }
@@ -240,7 +240,7 @@ struct SettingsView: View {
     func groupHeader(_ title: String) -> some View {
         Text(title)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(Color(hex: "b0b0b0"))
+            .foregroundColor(Color.toskaTextLight)
             .padding(.leading, 4)
     }
     
@@ -249,17 +249,17 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "2a2a2a"))
+                    .foregroundColor(Color.toskaTextDark)
                 if let sub = subtitle {
                     Text(sub)
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "c0c0c0"))
+                        .foregroundColor(Color.toskaTimestamp)
                 }
             }
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .tint(Color(hex: "9198a8"))
+                .tint(Color.toskaBlue)
                 .scaleEffect(0.8)
         }
         .padding(.vertical, 10)
@@ -274,7 +274,7 @@ struct SettingsView: View {
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .tint(Color(hex: "9198a8"))
+                .tint(Color.toskaBlue)
                 .scaleEffect(0.7)
         }
         .padding(.vertical, 6)
@@ -287,11 +287,11 @@ struct SettingsView: View {
             HStack {
                 Text(title)
                     .font(.system(size: 14))
-                    .foregroundColor(Color(hex: "2a2a2a"))
+                    .foregroundColor(Color.toskaTextDark)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .light))
-                    .foregroundColor(Color(hex: "d0d0d0"))
+                    .foregroundColor(Color.toskaDivider)
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 14)
@@ -428,12 +428,12 @@ struct ChangeEmailView: View {
                         Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
-                    Text("change email").font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "2a2a2a"))
+                    Text("change email").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { updateEmail() } label: {
                         Text("save").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(!isValidEmail || isSaving ? Color(hex: "d0d0d0") : Color(hex: "9198a8"))
+                            .background(!isValidEmail || isSaving ? Color.toskaDivider : Color.toskaBlue)
                             .cornerRadius(16)
                     }
                     .disabled(!isValidEmail || isSaving)
@@ -446,11 +446,11 @@ struct ChangeEmailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("current email")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "b0b0b0"))
+                        .foregroundColor(Color.toskaTextLight)
                     
                     Text(Auth.auth().currentUser?.email ?? "unknown")
                         .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "2a2a2a"))
+                        .foregroundColor(Color.toskaTextDark)
                         .padding(11)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color(hex: "e4e6ea").opacity(0.5))
@@ -458,7 +458,7 @@ struct ChangeEmailView: View {
                     
                     Text("new email")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "b0b0b0"))
+                        .foregroundColor(Color.toskaTextLight)
                     
                     TextField("new email address", text: $newEmail)
                         .font(.system(size: 13))
@@ -542,12 +542,12 @@ struct ChangePasswordView: View {
                         Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
-                    Text("change password").font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "2a2a2a"))
+                    Text("change password").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { updatePassword() } label: {
                         Text("save").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(newPassword.isEmpty || isSaving ? Color(hex: "d0d0d0") : Color(hex: "9198a8"))
+                            .background(newPassword.isEmpty || isSaving ? Color.toskaDivider : Color.toskaBlue)
                             .cornerRadius(16)
                     }
                     .disabled(newPassword.isEmpty || isSaving)
@@ -560,7 +560,7 @@ struct ChangePasswordView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("new password")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "b0b0b0"))
+                        .foregroundColor(Color.toskaTextLight)
                     
                     SecureField("at least 6 characters", text: $newPassword)
                         .font(.system(size: 13))
@@ -571,7 +571,7 @@ struct ChangePasswordView: View {
                     
                     Text("confirm password")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "b0b0b0"))
+                        .foregroundColor(Color.toskaTextLight)
                     
                     SecureField("type it again", text: $confirmPassword)
                         .font(.system(size: 13))
@@ -662,17 +662,17 @@ struct BlockedUsersListView: View {
             VStack(spacing: 0) {
                 if isLoading {
                     Spacer()
-                    ProgressView().tint(Color(hex: "9198a8"))
+                    ProgressView().tint(Color.toskaBlue)
                     Spacer()
                 } else if blocked.isEmpty {
                     Spacer()
                     VStack(spacing: 10) {
                         Image(systemName: "person.slash")
                             .font(.system(size: 28, weight: .light))
-                            .foregroundColor(Color(hex: "d0d0d0"))
+                            .foregroundColor(Color.toskaDivider)
                         Text("no blocked users")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Color(hex: "b0b0b0"))
+                            .foregroundColor(Color.toskaTextLight)
                         Text("people you block will show up here. you can unblock them any time.")
                             .font(.system(size: 11))
                             .foregroundColor(Color(hex: "cccccc"))
@@ -687,19 +687,19 @@ struct BlockedUsersListView: View {
                                 HStack(spacing: 12) {
                                     ZStack {
                                         Circle()
-                                            .fill(Color(hex: "9198a8").opacity(0.1))
+                                            .fill(Color.toskaBlue.opacity(0.1))
                                             .frame(width: 36, height: 36)
                                         Text(String(row.handle.replacingOccurrences(of: "anonymous_", with: "").prefix(1)).uppercased())
                                             .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                            .foregroundColor(Color(hex: "9198a8"))
+                                            .foregroundColor(Color.toskaBlue)
                                     }
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(row.handle)
                                             .font(.system(size: 13, weight: .semibold))
-                                            .foregroundColor(Color(hex: "2a2a2a"))
+                                            .foregroundColor(Color.toskaTextDark)
                                         Text("blocked \(FeedView.timeAgoString(from: row.blockedAt)) ago")
                                             .font(.system(size: 10))
-                                            .foregroundColor(Color(hex: "b0b0b0"))
+                                            .foregroundColor(Color.toskaTextLight)
                                     }
                                     Spacer()
                                     Button {
@@ -707,10 +707,10 @@ struct BlockedUsersListView: View {
                                     } label: {
                                         Text("unblock")
                                             .font(.system(size: 11, weight: .medium))
-                                            .foregroundColor(Color(hex: "9198a8"))
+                                            .foregroundColor(Color.toskaBlue)
                                             .padding(.horizontal, 12)
                                             .padding(.vertical, 6)
-                                            .background(Color(hex: "9198a8").opacity(0.08))
+                                            .background(Color.toskaBlue.opacity(0.08))
                                             .cornerRadius(8)
                                     }
                                 }

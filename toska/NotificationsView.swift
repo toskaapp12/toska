@@ -63,19 +63,19 @@ struct NotificationsView: View {
                 // MARK: - Content
                 if isLoading {
                     Spacer()
-                    ProgressView().tint(Color(hex: "9198a8"))
+                    ProgressView().tint(Color.toskaBlue)
                     Spacer()
                 } else if notifications.isEmpty {
                     Spacer()
                                         VStack(spacing: 12) {
                                             Text("\"someone will feel\nwhat you wrote.\"")
                                                 .font(.custom("Georgia-Italic", size: 20))
-                                                .foregroundColor(Color(hex: "c0c0c0"))
+                                                .foregroundColor(Color.toskaTimestamp)
                                                 .multilineTextAlignment(.center)
                                                 .lineSpacing(4)
                                             Text(timeAwareNotifEmpty())
                                                 .font(.system(size: 11))
-                                                .foregroundColor(Color(hex: "d0d0d0"))
+                                                .foregroundColor(Color.toskaDivider)
                                                 .multilineTextAlignment(.center)
                                         }
                                         .padding(.horizontal, 48)
@@ -208,25 +208,25 @@ struct NotificationsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(notif.displayText)
                             .font(.system(size: 13, weight: notif.isUnread ? .medium : .regular))
-                            .foregroundColor(Color(hex: "2a2a2a"))
+                            .foregroundColor(Color.toskaTextDark)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Text(notif.time)
                             .font(.system(size: 11))
-                            .foregroundColor(notif.isUnread ? Color(hex: "9198a8") : Color(hex: "c0c0c0"))
+                            .foregroundColor(notif.isUnread ? Color.toskaBlue : Color.toskaTimestamp)
                     }
                     
                     Spacer()
                     
                     if notif.isUnread {
                         Circle()
-                            .fill(Color(hex: "9198a8"))
+                            .fill(Color.toskaBlue)
                             .frame(width: 6, height: 6)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 11)
-                .background(notif.isUnread ? Color(hex: "9198a8").opacity(0.04) : Color.clear)
+                .background(notif.isUnread ? Color.toskaBlue.opacity(0.04) : Color.clear)
                 .overlay(
                     Rectangle()
                         .fill(Color(hex: "dfe1e5").opacity(0.5))
@@ -321,12 +321,12 @@ struct NotificationsView: View {
     func iconColor(for type: String) -> Color {
         switch type {
         case "like": return Color(hex: "c47a8a")
-        case "reply": return Color(hex: "9198a8")
+        case "reply": return Color.toskaBlue
         case "follow": return Color(hex: "6ba58e")
         case "repost": return Color(hex: "5a9e8f")
         case "save": return Color(hex: "c49a6c")
         case "milestone": return Color(hex: "c9a97a")
-        case "message": return Color(hex: "9198a8")
+        case "message": return Color.toskaBlue
         default: return Color(hex: "cccccc")
         }
     }

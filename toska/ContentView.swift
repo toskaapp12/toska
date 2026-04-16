@@ -22,7 +22,7 @@ struct ContentView: View {
         Group {
             if isLoading || showVerifyError {
                 ZStack {
-                    Color(hex: "9198a8").ignoresSafeArea()
+                    Color.toskaBlue.ignoresSafeArea()
                     if showVerifyError {
                         VStack(spacing: 16) {
                             Text("t")
@@ -47,7 +47,7 @@ struct ContentView: View {
                             } label: {
                                 Text("retry")
                                     .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(Color(hex: "9198a8"))
+                                    .foregroundColor(Color.toskaBlue)
                                     .padding(.horizontal, 28)
                                     .padding(.vertical, 10)
                                     .background(Color.white)

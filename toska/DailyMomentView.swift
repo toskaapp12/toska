@@ -41,7 +41,7 @@ struct DailyMomentView: View {
                 if isLoading {
                     Spacer()
                     ProgressView()
-                        .tint(Color(hex: "9198a8"))
+                        .tint(Color.toskaBlue)
                     Spacer()
                 } else {
                     Spacer()
@@ -49,11 +49,11 @@ struct DailyMomentView: View {
                     VStack(spacing: 4) {
                         HStack(spacing: 5) {
                             Circle()
-                                .fill(Color(hex: "9198a8"))
+                                .fill(Color.toskaBlue)
                                 .frame(width: 4, height: 4)
                             Text(timeLabel)
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(Color(hex: "9198a8"))
+                                .foregroundColor(Color.toskaBlue)
                                 .tracking(1)
                         }
 
@@ -88,7 +88,7 @@ struct DailyMomentView: View {
 
                         Text("\(formatCount(feltCount)) felt this")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "9198a8").opacity(0.7))
+                            .foregroundColor(Color.toskaBlue.opacity(0.7))
 
                         Text(postHandle)
                             .font(.system(size: 9))
@@ -119,10 +119,10 @@ struct DailyMomentView: View {
                                 Text("share moment")
                                     .font(.system(size: 12, weight: .medium))
                             }
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 10)
-                            .background(Color(hex: "9198a8").opacity(0.1))
+                            .background(Color.toskaBlue.opacity(0.1))
                             .cornerRadius(20)
                         }
                         .opacity(isVisible ? 1 : 0)
@@ -289,11 +289,11 @@ struct DailyMomentView: View {
 
                 HStack(spacing: 5) {
                     Circle()
-                        .fill(Color(hex: "9198a8"))
+                        .fill(Color.toskaBlue)
                         .frame(width: 4, height: 4)
                     Text(timeLabel)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "9198a8"))
+                        .foregroundColor(Color.toskaBlue)
                         .tracking(1)
                 }
                 .padding(.bottom, 24)
@@ -321,7 +321,7 @@ struct DailyMomentView: View {
 
                 Text("\(formatCount(feltCount)) felt this")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "9198a8").opacity(0.7))
+                    .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .padding(.bottom, 6)
 
                 Text(postHandle)

@@ -94,7 +94,7 @@ struct OnboardingView: View {
                 HStack(spacing: 6) {
                     ForEach(0..<4, id: \.self) { index in
                         Circle()
-                            .fill(index <= currentStep ? Color(hex: "9198a8") : Color(hex: "9198a8").opacity(0.2))
+                            .fill(index <= currentStep ? Color.toskaBlue : Color.toskaBlue.opacity(0.2))
                             .frame(width: 6, height: 6)
                     }
                 }
@@ -125,7 +125,7 @@ struct OnboardingView: View {
                                 .foregroundColor(currentStep == 0 ? Color(hex: "0a0908") : .white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
-                                .background(currentStep == 0 ? Color.white : Color(hex: "9198a8"))
+                                .background(currentStep == 0 ? Color.white : Color.toskaBlue)
                                 .cornerRadius(12)
                         }
                     } else if currentStep == 2 {
@@ -343,7 +343,7 @@ struct OnboardingView: View {
                 
                 Text("this is a place for the things\nyou cant say out loud.")
                     .font(.custom("Georgia-Italic", size: 13))
-                    .foregroundColor(Color(hex: "9198a8").opacity(0.7))
+                    .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
@@ -353,7 +353,7 @@ struct OnboardingView: View {
         VStack(spacing: 12) {
             Image(systemName: "theatermasks")
                 .font(.system(size: 28))
-                .foregroundColor(Color(hex: "9198a8"))
+                .foregroundColor(Color.toskaBlue)
                 .padding(.bottom, 4)
             
             Text("youre anonymous here")
@@ -368,7 +368,7 @@ struct OnboardingView: View {
             HStack {
                 Text(userHandle)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                 Spacer()
                 Text("your handle")
                     .font(.system(size: 9))
@@ -401,7 +401,7 @@ struct OnboardingView: View {
                                 
                                 Text("well show you people who feel the same")
                                     .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "9198a8"))
+                                    .foregroundColor(Color.toskaBlue)
                                     .padding(.bottom, 8)
                 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
@@ -435,7 +435,7 @@ struct OnboardingView: View {
             VStack(spacing: 16) {
                 Image(systemName: "pencil.line")
                     .font(.system(size: 28, weight: .light))
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                     .padding(.bottom, 4)
                 
                 Text("say the thing")
@@ -453,7 +453,7 @@ struct OnboardingView: View {
                 VStack(spacing: 8) {
                     Text(promptTimeLabel)
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color(hex: "9198a8"))
+                        .foregroundColor(Color.toskaBlue)
                         .tracking(1)
                     
                     Text(promptForMood(selectedMood))
@@ -469,7 +469,7 @@ struct OnboardingView: View {
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: "9198a8").opacity(0.15), lineWidth: 0.5)
+                        .stroke(Color.toskaBlue.opacity(0.15), lineWidth: 0.5)
                 )
                 .padding(.horizontal, 24)
                 

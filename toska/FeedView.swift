@@ -204,7 +204,7 @@ struct FeedView: View {
 
                                                             if vm.selectedTab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
                                             ProgressView()
-                                                .tint(Color(hex: "9198a8"))
+                                                .tint(Color.toskaBlue)
                                                 .padding(.vertical, 20)
                                                 .onAppear {
                                                     if !vm.isLoadingMore {
@@ -418,15 +418,15 @@ struct FeedPostRow: View {
                     HStack(spacing: 4) {
                                             Text(handle)
                                                 .font(.system(size: 11, weight: .medium))
-                                                .foregroundColor(Color(hex: "9198a8"))
+                                                .foregroundColor(Color.toskaBlue)
                                             
                                             Text("·")
                                                 .font(.system(size: 9))
-                                                .foregroundColor(Color(hex: "d0d0d0"))
+                                                .foregroundColor(Color.toskaDivider)
                                             
                                             Text(time)
                                                 .font(.system(size: 11))
-                                                .foregroundColor(Color(hex: "c0c0c0"))
+                                                .foregroundColor(Color.toskaTimestamp)
                                             
                                             Spacer()
                                             
@@ -460,7 +460,7 @@ struct FeedPostRow: View {
                                                 } label: {
                                                     Image(systemName: "ellipsis")
                                                         .font(.system(size: 11))
-                                                        .foregroundColor(Color(hex: "c0c0c0"))
+                                                        .foregroundColor(Color.toskaTimestamp)
                                                         .padding(.horizontal, 6)
                                                         .padding(.vertical, 2)
                                                         .contentShape(Rectangle())
@@ -494,7 +494,7 @@ struct FeedPostRow: View {
                                                         } label: {
                                 Text("read this letter...")
                                     .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(Color(hex: "9198a8"))
+                                    .foregroundColor(Color.toskaBlue)
                                     .padding(.top, 2)
                             }
                         }
@@ -595,7 +595,7 @@ struct FeedPostRow: View {
                                                                                    Button { toggleSave() } label: {
                                                                                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                                                                                            .font(.system(size: 14, weight: .light))
-                                                                                           .foregroundColor(isSaved ? Color(hex: "9198a8") : Color(hex: "d0d0d0"))
+                                                                                           .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
                                                                                    }
                                                                                    .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                                                                                    .buttonStyle(.plain)
@@ -604,7 +604,7 @@ struct FeedPostRow: View {
                                                                                        Button { showShareCard = true } label: {
                                                                                            Image(systemName: "square.and.arrow.up")
                                                                                                .font(.system(size: 14, weight: .light))
-                                                                                               .foregroundColor(Color(hex: "d0d0d0"))
+                                                                                               .foregroundColor(Color.toskaDivider)
                                                                                        }
                                                                                        .accessibilityLabel("Share post")
                                                                                        .buttonStyle(.plain)
@@ -750,7 +750,7 @@ struct FeedPostRow: View {
                         .font(.system(size: 11))
                 }
             }
-            .foregroundColor(isActive ? Color(hex: activeColor) : Color(hex: "d0d0d0"))
+            .foregroundColor(isActive ? Color(hex: activeColor) : Color.toskaDivider)
         }
     
     // MARK: - Like
@@ -926,7 +926,7 @@ struct FeedHeaderCard: View {
                                     }
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 12)
-                                    .background(Color(hex: "9198a8"))
+                                    .background(Color.toskaBlue)
                                     .cornerRadius(12)
                                     .padding(.horizontal, 12)
                                     .padding(.top, 8)
@@ -956,10 +956,10 @@ struct FeedHeaderCard: View {
                                     Text("respond")
                                         .font(.system(size: 10, weight: .semibold))
                                 }
-                                .foregroundColor(Color(hex: "9198a8"))
+                                .foregroundColor(Color.toskaBlue)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(Color(hex: "9198a8").opacity(0.1))
+                                .background(Color.toskaBlue.opacity(0.1))
                                 .cornerRadius(12)
                             }
                             .padding(.horizontal, 16)
@@ -995,18 +995,18 @@ struct FeedHeaderCard: View {
                             Button { vm.showWitnessPost = true } label: {
                                 HStack(spacing: 8) {
                                     Circle()
-                                        .fill(Color(hex: "9198a8"))
+                                        .fill(Color.toskaBlue)
                                         .frame(width: 5, height: 5)
                                     Text("someone needs a reply")
                                         .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(Color(hex: "9198a8"))
+                                        .foregroundColor(Color.toskaBlue)
                                     Spacer()
                                     Text("be there")
                                         .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Color(hex: "9198a8"))
+                                        .foregroundColor(Color.toskaBlue)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
-                                        .background(Color(hex: "9198a8").opacity(0.1))
+                                        .background(Color.toskaBlue.opacity(0.1))
                                         .cornerRadius(10)
                                 }
                                 .padding(.horizontal, 16)
@@ -1022,7 +1022,7 @@ struct FeedHeaderCard: View {
                                 HStack(spacing: 6) {
                                     Text("most unsaid today")
                                         .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Color(hex: "9198a8"))
+                                        .foregroundColor(Color.toskaBlue)
                                     Spacer()
                                     Text("\(formatCount(vm.mostUnsaidLikes)) felt this")
                                         .font(.system(size: 10))
@@ -1076,11 +1076,11 @@ struct ToskaRefreshHeader: View {
         VStack(spacing: 8) {
             if isRefreshing {
                 ProgressView()
-                    .tint(Color(hex: "9198a8"))
+                    .tint(Color.toskaBlue)
                     .scaleEffect(0.8)
                 Text(currentPhrase)
                     .font(.custom("Georgia-Italic", size: 12))
-                    .foregroundColor(Color(hex: "9198a8").opacity(0.7))
+                    .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .opacity(opacity)
                     .animation(.easeIn(duration: 0.3), value: opacity)
@@ -1088,7 +1088,7 @@ struct ToskaRefreshHeader: View {
                 if triggerProgress > 0.2 {
                     Text(currentPhrase)
                         .font(.custom("Georgia-Italic", size: 12))
-                        .foregroundColor(Color(hex: "9198a8").opacity(Double(triggerProgress) * 0.7))
+                        .foregroundColor(Color.toskaBlue.opacity(Double(triggerProgress) * 0.7))
                         .multilineTextAlignment(.center)
                 }
             }
@@ -1208,7 +1208,7 @@ func timeOfDayLabel() -> String {
 
 func tagColor(for tag: String) -> Color {
     switch tag {
-    case "longing": return Color(hex: "9198a8")
+    case "longing": return Color.toskaBlue
     case "anger": return Color(hex: "c45c5c")
     case "regret": return Color(hex: "8b7ec8")
     case "acceptance": return Color(hex: "6ba58e")
@@ -1216,7 +1216,7 @@ func tagColor(for tag: String) -> Color {
     case "unsent": return Color(hex: "7a97b5")
     case "moving on": return Color(hex: "5a9e8f")
     case "still love you": return Color(hex: "c47a8a")
-    default: return Color(hex: "9198a8")
+    default: return Color.toskaBlue
     }
 }
 

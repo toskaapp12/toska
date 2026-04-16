@@ -82,7 +82,7 @@ struct ExploreView: View {
                     HStack {
                         Text("explore")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Color(hex: "2a2a2a"))
+                            .foregroundColor(Color.toskaTextDark)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -91,7 +91,7 @@ struct ExploreView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 12))
-                        .foregroundColor(Color(hex: "c0c0c0"))
+                        .foregroundColor(Color.toskaTimestamp)
                     
                     TextField("search for a feeling...", text: $searchText)
                         .font(.system(size: 12))
@@ -105,7 +105,7 @@ struct ExploreView: View {
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 13))
-                                .foregroundColor(Color(hex: "c0c0c0"))
+                                .foregroundColor(Color.toskaTimestamp)
                         }
                     }
                 }
@@ -166,12 +166,12 @@ struct ExploreView: View {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left").font(.system(size: 11))
                                     Text("explore").font(.system(size: 11))
-                                }.foregroundColor(Color(hex: "9198a8"))
+                                }.foregroundColor(Color.toskaBlue)
                             }
                             Spacer()
                             Text("results for \"\(searchText)\"")
                                 .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(Color(hex: "b0b0b0"))
+                                .foregroundColor(Color.toskaTextLight)
                             Spacer()
                             Text("explore").font(.system(size: 11)).foregroundColor(.clear)
                         }
@@ -181,13 +181,13 @@ struct ExploreView: View {
                         
                         if isSearching {
                             Spacer()
-                            ProgressView().tint(Color(hex: "9198a8"))
+                            ProgressView().tint(Color.toskaBlue)
                             Spacer()
                         } else if searchResults.isEmpty {
                             Spacer()
                             VStack(spacing: 8) {
-                                Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .light)).foregroundColor(Color(hex: "d0d0d0"))
-                                Text("nothing found").font(.system(size: 13)).foregroundColor(Color(hex: "b0b0b0"))
+                                Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .light)).foregroundColor(Color.toskaDivider)
+                                Text("nothing found").font(.system(size: 13)).foregroundColor(Color.toskaTextLight)
                                                                                                 Text("nobody said it here yet. maybe you should.").font(.system(size: 11)).foregroundColor(Color(hex: "cccccc"))
                             }
                             Spacer()
@@ -196,7 +196,7 @@ struct ExploreView: View {
                                 LazyVStack(spacing: 0) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("searching recent posts")
-                                            .font(.system(size: 9, weight: .medium)).foregroundColor(Color(hex: "b0b0b0"))
+                                            .font(.system(size: 9, weight: .medium)).foregroundColor(Color.toskaTextLight)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 8)
                                     ForEach(Array(searchResults.enumerated()), id: \.element.id) { index, post in
@@ -218,7 +218,7 @@ struct ExploreView: View {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left").font(.system(size: 11))
                                     Text("explore").font(.system(size: 11))
-                                }.foregroundColor(Color(hex: "9198a8"))
+                                }.foregroundColor(Color.toskaBlue)
                             }
                             Spacer()
                             HStack(spacing: 5) {
@@ -235,7 +235,7 @@ struct ExploreView: View {
                         
                         if isLoadingTag {
                             Spacer()
-                            ProgressView().tint(Color(hex: "9198a8"))
+                            ProgressView().tint(Color.toskaBlue)
                             Spacer()
                         } else {
                             ScrollView(showsIndicators: false) {
@@ -244,14 +244,14 @@ struct ExploreView: View {
                                         VStack(alignment: .leading, spacing: 10) {
                                             Text("people feeling this too")
                                                 .font(.system(size: 10, weight: .semibold))
-                                                .foregroundColor(Color(hex: "b0b0b0"))
+                                                .foregroundColor(Color.toskaTextLight)
                                                 .tracking(0.3)
                                             
                                             ForEach(feelingPeople) { person in
                                                 HStack(spacing: 10) {
                                                                                                     Text(person.handle)
                                                         .font(.system(size: 12, weight: .medium))
-                                                        .foregroundColor(Color(hex: "2a2a2a"))
+                                                        .foregroundColor(Color.toskaTextDark)
                                                     
                                                     Spacer()
                                                     
@@ -260,16 +260,16 @@ struct ExploreView: View {
                                                                                                         } label: {
                                                                                                             HStack(spacing: 4) {
                                                                                                                 if isStartingConversation {
-                                                                                                                    ProgressView().scaleEffect(0.6).tint(Color(hex: "9198a8"))
+                                                                                                                    ProgressView().scaleEffect(0.6).tint(Color.toskaBlue)
                                                                                                                 } else {
                                                                                                                     Image(systemName: "envelope").font(.system(size: 10))
                                                                                                                 }
                                                                                                                 Text("reach out").font(.system(size: 10, weight: .medium))
                                                                                                             }
-                                                                                                            .foregroundColor(Color(hex: "9198a8"))
+                                                                                                            .foregroundColor(Color.toskaBlue)
                                                                                                             .padding(.horizontal, 10)
                                                                                                             .padding(.vertical, 5)
-                                                                                                            .background(Color(hex: "9198a8").opacity(0.08))
+                                                                                                            .background(Color.toskaBlue.opacity(0.08))
                                                                                                             .cornerRadius(12)
                                                                                                         }
                                                                                                         .disabled(isStartingConversation)
@@ -287,8 +287,8 @@ struct ExploreView: View {
                                                                             
                                                                             if tagPosts.isEmpty {
                                         VStack(spacing: 8) {
-                                            Image(systemName: "pencil.line").font(.system(size: 20, weight: .light)).foregroundColor(Color(hex: "d0d0d0"))
-                                            Text("nobody's said it yet").font(.system(size: 12)).foregroundColor(Color(hex: "b0b0b0"))
+                                            Image(systemName: "pencil.line").font(.system(size: 20, weight: .light)).foregroundColor(Color.toskaDivider)
+                                            Text("nobody's said it yet").font(.system(size: 12)).foregroundColor(Color.toskaTextLight)
                                                                                                                                     Text("be the first.").font(.system(size: 10)).foregroundColor(Color(hex: "cccccc"))
                                         }.frame(maxWidth: .infinity).padding(.vertical, 60)
                                     } else {
@@ -306,7 +306,7 @@ struct ExploreView: View {
                                         VStack(alignment: .leading, spacing: 0) {
                             
                             if isLoadingTrending {
-                                HStack { Spacer(); ProgressView().tint(Color(hex: "9198a8")); Spacer() }.padding(.vertical, 30)
+                                HStack { Spacer(); ProgressView().tint(Color.toskaBlue); Spacer() }.padding(.vertical, 30)
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(Array(trendingPosts.enumerated()), id: \.element.id) { index, post in
@@ -316,7 +316,7 @@ struct ExploreView: View {
                                                                             VStack(spacing: 10) {
                                                                                 Text("\"everyone's being\nquiet right now.\"")
                                                                                     .font(.custom("Georgia-Italic", size: 18))
-                                                                                    .foregroundColor(Color(hex: "c0c0c0"))
+                                                                                    .foregroundColor(Color.toskaTimestamp)
                                                                                     .multilineTextAlignment(.center)
                                                                                     .lineSpacing(4)
                                                                             }
@@ -331,14 +331,14 @@ struct ExploreView: View {
                                                                         HStack(spacing: 8) {
                                                                             Image(systemName: "leaf")
                                                                                 .font(.system(size: 12, weight: .light))
-                                                                                .foregroundColor(Color(hex: "9198a8"))
+                                                                                .foregroundColor(Color.toskaBlue)
                                                                             Text("the last thing they said")
                                                                                 .font(.system(size: 12, weight: .medium))
-                                                                                .foregroundColor(Color(hex: "2a2a2a"))
+                                                                                .foregroundColor(Color.toskaTextDark)
                                                                             Spacer()
                                                                             Image(systemName: "chevron.right")
                                                                                 .font(.system(size: 10, weight: .light))
-                                                                                .foregroundColor(Color(hex: "d0d0d0"))
+                                                                                .foregroundColor(Color.toskaDivider)
                                                                         }
                                                                         .padding(.horizontal, 16)
                                                                         .padding(.vertical, 14)

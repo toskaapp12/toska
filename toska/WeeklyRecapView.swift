@@ -34,7 +34,7 @@ struct WeeklyRecapView: View {
                 Spacer()
                 
                 if isLoading {
-                                    ProgressView().tint(Color(hex: "9198a8"))
+                                    ProgressView().tint(Color.toskaBlue)
                                 } else if postCount == 0 {
                                     VStack(spacing: 12) {
                                         Text("nothing this week.")
@@ -71,7 +71,7 @@ struct WeeklyRecapView: View {
                             VStack(spacing: 8) {
                                 Text("hit the hardest this week")
                                     .font(.system(size: 9, weight: .semibold))
-                                    .foregroundColor(Color(hex: "9198a8"))
+                                    .foregroundColor(Color.toskaBlue)
                                     .tracking(1)
                                 
                                 Text(topPostText)
@@ -130,10 +130,10 @@ struct WeeklyRecapView: View {
                                           Text("share recap")
                                               .font(.system(size: 12, weight: .medium))
                                       }
-                                      .foregroundColor(Color(hex: "9198a8"))
+                                      .foregroundColor(Color.toskaBlue)
                                       .padding(.horizontal, 24)
                                       .padding(.vertical, 10)
-                                      .background(Color(hex: "9198a8").opacity(0.1))
+                                      .background(Color.toskaBlue.opacity(0.1))
                                       .cornerRadius(20)
                                   }
                                   .opacity(isVisible ? 1 : 0)

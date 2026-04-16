@@ -38,7 +38,7 @@ struct AnniversaryCardView: View {
 
             Text(post.text)
                 .font(.custom("Georgia", size: 14))
-                .foregroundColor(Color(hex: "2a2a2a"))
+                .foregroundColor(Color.toskaTextDark)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 6)
@@ -74,7 +74,7 @@ struct AnniversaryCardView: View {
 
                     Text(reflectionText)
                         .font(.custom("Georgia", size: 13))
-                        .foregroundColor(Color(hex: "2a2a2a").opacity(0.8))
+                        .foregroundColor(Color.toskaTextDark.opacity(0.8))
                         .lineSpacing(3)
                 }
             } else if showReflection {
@@ -90,7 +90,7 @@ struct AnniversaryCardView: View {
 
                     TextField("reflect on this moment...", text: $reflectionText, axis: .vertical)
                         .font(.custom("Georgia", size: 13))
-                        .foregroundColor(Color(hex: "2a2a2a"))
+                        .foregroundColor(Color.toskaTextDark)
                         .lineLimit(4)
 
                     HStack {
@@ -115,7 +115,7 @@ struct AnniversaryCardView: View {
                             .padding(.vertical, 6)
                             .background(
                                 reflectionText.isEmpty || isSaving
-                                    ? Color(hex: "d0d0d0")
+                                    ? Color.toskaDivider
                                     : Color(hex: "c9a97a")
                             )
                             .cornerRadius(14)

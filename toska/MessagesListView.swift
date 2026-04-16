@@ -20,12 +20,12 @@ struct MessagesListView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                     Text("messages")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color(hex: "2a2a2a"))
+                        .foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Image(systemName: "chevron.left")
                         .font(.system(size: 14))
@@ -38,17 +38,17 @@ struct MessagesListView: View {
                 
                 if isLoading {
                     Spacer()
-                    ProgressView().tint(Color(hex: "9198a8"))
+                    ProgressView().tint(Color.toskaBlue)
                     Spacer()
                 } else if conversations.isEmpty {
                     Spacer()
                     VStack(spacing: 10) {
                         Image(systemName: "bubble.left.and.bubble.right")
                             .font(.system(size: 28, weight: .light))
-                            .foregroundColor(Color(hex: "d0d0d0"))
+                            .foregroundColor(Color.toskaDivider)
                         Text("no messages yet")
                                                                             .font(.system(size: 14, weight: .medium))
-                                                                            .foregroundColor(Color(hex: "b0b0b0"))
+                                                                            .foregroundColor(Color.toskaTextLight)
                         Text("sometimes the hardest part is saying the first thing.")
                                                     .font(.system(size: 12))
                                                     .foregroundColor(Color(hex: "cccccc"))
@@ -65,22 +65,22 @@ struct MessagesListView: View {
                                     HStack(spacing: 12) {
                                         ZStack {
                                             Circle()
-                                                .fill(Color(hex: "9198a8").opacity(0.1))
+                                                .fill(Color.toskaBlue.opacity(0.1))
                                                 .frame(width: 40, height: 40)
                                             Text(String(convo.otherHandle.replacingOccurrences(of: "anonymous_", with: "").prefix(1)).uppercased())
                                                 .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                                .foregroundColor(Color(hex: "9198a8"))
+                                                .foregroundColor(Color.toskaBlue)
                                         }
                                         
                                         VStack(alignment: .leading, spacing: 3) {
                                             HStack {
                                                 Text(convo.otherHandle)
                                                     .font(.system(size: 13, weight: .semibold))
-                                                    .foregroundColor(Color(hex: "2a2a2a"))
+                                                    .foregroundColor(Color.toskaTextDark)
                                                 Spacer()
                                                 Text(convo.timeAgo)
                                                     .font(.system(size: 11))
-                                                    .foregroundColor(Color(hex: "c0c0c0"))
+                                                    .foregroundColor(Color.toskaTimestamp)
                                             }
                                             
                                             HStack(spacing: 4) {
@@ -94,7 +94,7 @@ struct MessagesListView: View {
                                                 if convo.isSealed {
                                                     Text("sealed")
                                                         .font(.system(size: 9, weight: .medium))
-                                                        .foregroundColor(Color(hex: "c0c0c0"))
+                                                        .foregroundColor(Color.toskaTimestamp)
                                                         .padding(.horizontal, 6)
                                                         .padding(.vertical, 2)
                                                         .background(Color(hex: "dfe1e5").opacity(0.5))

@@ -19,7 +19,7 @@ struct TopView: View {
                     HStack {
                         Text("felt the most")
                                                     .font(.system(size: 18, weight: .bold))
-                                                    .foregroundColor(Color(hex: "2a2a2a"))
+                                                    .foregroundColor(Color.toskaTextDark)
                         Spacer()
                         HStack(spacing: 4) {
                             Circle()
@@ -37,7 +37,7 @@ struct TopView: View {
                     
                     if isLoading {
                         Spacer()
-                        ProgressView().tint(Color(hex: "9198a8"))
+                        ProgressView().tint(Color.toskaBlue)
                         Spacer()
                     } else {
                         ScrollView(showsIndicators: false) {
@@ -45,10 +45,10 @@ struct TopView: View {
                                                             VStack(spacing: 8) {
                                                                 Image(systemName: "chart.line.uptrend.xyaxis")
                                                                     .font(.system(size: 24, weight: .light))
-                                                                    .foregroundColor(Color(hex: "d0d0d0"))
+                                                                    .foregroundColor(Color.toskaDivider)
                                                                 Text("nothing yet")
                                                                                                                                                                                                     .font(.system(size: 13))
-                                                                                                                                                                                                    .foregroundColor(Color(hex: "b0b0b0"))
+                                                                                                                                                                                                    .foregroundColor(Color.toskaTextLight)
                                                                                                                                                                                                 Text("everyones being quiet right now.")
                                                                                                                                                                                                     .font(.system(size: 11))
                                                                                                                                                                                                     .foregroundColor(Color(hex: "cccccc"))
@@ -67,7 +67,7 @@ struct TopView: View {
                                                                                             // Rank badge
                                                                                             Text("\(rank)")
                                                                                                 .font(.system(size: rank <= 3 ? 16 : 11, weight: .bold, design: .rounded))
-                                                                                                .foregroundColor(rank == 1 ? Color(hex: "c9a97a") : rank == 2 ? Color(hex: "b0b0b0") : rank == 3 ? Color(hex: "cd7f32") : Color(hex: "d0d0d0"))
+                                                                                                .foregroundColor(rank == 1 ? Color(hex: "c9a97a") : rank == 2 ? Color.toskaTextLight : rank == 3 ? Color(hex: "cd7f32") : Color.toskaDivider)
                                                                                                 .frame(width: 24, alignment: .center)
                                                                                                 .padding(.top, 2)
                                                                                             
@@ -75,7 +75,7 @@ struct TopView: View {
                                                                                                 HStack(spacing: 4) {
                                                                                                     Text(post.handle)
                                                                                                         .font(.system(size: 11, weight: .semibold))
-                                                                                                        .foregroundColor(Color(hex: "9198a8"))
+                                                                                                        .foregroundColor(Color.toskaBlue)
                                                                                                     Spacer()
                                                                                                     if let tag = post.tag {
                                                                                                         Text(tag)
@@ -227,7 +227,7 @@ struct TopView: View {
     
     func rankColor(for rank: Int) -> Color {
         switch rank {
-        case 2: return Color(hex: "c0c0c0")
+        case 2: return Color.toskaTimestamp
         case 3: return Color(hex: "cd7f32")
         default: return Color(hex: "cccccc")
         }

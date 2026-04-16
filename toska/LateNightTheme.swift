@@ -110,7 +110,7 @@ struct LateNightTheme {
     static var divider: Color { isLateNight ? Color(hex: "1c1e1f") : Color(hex: "dfe1e5") }
 
     // Accent stays the same
-    static var accent: Color { Color(hex: "9198a8") }
+    static var accent: Color { Color.toskaBlue }
 
     // Tab bar
     static var selectedPill: Color { isLateNight ? Color(hex: "1c1e1f") : Color(hex: "dfe1e5").opacity(0.6) }

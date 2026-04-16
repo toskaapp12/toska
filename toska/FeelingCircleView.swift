@@ -42,7 +42,7 @@ struct FeelingCircleView: View {
                         Button { dismiss() } label: {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 13, weight: .light))
-                                .foregroundColor(Color(hex: "9198a8"))
+                                .foregroundColor(Color.toskaBlue)
                         }
                         Spacer()
                         VStack(spacing: 2) {

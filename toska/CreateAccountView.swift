@@ -33,30 +33,30 @@ struct CreateAccountView: View {
                         Text("back")
                             .font(.system(size: 13))
                     }
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 20)
                 
                 Text("create account")
                     .font(.custom("Georgia-Italic", size: 28))
-                    .foregroundColor(Color(hex: "2a2a2a"))
+                    .foregroundColor(Color.toskaTextDark)
                     .padding(.bottom, 4)
                 
                 Text("no names. no faces. just feelings.")
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "b0b0b0"))
+                    .foregroundColor(Color.toskaTextLight)
                     .padding(.bottom, 16)
                 
                 VStack(alignment: .leading, spacing: 8) {
                                     Text("your anonymous handle")
                                         .font(.system(size: 9, weight: .medium))
-                                        .foregroundColor(Color(hex: "b0b0b0"))
+                                        .foregroundColor(Color.toskaTextLight)
                                     
                                     HStack {
                                         Text(assignedHandle)
                                             .font(.custom("Georgia", size: 16))
-                                            .foregroundColor(Color(hex: "2a2a2a"))
+                                            .foregroundColor(Color.toskaTextDark)
                                         
                                         Spacer()
                                         
@@ -76,17 +76,17 @@ struct CreateAccountView: View {
                                                 Text("shuffle")
                                                     .font(.system(size: 11, weight: .medium))
                                             }
-                                            .foregroundColor(Color(hex: "9198a8"))
+                                            .foregroundColor(Color.toskaBlue)
                                             .padding(.horizontal, 10)
                                             .padding(.vertical, 6)
-                                            .background(Color(hex: "9198a8").opacity(0.08))
+                                            .background(Color.toskaBlue.opacity(0.08))
                                             .cornerRadius(8)
                                         }
                                     }
                                     
                                     Text("tap shuffle until you find one that feels right")
                                         .font(.system(size: 9))
-                                        .foregroundColor(Color(hex: "c0c0c0"))
+                                        .foregroundColor(Color.toskaTimestamp)
                                 }
                                 .padding(.bottom, 12)
                 
@@ -97,7 +97,7 @@ struct CreateAccountView: View {
                 
                 Text("EMAIL")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(Color(hex: "b0b0b0"))
+                    .foregroundColor(Color.toskaTextLight)
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
@@ -118,7 +118,7 @@ struct CreateAccountView: View {
                 
                 Text("PASSWORD")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(Color(hex: "b0b0b0"))
+                    .foregroundColor(Color.toskaTextLight)
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
@@ -137,7 +137,7 @@ struct CreateAccountView: View {
                 
                 Text("CONFIRM PASSWORD")
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(Color(hex: "b0b0b0"))
+                    .foregroundColor(Color.toskaTextLight)
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
@@ -175,7 +175,7 @@ struct CreateAccountView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(isLoading ? Color(hex: "9198a8").opacity(0.5) : Color(hex: "9198a8"))
+                    .background(isLoading ? Color.toskaBlue.opacity(0.5) : Color.toskaBlue)
                     .cornerRadius(12)
                 }
                 .disabled(isLoading)
@@ -190,7 +190,7 @@ struct CreateAccountView: View {
                     } label: {
                         Text("already have an account? sign in")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                 }

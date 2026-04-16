@@ -206,17 +206,17 @@ struct PostDetailView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                     Text("post")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(hex: "2a2a2a"))
+                        .foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { showReport = true } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color(hex: "c0c0c0"))
+                            .foregroundColor(Color.toskaTimestamp)
                     }
                     .opacity(isAuthorIdLoading ? 0 : 1)
                 }
@@ -235,12 +235,12 @@ struct PostDetailView: View {
                                                     VStack(spacing: 10) {
                                                         Text("\"some words just need\na witness.\"")
                                                             .font(.custom("Georgia-Italic", size: 18))
-                                                            .foregroundColor(Color(hex: "c0c0c0"))
+                                                            .foregroundColor(Color.toskaTimestamp)
                                                             .multilineTextAlignment(.center)
                                                             .lineSpacing(4)
                                                         Text("be the first to reply")
                                                             .font(.system(size: 11))
-                                                            .foregroundColor(Color(hex: "d0d0d0"))
+                                                            .foregroundColor(Color.toskaDivider)
                                                     }
                                                     .frame(maxWidth: .infinity)
                                                     .padding(.vertical, 40)
@@ -305,7 +305,7 @@ struct PostDetailView: View {
                 HStack(spacing: 6) {
                     Text("replying to \(handle)")
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "9198a8"))
+                        .foregroundColor(Color.toskaBlue)
                     Spacer()
                     Button {
                         replyingToId = nil
@@ -313,7 +313,7 @@ struct PostDetailView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundColor(Color(hex: "c0c0c0"))
+                            .foregroundColor(Color.toskaTimestamp)
                     }
                 }
                 .padding(.horizontal, 14)
@@ -336,7 +336,7 @@ struct PostDetailView: View {
                         .font(.system(size: 28))
                         .foregroundColor(
                             replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil
-                                ? Color(hex: "d0d0d0") : Color(hex: "9198a8")
+                                ? Color.toskaDivider : Color.toskaBlue
                         )
                 }
                 .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil)
@@ -357,15 +357,15 @@ struct PostDetailView: View {
                 } label: {
                     Text(handle)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color(hex: "9198a8"))
+                        .foregroundColor(Color.toskaBlue)
                 }
                 if isOwnPost {
                     Text("· you")
                         .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color(hex: "9198a8").opacity(0.5))
+                        .foregroundColor(Color.toskaBlue.opacity(0.5))
                 }
                 if let tag = tag {
-                    Text("·").font(.system(size: 9)).foregroundColor(Color(hex: "d0d0d0"))
+                    Text("·").font(.system(size: 9)).foregroundColor(Color.toskaDivider)
                     Text(tag)
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundColor(tagColor(for: tag).opacity(0.8))
@@ -391,12 +391,12 @@ struct PostDetailView: View {
                             HStack(spacing: 4) {
                                 Text(formatFull(likeCount))
                                     .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(likePulse ? Color(hex: "9198a8") : Color(hex: "2a2a2a"))
+                                    .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextDark)
                                     .scaleEffect(likePulse ? 1.15 : 1.0)
                                     .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                 Text("felt this")
                                     .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(likePulse ? Color(hex: "9198a8") : Color(hex: "b0b0b0"))
+                                    .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextLight)
                             }
                             statLabel(count: replyList.isEmpty ? replies : replyList.count, label: "replies")
                             Spacer()
@@ -409,7 +409,7 @@ struct PostDetailView: View {
                            Button { replyFocused = true } label: {
                                Image(systemName: "bubble.left")
                                    .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(Color(hex: "b0b0b0"))
+                                   .foregroundColor(Color.toskaTextLight)
                            }
                            .accessibilityLabel("Reply")
                            .frame(maxWidth: .infinity)
@@ -417,7 +417,7 @@ struct PostDetailView: View {
                            Button { toggleLike() } label: {
                                Image(systemName: isLiked ? "heart.fill" : "heart")
                                    .font(.system(size: 15, weight: isLiked ? .medium : .light))
-                                   .foregroundColor(isLiked ? Color(hex: "c47a8a") : Color(hex: "b0b0b0"))
+                                   .foregroundColor(isLiked ? Color(hex: "c47a8a") : Color.toskaTextLight)
                            }
                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
                            .accessibilityValue("\(formatFull(likeCount)) people felt this")
@@ -426,7 +426,7 @@ struct PostDetailView: View {
                            Button { repostPost() } label: {
                                Image(systemName: "arrow.2.squarepath")
                                    .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isReposted ? Color(hex: "5a9e8f") : Color(hex: "b0b0b0"))
+                                   .foregroundColor(isReposted ? Color(hex: "5a9e8f") : Color.toskaTextLight)
                            }
                            .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
                            .frame(maxWidth: .infinity)
@@ -435,7 +435,7 @@ struct PostDetailView: View {
                            Button { toggleSave() } label: {
                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                                    .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isSaved ? Color(hex: "9198a8") : Color(hex: "b0b0b0"))
+                                   .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
                            }
                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                            .frame(maxWidth: .infinity)
@@ -444,7 +444,7 @@ struct PostDetailView: View {
                                Button { startConversation() } label: {
                                    Image(systemName: "envelope")
                                        .font(.system(size: 15, weight: .light))
-                                       .foregroundColor(Color(hex: "b0b0b0"))
+                                       .foregroundColor(Color.toskaTextLight)
                                }
                                .accessibilityLabel("Send message")
                                .frame(maxWidth: .infinity)
@@ -459,8 +459,8 @@ struct PostDetailView: View {
 
     func statLabel(count: Int, label: String) -> some View {
         HStack(spacing: 3) {
-            Text(formatFull(count)).font(.system(size: 11, weight: .semibold)).foregroundColor(Color(hex: "2a2a2a"))
-            Text(label).font(.system(size: 11)).foregroundColor(Color(hex: "b0b0b0"))
+            Text(formatFull(count)).font(.system(size: 11, weight: .semibold)).foregroundColor(Color.toskaTextDark)
+            Text(label).font(.system(size: 11)).foregroundColor(Color.toskaTextLight)
         }
     }
 
@@ -470,7 +470,7 @@ struct PostDetailView: View {
                 Image(systemName: icon).font(.system(size: 14, weight: .light))
                 Text(label).font(.system(size: 8))
             }
-            .foregroundColor(active ? Color(hex: "9198a8") : Color(hex: "c8c8c8"))
+            .foregroundColor(active ? Color.toskaBlue : Color(hex: "c8c8c8"))
             .frame(maxWidth: .infinity)
         }
     }
@@ -945,7 +945,7 @@ struct EditPostView: View {
                         Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
-                    Text("edit post").font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "2a2a2a"))
+                    Text("edit post").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { attemptSave() } label: {
                         HStack(spacing: 4) {
@@ -954,7 +954,7 @@ struct EditPostView: View {
                         }
                         .foregroundColor(.white)
                         .padding(.horizontal, 14).padding(.vertical, 7)
-                        .background(editText.isEmpty || editText == currentText ? Color(hex: "d0d0d0") : Color(hex: "9198a8"))
+                        .background(editText.isEmpty || editText == currentText ? Color.toskaDivider : Color.toskaBlue)
                         .cornerRadius(16)
                     }
                     .disabled(editText.isEmpty || editText == currentText || isSaving)
@@ -1004,13 +1004,13 @@ struct EditPostView: View {
                             Circle().stroke(Color(hex: "e4e6ea"), lineWidth: 1.5).frame(width: 22, height: 22)
                             Circle()
                                 .trim(from: 0, to: CGFloat(editText.count) / CGFloat(charLimit))
-                                .stroke(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color(hex: "9198a8"),
+                                .stroke(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                                 .frame(width: 22, height: 22).rotationEffect(.degrees(-90))
                         }
                         Text("\(charLimit - editText.count)")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color(hex: "c0c0c0"))
+                            .foregroundColor(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color.toskaTimestamp)
                     }
                     .padding(.horizontal, 18).padding(.vertical, 10)
                 }
@@ -1093,7 +1093,7 @@ struct SwipeToReplyRow: View {
                 Spacer()
                 Image(systemName: "arrowshape.turn.up.left.fill")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                     .opacity(min(dragOffset / triggerThreshold, 1.0))
                     .scaleEffect(min(0.6 + (dragOffset / triggerThreshold) * 0.4, 1.0))
                     .padding(.trailing, 20)
@@ -1101,11 +1101,11 @@ struct SwipeToReplyRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     if item.depth > 0 {
-                        Rectangle().fill(Color(hex: "9198a8").opacity(0.2))
+                        Rectangle().fill(Color.toskaBlue.opacity(0.2))
                             .frame(width: 2, height: 14).cornerRadius(1).padding(.trailing, 4)
                     }
-                    Text(item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color(hex: "9198a8"))
-                    Text("·").font(.system(size: 8)).foregroundColor(Color(hex: "d0d0d0"))
+                    Text(item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
+                    Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
                     Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
@@ -1127,13 +1127,13 @@ struct SwipeToReplyRow: View {
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 10))
-                                .foregroundColor(Color(hex: "c0c0c0"))
+                                .foregroundColor(Color.toskaTimestamp)
                                 .padding(.horizontal, 4)
                                 .contentShape(Rectangle())
                         }
                     }
                 }
-                Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color(hex: "2a2a2a")).lineSpacing(3)
+                Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
                 if item.reply.likes > 0 {
                     HStack(spacing: 3) {
                         Image(systemName: "heart").font(.system(size: 9, weight: .light))

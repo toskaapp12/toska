@@ -55,7 +55,7 @@ struct LastThingSaidView: View {
                 
                 if isLoading && finalPosts.isEmpty {
                     Spacer()
-                    ProgressView().tint(Color(hex: "9198a8"))
+                    ProgressView().tint(Color.toskaBlue)
                     Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
@@ -63,7 +63,7 @@ struct LastThingSaidView: View {
                             VStack(spacing: 8) {
                                 Image(systemName: "leaf")
                                     .font(.system(size: 18, weight: .light))
-                                    .foregroundColor(Color(hex: "9198a8").opacity(0.4))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.4))
                                 
                                 Text("some people come to toska, say what they\nneed to say, and leave. these are their\nlast words before they went.")
                                     .font(.system(size: 11))
@@ -118,7 +118,7 @@ struct LastThingSaidView: View {
                                             Text("\(formatCount(post.likes)) felt this")
                                                 .font(.system(size: 9, weight: .medium))
                                         }
-                                        .foregroundColor(Color(hex: "9198a8").opacity(0.4))
+                                        .foregroundColor(Color.toskaBlue.opacity(0.4))
                                     }
                                     .padding(.bottom, 4)
                                     

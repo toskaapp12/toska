@@ -137,6 +137,28 @@ func presentShareSheet(with items: [Any]) {
         static let messageLimit = 5
     }
 
+// MARK: - Cached Brand Colors
+//
+// `Color(hex: "...")` does string trimming, Scanner-based hex parsing, and a
+// switch every call. The top brand colors are referenced hundreds of times
+// across the feed and per-row UI (e.g., "9198a8" appears 164× in this codebase).
+// Caching them as static `let` constants moves the parse cost to first-access
+// instead of every render, measurably reducing per-frame work on older devices.
+//
+// To extend: add a `static let foo = Color(hex: "xxxxxx")` here and replace
+// `Color(hex: "xxxxxx")` call sites with `Color.foo`.
+
+extension Color {
+    // Note: these MUST keep the explicit `Color(hex: ...)` initializer; do not
+    // search-and-replace them in this file or they'll become self-referencing
+    // and either fail to compile or recurse infinitely at runtime.
+    static let toskaBlue       = Color(hex: "9198a8")  // brand muted blue
+    static let toskaTextLight  = Color(hex: "b0b0b0")  // secondary light text
+    static let toskaTextDark   = Color(hex: "2a2a2a")  // primary dark text
+    static let toskaDivider    = Color(hex: "d0d0d0")  // light dividers
+    static let toskaTimestamp  = Color(hex: "c0c0c0")  // timestamp gray
+}
+
 // MARK: - Crisis Check-In
 //
 // Shared modal shown when a user is about to post/reply/edit/save content
@@ -173,7 +195,7 @@ struct CrisisCheckInView: View {
             VStack(spacing: 14) {
                 Image(systemName: "heart.circle.fill")
                     .font(.system(size: 32))
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
 
                 Text(headline)
                     .font(.custom("Georgia-Italic", size: 18))
@@ -219,7 +241,7 @@ struct CrisisCheckInView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
-                            .background(Color(hex: "9198a8"))
+                            .background(Color.toskaBlue)
                             .cornerRadius(12)
                     }
 
@@ -288,11 +310,11 @@ struct CrisisCheckInView: View {
                     .font(.system(size: 10))
                     .foregroundColor(LateNightTheme.tertiaryText)
             }
-            .foregroundColor(Color(hex: "9198a8"))
+            .foregroundColor(Color.toskaBlue)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(hex: "9198a8").opacity(0.08))
+            .background(Color.toskaBlue.opacity(0.08))
             .cornerRadius(10)
         }
     }
@@ -421,7 +443,7 @@ struct AgeGateView: View {
 
             Image(systemName: "person.badge.shield.checkmark")
                 .font(.system(size: 36, weight: .light))
-                .foregroundColor(Color(hex: "9198a8"))
+                .foregroundColor(Color.toskaBlue)
 
             Text("one quick thing")
                 .font(.custom("Georgia-Italic", size: 24))
@@ -469,7 +491,7 @@ struct AgeGateView: View {
 
             Image(systemName: "heart.circle")
                 .font(.system(size: 36, weight: .light))
-                .foregroundColor(Color(hex: "9198a8"))
+                .foregroundColor(Color.toskaBlue)
 
             Text("come back when youre older")
                 .font(.custom("Georgia-Italic", size: 22))
@@ -562,7 +584,7 @@ struct PolicyAcceptanceView: View {
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: agreed ? "checkmark.square.fill" : "square")
                                 .font(.system(size: 18))
-                                .foregroundColor(agreed ? Color(hex: "9198a8") : .white.opacity(0.3))
+                                .foregroundColor(agreed ? Color.toskaBlue : .white.opacity(0.3))
                             Text("i confirm i am 17 or older and i agree to the terms and content policy above.")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.7))
@@ -690,7 +712,7 @@ struct ReportSheet: View {
                     Button { dismiss() } label: {
                         Text("cancel")
                             .font(.system(size: 13))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                     Text(headerTitle)
@@ -741,7 +763,7 @@ struct ReportSheet: View {
                             HStack {
                                 Image(systemName: selectedReason == reason ? "largecircle.fill.circle" : "circle")
                                     .font(.system(size: 16))
-                                    .foregroundColor(selectedReason == reason ? Color(hex: "9198a8") : .white.opacity(0.25))
+                                    .foregroundColor(selectedReason == reason ? Color.toskaBlue : .white.opacity(0.25))
                                 Text(reason.rawValue)
                                     .font(.system(size: 14))
                                     .foregroundColor(.white.opacity(0.85))
@@ -791,7 +813,7 @@ struct ReportSheet: View {
             Spacer()
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(Color(hex: "9198a8"))
+                .foregroundColor(Color.toskaBlue)
             Text("thanks. we'll review this.")
                 .font(.custom("Georgia-Italic", size: 18))
                 .foregroundColor(.white)
@@ -808,10 +830,10 @@ struct ReportSheet: View {
                 } label: {
                     Text("also block this user?")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(Color(hex: "9198a8"))
+                        .foregroundColor(Color.toskaBlue)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
-                        .background(Color(hex: "9198a8").opacity(0.1))
+                        .background(Color.toskaBlue.opacity(0.1))
                         .cornerRadius(12)
                 }
                 .padding(.horizontal, 16)
@@ -838,7 +860,7 @@ struct ReportSheet: View {
             Spacer()
             Image(systemName: "person.slash")
                 .font(.system(size: 32, weight: .light))
-                .foregroundColor(Color(hex: "9198a8"))
+                .foregroundColor(Color.toskaBlue)
             Text("block this user?")
                 .font(.custom("Georgia-Italic", size: 18))
                 .foregroundColor(.white)
@@ -861,7 +883,7 @@ struct ReportSheet: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
-                        .background(Color(hex: "9198a8"))
+                        .background(Color.toskaBlue)
                         .cornerRadius(12)
                 }
                 Button {

@@ -24,7 +24,7 @@ struct GifPickerView: View {
                 Spacer()
                 Text("GIFs")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(Color(hex: "2a2a2a"))
+                    .foregroundColor(Color.toskaTextDark)
                 Spacer()
                 Image(systemName: "xmark")
                     .font(.system(size: 14))
@@ -37,7 +37,7 @@ struct GifPickerView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "b0b0b0"))
+                    .foregroundColor(Color.toskaTextLight)
                 
                 TextField("search GIFs...", text: $searchText)
                     .font(.system(size: 14))
@@ -63,7 +63,7 @@ struct GifPickerView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundColor(Color(hex: "c0c0c0"))
+                            .foregroundColor(Color.toskaTimestamp)
                     }
                 }
             }
@@ -79,17 +79,17 @@ struct GifPickerView: View {
             // GIF grid
             if isLoading && gifs.isEmpty {
                 Spacer()
-                ProgressView().tint(Color(hex: "9198a8"))
+                ProgressView().tint(Color.toskaBlue)
                 Spacer()
             } else if gifs.isEmpty {
                 Spacer()
                 VStack(spacing: 6) {
                     Image(systemName: "photo.on.rectangle.angled")
                         .font(.system(size: 20, weight: .light))
-                        .foregroundColor(Color(hex: "d0d0d0"))
+                        .foregroundColor(Color.toskaDivider)
                     Text("no GIFs found")
                         .font(.system(size: 13))
-                        .foregroundColor(Color(hex: "b0b0b0"))
+                        .foregroundColor(Color.toskaTextLight)
                 }
                 Spacer()
             } else {

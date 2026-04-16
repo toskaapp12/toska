@@ -80,7 +80,7 @@ struct MainTabView: View {
                     } label: {
                         Image(systemName: selectedTab == .feed ? "house.fill" : "house")
                             .font(.system(size: 20, weight: selectedTab == .feed ? .medium : .light))
-                            .foregroundColor(selectedTab == .feed ? LateNightTheme.handleText : Color(hex: "c0c0c0"))
+                            .foregroundColor(selectedTab == .feed ? LateNightTheme.handleText : Color.toskaTimestamp)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .accessibilityLabel("Home")
@@ -94,7 +94,7 @@ struct MainTabView: View {
                     } label: {
                         ZStack {
                             Circle()
-                                .fill(Color(hex: "9198a8"))
+                                .fill(Color.toskaBlue)
                                 .frame(width: 40, height: 40)
                             Image(systemName: "plus")
                                 .font(.system(size: 18, weight: .medium))
@@ -113,7 +113,7 @@ struct MainTabView: View {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: selectedTab == .notifications ? "bell.fill" : "bell")
                                 .font(.system(size: 20, weight: selectedTab == .notifications ? .medium : .light))
-                                .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : Color(hex: "c0c0c0"))
+                                .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : Color.toskaTimestamp)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                             if unreadCount > 0 {
@@ -217,7 +217,7 @@ struct MainTabView: View {
         } label: {
             Image(systemName: selectedTab == tab ? activeIcon : icon)
                 .font(.system(size: 20, weight: selectedTab == tab ? .medium : .light))
-                .foregroundColor(selectedTab == tab ? LateNightTheme.handleText : Color(hex: "c0c0c0"))
+                .foregroundColor(selectedTab == tab ? LateNightTheme.handleText : Color.toskaTimestamp)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityLabel(

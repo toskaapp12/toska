@@ -25,7 +25,7 @@ struct SignInView: View {
                         Text("back")
                             .font(.system(size: 13))
                     }
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 20)
@@ -85,7 +85,7 @@ struct SignInView: View {
                         showReset = true
                     }
                     .font(.system(size: 10))
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                 }
                 .padding(.bottom, 20)
                 
@@ -110,7 +110,7 @@ struct SignInView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(Color(hex: "9198a8"))
+                    .background(Color.toskaBlue)
                     .cornerRadius(12)
                     .accessibilityIdentifier("signInButton")
                 }
@@ -126,7 +126,7 @@ struct SignInView: View {
                     } label: {
                         Text("no account? create one")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "9198a8"))
+                            .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                 }

@@ -44,7 +44,7 @@ struct ProfileView: View {
     
     var avatarColor: Color {
         let colors: [Color] = [
-            Color(hex: "9198a8"), Color(hex: "8b7ec8"), Color(hex: "6ba58e"),
+            Color.toskaBlue, Color(hex: "8b7ec8"), Color(hex: "6ba58e"),
             Color(hex: "c47a8a"), Color(hex: "c49a6c"), Color(hex: "7a97b5"),
             Color(hex: "5a9e8f"), Color(hex: "c45c5c")
         ]
@@ -63,7 +63,7 @@ struct ProfileView: View {
                 HStack {
                     Text(userHandle)
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color(hex: "2a2a2a"))
+                        .foregroundColor(Color.toskaTextDark)
                     Spacer()
                     HStack(spacing: 16) {
                         Button { showMessagesList = true } label: {
@@ -88,15 +88,15 @@ struct ProfileView: View {
                                             HStack(spacing: 4) {
                                                 Text("joined \(joinedDate)")
                                                     .font(.system(size: 11))
-                                                    .foregroundColor(Color(hex: "b0b0b0"))
+                                                    .foregroundColor(Color.toskaTextLight)
                                                 
                                                 if LateNightTheme.isLateNight {
                                                     Text("·")
                                                         .font(.system(size: 9))
-                                                        .foregroundColor(Color(hex: "b0b0b0"))
+                                                        .foregroundColor(Color.toskaTextLight)
                                                     Text("still here at this hour.")
                                                         .font(.custom("Georgia-Italic", size: 10))
-                                                        .foregroundColor(Color(hex: "9198a8").opacity(0.4))
+                                                        .foregroundColor(Color.toskaBlue.opacity(0.4))
                                                 }
                                             }
                                             
@@ -120,10 +120,10 @@ struct ProfileView: View {
                                                             if presenceStreak > 1 {
                                                                 Text("· \(presenceStreak) in a row")
                                                                     .font(.system(size: 11))
-                                                                    .foregroundColor(Color(hex: "9198a8"))
+                                                                    .foregroundColor(Color.toskaBlue)
                                                             }
                                                         }
-                                                        .foregroundColor(Color(hex: "b0b0b0"))
+                                                        .foregroundColor(Color.toskaTextLight)
                                                     }
                                                     .buttonStyle(.plain)
                                                     
@@ -132,7 +132,7 @@ struct ProfileView: View {
                                                     } label: {
                                                         Image(systemName: "square.and.arrow.up")
                                                             .font(.system(size: 9, weight: .light))
-                                                            .foregroundColor(Color(hex: "d0d0d0"))
+                                                            .foregroundColor(Color.toskaDivider)
                                                     }
                                                     .buttonStyle(.plain)
                                                 }
@@ -150,9 +150,9 @@ struct ProfileView: View {
                                                                             VStack(spacing: 6) {
                                                                                 Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
                                                                                     .font(.system(size: 18, weight: selectedTab == index ? .medium : .light))
-                                                                                    .foregroundColor(selectedTab == index ? Color(hex: "9198a8") : Color(hex: "c8c8c8"))
+                                                                                    .foregroundColor(selectedTab == index ? Color.toskaBlue : Color(hex: "c8c8c8"))
                                                                                 Capsule()
-                                                                                    .fill(selectedTab == index ? Color(hex: "9198a8") : Color.clear)
+                                                                                    .fill(selectedTab == index ? Color.toskaBlue : Color.clear)
                                                                                     .frame(height: 2)
                                                                             }
                                                                             .frame(maxWidth: .infinity)
@@ -379,8 +379,8 @@ struct ProfileView: View {
     
     func statLabel(count: Int, label: String) -> some View {
         HStack(spacing: 4) {
-            Text("\(formatCount(count))").font(.system(size: 13, weight: .bold)).foregroundColor(Color(hex: "2a2a2a"))
-            Text(label).font(.system(size: 13)).foregroundColor(Color(hex: "b0b0b0"))
+            Text("\(formatCount(count))").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
+            Text(label).font(.system(size: 13)).foregroundColor(Color.toskaTextLight)
         }
     }
     
@@ -396,25 +396,25 @@ struct ProfileView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "arrowshape.turn.up.left").font(.system(size: 8))
                     Text("replying to \(reply.parentHandle)").font(.system(size: 10, weight: .medium))
-                    Text("·").font(.system(size: 8)).foregroundColor(Color(hex: "d0d0d0"))
+                    Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
                     Text(reply.replyTime).font(.system(size: 10, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
-                }.foregroundColor(Color(hex: "b0b0b0"))
+                }.foregroundColor(Color.toskaTextLight)
                 
                 Text(reply.parentText)
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "c0c0c0"))
+                    .foregroundColor(Color.toskaTimestamp)
                     .lineLimit(1)
                     .padding(.leading, 8)
                     .overlay(
                         Rectangle()
-                            .fill(Color(hex: "d0d0d0"))
+                            .fill(Color.toskaDivider)
                             .frame(width: 1.5),
                         alignment: .leading
                     )
                 
                 Text(reply.replyText)
                     .font(.custom("Georgia", size: 14))
-                    .foregroundColor(Color(hex: "2a2a2a"))
+                    .foregroundColor(Color.toskaTextDark)
                     .lineSpacing(3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -471,10 +471,10 @@ struct ProfileView: View {
             VStack(spacing: 12) {
                 Text(title)
                     .font(.custom("Georgia-Italic", size: 18))
-                    .foregroundColor(Color(hex: "b0b0b0"))
+                    .foregroundColor(Color.toskaTextLight)
                 Text(subtitle)
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "d0d0d0"))
+                    .foregroundColor(Color.toskaDivider)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 60)
@@ -491,7 +491,7 @@ struct ProfileView: View {
                 
                 Image(systemName: "moon.stars")
                     .font(.system(size: 28, weight: .light))
-                    .foregroundColor(Color(hex: "9198a8"))
+                    .foregroundColor(Color.toskaBlue)
                     .padding(.bottom, 16)
                 
                 Text("i've been on toska")
@@ -810,18 +810,18 @@ struct FollowListView: View {
                             Image(systemName: "xmark").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: "999999"))
                         }
                         Spacer()
-                        Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color(hex: "2a2a2a"))
+                        Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
                         Spacer()
                         Image(systemName: "xmark").font(.system(size: 14)).foregroundColor(.clear)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                     if isLoading {
-                        Spacer(); ProgressView().tint(Color(hex: "9198a8")); Spacer()
+                        Spacer(); ProgressView().tint(Color.toskaBlue); Spacer()
                     } else if users.isEmpty {
                         Spacer()
                         VStack(spacing: 8) {
-                            Text("no \(title) yet").font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "b0b0b0"))
+                            Text("no \(title) yet").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextLight)
                             Text("explore and connect with others").font(.system(size: 12)).foregroundColor(Color(hex: "cccccc"))
                         }
                         Spacer()
@@ -831,9 +831,9 @@ struct FollowListView: View {
                                 ForEach(Array(users.enumerated()), id: \.element.0) { index, user in
                                     Button { selectedUser = FollowUser(id: user.id, handle: user.handle) } label: {
                                                                             HStack(spacing: 12) {
-                                                                                Text(user.handle).font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "2a2a2a"))
+                                                                                Text(user.handle).font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
                                                                                 Spacer()
-                                                                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .light)).foregroundColor(Color(hex: "d0d0d0"))
+                                                                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .light)).foregroundColor(Color.toskaDivider)
                                                                             }
                                                                             .padding(.horizontal, 16).padding(.vertical, 10)
                                                                         }
@@ -923,12 +923,12 @@ struct EditReplyView: View {
                         Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
-                    Text("edit reply").font(.system(size: 14, weight: .medium)).foregroundColor(Color(hex: "2a2a2a"))
+                    Text("edit reply").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { saveReply() } label: {
                         Text("save").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
-                            .background(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving ? Color(hex: "d0d0d0") : Color(hex: "9198a8"))
+                            .background(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving ? Color.toskaDivider : Color.toskaBlue)
                             .cornerRadius(16)
                     }
                     .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)

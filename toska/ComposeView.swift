@@ -74,7 +74,7 @@ struct ComposeView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 8)
-                            .background(canPost ? Color(hex: "9198a8") : Color(hex: "9198a8").opacity(0.4))
+                            .background(canPost ? Color.toskaBlue : Color.toskaBlue.opacity(0.4))
                             .clipShape(Capsule())
                     }
                     .disabled(!canPost)
@@ -294,7 +294,7 @@ struct ComposeView: View {
                                         } label: {
                                             Image(systemName: showTagPicker ? "tag.fill" : "tag")
                                                 .font(.system(size: 16, weight: .light))
-                                                .foregroundColor(showTagPicker ? Color(hex: "9198a8") : LateNightTheme.secondaryText)
+                                                .foregroundColor(showTagPicker ? Color.toskaBlue : LateNightTheme.secondaryText)
                                         }
                                         .accessibilityLabel("Tag")
 
@@ -350,12 +350,12 @@ struct ComposeView: View {
                                         Button { showGifPicker = true } label: {
                                             Text("GIF")
                                                 .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(selectedGifUrl != nil ? Color(hex: "9198a8") : LateNightTheme.secondaryText)
+                                                .foregroundColor(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.secondaryText)
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 3)
                                                 .overlay(
                                                     RoundedRectangle(cornerRadius: 4)
-                                                        .stroke(selectedGifUrl != nil ? Color(hex: "9198a8") : LateNightTheme.tertiaryText, lineWidth: 1)
+                                                        .stroke(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.tertiaryText, lineWidth: 1)
                                                 )
                                         }
                                         .accessibilityLabel("Add GIF")
@@ -372,7 +372,7 @@ struct ComposeView: View {
                                 Circle()
                                     .trim(from: 0, to: CGFloat(text.count) / CGFloat(activeCharLimit))
                                     .stroke(
-                                        isNearLimit ? Color(hex: "c45c5c") : Color(hex: "9198a8"),
+                                        isNearLimit ? Color(hex: "c45c5c") : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 2, lineCap: .round)
                                     )
                                     .frame(width: 24, height: 24)
@@ -431,7 +431,7 @@ struct ComposeView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
-                            .background(Color(hex: "9198a8"))
+                            .background(Color.toskaBlue)
                             .cornerRadius(12)
                         }
 

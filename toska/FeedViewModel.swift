@@ -381,6 +381,12 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Extract extra post metadata
 
+    /// Soft cap to prevent unbounded growth across long sessions. Once a per-
+    /// post metadata cache exceeds this size, we drop a random ~20% of entries.
+    /// Random drop avoids the scan cost of LRU tracking while still bounding
+    /// memory; cache misses just re-extract from the next snapshot pass.
+    private static let postMetadataSoftCap = 800
+
     func extractPostMetadata(from doc: QueryDocumentSnapshot) {
         let docData = doc.data()
         if let gifUrl = docData["gifUrl"] as? String {
@@ -398,6 +404,29 @@ class FeedViewModel: ObservableObject {
         if docData["isWhisper"] as? Bool == true {
             whisperPostIds.insert(doc.documentID)
         }
+        // Trim if any of the metadata stores have grown past the cap. Cheap
+        // count check; the actual trim only runs occasionally.
+        if postGifUrls.count > Self.postMetadataSoftCap
+            || midnightPostIds.count > Self.postMetadataSoftCap
+            || letterPostIds.count > Self.postMetadataSoftCap
+            || repostPostIds.count > Self.postMetadataSoftCap
+            || whisperPostIds.count > Self.postMetadataSoftCap {
+            trimPostMetadata()
+        }
+    }
+
+    private func trimPostMetadata() {
+        let keepIds = Set(posts.map { $0.id })
+        postGifUrls = postGifUrls.filter { keepIds.contains($0.key) }
+        midnightPostIds = midnightPostIds.intersection(keepIds)
+        letterPostIds = letterPostIds.intersection(keepIds)
+        repostPostIds = repostPostIds.intersection(keepIds)
+        whisperPostIds = whisperPostIds.intersection(keepIds)
+        // Same for like/save/repost flags, which only matter for posts
+        // currently visible in the feed.
+        likedPostIds = likedPostIds.intersection(keepIds)
+        savedPostIds = savedPostIds.intersection(keepIds)
+        repostedPostIds = repostedPostIds.intersection(keepIds)
     }
 
     // MARK: - Fetch Posts
@@ -866,11 +895,11 @@ class FeedViewModel: ObservableObject {
 
                 HStack(spacing: 5) {
                     Circle()
-                        .fill(Color(hex: "9198a8"))
+                        .fill(Color.toskaBlue)
                         .frame(width: 4, height: 4)
                     Text("most unsaid today")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "9198a8"))
+                        .foregroundColor(Color.toskaBlue)
                         .tracking(1)
                 }
                 .padding(.bottom, 24)

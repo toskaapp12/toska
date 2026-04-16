@@ -245,7 +245,7 @@ struct ShareCardView: View {
     
     func styleHighlightColor(_ index: Int) -> Color {
             switch index {
-            case 0: return Color(hex: "9198a8")    // 2am
+            case 0: return Color.toskaBlue    // 2am
             case 1: return Color(hex: "808080")    // numb
             case 2: return Color(hex: "8b7ec8")    // bruise
             case 3: return Color(hex: "c45c5c")    // ashes
@@ -257,7 +257,7 @@ struct ShareCardView: View {
             case 9: return Color(hex: "c47a8a")    // blush
             case 10: return Color(hex: "6ba58e")   // sage
             case 11: return Color(hex: "7a97b5")   // frost
-            default: return Color(hex: "9198a8")
+            default: return Color.toskaBlue
             }
         }
     
@@ -367,7 +367,7 @@ struct ShareCardView: View {
                     Ellipse()
                         .fill(
                             RadialGradient(
-                                colors: [Color(hex: "9198a8").opacity(0.04), Color.clear],
+                                colors: [Color.toskaBlue.opacity(0.04), Color.clear],
                                 center: .center,
                                 startRadius: 0,
                                 endRadius: 180
@@ -483,7 +483,7 @@ struct ShareCardView: View {
             case 5: return Color(hex: "e0d0b8").opacity(0.7)
             case 6: return .white.opacity(0.35)
             case 7: return Color(hex: "4a4035")
-            case 8: return Color(hex: "2a2a2a").opacity(0.7)
+            case 8: return Color.toskaTextDark.opacity(0.7)
             case 9: return Color(hex: "5a3040")
             case 10: return Color(hex: "2a4038")
             case 11: return Color(hex: "2a3548")

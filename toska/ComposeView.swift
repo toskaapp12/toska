@@ -143,10 +143,24 @@ struct ComposeView: View {
                                             .frame(maxHeight: 180)
                                             .cornerRadius(10)
                                             .transition(.opacity)
+                                    case .failure:
+                                        LateNightTheme.inputBackground
+                                            .frame(height: 120)
+                                            .cornerRadius(10)
+                                            .overlay(
+                                                VStack(spacing: 4) {
+                                                    Image(systemName: "photo.badge.exclamationmark")
+                                                        .font(.system(size: 16, weight: .light))
+                                                    Text("couldn't load — pick another?")
+                                                        .font(.system(size: 10))
+                                                }
+                                                .foregroundColor(LateNightTheme.tertiaryText)
+                                            )
                                     default:
                                         LateNightTheme.inputBackground
                                             .frame(height: 120)
                                             .cornerRadius(10)
+                                            .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
                                     }
                                 }
 

@@ -131,6 +131,11 @@ struct GifPickerView: View {
                                     case .failure:
                                         Color(hex: "e4e6ea")
                                             .frame(height: 120)
+                                            .overlay(
+                                                Image(systemName: "photo.badge.exclamationmark")
+                                                    .font(.system(size: 14, weight: .light))
+                                                    .foregroundColor(Color.toskaTimestamp)
+                                            )
                                     default:
                                         Color(hex: "e8eaed")
                                             .frame(height: 120)

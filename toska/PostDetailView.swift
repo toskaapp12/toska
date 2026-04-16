@@ -283,8 +283,16 @@ struct PostDetailView: View {
                             case .success(let image):
                                 image.resizable().aspectRatio(contentMode: .fit).frame(maxHeight: 100).cornerRadius(8)
                                     .transition(.opacity)
+                            case .failure:
+                                Color(hex: "e8eaed").frame(width: 80, height: 60).cornerRadius(8)
+                                    .overlay(
+                                        Image(systemName: "photo.badge.exclamationmark")
+                                            .font(.system(size: 12, weight: .light))
+                                            .foregroundColor(Color.toskaTimestamp)
+                                    )
                             default:
                                 Color(hex: "e8eaed").frame(width: 80, height: 60).cornerRadius(8)
+                                    .overlay(ProgressView().scaleEffect(0.5).tint(Color.toskaTimestamp))
                             }
                         }
                         Button { withAnimation { replyGifUrl = nil } } label: {

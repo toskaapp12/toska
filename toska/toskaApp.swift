@@ -13,6 +13,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             print("🔥 AppDelegate — didFinishLaunching")
             FirebaseApp.configure()
 
+        // Bump URLCache so AsyncImage / GIF reloads don't constantly refetch.
+        // The URLSession default is ~4 MB memory + ~20 MB disk, which a feed
+        // full of Giphy GIFs evicts within a few minutes of scrolling. 50 MB
+        // memory + 200 MB disk holds enough that returning to a screen
+        // doesn't redownload the same media. Numbers are conservative —
+        // iOS aggressively reclaims under memory pressure.
+        URLCache.shared = URLCache(
+            memoryCapacity: 50 * 1024 * 1024,
+            diskCapacity: 200 * 1024 * 1024,
+            diskPath: nil
+        )
+
         UNUserNotificationCenter.current().delegate = PushNotificationManager.shared
         Messaging.messaging().delegate = PushNotificationManager.shared
 

@@ -605,10 +605,27 @@ struct FeedPostRow: View {
                                 .frame(maxHeight: 200)
                                 .cornerRadius(10)
                                 .transition(.opacity)
+                        case .failure:
+                            // Distinguish a load failure from "still loading" so
+                            // the user has a hint that something went wrong
+                            // rather than staring at an empty box.
+                            LateNightTheme.inputBackground
+                                .frame(height: 120)
+                                .cornerRadius(10)
+                                .overlay(
+                                    VStack(spacing: 4) {
+                                        Image(systemName: "photo.badge.exclamationmark")
+                                            .font(.system(size: 16, weight: .light))
+                                        Text("couldn't load gif")
+                                            .font(.system(size: 10))
+                                    }
+                                    .foregroundColor(LateNightTheme.tertiaryText)
+                                )
                         default:
                             LateNightTheme.inputBackground
                                 .frame(height: 120)
                                 .cornerRadius(10)
+                                .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
                         }
                     }
                     .padding(.bottom, 10)

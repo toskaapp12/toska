@@ -30,9 +30,15 @@ struct SettingsView: View {
     @State private var saveTask: Task<Void, Never>? = nil
     @State private var showChangeEmail = false
     @State private var showChangePassword = false
+    @State private var showContentPolicy = false
     // Surfaced when a settings save fails so the user knows their toggle
     // didn't actually persist (otherwise the toggle silently snaps back).
     @State private var saveErrorBanner: String? = nil
+    // Data export progress + error states. The export gathers everything
+    // the user has authored across collections and writes a JSON file
+    // before presenting iOS share sheet.
+    @State private var isExporting = false
+    @State private var exportError: String? = nil
     
     var body: some View {
         ZStack {
@@ -81,6 +87,8 @@ struct SettingsView: View {
                                 toggleRow("allow sharing", subtitle: "let people share your words", isOn: $settings.allowSharing)
                                 Divider().padding(.leading, 14)
                                 toggleRow("show follower count", subtitle: "let others see how many people follow you", isOn: $settings.showFollowerCount)
+                                Divider().padding(.leading, 14)
+                                actionRow("view content policy") { showContentPolicy = true }
                             }
                             .background(Color.white)
                             .cornerRadius(12)
@@ -144,6 +152,10 @@ struct SettingsView: View {
                                                         if Auth.auth().currentUser?.providerData.contains(where: { $0.providerID == "password" }) == true {
                                                             Divider().padding(.leading, 14)
                                                             actionRow("change password") { showChangePassword = true }
+                                                        }
+                                                        Divider().padding(.leading, 14)
+                                                        actionRow(isExporting ? "preparing export..." : "export my data") {
+                                                            exportData()
                                                         }
                                                     }
                                                     .background(Color.white)
@@ -252,6 +264,15 @@ struct SettingsView: View {
 
         .sheet(isPresented: $showChangeEmail) { ChangeEmailView() }
         .sheet(isPresented: $showChangePassword) { ChangePasswordView() }
+        .fullScreenCover(isPresented: $showContentPolicy) {
+            // Read-only re-display of the policy the user accepted at signup.
+            // Both buttons just dismiss — there's no acceptance flow here
+            // (they've already accepted; this is for review only).
+            PolicyAcceptanceView(
+                onAccept: { showContentPolicy = false },
+                onDecline: { showContentPolicy = false }
+            )
+        }
     }
     
     // MARK: - Components
@@ -446,6 +467,139 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Data Export
+    //
+    // Required for GDPR compliance (Article 15, Right of Access) and a strong
+    // signal for Apple privacy review. Produces a single JSON file containing
+    // everything THIS user has authored or owned, then presents the iOS share
+    // sheet so they can save it to Files / iCloud / email it to themselves.
+    //
+    // Deliberately excludes:
+    //   - other users' content (only the requesting user's own data)
+    //   - direct messages (two-party data — the other party hasn't consented
+    //     to having their messages exported)
+    //   - blocked-user IDs (just count + own-handle blocks; we don't list
+    //     the IDs of people they've blocked, which is metadata about others)
+    //
+    // Anything missing here can be requested via support email per the
+    // content policy.
+
+    func exportData() {
+        guard let uid = Auth.auth().currentUser?.uid, !isExporting else { return }
+        isExporting = true
+        exportError = nil
+
+        Task { @MainActor in
+            defer { isExporting = false }
+            let db = Firestore.firestore()
+            var payload: [String: Any] = [
+                "exportedAt": ISO8601DateFormatter().string(from: Date()),
+                "exportFormatVersion": 1,
+                "policyVersionAccepted": currentPolicyVersion
+            ]
+
+            // Account doc (handle, counts, settings, acceptance fields)
+            if let userSnap = try? await db.collection("users").document(uid).getDocumentAsync(),
+               let data = userSnap.data() {
+                // Strip fcmToken (device-specific, not useful in an export)
+                var account = data
+                account.removeValue(forKey: "fcmToken")
+                account.removeValue(forKey: "fcmTokenUpdatedAt")
+                payload["account"] = sanitizeForJSON(account)
+            }
+
+            // Posts authored
+            if let postsSnap = try? await db.collection("posts")
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: true)
+                .getDocumentsAsync() {
+                payload["posts"] = postsSnap.documents.map { doc -> [String: Any] in
+                    var item = doc.data()
+                    item["id"] = doc.documentID
+                    return sanitizeForJSON(item)
+                }
+            }
+
+            // Replies authored (collection group across all posts)
+            if let repliesSnap = try? await db.collectionGroup("replies")
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: true)
+                .getDocumentsAsync() {
+                payload["replies"] = repliesSnap.documents.map { doc -> [String: Any] in
+                    var item = doc.data()
+                    item["id"] = doc.documentID
+                    item["postId"] = doc.reference.parent.parent?.documentID ?? ""
+                    return sanitizeForJSON(item)
+                }
+            }
+
+            // Liked + saved post IDs (just IDs — full post content belongs
+            // to the original author)
+            if let likedSnap = try? await db.collection("users").document(uid).collection("liked").getDocumentsAsync() {
+                payload["likedPostIds"] = likedSnap.documents.map { $0.documentID }
+            }
+            if let savedSnap = try? await db.collection("users").document(uid).collection("saved").getDocumentsAsync() {
+                payload["savedPostIds"] = savedSnap.documents.map { $0.documentID }
+            }
+
+            // Following + followers (handles only — never user IDs of others,
+            // which would let the export be cross-referenced with leaked data)
+            if let followingSnap = try? await db.collection("users").document(uid).collection("following").getDocumentsAsync() {
+                payload["followingHandles"] = followingSnap.documents.compactMap { $0.data()["handle"] as? String }
+            }
+            if let followersSnap = try? await db.collection("users").document(uid).collection("followers").getDocumentsAsync() {
+                payload["followerHandles"] = followersSnap.documents.compactMap { $0.data()["handle"] as? String }
+            }
+
+            // Notifications history (own inbox)
+            if let notifSnap = try? await db.collection("users").document(uid).collection("notifications")
+                .order(by: "createdAt", descending: true)
+                .getDocumentsAsync() {
+                payload["notifications"] = notifSnap.documents.map { doc -> [String: Any] in
+                    var item = doc.data()
+                    item["id"] = doc.documentID
+                    return sanitizeForJSON(item)
+                }
+            }
+
+            // Serialize and present share sheet
+            do {
+                let data = try JSONSerialization.data(
+                    withJSONObject: payload,
+                    options: [.prettyPrinted, .sortedKeys]
+                )
+                let stamp = ISO8601DateFormatter().string(from: Date())
+                    .replacingOccurrences(of: ":", with: "-")
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("toska-export-\(stamp).json")
+                try data.write(to: url, options: .atomic)
+                presentShareSheet(with: [url])
+            } catch {
+                exportError = "couldn't build export — try again."
+                print("⚠️ exportData serialize/write failed: \(error)")
+            }
+        }
+    }
+
+    /// Recursively converts Firestore-specific types (Timestamp, FieldValue,
+    /// DocumentReference) into JSON-friendly forms so JSONSerialization can
+    /// encode them without throwing on the first non-plist value.
+    private func sanitizeForJSON(_ value: Any) -> Any {
+        if let ts = value as? Timestamp {
+            return ISO8601DateFormatter().string(from: ts.dateValue())
+        }
+        if let dict = value as? [String: Any] {
+            return dict.mapValues { sanitizeForJSON($0) }
+        }
+        if let array = value as? [Any] {
+            return array.map { sanitizeForJSON($0) }
+        }
+        if let ref = value as? DocumentReference {
+            return ref.path
+        }
+        return value
     }
 }
 

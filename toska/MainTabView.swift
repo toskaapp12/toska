@@ -287,29 +287,30 @@ struct MainTabView: View {
         }
     }
 
+    /// Replaced the 30-second polling loop with a snapshot listener. Firestore
+    /// listeners are push-based: the badge updates the moment a notification is
+    /// created or marked read, with zero polling cost in between. Firestore
+    /// SDK auto-pauses listeners when the app is backgrounded and resyncs on
+    /// foreground (MainTabView's willEnterForeground handler also calls this
+    /// to defensively re-attach).
+    ///
+    /// The query limits to 100 docs because the badge caps at "99+" anyway —
+    /// no need to pull the full unread set for users with thousands.
     func startUnreadListener() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         unreadListener?.remove()
         unreadListener = nil
-        fetchUnreadCount(uid: uid)
         unreadPollTask?.cancel()
-        unreadPollTask = Task { @MainActor in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-                guard !Task.isCancelled, Auth.auth().currentUser?.uid == uid else { return }
-                fetchUnreadCount(uid: uid)
-            }
-        }
-    }
+        unreadPollTask = nil
 
-    func fetchUnreadCount(uid: String) {
-        Firestore.firestore()
+        unreadListener = Firestore.firestore()
             .collection("users").document(uid).collection("notifications")
             .whereField("isRead", isEqualTo: false)
-            .count.getAggregation(source: .server) { [uid] snapshot, _ in
+            .limit(to: 100)
+            .addSnapshotListener { [uid] snapshot, _ in
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == uid else { return }
-                    self.unreadCount = Int(truncating: snapshot?.count ?? 0)
+                    self.unreadCount = snapshot?.documents.count ?? 0
                 }
             }
     }

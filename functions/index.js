@@ -171,6 +171,24 @@ exports.sendPushNotification = onDocumentCreated(
     const settingKey = settingsMap[type];
     if (settingKey && userData[settingKey] === false) return;
 
+    // Block check: never push from a user the recipient has blocked. Without
+    // this, blocked users can still trigger pushes by liking/replying/etc.
+    // We check the recipient's blocked subcollection — if the sender's uid
+    // is present, drop the notification entirely (it stays in Firestore for
+    // the in-app history but the silent-block experience matches what
+    // BlockedUsersCache does on the client).
+    const fromUserId = notifData.fromUserId;
+    if (fromUserId) {
+      const blockedSnap = await db
+        .collection("users").doc(userId)
+        .collection("blocked").doc(fromUserId)
+        .get();
+      if (blockedSnap.exists) {
+        console.log(`Push suppressed: ${userId} blocked ${fromUserId}`);
+        return;
+      }
+    }
+
     let title = "toska";
     let body = "";
 
@@ -211,8 +229,13 @@ exports.sendPushNotification = onDocumentCreated(
       notification: { title, body },
       data: {
         type,
+        // Forward all routing IDs so the client can deep-link to the right
+        // surface based on `type`: post → PostDetailView, follow → profile,
+        // message → conversation. Empty strings preserve compatibility with
+        // older clients that only checked postId.
         postId: notifData.postId || "",
         fromUserId: notifData.fromUserId || "",
+        conversationId: notifData.conversationId || "",
       },
       apns: {
         payload: {

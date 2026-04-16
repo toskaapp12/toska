@@ -8,6 +8,9 @@ struct UserSettings: Equatable {
     var notifyLikes = true
     var notifyReplies = true
     var notifyFollows = true
+    var notifyReposts = true
+    var notifySaves = true
+    var notifyMessages = true
     var notifyMilestones = true
     var notifyWitness = true
     var pushEnabled = true
@@ -94,11 +97,15 @@ struct SettingsView: View {
                                     Divider().padding(.leading, 28)
                                     miniToggle("replies", isOn: $settings.notifyReplies)
                                     Divider().padding(.leading, 28)
+                                    miniToggle("messages", isOn: $settings.notifyMessages)
+                                    Divider().padding(.leading, 28)
+                                    miniToggle("reposts", isOn: $settings.notifyReposts)
+                                    Divider().padding(.leading, 28)
+                                    miniToggle("saves", isOn: $settings.notifySaves)
+                                    Divider().padding(.leading, 28)
                                     miniToggle("new followers", isOn: $settings.notifyFollows)
                                     Divider().padding(.leading, 28)
                                     miniToggle("milestones", isOn: $settings.notifyMilestones)
-                                    Divider().padding(.leading, 28)
-                                    miniToggle("witness mode", isOn: $settings.notifyWitness)
                                 }
                             }
                             .background(Color.white)
@@ -334,6 +341,9 @@ struct SettingsView: View {
                    notifyLikes: data["notifyLikes"] as? Bool ?? true,
                    notifyReplies: data["notifyReplies"] as? Bool ?? true,
                    notifyFollows: data["notifyFollows"] as? Bool ?? true,
+                   notifyReposts: data["notifyReposts"] as? Bool ?? true,
+                   notifySaves: data["notifySaves"] as? Bool ?? true,
+                   notifyMessages: data["notifyMessages"] as? Bool ?? true,
                    notifyMilestones: data["notifyMilestones"] as? Bool ?? true,
                    notifyWitness: data["notifyWitness"] as? Bool ?? true,
                    pushEnabled: data["pushEnabled"] as? Bool ?? true,
@@ -355,11 +365,15 @@ struct SettingsView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         Task { @MainActor in
                     do {
-                        try await Firestore.firestore().collection("users").document(uid).updateData([                            "allowSharing": settings.allowSharing,
+                        try await Firestore.firestore().collection("users").document(uid).updateData([
+                            "allowSharing": settings.allowSharing,
                             "showFollowerCount": settings.showFollowerCount,
                             "notifyLikes": settings.notifyLikes,
                             "notifyReplies": settings.notifyReplies,
                             "notifyFollows": settings.notifyFollows,
+                            "notifyReposts": settings.notifyReposts,
+                            "notifySaves": settings.notifySaves,
+                            "notifyMessages": settings.notifyMessages,
                             "notifyMilestones": settings.notifyMilestones,
                             "notifyWitness": settings.notifyWitness,
                             "pushEnabled": settings.pushEnabled,

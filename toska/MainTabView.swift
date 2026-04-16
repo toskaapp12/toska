@@ -16,6 +16,12 @@ struct MainTabView: View {
     @State private var unreadListener: ListenerRegistration? = nil
     @State private var unreadPollTask: Task<Void, Never>? = nil
     @State private var pushPostId: String? = nil
+    // Push deep-link surfaces. Each is set when the user taps a notification
+    // of the matching type; the corresponding fullScreenCover/sheet opens
+    // the right destination. We use Identifiable wrappers so SwiftUI can
+    // distinguish the value-bound presentation modifiers.
+    @State private var pushConversation: ConversationSelection? = nil
+    @State private var pushProfileUser: UserSelection? = nil
     // FIX: only the feed tab is rendered on cold start. Other tabs are added
     // to this set the first time the user selects them, then kept alive so
     // scroll position and state are preserved on subsequent visits.
@@ -172,9 +178,31 @@ struct MainTabView: View {
             selectedTab = .feed
             pushPostId = postId
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenConversationFromPush"))) { notification in
+            guard let convoId = notification.userInfo?["conversationId"] as? String, !convoId.isEmpty else { return }
+            let otherUserId = notification.userInfo?["otherUserId"] as? String ?? ""
+            // We don't always know the other handle from push payload alone.
+            // ConversationView fetches it from the conversation doc on appear,
+            // so an empty handle is acceptable here.
+            pushConversation = ConversationSelection(id: convoId, handle: "", userId: otherUserId)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenProfileFromPush"))) { notification in
+            guard let userId = notification.userInfo?["userId"] as? String, !userId.isEmpty else { return }
+            pushProfileUser = UserSelection(id: userId, handle: "")
+        }
         .onReceive(NotificationCenter.default.publisher(for: .openComposeFromEmptyFeed)) { _ in
             HapticManager.play(.tabSwitch)
             showCompose = true
+        }
+        .fullScreenCover(item: $pushConversation) { selection in
+            ConversationView(
+                conversationId: selection.id,
+                otherHandle: selection.handle,
+                otherUserId: selection.userId
+            )
+        }
+        .fullScreenCover(item: $pushProfileUser) { selection in
+            OtherProfileView(userId: selection.id, handle: selection.handle)
         }
         .onAppear {
             print("⚡️ MainTabView appeared")

@@ -58,17 +58,40 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        
-        if let postId = userInfo["postId"] as? String, !postId.isEmpty {
-            Task { @MainActor in
-                            NotificationCenter.default.post(
-                                name: NSNotification.Name("OpenPostFromPush"),
-                                object: nil,
-                                userInfo: ["postId": postId]
-                            )
-                        }
+        let type = userInfo["type"] as? String ?? ""
+        let postId = userInfo["postId"] as? String ?? ""
+        let fromUserId = userInfo["fromUserId"] as? String ?? ""
+        let conversationId = userInfo["conversationId"] as? String ?? ""
+
+        // Route based on notification type. The Cloud Function forwards
+        // postId, fromUserId, and conversationId in the data payload so we
+        // can pick the right surface for each kind of notification.
+        Task { @MainActor in
+            switch type {
+            case "message" where !conversationId.isEmpty:
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenConversationFromPush"),
+                    object: nil,
+                    userInfo: ["conversationId": conversationId, "otherUserId": fromUserId]
+                )
+            case "follow" where !fromUserId.isEmpty:
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("OpenProfileFromPush"),
+                    object: nil,
+                    userInfo: ["userId": fromUserId]
+                )
+            default:
+                // like / reply / repost / save / milestone — all open the post
+                if !postId.isEmpty {
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("OpenPostFromPush"),
+                        object: nil,
+                        userInfo: ["postId": postId]
+                    )
+                }
+            }
         }
-        
+
         completionHandler()
     }
 }

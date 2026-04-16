@@ -115,6 +115,13 @@ struct PostSelection: Identifiable {
     let id: String
 }
 
+/// Wrapper for routing to a user profile via .fullScreenCover(item:) — used
+/// by push notification deep links to OtherProfileView.
+struct UserSelection: Identifiable {
+    let id: String      // userId
+    let handle: String
+}
+
 // MARK: - Shared Share Sheet Helper
 
 @MainActor

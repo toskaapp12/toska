@@ -6,20 +6,69 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3F33E6D82F69982500E7F27D /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E6D72F69982500E7F27D /* FirebaseAuth */; };
+		3F33E6DA2F69982500E7F27D /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E6D92F69982500E7F27D /* FirebaseFirestore */; };
+		3F33E6DC2F69982500E7F27D /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E6DB2F69982500E7F27D /* FirebaseMessaging */; };
+		3F33E7182F69C17200E7F27D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E7172F69C17200E7F27D /* GoogleSignIn */; };
+		3F33E71A2F69C17200E7F27D /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E7192F69C17200E7F27D /* GoogleSignInSwift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3F486F5D2F8019930079F8C3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3F33E6BE2F69977700E7F27D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3F33E6C52F69977700E7F27D;
+			remoteInfo = toska;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		3F33E6C62F69977700E7F27D /* toska.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = toska.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F486F572F8019930079F8C3 /* toskaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = toskaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3F33E72C2F6B4A7B00E7F27D /* Exceptions for "toska" folder in "toska" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3F33E6C52F69977700E7F27D /* toska */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3F33E6C82F69977700E7F27D /* toska */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3F33E72C2F6B4A7B00E7F27D /* Exceptions for "toska" folder in "toska" target */,
+			);
 			path = toska;
+			sourceTree = "<group>";
+		};
+		3F486F582F8019930079F8C3 /* toskaUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = toskaUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3F33E6C32F69977700E7F27D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3F33E71A2F69C17200E7F27D /* GoogleSignInSwift in Frameworks */,
+				3F33E6DC2F69982500E7F27D /* FirebaseMessaging in Frameworks */,
+				3F33E7182F69C17200E7F27D /* GoogleSignIn in Frameworks */,
+				3F33E6D82F69982500E7F27D /* FirebaseAuth in Frameworks */,
+				3F33E6DA2F69982500E7F27D /* FirebaseFirestore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F486F542F8019930079F8C3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +82,8 @@
 			isa = PBXGroup;
 			children = (
 				3F33E6C82F69977700E7F27D /* toska */,
+				3F486F582F8019930079F8C3 /* toskaUITests */,
+				3F33E7492F719F4000E7F27D /* Frameworks */,
 				3F33E6C72F69977700E7F27D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,8 +92,16 @@
 			isa = PBXGroup;
 			children = (
 				3F33E6C62F69977700E7F27D /* toska.app */,
+				3F486F572F8019930079F8C3 /* toskaUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		3F33E7492F719F4000E7F27D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -65,10 +124,38 @@
 			);
 			name = toska;
 			packageProductDependencies = (
+				3F33E6D72F69982500E7F27D /* FirebaseAuth */,
+				3F33E6D92F69982500E7F27D /* FirebaseFirestore */,
+				3F33E6DB2F69982500E7F27D /* FirebaseMessaging */,
+				3F33E7172F69C17200E7F27D /* GoogleSignIn */,
+				3F33E7192F69C17200E7F27D /* GoogleSignInSwift */,
 			);
 			productName = toska;
 			productReference = 3F33E6C62F69977700E7F27D /* toska.app */;
 			productType = "com.apple.product-type.application";
+		};
+		3F486F562F8019930079F8C3 /* toskaUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3F486F5F2F8019930079F8C3 /* Build configuration list for PBXNativeTarget "toskaUITests" */;
+			buildPhases = (
+				3F486F532F8019930079F8C3 /* Sources */,
+				3F486F542F8019930079F8C3 /* Frameworks */,
+				3F486F552F8019930079F8C3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3F486F5E2F8019930079F8C3 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3F486F582F8019930079F8C3 /* toskaUITests */,
+			);
+			name = toskaUITests;
+			packageProductDependencies = (
+			);
+			productName = toskaUITests;
+			productReference = 3F486F572F8019930079F8C3 /* toskaUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +170,10 @@
 					3F33E6C52F69977700E7F27D = {
 						CreatedOnToolsVersion = 26.0;
 					};
+					3F486F562F8019930079F8C3 = {
+						CreatedOnToolsVersion = 26.0;
+						TestTargetID = 3F33E6C52F69977700E7F27D;
+					};
 				};
 			};
 			buildConfigurationList = 3F33E6C12F69977700E7F27D /* Build configuration list for PBXProject "toska" */;
@@ -94,18 +185,30 @@
 			);
 			mainGroup = 3F33E6BD2F69977700E7F27D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				3F33E7162F69C17200E7F27D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3F33E6C72F69977700E7F27D /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				3F33E6C52F69977700E7F27D /* toska */,
+				3F486F562F8019930079F8C3 /* toskaUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		3F33E6C42F69977700E7F27D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F486F552F8019930079F8C3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +225,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		3F486F532F8019930079F8C3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3F486F5E2F8019930079F8C3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3F33E6C52F69977700E7F27D /* toska */;
+			targetProxy = 3F486F5D2F8019930079F8C3 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		3F33E6CF2F69977800E7F27D /* Debug */ = {
@@ -249,10 +367,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = toska/toska.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4V9EFWWZ4Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = toska/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -263,7 +384,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = tesssal.toska;
+				PRODUCT_BUNDLE_IDENTIFIER = tesssal.Toska;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -280,10 +401,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = toska/toska.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4V9EFWWZ4Q;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = toska/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -294,7 +418,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = tesssal.toska;
+				PRODUCT_BUNDLE_IDENTIFIER = tesssal.Toska;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -303,6 +427,54 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3F486F602F8019930079F8C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = tesssal.toskaUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = toska;
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		3F486F612F8019930079F8C3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = tesssal.toskaUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_TARGET_NAME = toska;
+				XROS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
@@ -327,7 +499,63 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		3F486F5F2F8019930079F8C3 /* Build configuration list for PBXNativeTarget "toskaUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F486F602F8019930079F8C3 /* Debug */,
+				3F486F612F8019930079F8C3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.11.0;
+			};
+		};
+		3F33E7162F69C17200E7F27D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3F33E6D72F69982500E7F27D /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		3F33E6D92F69982500E7F27D /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		3F33E6DB2F69982500E7F27D /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		3F33E7172F69C17200E7F27D /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E7162F69C17200E7F27D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		3F33E7192F69C17200E7F27D /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E7162F69C17200E7F27D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3F33E6BE2F69977700E7F27D /* Project object */;
 }

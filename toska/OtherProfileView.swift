@@ -29,7 +29,7 @@ struct OtherProfileView: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {
@@ -49,8 +49,10 @@ struct OtherProfileView: View {
                                 .font(.system(size: 14, weight: .light))
                                 .foregroundColor(Color.toskaTimestamp)
                         }
+                        .accessibilityLabel("Report or block \(handle)")
                     } else {
                         Image(systemName: "ellipsis").font(.system(size: 14)).foregroundColor(.clear)
+                            .accessibilityHidden(true)
                     }
                 }
                 .padding(.horizontal, 16)

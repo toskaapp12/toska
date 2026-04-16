@@ -70,7 +70,7 @@ struct ConversationView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
@@ -101,6 +101,7 @@ struct ConversationView: View {
                             .font(.system(size: 14, weight: .light))
                             .foregroundColor(Color.toskaTimestamp)
                     }
+                    .accessibilityLabel("Report or block")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)

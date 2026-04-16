@@ -200,7 +200,7 @@ struct PostDetailView: View {
 
     var mainContent: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
@@ -219,6 +219,7 @@ struct PostDetailView: View {
                             .foregroundColor(Color.toskaTimestamp)
                     }
                     .opacity(isAuthorIdLoading ? 0 : 1)
+                    .accessibilityLabel(isOwnPost ? "Edit or delete post" : "Report or block")
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -966,7 +967,7 @@ struct EditPostView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
@@ -1159,6 +1160,7 @@ struct SwipeToReplyRow: View {
                                 .padding(.horizontal, 4)
                                 .contentShape(Rectangle())
                         }
+                        .accessibilityLabel("More options for \(item.reply.handle)'s reply")
                     }
                 }
                 Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
@@ -1171,7 +1173,7 @@ struct SwipeToReplyRow: View {
                 }
             }
             .padding(.leading, 18 + indent).padding(.trailing, 18).padding(.vertical, 10)
-            .background(Color(hex: "f0f1f3"))
+            .background(LateNightTheme.background)
             .offset(x: dragOffset)
             .gesture(
                 DragGesture(minimumDistance: 10)

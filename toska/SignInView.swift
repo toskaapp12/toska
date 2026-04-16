@@ -145,6 +145,14 @@ struct SignInView: View {
             errorMessage = "please enter a valid email"
             return
         }
+        // Guard the empty-password case before sending the request — the
+        // server rejects it anyway, but a client-side check saves a round
+        // trip and shows a more useful message than Firebase's generic
+        // "missing password" code.
+        guard !password.isEmpty else {
+            errorMessage = "please enter your password"
+            return
+        }
         isLoading = true
         errorMessage = ""
         Auth.auth().signIn(withEmail: trimmedEmail, password: password) { result, error in

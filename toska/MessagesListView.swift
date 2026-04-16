@@ -13,7 +13,7 @@ struct MessagesListView: View {
     var body: some View {
             NavigationStack {
             ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {

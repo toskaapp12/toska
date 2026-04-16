@@ -57,7 +57,7 @@ struct ProfileView: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {
@@ -419,7 +419,7 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(Color(hex: "f0f1f3"))
+            .background(LateNightTheme.background)
             .overlay(Rectangle().fill(LateNightTheme.divider).frame(height: 0.5), alignment: .bottom)
         }
         .buttonStyle(.plain)
@@ -803,7 +803,7 @@ struct FollowListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(hex: "f0f1f3").ignoresSafeArea()
+                LateNightTheme.background.ignoresSafeArea()
                 VStack(spacing: 0) {
                     HStack {
                         Button { dismiss() } label: {
@@ -922,7 +922,7 @@ struct EditReplyView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {

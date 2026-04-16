@@ -51,7 +51,7 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // MARK: - Header
@@ -217,7 +217,7 @@ struct NotificationsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color(hex: "f0f1f3"))
+        .background(LateNightTheme.background)
     }
 
     // MARK: - Row

@@ -519,6 +519,7 @@ struct FeedPostRow: View {
                                                         .padding(.vertical, 2)
                                                         .contentShape(Rectangle())
                                                 }
+                                                .accessibilityLabel("More options for \(handle)'s post")
                                             }
                                         }
                                         .padding(.bottom, 8)

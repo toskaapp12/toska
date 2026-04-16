@@ -46,7 +46,7 @@ struct SettingsView: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {
@@ -649,7 +649,7 @@ struct ChangeEmailView: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {
@@ -760,7 +760,7 @@ struct ChangePasswordView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack {
@@ -886,7 +886,7 @@ struct BlockedUsersListView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "f0f1f3").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 if isLoading {

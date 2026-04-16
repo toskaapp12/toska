@@ -660,12 +660,24 @@ struct PostDetailView: View {
 
     func reportPost() {
             guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
-            let docId = "report_\(postId)_\(uid)"
-            Firestore.firestore().collection("reports").document(docId).setData([
-                "postId": postId, "reportedBy": uid, "authorId": authorUserId,
-                "authorHandle": handle, "text": postText, "reason": "reported by user",
-                "createdAt": FieldValue.serverTimestamp()
+            // Writes must match the hardened firestore.rules schema for the
+            // reports collection: required type/status/createdAt, only fields
+            // in the keys.hasOnly() allow list, reportedBy must match the
+            // authed user. Renamed authorId → reportedUserId and authorHandle
+            // → reportedHandle to match the rule's vocabulary.
+            Firestore.firestore().collection("reports").addDocument(data: [
+                "type": "post",
+                "status": "pending",
+                "reportedBy": uid,
+                "reason": "other",
+                "reasonLabel": "reported by user",
+                "createdAt": FieldValue.serverTimestamp(),
+                "postId": postId,
+                "reportedUserId": authorUserId,
+                "reportedHandle": handle,
+                "text": postText,
             ])
+            Telemetry.reportSubmitted(target: .post, reasonCode: "other")
         }
 
     // MARK: - Delete

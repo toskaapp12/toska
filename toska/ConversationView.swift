@@ -635,15 +635,21 @@ struct ConversationView: View {
 
     func reportConversation() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        let docId = "report_convo_\(conversationId)_\(uid)"
-        Firestore.firestore().collection("reports").document(docId).setData([
+        // Match the hardened firestore.rules schema for the reports
+        // collection: required type / status / createdAt and a bounded
+        // reason. Without these the rule rejects the write silently.
+        Firestore.firestore().collection("reports").addDocument(data: [
+            "type": "conversation",
+            "status": "pending",
+            "reportedBy": uid,
+            "reason": "other",
+            "reasonLabel": "reported by user",
+            "createdAt": FieldValue.serverTimestamp(),
             "conversationId": conversationId,
             "reportedUserId": otherUserId,
             "reportedHandle": otherHandle,
-            "reportedBy": uid,
-            "reason": "reported by user",
-            "createdAt": FieldValue.serverTimestamp()
         ])
+        Telemetry.reportSubmitted(target: .conversation, reasonCode: "other")
     }
 
     // MARK: - Block

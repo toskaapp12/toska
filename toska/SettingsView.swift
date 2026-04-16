@@ -436,6 +436,11 @@ struct SettingsView: View {
            isDeleting = true
            deleteError = ""
 
+           // Clear FCM token before triggering deletion. Without this, the
+           // server can keep pushing to the now-orphaned device until the
+           // token rotates or the OS reaps it on next app uninstall.
+           PushNotificationManager.shared.clearFCMToken()
+
            Firestore.firestore().collection("pendingDeletions").document(uid).setData([
             "uid": uid,
             "requestedAt": FieldValue.serverTimestamp()
@@ -513,6 +518,16 @@ struct SettingsView: View {
                 var account = data
                 account.removeValue(forKey: "fcmToken")
                 account.removeValue(forKey: "fcmTokenUpdatedAt")
+                // Merge in the private subcollection (email, etc.) since
+                // post-migration those fields no longer live on the main
+                // user doc but are still the user's own data.
+                if let privateSnap = try? await db.collection("users").document(uid)
+                    .collection("private").document("data").getDocumentAsync(),
+                   var privateData = privateSnap.data() {
+                    privateData.removeValue(forKey: "fcmToken")
+                    privateData.removeValue(forKey: "fcmTokenUpdatedAt")
+                    for (k, v) in privateData { account[k] = v }
+                }
                 payload["account"] = sanitizeForJSON(account)
             }
 
@@ -582,6 +597,15 @@ struct SettingsView: View {
                     .appendingPathComponent("toska-export-\(stamp).json")
                 try data.write(to: url, options: .atomic)
                 presentShareSheet(with: [url])
+                // Schedule cleanup. The share sheet runs modally; by the time
+                // this 5-minute window elapses the user has either copied the
+                // export to wherever they wanted or dismissed the sheet. The
+                // file shouldn't sit in temp containing the user's full data
+                // history indefinitely.
+                Task.detached(priority: .background) {
+                    try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000)
+                    try? FileManager.default.removeItem(at: url)
+                }
             } catch {
                 exportError = "couldn't build export — try again."
                 print("⚠️ exportData serialize/write failed: \(error)")

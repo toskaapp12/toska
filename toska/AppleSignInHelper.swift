@@ -105,7 +105,6 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                 }
                 try await db.collection("users").document(uid).setData([
                     "handle": handle,
-                    "email": userEmail,
                     "followerCount": 0,
                     "followingCount": 0,
                     "totalLikes": 0,
@@ -114,6 +113,11 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                     "hasCompletedOnboarding": false,
                     "createdAt": FieldValue.serverTimestamp()
                 ])
+                // Email lives in the owner-only private subcollection so
+                // it isn't exposed by the broader users-doc reads policy.
+                try? await db.collection("users").document(uid)
+                    .collection("private").document("data")
+                    .setData(["email": userEmail], merge: true)
                 UserHandleCache.shared.startListening()
                 Telemetry.signupCompleted(method: .apple)
                 NotificationCenter.default.post(

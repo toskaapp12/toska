@@ -146,14 +146,40 @@ exports.sendPushNotification = onDocumentCreated(
     if (!notifData) return;
 
     const type = notifData.type || "";
-    const fromHandle = notifData.fromHandle || "someone";
     const message = notifData.message || "";
+
+    // Server-side fromHandle validation: a malicious client could write
+    // a notification doc with a forged fromHandle pretending to be
+    // someone else. Look up the real handle from the sender's user doc
+    // and use that instead of trusting the client-provided field.
+    let fromHandle = "someone";
+    if (notifData.fromUserId) {
+      const senderSnap = await db.collection("users").doc(notifData.fromUserId).get();
+      if (senderSnap.exists) {
+        fromHandle = senderSnap.data().handle || "someone";
+      }
+    }
 
     const userDoc = await db.collection("users").doc(userId).get();
     if (!userDoc.exists) return;
 
     const userData = userDoc.data();
-    const fcmToken = userData.fcmToken;
+
+    // FCM token now lives in the owner-only private subcollection so it
+    // isn't readable by other clients via the broader users-doc reads
+    // policy. Fall back to the legacy main-doc field for users created
+    // before the migration; their token will move on next refresh.
+    let fcmToken;
+    const privateSnap = await db
+      .collection("users").doc(userId)
+      .collection("private").doc("data")
+      .get();
+    if (privateSnap.exists) {
+      fcmToken = privateSnap.data().fcmToken;
+    }
+    if (!fcmToken) {
+      fcmToken = userData.fcmToken;
+    }
     if (!fcmToken) return;
 
     if (userData.pushEnabled === false) return;
@@ -192,10 +218,17 @@ exports.sendPushNotification = onDocumentCreated(
     let title = "toska";
     let body = "";
 
+    // Push payloads transit APNS — never include user-authored content
+    // (post text, reply text, message text). For an anonymity-first app
+    // a notification body that quotes "i miss them so much" leaks both
+    // who's posting AND what they posted to anyone with access to the
+    // device's notification logs (lock screen photos, notification
+    // history extensions, etc.). Tap-through surfaces the content
+    // in-app where the user has full control.
     switch (type) {
       case "reply":
         title = `${fromHandle} replied`;
-        body = message ? message.substring(0, 100) : "someone responded to your post";
+        body = "tap to read what they said";
         break;
       case "like":
         title = "someone felt your post";
@@ -214,6 +247,8 @@ exports.sendPushNotification = onDocumentCreated(
         body = `${fromHandle} kept your words`;
         break;
       case "milestone":
+        // Server-authored milestone copy ("your post reached 25 feels") is
+        // safe because it doesn't include the post body, just the count.
         body = message || "your post hit a milestone";
         break;
       case "message":
@@ -254,9 +289,15 @@ exports.sendPushNotification = onDocumentCreated(
         error.code === "messaging/invalid-registration-token" ||
         error.code === "messaging/registration-token-not-registered"
       ) {
-        await db.collection("users").doc(userId).update({
-          fcmToken: FieldValue.delete(),
-        });
+        // Delete from both the new private location and the legacy main
+        // doc so we don't keep retrying an already-dead token.
+        await db.collection("users").doc(userId)
+          .collection("private").doc("data")
+          .update({ fcmToken: FieldValue.delete() })
+          .catch(() => {});
+        await db.collection("users").doc(userId)
+          .update({ fcmToken: FieldValue.delete() })
+          .catch(() => {});
       }
       console.error("Push send failed:", error.code);
     }
@@ -400,6 +441,41 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
     return;
   }
 });
+
+// ============================================================
+// Server-side reply validation (mirror of validatePost)
+// ============================================================
+//
+// Client enforces text.length ≤ 500 in PostDetailView, but a malicious
+// client bypassing the UI could write reply documents with arbitrary
+// length text — DoS vector and data-integrity risk. This guard matches
+// the firestore.rules text-length cap and runs on the same trigger as
+// rateLimitReplies for parity.
+
+exports.validateReply = onDocumentCreated(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const postId = event.params.postId;
+    const replyId = event.params.replyId;
+    const replyData = event.data.data();
+    if (!replyData) return;
+
+    const text = replyData.text;
+    if (typeof text !== "string" || text.trim().length === 0) {
+      console.warn(`Deleting reply ${replyId} — missing or blank text`);
+      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
+      return;
+    }
+
+    if (text.length > 500) {
+      console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
+      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
+      return;
+    }
+  }
+);
 
 // ============================================================
 // Server-side rate limiting — posts

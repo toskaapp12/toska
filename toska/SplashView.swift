@@ -190,7 +190,6 @@ struct SplashView: View {
 
         try await db.collection("users").document(uid).setData([
             "handle": handle,
-            "email": email,
             "followerCount": 0,
             "followingCount": 0,
             "totalLikes": 0,
@@ -199,6 +198,11 @@ struct SplashView: View {
             "hasCompletedOnboarding": false,
             "createdAt": FieldValue.serverTimestamp()
         ])
+        // Email lives in the owner-only private subcollection so it isn't
+        // exposed by the broader users-doc reads policy.
+        try? await db.collection("users").document(uid)
+            .collection("private").document("data")
+            .setData(["email": email], merge: true)
 
         UserHandleCache.shared.startListening()
         Telemetry.signupCompleted(method: method)

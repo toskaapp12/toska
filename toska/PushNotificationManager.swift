@@ -17,17 +17,33 @@ class PushNotificationManager: NSObject {
         }
     }
     
+    /// FCM token lives in the owner-only private subcollection because it
+    /// can be used to send arbitrary push notifications to this user's
+    /// device. Previously stored on the main user doc, which the broader
+    /// firestore.rules reads-policy made readable by any authenticated
+    /// user — that's a real impersonation vector.
     func saveFCMToken(_ token: String) {
             guard let uid = Auth.auth().currentUser?.uid else { return }
-            // setData merge:true handles new accounts where doc may not exist yet
-            Firestore.firestore().collection("users").document(uid).setData([
-                "fcmToken": token,
-                "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("private").document("data")
+                .setData([
+                    "fcmToken": token,
+                    "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
+                ], merge: true)
         }
-    
+
     func clearFCMToken() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("private").document("data")
+            .updateData([
+                "fcmToken": FieldValue.delete()
+            ])
+        // Also clear any legacy field on the main user doc so re-reads on
+        // older accounts don't pick up a stale value the server might
+        // still try to push to.
         Firestore.firestore().collection("users").document(uid).updateData([
             "fcmToken": FieldValue.delete()
         ])

@@ -286,6 +286,9 @@ struct OnboardingView: View {
     /// sign them out and delete the just-created auth account so nothing is
     /// retained for someone who didn't agree to the terms.
     func declineAndSignOut() {
+        // Clear FCM token before deleting the auth account. Without this,
+        // the server can keep pushing to a device whose user just opted out.
+        PushNotificationManager.shared.clearFCMToken()
         Task { @MainActor in
             do {
                 try await Auth.auth().currentUser?.delete()

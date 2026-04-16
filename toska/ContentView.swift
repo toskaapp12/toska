@@ -123,6 +123,13 @@ struct ContentView: View {
             verifyTask = nil
             isLoggedIn = false
             isLoading = false
+            // Clear per-user device-local state so the next user signing in
+            // doesn't see the previous user's leftovers (compose draft,
+            // analytics-opt-out preference is per-device on purpose so it
+            // isn't cleared, push primer ditto). Add new keys here as they
+            // get introduced.
+            UserDefaults.standard.removeObject(forKey: "toska_composeDraftText")
+            UserDefaults.standard.removeObject(forKey: "toska_composeDraftTag")
         }
         .onReceive(NotificationCenter.default.publisher(for: .authSessionExpired)) { _ in
             verifyTask?.cancel()

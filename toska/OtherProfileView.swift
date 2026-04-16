@@ -541,11 +541,22 @@ struct OtherProfileView: View {
     
     func reportUser() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Match the hardened firestore.rules schema: required type / status /
+        // createdAt and a reason inside the bounded enum. Without the type
+        // field the rule rejects this write silently.
         Firestore.firestore().collection("reports").addDocument(data: [
-            "reportedUserId": userId, "reportedHandle": handle, "reportedBy": uid, "reason": "reported by user", "createdAt": FieldValue.serverTimestamp()
+            "type": "user",
+            "status": "pending",
+            "reportedBy": uid,
+            "reason": "other",
+            "reasonLabel": "reported by user",
+            "createdAt": FieldValue.serverTimestamp(),
+            "reportedUserId": userId,
+            "reportedHandle": handle,
         ])
+        Telemetry.reportSubmitted(target: .user, reasonCode: "other")
     }
-    
+
     // MARK: - Start Conversation (DM)
     
     func startConversation() {

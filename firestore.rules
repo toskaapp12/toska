@@ -73,6 +73,15 @@ service cloud.firestore {
       // when it is being read for a known-public purpose (OtherProfileView,
       // follow list handle lookup). If you add email to a user document query
       // from a context other than the owner, this rule will deny it.
+      //
+      // Migration progress (2026-04):
+      //   - email and fcmToken now live in users/{uid}/private/data — done
+      //   - selectedMood and notify*/pushEnabled/gentleCheckIn still on the
+      //     main user doc; broader audit deferred to Phase 2 since it
+      //     requires UserHandleCache to listen to two docs and FeedViewModel
+      //     to fetch mood from the private subcollection. Tracking task to
+      //     migrate those + tighten the read rule below to isOwner-only,
+      //     using a public projection for OtherProfileView's needs.
       allow read: if isOwner(userId) || isAuth();
       allow create: if isOwner(userId)
         && request.resource.data.handle is string
@@ -94,12 +103,22 @@ service cloud.firestore {
       allow delete: if isOwner(userId);
 
       match /following/{followedId} {
-        allow read: if isAuth();
+        // Reads are owner-only — exposing the full follow graph to any
+        // authenticated user lets a malicious client enumerate everyone's
+        // social connections. The Swift code only ever reads its own
+        // following list (ProfileView, FeedViewModel.fetchFollowingPosts,
+        // PostDetailView blockUser cleanup) so this restriction doesn't
+        // break any current call site.
+        allow read: if isOwner(userId);
         allow create, delete: if isOwner(userId);
       }
 
       match /followers/{followerId} {
-        allow read: if isAuth();
+        // Reads are owner-only for the same reason as following above.
+        // OtherProfileView checks "do I follow them?" by reading their own
+        // following subcollection, not by reading the target's followers
+        // list, so this restriction is safe.
+        allow read: if isOwner(userId);
         allow create: if isAuth() && request.auth.uid == followerId;
         allow update: if isAuth() && request.auth.uid == followerId;
         allow delete: if isAuth() && (request.auth.uid == followerId || isOwner(userId));
@@ -160,8 +179,16 @@ service cloud.firestore {
 
       match /replies/{replyId} {
         allow read: if isAuth();
+        // Block enforcement: the post author can't be replied to by a user
+        // they've blocked. Without this check, blocked users could keep
+        // engaging server-side; the client filter (BlockedUsersCache) only
+        // hides their content from the blocker, not vice versa.
         allow create: if isAuth()
-          && request.resource.data.authorId == request.auth.uid;
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         allow update: if isAuth()
           && resource.data.authorId == request.auth.uid;
         allow delete: if isAuth()
@@ -171,7 +198,10 @@ service cloud.firestore {
 
       match /likes/{likeUserId} {
         allow read: if isAuth();
-        allow create: if isAuth() && request.auth.uid == likeUserId;
+        // Same block enforcement as replies — a blocked user shouldn't be
+        // able to bump someone's likeCount.
+        allow create: if isAuth() && request.auth.uid == likeUserId
+          && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         allow delete: if isAuth()
           && (request.auth.uid == likeUserId
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
@@ -180,7 +210,8 @@ service cloud.firestore {
       match /reflections/{reflectionId} {
         allow read: if isAuth();
         allow create: if isAuth()
-          && request.resource.data.authorId == request.auth.uid;
+          && request.resource.data.authorId == request.auth.uid
+          && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         allow update, delete: if isAuth()
           && resource.data.authorId == request.auth.uid;
       }

@@ -160,6 +160,67 @@ struct FeedView: View {
                                         SkeletonPostRow()
                                             .background(LateNightTheme.background)
                                     }
+                                } else if vm.posts.isEmpty && vm.hasLoadedOnce && vm.selectedTab == 0 {
+                                    // First-run empty state. The fetch finished
+                                    // and there's genuinely nothing to show
+                                    // (no posts in window, none from people
+                                    // they follow). Coach concrete actions
+                                    // instead of leaving a blank screen.
+                                    VStack(spacing: 14) {
+                                        Image(systemName: "moon.stars")
+                                            .font(.system(size: 28, weight: .light))
+                                            .foregroundColor(LateNightTheme.tertiaryText)
+                                        Text("\"its quiet right now.\"")
+                                            .font(.custom("Georgia-Italic", size: 18))
+                                            .foregroundColor(LateNightTheme.secondaryText)
+                                            .multilineTextAlignment(.center)
+                                        Text("be the first one to say something.\nor go find someone who already did.")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(LateNightTheme.tertiaryText)
+                                            .multilineTextAlignment(.center)
+                                            .lineSpacing(3)
+                                            .padding(.horizontal, 24)
+                                        HStack(spacing: 10) {
+                                            Button {
+                                                NotificationCenter.default.post(name: .openComposeFromEmptyFeed, object: nil)
+                                            } label: {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: "plus.circle")
+                                                        .font(.system(size: 11))
+                                                    Text("say something")
+                                                        .font(.system(size: 12, weight: .medium))
+                                                }
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(Color.toskaBlue)
+                                                .cornerRadius(10)
+                                            }
+                                            Button {
+                                                vm.showExplore = true
+                                            } label: {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: "magnifyingglass")
+                                                        .font(.system(size: 11))
+                                                    Text("explore")
+                                                        .font(.system(size: 12, weight: .medium))
+                                                }
+                                                .foregroundColor(Color.toskaBlue)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(Color.toskaBlue.opacity(0.1))
+                                                .cornerRadius(10)
+                                            }
+                                        }
+                                        .padding(.top, 4)
+                                        Text("pull down to refresh")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                            .padding(.top, 8)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 60)
+                                    .padding(.bottom, 40)
                                 } else {
                                                                                                                                     
                                                                                                                                     ForEach(vm.posts) { post in

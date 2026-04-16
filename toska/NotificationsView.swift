@@ -11,6 +11,13 @@ private struct NotifFollowUser: Identifiable, Hashable {
 struct NotificationsView: View {
     @State private var notifications: [NotificationItem] = []
     @State private var isLoading = true
+    // Push primer state. We use AppStorage so the primer is shown at most
+    // once across launches — after the user accepts or declines, we never
+    // bother them again from this surface. The system prompt fires only
+    // after they tap "yes" on the primer, giving Apple's permission alert
+    // some context instead of appearing cold.
+    @AppStorage("toska_pushPrimerShown") private var pushPrimerShown = false
+    @State private var showPushPrimer = false
     @State private var selectedPostId: String? = nil
     @State private var selectedPostData: PostDetailData? = nil
     @State private var showPost = false
@@ -129,10 +136,23 @@ struct NotificationsView: View {
                 UIApplication.shared.applicationIconBadgeNumber = 0
             }
             recomputeNotificationGroups()
+            // First-time visit shows an in-app primer explaining why we want
+            // push permission. Only after the user taps "yes, notify me" do
+            // we trigger the system prompt — giving Apple's alert context.
+            if !pushPrimerShown {
+                showPushPrimer = true
+            }
             if let last = lastFetchTime, Date().timeIntervalSince(last) < 30 { return }
             lastFetchTime = Date()
             loadNotifications()
         }
+        .overlay {
+            if showPushPrimer {
+                pushPrimerCard
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showPushPrimer)
         .onChange(of: notifications) { _, _ in
             recomputeNotificationGroups()
         }
@@ -473,4 +493,78 @@ struct NotificationsView: View {
                                             }
                                         }
                                 }
+
+    // MARK: - Push permission primer
+    //
+    // Shown once on first visit to the Notifications tab. Apple's system
+    // permission alert is one-shot per install — if the user taps "Don't
+    // Allow," we can't ever ask again from code. So we show a friendly
+    // in-app screen first, and only invoke the system prompt after they
+    // affirmatively want notifications. "not now" sets pushPrimerShown
+    // without asking the system, leaving the door open via Settings.
+
+    private var pushPrimerCard: some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea()
+                .onTapGesture {} // swallow taps so background stays interactable only via card
+
+            VStack(spacing: 14) {
+                Image(systemName: "bell.badge")
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundColor(Color.toskaBlue)
+
+                Text("turn on notifications?")
+                    .font(.custom("Georgia-Italic", size: 18))
+                    .foregroundColor(LateNightTheme.handleText)
+
+                Text("we'll let you know when someone feels what you wrote, replies to you, or follows you.\n\nthats it. no marketing. no daily nudges.")
+                    .font(.system(size: 12))
+                    .foregroundColor(LateNightTheme.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 4)
+
+                VStack(spacing: 8) {
+                    Button {
+                        pushPrimerShown = true
+                        showPushPrimer = false
+                        // Trigger the actual system prompt only after the
+                        // user has opted in here. If they tap "Don't Allow"
+                        // on the system prompt we can't ask again — but at
+                        // least we got the most informed signal possible.
+                        PushNotificationManager.shared.requestPermission()
+                    } label: {
+                        Text("yes, notify me")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Color.toskaBlue)
+                            .cornerRadius(12)
+                    }
+
+                    Button {
+                        pushPrimerShown = true
+                        showPushPrimer = false
+                    } label: {
+                        Text("not now")
+                            .font(.system(size: 12))
+                            .foregroundColor(LateNightTheme.secondaryText)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .padding(.top, 4)
+
+                Text("you can change this any time in Settings → Notifications")
+                    .font(.system(size: 9))
+                    .foregroundColor(LateNightTheme.tertiaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 2)
+            }
+            .padding(22)
+            .background(LateNightTheme.cardBackground)
+            .cornerRadius(16)
+            .padding(.horizontal, 32)
+        }
+    }
 }

@@ -172,6 +172,10 @@ struct MainTabView: View {
             selectedTab = .feed
             pushPostId = postId
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openComposeFromEmptyFeed)) { _ in
+            HapticManager.play(.tabSwitch)
+            showCompose = true
+        }
         .onAppear {
             print("⚡️ MainTabView appeared")
             startUnreadListener()

@@ -71,10 +71,12 @@ struct ContentView: View {
                         showOnboarding = false
                     }
             } else if isLoggedIn {
+                // Push permission is requested in context (NotificationsView's
+                // primer card on first visit) rather than the moment the user
+                // lands on the home tab. Asking immediately at MainTabView
+                // appear used to fire the system prompt with no explanation,
+                // which generally produces a permanent "Don't Allow" tap.
                 MainTabView()
-                    .onAppear {
-                        PushNotificationManager.shared.requestPermission()
-                    }
             } else {
                 SplashView()
             }

@@ -288,8 +288,20 @@ struct NotificationsView: View {
 
     func openPost(postId: String) {
         guard !postId.isEmpty else { return }
-        Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, _ in
+        Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
             Task { @MainActor in
+                // Distinguish "post is genuinely deleted" (snapshot exists but
+                // is empty / non-existent) from "the request itself failed"
+                // (network drop, permission). Without this, a network error
+                // wrongly tells the user the post was deleted, which it
+                // wasn't — and we'd then irreversibly delete their
+                // notifications referencing that post.
+                if let error = error {
+                    print("⚠️ openPost: getDocument failed: \(error)")
+                    // Don't prune notifications on transient error — the post
+                    // may still exist on the server.
+                    return
+                }
                 guard let data = snapshot?.data() else {
                     if let uid = Auth.auth().currentUser?.uid {
                         Firestore.firestore().collection("users").document(uid).collection("notifications")

@@ -265,7 +265,7 @@ struct CreateAccountView: View {
             Task { @MainActor in
                 if let error = error {
                     isLoading = false
-                    errorMessage = error.localizedDescription
+                    errorMessage = friendlyAuthErrorMessage(error)
                     return
                 }
                 

@@ -137,6 +137,41 @@ func presentShareSheet(with items: [Any]) {
         static let messageLimit = 5
     }
 
+// MARK: - Auth Error Messages
+//
+// Firebase's `error.localizedDescription` returns strings like
+// "FIRAuthErrorDomain Code=17009" or unhelpful technical phrases. These don't
+// match our copy voice and confuse users. This helper maps the common
+// AuthErrorCode values to lowercase, human messages that fit the app's tone.
+//
+// Used by SignInView, CreateAccountView, PasswordResetView, and any other
+// surface that calls Auth.auth() methods. Falls back to a generic message
+// for codes we haven't mapped — the goal is to never show raw Firebase strings.
+
+func friendlyAuthErrorMessage(_ error: Error) -> String {
+    let nsError = error as NSError
+    guard nsError.domain == "FIRAuthErrorDomain" else {
+        return "something went wrong. please try again."
+    }
+    switch nsError.code {
+    case 17007: return "an account with this email already exists. try signing in."
+    case 17008: return "that email doesn't look right. check the format."
+    case 17009: return "wrong password. try again or reset it."
+    case 17010: return "too many tries. wait a minute and try again."
+    case 17011: return "we couldn't find an account with that email."
+    case 17012: return "this email is linked to a different sign-in method."
+    case 17014: return "for security, please sign out and sign back in, then try again."
+    case 17020: return "youre offline. check your connection and try again."
+    case 17023: return "this email is already linked to a different sign-in method."
+    case 17026: return "password is too weak. use at least 6 characters."
+    case 17034: return "please enter your email."
+    case 17052: return "too many requests right now. give it a minute."
+    case 17999: return "something went wrong on our end. try again."
+    default:
+        return "couldn't sign in. try again in a moment."
+    }
+}
+
 // MARK: - Cached Brand Colors
 //
 // `Color(hex: "...")` does string trimming, Scanner-based hex parsing, and a

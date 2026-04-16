@@ -95,7 +95,7 @@ struct SplashView: View {
                                 do {
                                     try await appleHelper.startSignIn()
                                 } catch {
-                                    errorMessage = error.localizedDescription
+                                    errorMessage = friendlyAuthErrorMessage(error)
                                 }
                                 isSigningIn = false
                             }
@@ -240,7 +240,7 @@ struct SplashView: View {
 
                 try await createUserDocumentIfNeeded(uid: uid, email: email)
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = friendlyAuthErrorMessage(error)
             }
             isSigningIn = false
         }

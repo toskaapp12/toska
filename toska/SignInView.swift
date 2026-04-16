@@ -151,7 +151,7 @@ struct SignInView: View {
             Task { @MainActor in
                 isLoading = false
                 if let error = error {
-                    errorMessage = error.localizedDescription
+                    errorMessage = friendlyAuthErrorMessage(error)
                 } else if let uid = result?.user.uid {
                     NotificationCenter.default.post(
                         name: NSNotification.Name("UserDidSignIn"),

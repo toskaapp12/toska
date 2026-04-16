@@ -8,6 +8,9 @@ struct GifPickerView: View {
     @State private var gifs: [GifItem] = []
     @State private var isLoading = false
     @State private var searchTask: Task<Void, Never>? = nil
+    // Surfaced when the Giphy fetch fails (timeout, JSON shape change, network)
+    // so the empty grid doesn't get confused with a genuine zero-result query.
+    @State private var fetchError: String? = nil
     
     // REPLACE with your Giphy API key from developers.giphy.com
     private let apiKey = "YOUR_GIPHY_API_KEY"
@@ -84,12 +87,28 @@ struct GifPickerView: View {
             } else if gifs.isEmpty {
                 Spacer()
                 VStack(spacing: 6) {
-                    Image(systemName: "photo.on.rectangle.angled")
+                    Image(systemName: fetchError != nil ? "exclamationmark.triangle" : "photo.on.rectangle.angled")
                         .font(.system(size: 20, weight: .light))
                         .foregroundColor(Color.toskaDivider)
-                    Text("no GIFs found")
+                    Text(fetchError ?? "no GIFs found")
                         .font(.system(size: 13))
                         .foregroundColor(Color.toskaTextLight)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                    if fetchError != nil {
+                        Button {
+                            fetchTrending()
+                        } label: {
+                            Text("retry")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color.toskaBlue)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 6)
+                                .background(Color.toskaBlue.opacity(0.08))
+                                .cornerRadius(8)
+                        }
+                        .padding(.top, 4)
+                    }
                 }
                 Spacer()
             } else {
@@ -162,6 +181,7 @@ struct GifPickerView: View {
     func fetchGifs(from urlString: String) {
         guard let url = URL(string: urlString) else { return }
         Task { @MainActor in
+            fetchError = nil
             do {
                 // 15s request timeout so a flaky Giphy call can't leave the
                 // picker stuck on a spinner indefinitely.
@@ -171,6 +191,7 @@ struct GifPickerView: View {
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let dataArray = json["data"] as? [[String: Any]] else {
                     isLoading = false
+                    fetchError = "couldn't load GIFs. try again in a bit."
                     return
                 }
                 gifs = dataArray.compactMap { item in
@@ -201,6 +222,7 @@ struct GifPickerView: View {
                 isLoading = false
             } catch {
                 isLoading = false
+                fetchError = "couldn't load GIFs — check your connection."
             }
         }
     }

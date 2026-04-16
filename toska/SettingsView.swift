@@ -27,6 +27,9 @@ struct SettingsView: View {
     @State private var saveTask: Task<Void, Never>? = nil
     @State private var showChangeEmail = false
     @State private var showChangePassword = false
+    // Surfaced when a settings save fails so the user knows their toggle
+    // didn't actually persist (otherwise the toggle silently snaps back).
+    @State private var saveErrorBanner: String? = nil
     
     var body: some View {
         ZStack {
@@ -49,9 +52,25 @@ struct SettingsView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 
+                if let banner = saveErrorBanner {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 10))
+                        Text(banner)
+                            .font(.system(size: 11))
+                        Spacer()
+                    }
+                    .foregroundColor(Color(hex: "c45c5c"))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(hex: "c45c5c").opacity(0.06))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
-                        
+
                         // MARK: - Privacy
                         settingsGroup {
                             groupHeader("privacy")
@@ -348,7 +367,19 @@ struct SettingsView: View {
                         ])
                     } catch {
                         print("⚠️ saveSettings failed: \(error)")
+                        // Tell the user their change didn't persist before
+                        // we re-pull the server state and visually revert
+                        // their toggle. Without this, the toggle just snaps
+                        // back with no explanation.
+                        saveErrorBanner = "couldn't save — check your connection. your last change didn't stick."
                         loadSettings()
+                        // Auto-clear after a few seconds so the banner doesn't
+                        // linger forever.
+                        Task {
+                            try? await Task.sleep(nanoseconds: 4_000_000_000)
+                            guard !Task.isCancelled else { return }
+                            saveErrorBanner = nil
+                        }
                     }
                 }    }
     

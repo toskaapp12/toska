@@ -123,7 +123,7 @@ struct PasswordResetView: View {
                 Task { @MainActor in
                     isLoading = false
                     if let error = error {
-                        errorMessage = error.localizedDescription
+                        errorMessage = friendlyAuthErrorMessage(error)
                     } else {
                         isSent = true
                     }

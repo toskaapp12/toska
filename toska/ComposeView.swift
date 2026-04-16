@@ -86,7 +86,11 @@ struct ComposeView: View {
                 if showRateLimitWarning {
                     warningBanner(icon: "clock", text: "slow down. the feelings will still be there in 30 seconds.", color: "c49a6c")
                 }
-                if showOfflineWarning {
+                // Show the offline warning whenever the network is actually
+                // down, not only after a failed post tap. Reading the
+                // @Observable singleton inside body creates a tracked
+                // dependency so this updates the moment connectivity flips.
+                if showOfflineWarning || !NetworkMonitor.shared.isConnected {
                     warningBanner(icon: "wifi.slash", text: "youre offline. the words will keep.", color: "c45c5c")
                 }
                 if !postError.isEmpty {

@@ -119,7 +119,11 @@ service cloud.firestore {
         // following subcollection, not by reading the target's followers
         // list, so this restriction is safe.
         allow read: if isOwner(userId);
-        allow create: if isAuth() && request.auth.uid == followerId;
+        // Block enforcement on follow: a user the target has blocked can't
+        // add themselves as a follower. Without this, blocked users could
+        // still bump someone's followerCount and appear in their notifications.
+        allow create: if isAuth() && request.auth.uid == followerId
+          && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid));
         allow update: if isAuth() && request.auth.uid == followerId;
         allow delete: if isAuth() && (request.auth.uid == followerId || isOwner(userId));
       }
@@ -170,7 +174,18 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt', 'likeCount', 'repostCount', 'replyCount'])
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
-        && request.resource.data.replyCount == 0;
+        && request.resource.data.replyCount == 0
+        // Block enforcement on reposts: if this is a repost of someone
+        // else's content (isRepost == true with an originalAuthorId), the
+        // original author can't have blocked the reposter. For original
+        // posts (no isRepost or no originalAuthorId), the check short-
+        // circuits via the ternary so it doesn't add a get() cost.
+        && (
+          !(request.resource.data.get('isRepost', false) == true
+            && request.resource.data.get('originalAuthorId', '') is string
+            && request.resource.data.originalAuthorId.size() > 0)
+          || !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+        );
       allow update: if isAuth()
         && (resource.data.authorId == request.auth.uid
             || onlyCountsChanged());

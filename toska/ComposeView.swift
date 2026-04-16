@@ -44,9 +44,24 @@ struct ComposeView: View {
     }
 
     var activeCharLimit: Int { isLetter ? letterCharLimit : charLimit }
-    var charRemaining: Int { activeCharLimit - text.count }
+    /// The Firestore rule validates `text.size()` which counts UTF-16 code
+    /// units, while Swift's `text.count` counts grapheme clusters. For plain
+    /// text these agree; for emoji-heavy text (especially ZWJ sequences),
+    /// UTF-16 count > grapheme count, and a post that looks under the limit
+    /// to the user can be rejected by the server. Use the larger of the two
+    /// counts so the user-visible cap matches the server's cap and the post
+    /// never silently fails validation.
+    var effectiveCharCount: Int { max(text.count, text.utf16.count) }
+    var charRemaining: Int { activeCharLimit - effectiveCharCount }
     var isNearLimit: Bool { charRemaining < 50 }
-    var canPost: Bool { (!trimmedText.isEmpty || selectedGifUrl != nil) && !isPosting }
+    /// Disabled when offline so the user gets visible feedback instead of
+    /// the silent Firestore-offline-queue behavior. The offline banner
+    /// already explains the state; the inert button reinforces it.
+    var canPost: Bool {
+        (!trimmedText.isEmpty || selectedGifUrl != nil)
+            && !isPosting
+            && NetworkMonitor.shared.isConnected
+    }
 
     var composePlaceholder: String {
             if isLetter { return "dear you..." }
@@ -129,7 +144,19 @@ struct ComposeView: View {
                                                             .frame(minHeight: 200)
                                                             .focused($textFocused)
                                 .onChange(of: text) { _, newValue in
-                                    if newValue.count > activeCharLimit { text = String(newValue.prefix(activeCharLimit)) }
+                                    // Truncate using the same metric the
+                                    // Firestore rule uses (UTF-16 length)
+                                    // so heavy-emoji posts don't silently
+                                    // fail the server-side check.
+                                    if max(newValue.count, newValue.utf16.count) > activeCharLimit {
+                                        var truncated = ""
+                                        for ch in newValue {
+                                            let next = truncated + String(ch)
+                                            if max(next.count, next.utf16.count) > activeCharLimit { break }
+                                            truncated = next
+                                        }
+                                        text = truncated
+                                    }
                                     if showRateLimitWarning { showRateLimitWarning = false }
                                     if showOfflineWarning { showOfflineWarning = false }
                                     if !postError.isEmpty { postError = "" }

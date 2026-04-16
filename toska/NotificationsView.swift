@@ -167,7 +167,7 @@ struct NotificationsView: View {
             markAsReadTask?.cancel()
             markAsReadTask = nil
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("DismissAllSheets"))) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showConversation = false
                 }
         .navigationDestination(isPresented: $showPost) {

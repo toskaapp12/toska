@@ -57,6 +57,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
     }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // Without this handler, push registration failures vanish silently.
+        // Most causes are environmental (no Apple Developer entitlement on
+        // the build, simulator without push capability, network issues at
+        // app start) — we want to see them in Crashlytics so a regression
+        // in entitlements or APNS config surfaces fast.
+        print("⚠️ APNS registration failed: \(error)")
+        Telemetry.recordError(error, context: "AppDelegate.didFailToRegisterForRemoteNotifications")
+    }
 }
 
 @main

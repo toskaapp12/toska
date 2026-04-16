@@ -579,6 +579,11 @@ struct ComposeView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        // Tab switches post .dismissAllSheets — without this observer, the
+        // GIF picker sheet stays visible behind the new tab.
+        .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
+            showGifPicker = false
+        }
     }
 
     // MARK: - Warning Banner

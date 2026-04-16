@@ -151,8 +151,19 @@ struct MessagesListView: View {
             .whereField("participants", arrayContains: uid)
             .order(by: "lastMessageAt", descending: true)
             .limit(to: 30)
-            .addSnapshotListener { snapshot, _ in
+            .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    if let error = error {
+                        // Without surfacing this, a permission-denied or
+                        // network drop leaves the user staring at the
+                        // spinner forever. At minimum log it; the empty-
+                        // state UI is shown when documents come back nil
+                        // so the user isn't completely stuck.
+                        print("⚠️ MessagesListView listener error: \(error)")
+                        Telemetry.recordError(error, context: "MessagesListView.listener")
+                        isLoading = false
+                        return
+                    }
                     guard let documents = snapshot?.documents else {
                         isLoading = false
                         return

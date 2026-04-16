@@ -224,6 +224,16 @@ struct OtherProfileView: View {
         }
         .onAppear {
             guard !hasFetchedInitial else { return }
+            // Defensive: malformed deep links can hand us an empty userId,
+            // and `whereField("authorId", isEqualTo: "")` would return any
+            // post with an empty/missing authorId — definitely not what we
+            // want. Bail before any fetch fires; the view will show its
+            // empty state.
+            guard !userId.isEmpty else {
+                hasFetchedInitial = true
+                dismiss()
+                return
+            }
             hasFetchedInitial = true
             checkIfBlocked()
             loadProfile()

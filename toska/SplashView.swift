@@ -251,6 +251,16 @@ struct SplashView: View {
             } catch {
                 Telemetry.recordError(error, context: "SplashView.signInWithGoogle")
                 errorMessage = friendlyAuthErrorMessage(error)
+                // Rollback: if Google credentialed us into Firebase Auth but
+                // the user-doc write failed, delete the orphaned auth account.
+                // Fall back to signOut if delete fails.
+                if Auth.auth().currentUser != nil {
+                    do {
+                        try await Auth.auth().currentUser?.delete()
+                    } catch {
+                        try? Auth.auth().signOut()
+                    }
+                }
             }
             isSigningIn = false
         }

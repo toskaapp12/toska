@@ -138,7 +138,18 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
         } catch {
             // If anything in the do block throws — Firebase sign-in, Firestore
             // read, setData — we land here and always resume the continuation.
-            try? Auth.auth().signOut()
+            //
+            // Rollback: if Apple credentialed us into Firebase Auth but the
+            // user-doc write failed, we'd otherwise leave an orphaned auth
+            // account. Try to delete it (we just signed in so there's no
+            // requires-recent-login risk). Fall back to signOut if delete
+            // fails for any reason — at minimum the device session is cleared.
+            do {
+                try await Auth.auth().currentUser?.delete()
+            } catch {
+                try? Auth.auth().signOut()
+            }
+            Telemetry.recordError(error, context: "AppleSignIn.userDocCreate")
             continuation?.resume(throwing: error)
         }
 

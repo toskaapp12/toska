@@ -913,7 +913,13 @@ struct EditReplyView: View {
     var onSave: () -> Void
     @Environment(\.dismiss) var dismiss
     @State private var isSaving = false
-    
+    // Safety check state — mirrors the create-reply flow in PostDetailView.
+    // Without these, a user could initially write a clean reply, then edit
+    // it later to add personal info or crisis content with no validation.
+    @State private var showNameWarning = false
+    @State private var showGentleCheck = false
+    @State private var gentleCheckLevel: CrisisLevel = .soft
+
     var body: some View {
         ZStack {
             Color(hex: "f0f1f3").ignoresSafeArea()
@@ -925,7 +931,7 @@ struct EditReplyView: View {
                     Spacer()
                     Text("edit reply").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
-                    Button { saveReply() } label: {
+                    Button { attemptSave() } label: {
                         Text("save").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving ? Color.toskaDivider : Color.toskaBlue)
@@ -934,9 +940,9 @@ struct EditReplyView: View {
                     .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
-                
+
                 Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
-                
+
                 ZStack(alignment: .topLeading) {
                     if replyText.isEmpty {
                         Text("say what you feel...")
@@ -952,12 +958,51 @@ struct EditReplyView: View {
                         }
                 }
                 .frame(maxHeight: .infinity)
-                
+
                 Spacer()
             }
         }
+        .alert("keep it anonymous", isPresented: $showNameWarning) {
+            Button("edit") {}
+            Button("save anyway", role: .destructive) {
+                if let level = crisisCheckLevelRespectingSetting(for: replyText) {
+                    gentleCheckLevel = level
+                    showGentleCheck = true
+                } else {
+                    saveReply()
+                }
+            }
+        } message: {
+            Text("your reply may include a name or identifying info. toska is anonymous for everyone.")
+        }
+        .overlay {
+            if showGentleCheck {
+                CrisisCheckInView(
+                    isPresented: $showGentleCheck,
+                    level: gentleCheckLevel,
+                    onProceed: { saveReply() }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showGentleCheck)
     }
-    
+
+    /// Validates name and crisis-content before letting saveReply proceed.
+    /// Without this, an edit can quietly inject content that the original
+    /// reply-create flow would have intercepted.
+    func attemptSave() {
+        let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if containsNameOrIdentifyingInfo(trimmed) { showNameWarning = true; return }
+        if let level = crisisCheckLevelRespectingSetting(for: trimmed) {
+            gentleCheckLevel = level
+            showGentleCheck = true
+            return
+        }
+        saveReply()
+    }
+
     func saveReply() {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !postId.isEmpty, !replyId.isEmpty else { return }

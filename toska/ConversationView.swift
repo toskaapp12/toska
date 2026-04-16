@@ -27,6 +27,15 @@ struct ConversationView: View {
     @State private var metadataListener: ListenerRegistration? = nil
     @State private var isLoading = true
     @State private var showBlockAlert = false
+    // Safety-check state for outgoing messages — mirrors the pattern used
+    // in ComposeView, PostDetailView reply, FeelingCircleView. Previously
+    // sendMessage went straight to Firestore with zero name/identifying-info
+    // or crisis-content validation; conversations were the only text input
+    // surface lacking the safety chain.
+    @State private var showMessageNameWarning = false
+    @State private var showMessageGentleCheck = false
+    @State private var pendingMessageText = ""
+    @State private var messageGentleCheckLevel: CrisisLevel = .soft
     @State private var showReportAlert = false
     @State private var isBlockedEitherDirection = false
     @State private var otherIsTyping = false
@@ -373,6 +382,30 @@ struct ConversationView: View {
         } message: {
             Text("we hear you. well look into it.")
         }
+        .alert("keep it anonymous", isPresented: $showMessageNameWarning) {
+            Button("edit") {}
+            Button("send anyway", role: .destructive) {
+                if let level = crisisCheckLevelRespectingSetting(for: pendingMessageText) {
+                    messageGentleCheckLevel = level
+                    showMessageGentleCheck = true
+                } else {
+                    performSendChecked(pendingMessageText)
+                }
+            }
+        } message: {
+            Text("your message may include a name or identifying info. toska is anonymous for everyone.")
+        }
+        .overlay {
+            if showMessageGentleCheck {
+                CrisisCheckInView(
+                    isPresented: $showMessageGentleCheck,
+                    level: messageGentleCheckLevel,
+                    onProceed: { performSendChecked(pendingMessageText) }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showMessageGentleCheck)
     }
 
     // MARK: - Block Check
@@ -550,8 +583,32 @@ struct ConversationView: View {
         guard !isSending else { return }
         let trimmed = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, myMessageCount < messageLimit else { return }
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard Auth.auth().currentUser?.uid != nil else { return }
         guard !isBlockedEitherDirection else { dismiss(); return }
+
+        // Safety chain: name-check first (least disruptive), then crisis-
+        // check (more disruptive). Match the pattern used in ComposeView,
+        // PostDetailView reply, FeelingCircleView. Previously messages
+        // were the only text input surface that bypassed these gates.
+        if containsNameOrIdentifyingInfo(trimmed) {
+            pendingMessageText = trimmed
+            showMessageNameWarning = true
+            return
+        }
+        if let level = crisisCheckLevelRespectingSetting(for: trimmed) {
+            pendingMessageText = trimmed
+            messageGentleCheckLevel = level
+            showMessageGentleCheck = true
+            return
+        }
+        performSendChecked(trimmed)
+    }
+
+    /// Called after both safety checks pass (or after the user explicitly
+    /// confirms in the warning dialogs). Captures uid here so the original
+    /// guard chain can be skipped on the post-confirmation path.
+    private func performSendChecked(_ trimmed: String) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
         isSending = true
         performSend(trimmed: trimmed, uid: uid)
     }

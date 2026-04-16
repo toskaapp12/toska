@@ -1,0 +1,28 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad/
+*.moved-aside
+
+# Swift Package Manager
+.swiftpm/
+Package.resolved
+
+# CocoaPods (if used later)
+Pods/
+
+# Node (Cloud Functions)
+node_modules/
+functions/node_modules/
+
+# Claude Code session data
+.claude/
+
+# macOS
+.DS_Store
+
+# Local environment
+*.local
+.env

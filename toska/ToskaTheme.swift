@@ -1,6 +1,8 @@
 import SwiftUI
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
+import FirebaseAnalytics
+import FirebaseCrashlytics
 
 #if !DEBUG
 func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {}
@@ -173,8 +175,7 @@ enum Telemetry {
     /// Generic event firer. Prefer the named helpers below for type-safety.
     static func event(_ name: String, parameters: [String: Any] = [:]) {
         guard isOptedIn else { return }
-        // TODO: when FirebaseAnalytics SPM dependency is added, replace
-        // the print with: Analytics.logEvent(name, parameters: parameters)
+        Analytics.logEvent(name, parameters: parameters.isEmpty ? nil : parameters)
         #if DEBUG
         print("📊 \(name) \(parameters)")
         #endif
@@ -184,10 +185,10 @@ enum Telemetry {
     /// Use this in catch blocks where we'd otherwise just print a warning.
     static func recordError(_ error: Error, context: String? = nil) {
         guard isOptedIn else { return }
-        // TODO: when FirebaseCrashlytics SPM dependency is added, replace
-        // the print with:
-        //   if let ctx = context { Crashlytics.crashlytics().setCustomValue(ctx, forKey: "context") }
-        //   Crashlytics.crashlytics().record(error: error)
+        if let ctx = context {
+            Crashlytics.crashlytics().setCustomValue(ctx, forKey: "context")
+        }
+        Crashlytics.crashlytics().record(error: error)
         #if DEBUG
         let suffix = context.map { " [\($0)]" } ?? ""
         print("💥 non-fatal\(suffix): \(error)")

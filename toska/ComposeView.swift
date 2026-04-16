@@ -1,8 +1,634 @@
-//
-//  ComposeView.swift
-//  toska
-//
-//  Created by Tess Salinaro on 3/17/26.
-//
+import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
 
-import Foundation
+@MainActor
+struct ComposeView: View {
+    @Environment(\.dismiss) var dismiss
+    var initialText: String = ""
+    var initialTag: String? = nil
+    var onPostSuccess: (() -> Void)? = nil
+    @State private var text = ""
+    @State private var selectedTag: String? = nil
+    @State private var showTagPicker = false
+    @State private var isPosting = false
+    @State private var showGentleCheck = false
+    // Severity tier chosen when the check-in is opened, so the modal can
+    // adapt its copy/behavior. Explicit tier shows even if gentleCheckIn is off.
+    @State private var gentleCheckLevel: CrisisLevel = .soft
+    @State private var showNameWarning = false
+    @State private var userHandle = "anonymous"
+    @State private var showRateLimitWarning = false
+    @State private var showOfflineWarning = false
+    @State private var postError = ""
+    @State private var selectedGifUrl: String? = nil
+    @State private var showGifPicker = false
+    @State private var expiresAtMidnight = false
+    @State private var isWhisper = false
+    @State private var isLetter = false
+    private let letterCharLimit = 2000
+    @State private var offlineMonitorTask: Task<Void, Never>? = nil
+    @State private var focusTask: Task<Void, Never>? = nil
+      @FocusState private var textFocused: Bool
+
+    private let charLimit = 500
+    let tags = sharedTags
+
+    var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var activeCharLimit: Int { isLetter ? letterCharLimit : charLimit }
+    var charRemaining: Int { activeCharLimit - text.count }
+    var isNearLimit: Bool { charRemaining < 50 }
+    var canPost: Bool { (!trimmedText.isEmpty || selectedGifUrl != nil) && !isPosting }
+
+    var composePlaceholder: String {
+            if isLetter { return "dear you..." }
+            if isWhisper { return "say it quietly..." }
+            let tod = timeOfDayLabel()
+            if tod == "tonight" { return "whats keeping you up..." }
+            else if tod == "this morning" { return "how did you sleep..." }
+            else if tod == "this afternoon" { return "say the thing you cant say out loud..." }
+            else { return "how are you. honestly..." }
+        }
+
+    var body: some View {
+        ZStack {
+            LateNightTheme.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // MARK: - Top bar
+                HStack {
+                    Button { dismiss() } label: {
+                        Text("cancel")
+                            .font(.system(size: 14))
+                            .foregroundColor(LateNightTheme.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Button { attemptPost() } label: {
+                        Text(isPosting ? "posting..." : "post")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                            .background(canPost ? Color(hex: "9198a8") : Color(hex: "9198a8").opacity(0.4))
+                            .clipShape(Capsule())
+                    }
+                    .disabled(!canPost)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
+                // MARK: - Warning banners
+                if showRateLimitWarning {
+                    warningBanner(icon: "clock", text: "slow down. the feelings will still be there in 30 seconds.", color: "c49a6c")
+                }
+                if showOfflineWarning {
+                    warningBanner(icon: "wifi.slash", text: "youre offline. the words will keep.", color: "c45c5c")
+                }
+                if !postError.isEmpty {
+                    warningBanner(icon: "exclamationmark.circle", text: postError, color: "c45c5c")
+                }
+
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+
+                // MARK: - Compose area
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Spacer().frame(height: 8)
+
+                        // Text input
+                        ZStack(alignment: .topLeading) {
+                            if text.isEmpty {
+                                Text(composePlaceholder)
+                                    .font(.custom("Georgia", size: 18))
+                                    .foregroundColor(LateNightTheme.isLateNight ? Color(hex: "3a3835") : Color(hex: "c0c3ca"))
+                                    .padding(.horizontal, 16)
+                                    .padding(.top, 12)
+                            }
+
+                            TextEditor(text: $text)
+                                                            .font(.custom("Georgia", size: 18))
+                                                            .foregroundColor(LateNightTheme.primaryText)
+                                                            .lineSpacing(5)
+                                                            .scrollContentBackground(.hidden)
+                                                            .padding(.horizontal, 12)
+                                                            .padding(.top, 4)
+                                                            .frame(minHeight: 200)
+                                                            .focused($textFocused)
+                                .onChange(of: text) { _, newValue in
+                                    if newValue.count > activeCharLimit { text = String(newValue.prefix(activeCharLimit)) }
+                                    if showRateLimitWarning { showRateLimitWarning = false }
+                                    if showOfflineWarning { showOfflineWarning = false }
+                                    if !postError.isEmpty { postError = "" }
+                                }
+                        }
+
+                        // Selected GIF preview
+                        if let gifUrl = selectedGifUrl {
+                            ZStack(alignment: .topTrailing) {
+                                AsyncImage(url: URL(string: gifUrl)) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(maxHeight: 180)
+                                            .cornerRadius(10)
+                                    default:
+                                        LateNightTheme.inputBackground
+                                            .frame(height: 120)
+                                            .cornerRadius(10)
+                                    }
+                                }
+
+                                Button {
+                                    withAnimation { selectedGifUrl = nil }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(LateNightTheme.secondaryText)
+                                        .background(Circle().fill(LateNightTheme.cardBackground))
+                                }
+                                .offset(x: -6, y: 6)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                        }
+
+                        // Selected tag pill
+                        if let tag = selectedTag {
+                            HStack(spacing: 6) {
+                                let tagData = tags.first(where: { $0.name == tag })
+                                Image(systemName: tagData?.icon ?? "tag")
+                                    .font(.system(size: 10))
+                                Text(tag)
+                                    .font(.system(size: 11, weight: .medium))
+                                Button { withAnimation { selectedTag = nil } } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color(hex: tagData?.colorHex ?? "9198a8").opacity(0.4))
+                                }
+                            }
+                            .foregroundColor(Color(hex: tags.first(where: { $0.name == tag })?.colorHex ?? "9198a8"))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(hex: tags.first(where: { $0.name == tag })?.colorHex ?? "9198a8").opacity(0.08))
+                            .cornerRadius(16)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
+                        }
+                    }
+                }
+
+                // Letter mode banner
+                if isLetter {
+                    HStack(spacing: 6) {
+                        Image(systemName: "envelope.open")
+                            .font(.system(size: 11))
+                        Text("writing a letter · up to 2,000 characters")
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Button { isLetter = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(Color(hex: "c9a97a").opacity(0.5))
+                        }
+                    }
+                    .foregroundColor(Color(hex: "c9a97a"))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "c9a97a").opacity(0.06))
+                }
+
+                // Whisper mode banner
+                if isWhisper {
+                    HStack(spacing: 6) {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 11))
+                        Text("whisper · disappears in 1 hour")
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Button { isWhisper = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
+                        }
+                    }
+                    .foregroundColor(Color(hex: "c47a8a"))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "c47a8a").opacity(0.06))
+                }
+
+                // Midnight mode banner
+                if expiresAtMidnight {
+                    HStack(spacing: 6) {
+                        Image(systemName: "moon.stars")
+                            .font(.system(size: 11))
+                        Text("this post disappears at midnight")
+                            .font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Button { expiresAtMidnight = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
+                        }
+                    }
+                    .foregroundColor(Color(hex: "8b7ec8"))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "8b7ec8").opacity(0.06))
+                }
+
+                // MARK: - Tag picker (expandable)
+                if showTagPicker {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("how does this feel")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(LateNightTheme.secondaryText)
+                            .tracking(0.5)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 10)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(tags, id: \.name) { tag in
+                                    Button {
+                                        selectedTag = tag.name
+                                        withAnimation(.easeOut(duration: 0.2)) { showTagPicker = false }
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: tag.icon)
+                                                .font(.system(size: 10))
+                                            Text(tag.name)
+                                                .font(.system(size: 11, weight: .medium))
+                                        }
+                                        .foregroundColor(selectedTag == tag.name ? .white : Color(hex: tag.colorHex))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(selectedTag == tag.name ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.08))
+                                        .clipShape(Capsule())
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        .padding(.bottom, 10)
+                    }
+                    .background(LateNightTheme.cardBackground)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // MARK: - Bottom toolbar
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+
+                HStack(spacing: 20) {
+                    // Tag button
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
+                                        } label: {
+                                            Image(systemName: showTagPicker ? "tag.fill" : "tag")
+                                                .font(.system(size: 16, weight: .light))
+                                                .foregroundColor(showTagPicker ? Color(hex: "9198a8") : LateNightTheme.secondaryText)
+                                        }
+                                        .accessibilityLabel("Tag")
+
+                    // Whisper toggle (1 hour)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isWhisper.toggle()
+                            if isWhisper { expiresAtMidnight = false }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isWhisper ? "eye.slash.fill" : "eye.slash")
+                                .font(.system(size: 13, weight: .light))
+                            if isWhisper {
+                                Text("1hr")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                        }
+                        .foregroundColor(isWhisper ? Color(hex: "c47a8a") : LateNightTheme.secondaryText)
+                                            }
+                                            .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
+
+                    // Midnight toggle
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            expiresAtMidnight.toggle()
+                            if expiresAtMidnight { isWhisper = false }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: expiresAtMidnight ? "moon.fill" : "moon")
+                                .font(.system(size: 13, weight: .light))
+                            if expiresAtMidnight {
+                                Text("midnight")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                        }
+                        .foregroundColor(expiresAtMidnight ? Color(hex: "8b7ec8") : LateNightTheme.secondaryText)
+                                            }
+                                            .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
+
+                    // Letter mode toggle
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
+                    } label: {
+                        Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
+                            .font(.system(size: 14, weight: .light))
+                            .foregroundColor(isLetter ? Color(hex: "c9a97a") : LateNightTheme.secondaryText)
+                                                }
+                                                .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
+
+                    // GIF button
+                                        Button { showGifPicker = true } label: {
+                                            Text("GIF")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(selectedGifUrl != nil ? Color(hex: "9198a8") : LateNightTheme.secondaryText)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 3)
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 4)
+                                                        .stroke(selectedGifUrl != nil ? Color(hex: "9198a8") : LateNightTheme.tertiaryText, lineWidth: 1)
+                                                )
+                                        }
+                                        .accessibilityLabel("Add GIF")
+
+                    Spacer()
+
+                    // Character counter
+                    if text.count > 0 {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .stroke(LateNightTheme.divider, lineWidth: 2)
+                                    .frame(width: 24, height: 24)
+                                Circle()
+                                    .trim(from: 0, to: CGFloat(text.count) / CGFloat(activeCharLimit))
+                                    .stroke(
+                                        isNearLimit ? Color(hex: "c45c5c") : Color(hex: "9198a8"),
+                                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                                    )
+                                    .frame(width: 24, height: 24)
+                                    .rotationEffect(.degrees(-90))
+                            }
+
+                            if isNearLimit {
+                                Text("\(charRemaining)")
+                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                    .foregroundColor(charRemaining < 0 ? Color(hex: "c45c5c") : LateNightTheme.secondaryText)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(LateNightTheme.cardBackground)
+            }
+
+            // MARK: - Gentle check dialog
+            if showGentleCheck {
+                CrisisCheckInView(
+                    isPresented: $showGentleCheck,
+                    level: gentleCheckLevel,
+                    onProceed: { postNow() }
+                )
+            }
+
+            // MARK: - Name warning dialog
+            if showNameWarning {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                    .onTapGesture { showNameWarning = false }
+
+                VStack(spacing: 16) {
+                    Image(systemName: "theatermasks")
+                        .font(.system(size: 32))
+                        .foregroundColor(Color(hex: "c9a97a"))
+
+                    Text("keep it anonymous")
+                        .font(.custom("Georgia-Italic", size: 18))
+                        .foregroundColor(LateNightTheme.handleText)
+
+                    Text("your post might include a name or identifying info.\n\neveryone here is anonymous. including the people in your story. thats what makes it safe.")
+                        .font(.system(size: 12))
+                        .foregroundColor(LateNightTheme.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+
+                    VStack(spacing: 8) {
+                        Button { showNameWarning = false } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "pencil").font(.system(size: 13))
+                                Text("edit my post").font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Color(hex: "9198a8"))
+                            .cornerRadius(12)
+                        }
+
+                        Button {
+                            showNameWarning = false
+                            if let level = crisisCheckLevelRespectingSetting(for: text) {
+                                gentleCheckLevel = level
+                                showGentleCheck = true
+                            } else {
+                                postNow()
+                            }
+                        } label: {
+                            Text("post anyway")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(LateNightTheme.secondaryText)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(LateNightTheme.divider.opacity(0.5))
+                                .cornerRadius(12)
+                        }
+                    }
+                    .padding(.top, 4)
+
+                    Text("try \"he\", \"she\", \"they\", or just \"you\"")
+                        .font(.system(size: 9))
+                        .foregroundColor(LateNightTheme.tertiaryText)
+                        .padding(.top, 2)
+                }
+                .padding(28)
+                .background(LateNightTheme.cardBackground)
+                .cornerRadius(20)
+                .shadow(color: .black.opacity(0.12), radius: 24, y: 12)
+                .padding(.horizontal, 28)
+            }
+        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(false)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+        )
+        .onAppear {
+                    HapticManager.play(.compose)
+                    loadHandle()
+                    if text.isEmpty && !initialText.isEmpty {
+                        text = initialText
+                    }
+                    if selectedTag == nil, let tag = initialTag {
+                        selectedTag = tag
+                    }
+                    focusTask?.cancel()
+                    focusTask = Task {
+                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        guard !Task.isCancelled else { return }
+                        textFocused = true
+                    }
+                }
+                .onDisappear {
+                    offlineMonitorTask?.cancel()
+                    offlineMonitorTask = nil
+                    focusTask?.cancel()
+                    focusTask = nil
+                }
+        .sheet(isPresented: $showGifPicker) {
+            GifPickerView { url in
+                selectedGifUrl = url
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    // MARK: - Warning Banner
+
+    func warningBanner(icon: String, text: String, color: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 10))
+            Text(text).font(.system(size: 11))
+        }
+        .foregroundColor(Color(hex: color))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color(hex: color).opacity(0.08))
+    }
+
+    // MARK: - Functions
+
+    func loadHandle() {
+        userHandle = UserHandleCache.shared.handle
+    }
+
+    func attemptPost() {
+        guard !isPosting else { return }
+        guard (!trimmedText.isEmpty || selectedGifUrl != nil) else { return }
+        guard NetworkMonitor.shared.isConnected else {
+                    showOfflineWarning = true
+                    offlineMonitorTask?.cancel()
+                    offlineMonitorTask = Task {
+                        while !NetworkMonitor.shared.isConnected {
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                            guard !Task.isCancelled else { return }
+                        }
+                        showOfflineWarning = false
+                    }
+                    return
+                }
+
+#if DEBUG
+       let isUITesting = ProcessInfo.processInfo.arguments.contains("UI_TESTING")
+       #else
+       let isUITesting = false
+       #endif
+       if !isUITesting,
+          let last = RateLimiter.shared.lastPostTime, Date().timeIntervalSince(last) < 30 {
+
+
+            showRateLimitWarning = true
+            Task {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                showRateLimitWarning = false
+            }
+            return
+        }
+        if !trimmedText.isEmpty && containsNameOrIdentifyingInfo(text) { showNameWarning = true; return }
+        if !trimmedText.isEmpty, let level = crisisCheckLevelRespectingSetting(for: text) {
+            gentleCheckLevel = level
+            showGentleCheck = true
+        } else {
+            postNow()
+        }
+    }
+
+    func postNow() {
+        guard !isPosting else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        HapticManager.play(.send)
+        isPosting = true
+        postError = ""
+        let db = Firestore.firestore()
+        let allowSharing = UserHandleCache.shared.allowSharing
+
+        Task { @MainActor in
+            guard self.isPosting else { return }
+
+            // Resolve handle — fall back to Firestore if cache hasn't loaded yet
+            let freshHandle = UserHandleCache.shared.handle
+            let resolvedHandle: String
+            if freshHandle == "anonymous" {
+                let snap = try? await db.collection("users").document(uid).getDocumentAsync()
+                resolvedHandle = snap?.data()?["handle"] as? String ?? "anonymous"
+            } else {
+                resolvedHandle = freshHandle
+            }
+
+            var postData: [String: Any] = [
+                            "authorId": uid,
+                            "authorHandle": resolvedHandle,
+                            "text": trimmedText,
+                            "likeCount": 0,
+                            "repostCount": 0,
+                            "replyCount": 0,
+                            "isRepost": false,
+                            "isShareable": allowSharing,
+                            "createdAt": FieldValue.serverTimestamp()
+                        ]
+            if let tag = selectedTag { postData["tag"] = tag }
+            if let gifUrl = selectedGifUrl { postData["gifUrl"] = gifUrl }
+            if isLetter { postData["isLetter"] = true }
+            if isWhisper && !expiresAtMidnight {
+                let oneHourFromNow = Date().addingTimeInterval(3600)
+                postData["expiresAt"] = Timestamp(date: oneHourFromNow)
+                postData["isWhisper"] = true
+            }
+            if expiresAtMidnight && !isWhisper {
+                let calendar = Calendar.current
+                var midnight = calendar.startOfDay(for: Date())
+                midnight = calendar.date(byAdding: .day, value: 1, to: midnight) ?? midnight
+                postData["expiresAt"] = Timestamp(date: midnight)
+                postData["isMidnightPost"] = true
+            }
+
+            db.collection("posts").addDocument(data: postData) { error in
+                Task { @MainActor in
+                    self.isPosting = false
+                    if error != nil {
+                        self.postError = "couldnt post. try again. the feeling isnt going anywhere."
+                    } else {
+                        RateLimiter.shared.lastPostTime = Date()
+                        NotificationCenter.default.post(name: NSNotification.Name("NewPostCreated"), object: nil)
+                        if let onPostSuccess = self.onPostSuccess {
+                            onPostSuccess()
+                        } else {
+                            self.dismiss()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

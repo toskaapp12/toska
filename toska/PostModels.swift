@@ -77,7 +77,7 @@ struct RankedPost: Identifiable {
     let authorId: String
 }
 
-struct NotificationItem: Identifiable {
+struct NotificationItem: Identifiable, Equatable {
     let id: String
     let icon: String
     let displayText: String

@@ -173,8 +173,10 @@ struct AnniversaryCardView: View {
                     level: gentleCheckLevel,
                     onProceed: { saveReflection() }
                 )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
+        .animation(.easeOut(duration: 0.2), value: showGentleCheck)
     }
 
     // MARK: - Functions

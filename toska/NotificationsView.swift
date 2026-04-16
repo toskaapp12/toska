@@ -21,12 +21,25 @@ struct NotificationsView: View {
     @State private var selectedConversation: (id: String, handle: String, userId: String)? = nil
     @State private var showConversation = false
 
-    var todayNotifs: [NotificationItem] {
-        notifications.filter { Calendar.current.isDateInToday($0.createdAt) }
-    }
+    // Cached splits — recomputed only when `notifications` changes (see
+    // .onChange below) instead of on every body render. Saves a pair of
+    // 50-item filters per redraw, which adds up while scrolling.
+    @State private var todayNotifs: [NotificationItem] = []
+    @State private var earlierNotifs: [NotificationItem] = []
 
-    var earlierNotifs: [NotificationItem] {
-        notifications.filter { !Calendar.current.isDateInToday($0.createdAt) }
+    private func recomputeNotificationGroups() {
+        let calendar = Calendar.current
+        var today: [NotificationItem] = []
+        var earlier: [NotificationItem] = []
+        for notif in notifications {
+            if calendar.isDateInToday(notif.createdAt) {
+                today.append(notif)
+            } else {
+                earlier.append(notif)
+            }
+        }
+        todayNotifs = today
+        earlierNotifs = earlier
     }
 
     var body: some View {
@@ -115,9 +128,13 @@ struct NotificationsView: View {
             } else {
                 UIApplication.shared.applicationIconBadgeNumber = 0
             }
+            recomputeNotificationGroups()
             if let last = lastFetchTime, Date().timeIntervalSince(last) < 30 { return }
             lastFetchTime = Date()
             loadNotifications()
+        }
+        .onChange(of: notifications) { _, _ in
+            recomputeNotificationGroups()
         }
         .onDisappear {
             markAsReadTask?.cancel()

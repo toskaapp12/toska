@@ -174,8 +174,10 @@ struct PostDetailView: View {
                         level: replyGentleCheckLevel,
                         onProceed: { postReplyNow(pendingReplyText) }
                     )
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
                 }
             }
+            .animation(.easeOut(duration: 0.2), value: showReplyGentleCheck)
             .sheet(isPresented: $showEditSheet) {
                 EditPostView(postId: postId, isLetter: isLetter, currentText: $postText, editText: $editText)
             }
@@ -276,10 +278,11 @@ struct PostDetailView: View {
             if let gifUrl = replyGifUrl, let url = URL(string: gifUrl) {
                 HStack {
                     ZStack(alignment: .topTrailing) {
-                        AsyncImage(url: url) { phase in
+                        AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
                             switch phase {
                             case .success(let image):
                                 image.resizable().aspectRatio(contentMode: .fit).frame(maxHeight: 100).cornerRadius(8)
+                                    .transition(.opacity)
                             default:
                                 Color(hex: "e8eaed").frame(width: 80, height: 60).cornerRadius(8)
                             }
@@ -1036,8 +1039,10 @@ struct EditPostView: View {
                     level: editGentleCheckLevel,
                     onProceed: { saveEdit() }
                 )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
+        .animation(.easeOut(duration: 0.2), value: showGentleCheck)
     }
 
     func attemptSave() {

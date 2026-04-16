@@ -130,7 +130,7 @@ struct ComposeView: View {
                         // Selected GIF preview
                         if let gifUrl = selectedGifUrl {
                             ZStack(alignment: .topTrailing) {
-                                AsyncImage(url: URL(string: gifUrl)) { phase in
+                                AsyncImage(url: URL(string: gifUrl), transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
                                     switch phase {
                                     case .success(let image):
                                         image
@@ -138,6 +138,7 @@ struct ComposeView: View {
                                             .aspectRatio(contentMode: .fit)
                                             .frame(maxHeight: 180)
                                             .cornerRadius(10)
+                                            .transition(.opacity)
                                     default:
                                         LateNightTheme.inputBackground
                                             .frame(height: 120)
@@ -398,6 +399,7 @@ struct ComposeView: View {
                     level: gentleCheckLevel,
                     onProceed: { postNow() }
                 )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
 
             // MARK: - Name warning dialog
@@ -468,6 +470,9 @@ struct ComposeView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(false)
+        // Drives the fade/scale transition on the gentle-check overlay
+        // regardless of which surface (button, tap-outside, etc.) flips it.
+        .animation(.easeOut(duration: 0.2), value: showGentleCheck)
         .simultaneousGesture(
             TapGesture().onEnded {
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -484,7 +489,11 @@ struct ComposeView: View {
                     }
                     focusTask?.cancel()
                     focusTask = Task {
-                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        // Short delay so the focus assignment happens after the
+                        // sheet's presentation animation settles. 150ms feels
+                        // snappier than the previous 300ms while still
+                        // reliably bringing up the keyboard on first appear.
+                        try? await Task.sleep(nanoseconds: 150_000_000)
                         guard !Task.isCancelled else { return }
                         textFocused = true
                     }

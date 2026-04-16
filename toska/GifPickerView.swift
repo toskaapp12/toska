@@ -100,7 +100,7 @@ struct GifPickerView: View {
                                 onSelect(gif.url)
                                 dismiss()
                             } label: {
-                                AsyncImage(url: URL(string: gif.previewUrl)) { phase in
+                                AsyncImage(url: URL(string: gif.previewUrl), transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
                                     switch phase {
                                     case .success(let image):
                                         image
@@ -108,6 +108,7 @@ struct GifPickerView: View {
                                             .aspectRatio(contentMode: .fill)
                                             .frame(height: 120)
                                             .clipped()
+                                            .transition(.opacity)
                                     case .failure:
                                         Color(hex: "e4e6ea")
                                             .frame(height: 120)

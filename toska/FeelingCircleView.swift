@@ -240,8 +240,10 @@ struct FeelingCircleView: View {
                     level: gentleCheckLevel,
                     onProceed: { postMessageNow(pendingMessageText) }
                 )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
+        .animation(.easeOut(duration: 0.2), value: showGentleCheck)
     }
 
     // MARK: - Message Bubble

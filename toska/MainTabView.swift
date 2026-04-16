@@ -89,11 +89,8 @@ struct MainTabView: View {
 
                     // Compose button
                     Button {
-                        var transaction = Transaction()
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) {
-                            showCompose = true
-                        }
+                        HapticManager.play(.tabSwitch)
+                        showCompose = true
                     } label: {
                         ZStack {
                             Circle()
@@ -153,9 +150,6 @@ struct MainTabView: View {
         .ignoresSafeArea(.all, edges: .bottom)
         .fullScreenCover(isPresented: $showCompose) {
             ComposeView()
-        }
-        .transaction {
-            if showCompose { $0.disablesAnimations = true }
         }
         // MARK: - Push notification deep link
         .fullScreenCover(item: Binding(

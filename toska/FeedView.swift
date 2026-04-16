@@ -87,7 +87,10 @@ struct FeedView: View {
             
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
-                            VStack(spacing: 0) {
+                            // LazyVStack so feed posts render only as they
+                            // scroll into view — avoids eager construction of
+                            // 60+ FeedPostRows on first load.
+                            LazyVStack(spacing: 0) {
                                             Color.clear.frame(height: 0).id("feedTop")
                                 ToskaRefreshHeader(
                                                                     isRefreshing: isRefreshing,
@@ -532,7 +535,7 @@ struct FeedPostRow: View {
                                         
                                         // GIF
                 if let gifUrl = gifUrl, let url = URL(string: gifUrl) {
-                    AsyncImage(url: url) { phase in
+                    AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
                         switch phase {
                         case .success(let image):
                             image
@@ -540,6 +543,7 @@ struct FeedPostRow: View {
                                 .aspectRatio(contentMode: .fit)
                                 .frame(maxHeight: 200)
                                 .cornerRadius(10)
+                                .transition(.opacity)
                         default:
                             LateNightTheme.inputBackground
                                 .frame(height: 120)

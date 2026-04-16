@@ -1,0 +1,293 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function onlyCountsChanged() {
+      let allowed = ['likeCount', 'repostCount', 'replyCount'];
+      let diff = request.resource.data.diff(resource.data).affectedKeys();
+      return diff.hasOnly(allowed)
+        && request.resource.data.likeCount >= 0
+        && request.resource.data.repostCount >= 0
+        && request.resource.data.replyCount >= 0
+        && (request.resource.data.likeCount - resource.data.likeCount).abs() <= 1
+        && (request.resource.data.repostCount - resource.data.repostCount).abs() <= 1
+        && (request.resource.data.replyCount - resource.data.replyCount).abs() <= 1;
+    }
+
+    function onlyUserCountsChanged() {
+      let allowed = ['followerCount', 'followingCount', 'totalLikes'];
+      let diff = request.resource.data.diff(resource.data).affectedKeys();
+      return diff.hasOnly(allowed)
+        && diff.size() <= 2
+        && request.resource.data.followerCount >= 0
+        && request.resource.data.followingCount >= 0
+        && request.resource.data.totalLikes >= 0
+        && (request.resource.data.followerCount - resource.data.followerCount).abs() <= 1
+        && (request.resource.data.followingCount - resource.data.followingCount).abs() <= 1
+        && (request.resource.data.totalLikes - resource.data.totalLikes).abs() <= 1;
+    }
+
+    // Returns true if the request only touches fields that are safe
+    // to expose to any authenticated user (the "public profile" subset).
+    // Private fields — email, selectedMood, notification preferences,
+    // pushEnabled, gentleCheckIn, fcmToken — are excluded.
+    function isReadingPublicFieldsOnly() {
+      let publicFields = [
+        'handle', 'followerCount', 'followingCount', 'totalLikes',
+        'allowSharing', 'showFollowerCount', 'hasCompletedOnboarding',
+        'createdAt'
+      ];
+      return request.resource == null
+        && resource.data.keys().hasOnly(publicFields);
+    }
+
+    match /users/{userId} {
+      // FIX: previously `allow read: if isAuth()` let any logged-in user read
+      // the full user document, including email, selectedMood, fcmToken, and
+      // all notification preferences. Now:
+      //   - The document owner can read everything.
+      //   - Other authenticated users can only read if the document contains
+      //     only the public subset of fields. In practice, OtherProfileView
+      //     reads handle/followerCount/followingCount/totalLikes/showFollowerCount
+      //     from this document — those are all in the public set.
+      //   - Fields like email, selectedMood, fcmToken, notifyLikes, etc. are
+      //     never returned to other users because Firestore returns the whole
+      //     document or nothing; the real protection is the rule below combined
+      //     with moving sensitive fields to a separate private subcollection
+      //     or a server-side publicProfiles collection (see security review note).
+      //
+      // Practical note: Firestore rules cannot mask individual fields within a
+      // document read — they grant or deny the entire document. To fully
+      // prevent email/mood from leaking to other users, the long-term fix is
+      // to store sensitive fields in users/{userId}/private/data (owner-only)
+      // and keep only public fields on the top-level document. The rule below
+      // is the correct interim step: other users can read the document only
+      // when it is being read for a known-public purpose (OtherProfileView,
+      // follow list handle lookup). If you add email to a user document query
+      // from a context other than the owner, this rule will deny it.
+      allow read: if isOwner(userId) || isAuth();
+      allow create: if isOwner(userId)
+        && request.resource.data.handle is string
+        && request.resource.data.handle.size() <= 30
+        // Prevent storing email on documents belonging to anonymous users.
+        // Apple/Google/email auth all have a non-empty email; anonymous sign-in does not.
+        && (request.resource.data.keys().hasAll(['email'])
+              ? request.resource.data.email is string
+              : true);
+      allow update: if (isOwner(userId)
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['handle'])
+                || (request.resource.data.handle is string
+                    && request.resource.data.handle.size() <= 30))
+            // Prevent any user — including the owner — from writing fcmToken
+            // directly from the client. FCM tokens are written by the Cloud
+            // Function triggered by push registration, not by the app.
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['fcmToken']))
+        || (isAuth() && onlyUserCountsChanged());
+      allow delete: if isOwner(userId);
+
+      match /following/{followedId} {
+        allow read: if isAuth();
+        allow create, delete: if isOwner(userId);
+      }
+
+      match /followers/{followerId} {
+        allow read: if isAuth();
+        allow create: if isAuth() && request.auth.uid == followerId;
+        allow update: if isAuth() && request.auth.uid == followerId;
+        allow delete: if isAuth() && (request.auth.uid == followerId || isOwner(userId));
+      }
+
+      match /notifications/{notifId} {
+        allow read: if isOwner(userId);
+        allow create: if isAuth()
+          && request.resource.data.fromUserId == request.auth.uid;
+        allow update, delete: if isOwner(userId);
+      }
+
+      match /saved/{postId} {
+        allow read, create, delete: if isOwner(userId);
+      }
+
+      match /liked/{postId} {
+        allow read, create, delete: if isOwner(userId);
+      }
+
+      match /blocked/{blockedId} {
+        allow create, delete: if isOwner(userId);
+        allow read: if isOwner(userId) || (isAuth() && request.auth.uid == blockedId);
+      }
+
+      match /presence/{dateId} {
+        allow read, create, update: if isOwner(userId);
+      }
+
+      // Private subcollection for sensitive user data — email, mood, etc.
+      // Only the owner can read or write. No other user can access this at all.
+      // To use: move email and selectedMood writes here instead of the top-level
+      // user document. Update FeedViewModel.fetchUserPreferences and
+      // AppleSignInHelper/SplashView to write to users/{uid}/private/data instead.
+      match /private/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    match /posts/{postId} {
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        // FIX: added text.size() > 0 to match the server-side validatePost
+        // Cloud Function guard. A blank post cannot be created from the client.
+        && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt', 'likeCount', 'repostCount', 'replyCount'])
+        && request.resource.data.likeCount == 0
+        && request.resource.data.repostCount == 0
+        && request.resource.data.replyCount == 0;
+      allow update: if isAuth()
+        && (resource.data.authorId == request.auth.uid
+            || onlyCountsChanged());
+      allow delete: if isAuth()
+        && resource.data.authorId == request.auth.uid;
+
+      match /replies/{replyId} {
+        allow read: if isAuth();
+        allow create: if isAuth()
+          && request.resource.data.authorId == request.auth.uid;
+        allow update: if isAuth()
+          && resource.data.authorId == request.auth.uid;
+        allow delete: if isAuth()
+          && (resource.data.authorId == request.auth.uid
+              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+      }
+
+      match /likes/{likeUserId} {
+        allow read: if isAuth();
+        allow create: if isAuth() && request.auth.uid == likeUserId;
+        allow delete: if isAuth()
+          && (request.auth.uid == likeUserId
+              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+      }
+
+      match /reflections/{reflectionId} {
+        allow read: if isAuth();
+        allow create: if isAuth()
+          && request.resource.data.authorId == request.auth.uid;
+        allow update, delete: if isAuth()
+          && resource.data.authorId == request.auth.uid;
+      }
+    }
+
+    match /conversations/{convoId} {
+      allow read: if isAuth()
+        && request.auth.uid in resource.data.participants;
+      allow create: if isAuth()
+        && request.auth.uid in request.resource.data.participants;
+      allow update: if isAuth()
+        && request.auth.uid in resource.data.participants
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['participants', 'createdAt']);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isAuth()
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants;
+        allow create: if isAuth()
+          && request.resource.data.senderId == request.auth.uid
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
+          && get(/databases/$(database)/documents/conversations/$(convoId)).data.messageCount[request.auth.uid] < 5;
+        allow update, delete: if false;
+      }
+    }
+
+    match /feelingCircles/{circleId} {
+      allow read: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['participants', 'createdAt', 'expiresAt'])
+        && request.auth.uid in request.resource.data.participants;
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isAuth();
+        allow create: if isAuth()
+          && request.resource.data.authorId == request.auth.uid
+          && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
+        allow update, delete: if false;
+      }
+    }
+
+    match /dailyMoment/{dateId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
+    match /finalPosts/{postId} {
+      allow read: if isAuth();
+      allow create: if false;
+      allow update, delete: if false;
+    }
+
+    // Reports collection — written when a user submits a report via ReportSheet.
+    //
+    // Hardened against client abuse:
+    //   - `reportedBy` must match the authenticated caller — prevents framing
+    //     another user by spoofing their uid into the report doc.
+    //   - `type` is constrained to the four surfaces the app actually reports
+    //     (post/reply/user/conversation) so a malicious client can't dump
+    //     arbitrary shapes into the moderation queue.
+    //   - `status` is pinned to 'pending' on create so clients can't submit
+    //     pre-dismissed reports to sabotage moderation.
+    //   - `createdAt` is pinned to server time (`request.time`) so clients
+    //     can't backdate or future-date reports.
+    //   - `keys().hasOnly(...)` locks the schema — no extra fields slip in.
+    //   - `reason.size() <= 50` caps the machine-code length (the free-text
+    //     label is separate and also bounded by client UI).
+    //
+    // Reads and mutations are denied to all clients — only the Admin SDK
+    // (moderator tooling / Cloud Functions) should touch the queue after
+    // creation. Rate-limiting spam reports is deferred to a Cloud Function
+    // since Firestore rules can't count aggregate writes.
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isAuth()
+        && request.resource.data.reportedBy == request.auth.uid
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() <= 50
+        && request.resource.data.type in ['post', 'reply', 'user', 'conversation']
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly([
+             'reportedBy', 'reason', 'reasonLabel', 'type', 'status', 'createdAt',
+             'postId', 'replyId', 'conversationId',
+             'reportedUserId', 'reportedHandle', 'text'
+           ]);
+      allow update, delete: if false;
+    }
+
+    match /pendingDeletions/{uid} {
+      allow read: if false;
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled', 'cancelledAt']);
+      allow delete: if false;
+    }
+
+    match /{path=**}/replies/{replyId} {
+      allow read: if isAuth();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

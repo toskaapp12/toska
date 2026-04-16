@@ -10,6 +10,9 @@ struct ThreadedReply: Identifiable {
     let time: String
     let authorId: String
     let parentReplyId: String?
+    /// Optional GIF written by ComposeView reply path. Was previously stored
+    /// in Firestore but never read back, so reply GIFs never rendered.
+    let gifUrl: String?
     var children: [ThreadedReply]
 }
 
@@ -514,8 +517,22 @@ struct PostDetailView: View {
         guard !postId.isEmpty else { return }
         liveListener?.remove()
         let registration = Firestore.firestore().collection("posts").document(postId)
-            .addSnapshotListener { snapshot, _ in
+            .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    if let error = error {
+                        // code 7 = permission-denied. Auth state changed
+                        // (sign-out, token expiry, account deletion) — the
+                        // current uid no longer satisfies the read rule.
+                        // Tear down the listener and dismiss so we don't
+                        // sit on a dead view that can never recover.
+                        let nsError = error as NSError
+                        if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
+                            self.liveListener?.remove()
+                            self.liveListener = nil
+                            self.dismiss()
+                        }
+                        return
+                    }
                     if snapshot?.exists == false {
                         self.liveListener?.remove()
                         self.liveListener = nil
@@ -661,6 +678,8 @@ struct PostDetailView: View {
 
     func reportPost() {
             guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+            if let last = RateLimiter.shared.lastReportTime, Date().timeIntervalSince(last) < 5.0 { return }
+            RateLimiter.shared.lastReportTime = Date()
             // Writes must match the hardened firestore.rules schema for the
             // reports collection: required type/status/createdAt, only fields
             // in the keys.hasOnly() allow list, reportedBy must match the
@@ -756,8 +775,18 @@ struct PostDetailView: View {
             replyListener?.remove()
             replyListener = Firestore.firestore().collection("posts").document(postId).collection("replies")
                 .order(by: "createdAt", descending: false)
-                .addSnapshotListener { snapshot, _ in
+                .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    if let error = error {
+                        let nsError = error as NSError
+                        if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
+                            // Auth changed underneath us — tear down & bail.
+                            self.replyListener?.remove()
+                            self.replyListener = nil
+                            self.dismiss()
+                        }
+                        return
+                    }
                     guard let documents = snapshot?.documents else { return }
                     let flat = documents.compactMap { doc -> ThreadedReply? in
                         let data = doc.data()
@@ -772,12 +801,26 @@ struct PostDetailView: View {
                             time: FeedView.timeAgoString(from: createdAt),
                             authorId: authorId,
                             parentReplyId: data["parentReplyId"] as? String,
+                            gifUrl: data["gifUrl"] as? String,
                             children: []
                         )
                     }
                     replyList = buildThreadedReplies(from: flat)
                 }
             }
+    }
+
+    /// Walks the threaded reply tree to find the author of `replyId`.
+    /// Used by the nested-reply notification path so the parent reply's
+    /// author gets pinged when someone responds beneath them.
+    func findReplyAuthor(in nodes: [ThreadedReply], replyId: String) -> String? {
+        for node in nodes {
+            if node.id == replyId { return node.authorId }
+            if let nested = findReplyAuthor(in: node.children, replyId: replyId) {
+                return nested
+            }
+        }
+        return nil
     }
 
     func buildThreadedReplies(from flat: [ThreadedReply]) -> [ThreadedReply] {
@@ -880,10 +923,25 @@ struct PostDetailView: View {
                     if !self.authorUserId.isEmpty, self.authorUserId != uid {
                         self.sendNotification(toUserId: self.authorUserId, type: "reply", message: currentReplyText)
                     }
+                    // Nested reply: also notify the parent reply's author so
+                    // they know someone responded to *them*, not just the
+                    // post owner. Skip when the parent reply was authored by
+                    // the post owner (already notified above) or by self.
+                    if let parentId = self.replyingToId {
+                        let parentAuthorId = self.findReplyAuthor(in: self.replyList, replyId: parentId)
+                        if let parentAuthorId = parentAuthorId,
+                           !parentAuthorId.isEmpty,
+                           parentAuthorId != uid,
+                           parentAuthorId != self.authorUserId {
+                            self.sendNotification(toUserId: parentAuthorId, type: "reply", message: currentReplyText)
+                        }
+                    }
                     let newReply = ThreadedReply(
                         id: replyRef.documentID, handle: replyHandle, text: currentReplyText,
                         likes: 0, time: "now", authorId: uid,
-                        parentReplyId: self.replyingToId, children: []
+                        parentReplyId: self.replyingToId,
+                        gifUrl: self.replyGifUrl,
+                        children: []
                     )
                     if let parentId = self.replyingToId {
                         func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
@@ -1133,7 +1191,10 @@ struct SwipeToReplyRow: View {
                         Rectangle().fill(Color.toskaBlue.opacity(0.2))
                             .frame(width: 2, height: 14).cornerRadius(1).padding(.trailing, 4)
                     }
-                    Text(item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
+                    // Empty handle slips through when fetchReplies hits a doc
+                    // missing authorHandle (legacy data, mid-write race). Render
+                    // a placeholder rather than a blank slot beside the dot/time.
+                    Text(item.reply.handle.isEmpty ? "anonymous" : item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
                     Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
                     Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
                     Spacer()
@@ -1164,6 +1225,27 @@ struct SwipeToReplyRow: View {
                     }
                 }
                 Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
+                if let gifUrl = item.reply.gifUrl, let url = URL(string: gifUrl) {
+                    AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 160)
+                                .cornerRadius(8)
+                        case .failure:
+                            LateNightTheme.inputBackground.frame(height: 100).cornerRadius(8)
+                                .overlay(
+                                    Image(systemName: "photo.badge.exclamationmark")
+                                        .font(.system(size: 14, weight: .light))
+                                        .foregroundColor(LateNightTheme.tertiaryText)
+                                )
+                        default:
+                            LateNightTheme.inputBackground.frame(height: 100).cornerRadius(8)
+                                .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
+                        }
+                    }
+                    .padding(.top, 4)
+                }
                 if item.reply.likes > 0 {
                     HStack(spacing: 3) {
                         Image(systemName: "heart").font(.system(size: 9, weight: .light))

@@ -23,13 +23,18 @@ class UserHandleCache {
         stopListening()
         currentUid = uid
 
+        // Capture uid so a late snapshot from the previous user can't apply
+        // their handle/settings to the new user — the currentUid gate inside
+        // the MainActor task is the authoritative check.
+        let listenerUid = uid
         listener = Firestore.firestore()
                     .collection("users").document(uid)
                     .addSnapshotListener { [weak self] snapshot, _ in
                         Task { @MainActor [weak self] in
-                            self?.handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
-                            self?.allowSharing = snapshot?.data()?["allowSharing"] as? Bool ?? true
-                            self?.gentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool ?? true
+                            guard let self = self, self.currentUid == listenerUid else { return }
+                            self.handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
+                            self.allowSharing = snapshot?.data()?["allowSharing"] as? Bool ?? true
+                            self.gentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool ?? true
                         }
                     }
     }

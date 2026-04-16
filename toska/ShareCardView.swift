@@ -39,6 +39,7 @@ struct ShareCardView: View {
                             .font(.system(size: 14, weight: .light))
                             .foregroundColor(.white.opacity(0.3))
                     }
+                    .accessibilityLabel("Close share card")
                     Spacer()
                     Text("share this")
                         .font(.custom("Georgia-Italic", size: 13))
@@ -47,6 +48,7 @@ struct ShareCardView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 14))
                         .foregroundColor(.clear)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)

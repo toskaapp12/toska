@@ -252,6 +252,7 @@ struct ComposeView: View {
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundColor(Color(hex: "c9a97a").opacity(0.5))
                         }
+                        .accessibilityLabel("Cancel letter mode")
                     }
                     .foregroundColor(Color(hex: "c9a97a"))
                     .padding(.horizontal, 16)
@@ -272,6 +273,7 @@ struct ComposeView: View {
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
                         }
+                        .accessibilityLabel("Cancel whisper mode")
                     }
                     .foregroundColor(Color(hex: "c47a8a"))
                     .padding(.horizontal, 16)
@@ -292,6 +294,7 @@ struct ComposeView: View {
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
                         }
+                        .accessibilityLabel("Cancel midnight expiration")
                     }
                     .foregroundColor(Color(hex: "8b7ec8"))
                     .padding(.horizontal, 16)

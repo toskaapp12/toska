@@ -64,7 +64,7 @@ struct CreateAccountView: View {
                                             withAnimation(.easeInOut(duration: 0.15)) {
                                                 assignedHandle = "..."
                                             }
-                                            generateUniqueHandle { handle in
+                                            generateUniqueHandleWithTimeout { handle in
                                                 withAnimation(.easeInOut(duration: 0.15)) {
                                                     assignedHandle = handle
                                                 }
@@ -249,8 +249,33 @@ struct CreateAccountView: View {
     }
     
     func loadUniqueHandle() {
-        generateUniqueHandle { handle in
+        generateUniqueHandleWithTimeout { handle in
             assignedHandle = handle
+        }
+    }
+
+    /// Wraps generateUniqueHandle in an 8s timeout so a slow Firestore
+    /// uniqueness check (or a dead network) doesn't leave the user staring
+    /// at "..." forever. On timeout we fall through to the same fallback
+    /// generateUniqueHandle uses internally after 10 attempts. AppleSignIn
+    /// already does this; CreateAccountView previously didn't.
+    func generateUniqueHandleWithTimeout(completion: @escaping (String) -> Void) {
+        var didComplete = false
+        let timeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            if !didComplete {
+                didComplete = true
+                completion("anonymous_\(UUID().uuidString.prefix(8).lowercased())")
+            }
+        }
+        generateUniqueHandle { handle in
+            Task { @MainActor in
+                if !didComplete {
+                    didComplete = true
+                    timeoutTask.cancel()
+                    completion(handle)
+                }
+            }
         }
     }
     

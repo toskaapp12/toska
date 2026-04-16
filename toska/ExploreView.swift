@@ -65,6 +65,11 @@ struct ExploreView: View {
     @State private var isStartingConversation = false
     @State private var hasFinalPosts = false
         @State private var searchTask: Task<Void, Never>? = nil
+        // Per-tag results cache (30s TTL). Re-tapping the same tag chip
+        // shouldn't re-hit Firestore — the user is usually toggling between
+        // pills to compare. The cache is dropped on view dismiss.
+        @State private var tagCache: [String: (posts: [ExplorePost], fetchedAt: Date)] = [:]
+        private static let tagCacheTTL: TimeInterval = 30
 
         let tags = sharedTags
         
@@ -568,6 +573,14 @@ struct ExploreView: View {
                                         }
     
     func fetchPostsForTag(_ tag: String) {
+            // Serve from cache if the entry is still warm — avoids a 30-doc
+            // re-fetch every time the user toggles back to a recently-viewed tag.
+            if let cached = tagCache[tag],
+               Date().timeIntervalSince(cached.fetchedAt) < Self.tagCacheTTL {
+                tagPosts = cached.posts
+                isLoadingTag = false
+                return
+            }
             isLoadingTag = true; tagPosts = []
             Firestore.firestore().collection("posts")
                 .whereField("tag", isEqualTo: tag)
@@ -583,7 +596,9 @@ struct ExploreView: View {
                             }
                             return true
                         }
-                        tagPosts = parsePosts(from: nonExpired)
+                        let parsed = parsePosts(from: nonExpired)
+                        tagPosts = parsed
+                        tagCache[tag] = (posts: parsed, fetchedAt: Date())
                         isLoadingTag = false
                     }
                 }

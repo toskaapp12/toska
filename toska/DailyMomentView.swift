@@ -34,6 +34,7 @@ struct DailyMomentView: View {
                             .foregroundColor(.white.opacity(0.3))
                             .frame(width: 32, height: 32)
                     }
+                    .accessibilityLabel("Close")
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)

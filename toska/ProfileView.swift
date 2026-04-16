@@ -239,14 +239,23 @@ struct ProfileView: View {
                     }
                 }
                 .refreshable {
+                                    // Kick off the loads synchronously; they're
+                                    // fire-and-forget into Firestore callbacks.
+                                    // The 1.5s sleep is a pragmatic "pull feels
+                                    // real" delay since those callbacks don't
+                                    // bridge to async here — but it now runs
+                                    // concurrently with the loads rather than
+                                    // after an instant return. Worth replacing
+                                    // with proper async Firestore helpers later.
                                     loadProfile()
                                     switch selectedTab {
                                     case 0: loadMyPosts()
                                     case 1: loadLikedPosts()
                                     case 2: loadSavedPosts()
+                                    case 3: loadMyReplies()
                                     default: break
                                     }
-                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                    try? await Task.sleep(nanoseconds: 900_000_000)
                                 }
             }
         }
@@ -799,7 +808,10 @@ struct FollowListView: View {
     @State private var selectedUser: FollowUser? = nil
     @State private var hasFetchedInitial = false
     @State private var blockedUserIds: Set<String> = []
-    
+    // Pre-filter doc count so the "showing first 50" footer can disclose
+    // when blocked-user filtering trimmed visible rows below 50.
+    @State private var rawCount: Int = 0
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -809,10 +821,12 @@ struct FollowListView: View {
                         Button { dismiss() } label: {
                             Image(systemName: "xmark").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: "999999"))
                         }
+                        .accessibilityLabel("Close \(title) list")
                         Spacer()
                         Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
                         Spacer()
                         Image(systemName: "xmark").font(.system(size: 14)).foregroundColor(.clear)
+                            .accessibilityHidden(true)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
@@ -842,8 +856,14 @@ struct FollowListView: View {
                                                                             Rectangle().fill(Color(hex: "dfe1e5").opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
                                                                         }
                                 }
-                                if users.count >= 50 {
-                                    Text("showing your first 50 \(title)")
+                                if rawCount >= 50 {
+                                    // Use the raw fetched count, not `users.count`,
+                                    // because users have already been filtered against
+                                    // blocked uids — saying "showing first 50" while
+                                    // displaying 38 rows was misleading.
+                                    Text(rawCount > users.count
+                                         ? "showing your first 50 \(title) (\(rawCount - users.count) hidden)"
+                                         : "showing your first 50 \(title)")
                                         .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                         .frame(maxWidth: .infinity).padding(.vertical, 12)
                                 }
@@ -877,6 +897,7 @@ struct FollowListView: View {
             guard let snapshot = try? await db.collection("users").document(uid).collection(collection)
                 .limit(to: 50)
                 .getDocumentsAsync() else { isLoading = false; return }
+            rawCount = snapshot.documents.count
             let documents = snapshot.documents.filter { !blockedUserIds.contains($0.documentID) }
             if documents.isEmpty { isLoading = false; return }
             var fetched: [(id: String, handle: String)] = []

@@ -17,6 +17,9 @@ struct FeelingCircleView: View {
     @State private var showGentleCheck = false
     @State private var pendingMessageText = ""
     @State private var gentleCheckLevel: CrisisLevel = .soft
+    // Report path for circle messages — Agent 8 noted these were a
+    // moderation blind spot (no escape hatch on user-submitted text).
+    @State private var reportTarget: CircleMessage? = nil
 
     private let messageLimit = 5
 
@@ -244,6 +247,13 @@ struct FeelingCircleView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: showGentleCheck)
+        .sheet(item: $reportTarget) { msg in
+            // Reuse the user-target ReportSheet — circle messages are
+            // ephemeral (gone at midnight) so a user-level report is more
+            // useful for the moderation queue than a per-message ID that
+            // won't exist by review time.
+            ReportSheet(target: .user(userId: msg.authorId, handle: msg.handle))
+        }
     }
 
     // MARK: - Message Bubble
@@ -292,6 +302,20 @@ struct FeelingCircleView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+        .contextMenu {
+            if !msg.isMe {
+                Button(role: .destructive) {
+                    reportTarget = msg
+                } label: {
+                    Label("report", systemImage: "flag")
+                }
+                Button(role: .destructive) {
+                    BlockedUsersCache.shared.block(msg.authorId, handle: msg.handle)
+                } label: {
+                    Label("block", systemImage: "person.slash")
+                }
+            }
+        }
     }
 
     // MARK: - Data Functions
@@ -336,6 +360,7 @@ struct FeelingCircleView: View {
 
     func startListening() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        let listenerUid = uid
         listener?.remove()
 
         listener = Firestore.firestore()
@@ -343,19 +368,38 @@ struct FeelingCircleView: View {
             .collection("messages")
             .order(by: "createdAt", descending: false)
             .limit(to: 200)
-            .addSnapshotListener { snapshot, _ in
+            .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    // Re-check auth inside the callback. If the user signed
+                    // out (or expired) while the listener was attached, the
+                    // outer guard's captured uid is now stale — applying
+                    // those messages would attribute them to a torn-down
+                    // session and the next write would fail with code 7.
+                    guard Auth.auth().currentUser?.uid == listenerUid else {
+                        listener?.remove()
+                        listener = nil
+                        return
+                    }
+                    if let error = error {
+                        let nsError = error as NSError
+                        if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
+                            listener?.remove()
+                            listener = nil
+                        }
+                        return
+                    }
                     guard let docs = snapshot?.documents else { return }
                     var myCount = 0
                     messages = docs.compactMap { doc in
                         let data = doc.data()
                         let authorId = data["authorId"] as? String ?? ""
-                        let isMe = authorId == uid
+                        let isMe = authorId == listenerUid
                         if isMe { myCount += 1 }
                         if !isMe && BlockedUsersCache.shared.isBlocked(authorId) { return nil }
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                         return CircleMessage(
                             id: doc.documentID,
+                            authorId: authorId,
                             handle: data["authorHandle"] as? String ?? "anonymous",
                             text: data["text"] as? String ?? "",
                             time: ToskaFormatters.hourMinute.string(from: createdAt).lowercased(),

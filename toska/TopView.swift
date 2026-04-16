@@ -239,8 +239,14 @@ struct TopView: View {
         
         func openPost(postId: String, authorId: String) {
             guard !postId.isEmpty else { return }
-            Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, _ in
+            Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
                 Task { @MainActor in
+                    if let error = error {
+                        // Don't prune the row on transient failure — only on
+                        // confirmed missing snapshot below. The user can re-tap.
+                        print("⚠️ TopView openPost failed: \(error)")
+                        return
+                    }
                     guard let data = snapshot?.data() else {
                                             rankedPosts.removeAll { $0.id == postId }
                                             return

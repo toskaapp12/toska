@@ -24,6 +24,7 @@ struct GifPickerView: View {
                         .font(.system(size: 14, weight: .light))
                         .foregroundColor(Color(hex: "999999"))
                 }
+                .accessibilityLabel("Close GIF picker")
                 Spacer()
                 Text("GIFs")
                     .font(.system(size: 14, weight: .semibold))
@@ -32,6 +33,7 @@ struct GifPickerView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14))
                     .foregroundColor(.clear)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

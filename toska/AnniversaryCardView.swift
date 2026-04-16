@@ -15,6 +15,13 @@ struct AnniversaryCardView: View {
     @State private var showGentleCheck = false
     @State private var gentleCheckLevel: CrisisLevel = .soft
     @State private var saveError = ""
+    // Suppress the form/affordance until checkExistingReflection completes —
+    // otherwise tapping "reflect" before the read returns flashes the empty
+    // form for ~150ms before swapping to the saved view.
+    @State private var hasCheckedExisting = false
+    // Report path for anniversary reflections — Agent 8 noted these were
+    // a moderation blind spot (no report button on user-submitted text).
+    @State private var showReportSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -123,7 +130,7 @@ struct AnniversaryCardView: View {
                         .disabled(reflectionText.isEmpty || isSaving)
                     }
                 }
-            } else {
+            } else if hasCheckedExisting {
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         showReflection = true
@@ -182,7 +189,10 @@ struct AnniversaryCardView: View {
     // MARK: - Functions
 
     func checkExistingReflection() {
-           guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+           guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
+               hasCheckedExisting = true
+               return
+           }
            Task { @MainActor in
                do {
                    let snapshot = try await Firestore.firestore()
@@ -196,6 +206,7 @@ struct AnniversaryCardView: View {
                } catch {
                    print("⚠️ checkExistingReflection failed: \(error)")
                }
+               hasCheckedExisting = true
            }
        }
 

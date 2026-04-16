@@ -55,6 +55,7 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(Color(hex: "999999"))
                     }
+                    .accessibilityLabel("Close settings")
                     Spacer()
                     Text("settings")
                         .font(.system(size: 15, weight: .semibold))

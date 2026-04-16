@@ -20,6 +20,11 @@ struct OnboardingView: View {
     @State private var showAgeGate = false
     @State private var showPolicyAcceptance = false
     @State private var acceptanceChecked = false
+    // Surfaced when the "skip" Firestore write fails so the user knows
+    // the skip didn't take. Previously the write error was print-only and
+    // the screen advanced anyway, leaving them stuck in a re-onboarding
+    // loop on next launch.
+    @State private var skipError: String? = nil
     
     let tags = sharedTags
     
@@ -114,6 +119,13 @@ struct OnboardingView: View {
                 Spacer()
                 
                 VStack(spacing: 8) {
+                    if let skipError = skipError {
+                        Text(skipError)
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "c45c5c"))
+                            .multilineTextAlignment(.center)
+                            .padding(.bottom, 4)
+                    }
                     if currentStep < 2 {
                         Button {
                             withAnimation(.easeInOut(duration: 0.3)) {
@@ -142,16 +154,7 @@ struct OnboardingView: View {
                         }
                         
                         Button {
-                                                    if let uid = Auth.auth().currentUser?.uid {
-                                                        var updateData: [String: Any] = ["hasCompletedOnboarding": true]
-                                                        if let mood = selectedMood { updateData["selectedMood"] = mood }
-                                                        Firestore.firestore().collection("users").document(uid).setData(updateData, merge: true) { error in
-                                                            if let error = error {
-                                                                print("⚠️ Onboarding skip (mood) write failed: \(error)")
-                                                            }
-                                                        }
-                                                    }
-                                                    Telemetry.onboardingCompleted(); isComplete = true
+                                                    skipOnboarding(skipMood: false)
                                                 } label: {
                                                     Text("skip")
                                                         .font(.system(size: 11))
@@ -171,16 +174,7 @@ struct OnboardingView: View {
                         }
                         
                         Button {
-                                                    if let uid = Auth.auth().currentUser?.uid {
-                                                        var updateData: [String: Any] = ["hasCompletedOnboarding": true]
-                                                        if let mood = selectedMood { updateData["selectedMood"] = mood }
-                                                        Firestore.firestore().collection("users").document(uid).setData(updateData, merge: true) { error in
-                                                            if let error = error {
-                                                                print("⚠️ Onboarding skip-for-now write failed: \(error)")
-                                                            }
-                                                        }
-                                                    }
-                                                    Telemetry.onboardingCompleted(); isComplete = true
+                                                    skipOnboarding(skipMood: false)
                                                 } label: {
                                                     Text("skip for now")
                                                         .font(.system(size: 11))
@@ -300,6 +294,33 @@ struct OnboardingView: View {
             isComplete = false
         }
     }
+    /// Shared skip handler for both step 2 and step 3's skip buttons. The
+    /// previous inline closures only printed write errors; users would
+    /// see the screen advance but on next launch they'd be re-onboarded
+    /// because hasCompletedOnboarding hadn't actually been written. Now
+    /// the error path keeps them on the screen so they can retry.
+    func skipOnboarding(skipMood: Bool) {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            // No auth means we can't write — nothing to do but proceed.
+            Telemetry.onboardingCompleted()
+            isComplete = true
+            return
+        }
+        var updateData: [String: Any] = ["hasCompletedOnboarding": true]
+        if !skipMood, let mood = selectedMood { updateData["selectedMood"] = mood }
+        Firestore.firestore().collection("users").document(uid).setData(updateData, merge: true) { error in
+            Task { @MainActor in
+                if let error = error {
+                    print("⚠️ Onboarding skip write failed: \(error)")
+                    skipError = "couldnt save. check your connection and try again."
+                    return
+                }
+                Telemetry.onboardingCompleted()
+                isComplete = true
+            }
+        }
+    }
+
     func saveMoodAndAdvance() {
             if let uid = Auth.auth().currentUser?.uid {
                 var updateData: [String: Any] = [:]

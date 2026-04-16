@@ -102,24 +102,28 @@ enum ToskaFormatters {
 
     // MARK: - Sheet Item Wrappers
 
-struct TagSelection: Identifiable {
+// Equatable lets SwiftUI skip re-renders when sheet bindings re-emit the
+// same selection — without it, every re-bind re-presents the sheet, which
+// can flicker mid-dismiss.
+
+struct TagSelection: Identifiable, Equatable {
     let id: String
     var tag: String { id }
 }
 
-struct ConversationSelection: Identifiable {
+struct ConversationSelection: Identifiable, Equatable {
     let id: String
     let handle: String
     let userId: String
 }
 
-struct PostSelection: Identifiable {
+struct PostSelection: Identifiable, Equatable {
     let id: String
 }
 
 /// Wrapper for routing to a user profile via .fullScreenCover(item:) — used
 /// by push notification deep links to OtherProfileView.
-struct UserSelection: Identifiable {
+struct UserSelection: Identifiable, Equatable {
     let id: String      // userId
     let handle: String
 }
@@ -1212,6 +1216,17 @@ struct ReportSheet: View {
     private func submitReport() {
         guard let reason = selectedReason else { return }
         guard let reporterUid = Auth.auth().currentUser?.uid else { return }
+        // Cap one report submission per 5 seconds. Without this, a user
+        // could spam the queue from a flag menu in a tight loop. Server-
+        // side moderation is the real defense, but cheap client throttle
+        // saves us from nuisance load.
+        if let last = RateLimiter.shared.lastReportTime, Date().timeIntervalSince(last) < 5.0 {
+            // Pretend success — the user shouldn't realise we throttled them
+            // (otherwise they'll learn to spam past it).
+            didSubmit = true
+            return
+        }
+        RateLimiter.shared.lastReportTime = Date()
         isSubmitting = true
 
         var payload: [String: Any] = [

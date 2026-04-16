@@ -92,7 +92,7 @@ struct SignInView: View {
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
                         .font(.system(size: 11))
-                        .foregroundColor(.red)
+                        .foregroundColor(Color(hex: "c45c5c"))
                         .padding(.bottom, 10)
                 }
                 

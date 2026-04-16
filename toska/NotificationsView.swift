@@ -285,8 +285,15 @@ struct NotificationsView: View {
 
     func handleNotifTap(_ notif: NotificationItem) {
         if notif.type == "follow" && !notif.fromUserId.isEmpty {
-            Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, _ in
+            Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, error in
                 Task { @MainActor in
+                    if let error = error {
+                        print("⚠️ handleNotifTap follow: getDocument failed: \(error)")
+                        // Open the profile anyway with a fallback handle —
+                        // OtherProfileView surfaces a "deleted" state if the
+                        // doc truly doesn't exist; transient errors recover
+                        // when the destination view's own listener attaches.
+                    }
                     let handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
                     selectedFollowUser = NotifFollowUser(id: notif.fromUserId, handle: handle)
                 }
@@ -302,8 +309,15 @@ struct NotificationsView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
         let convoId = [uid, fromUserId].sorted().joined(separator: "_")
-        db.collection("conversations").document(convoId).getDocument { snapshot, _ in
+        db.collection("conversations").document(convoId).getDocument { snapshot, error in
             Task { @MainActor in
+                if let error = error {
+                    print("⚠️ openConversation: getDocument failed: \(error)")
+                    // Don't open a half-loaded conversation when the metadata
+                    // read failed — the user can retry by re-tapping the
+                    // notification once the network recovers.
+                    return
+                }
                 guard let data = snapshot?.data() else { return }
                 let handles = data["participantHandles"] as? [String: String] ?? [:]
                 let otherHandle = handles[fromUserId] ?? "anonymous"

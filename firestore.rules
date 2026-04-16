@@ -246,10 +246,26 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isAuth()
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants;
+        // Block enforcement: the sender can't deliver a message to a
+        // conversation if any other participant has blocked them. Without
+        // this, BlockedUsersCache only hides messages on the blocker's
+        // device — the rule didn't actually stop the write. We resolve
+        // the "other participant" by scanning the convo doc's participants
+        // and asserting no /users/{other}/blocked/{sender} doc exists.
         allow create: if isAuth()
           && request.resource.data.senderId == request.auth.uid
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
-          && get(/databases/$(database)/documents/conversations/$(convoId)).data.messageCount[request.auth.uid] < 5;
+          && get(/databases/$(database)/documents/conversations/$(convoId)).data.messageCount[request.auth.uid] < 5
+          && (
+            // Two-participant DM (the only shape the app currently creates):
+            // get the other participant and check their blocked subcollection.
+            get(/databases/$(database)/documents/conversations/$(convoId)).data.participants.size() != 2
+            || !exists(/databases/$(database)/documents/users/$(
+              get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[0] == request.auth.uid
+                ? get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[1]
+                : get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[0]
+            )/blocked/$(request.auth.uid))
+          );
         allow update, delete: if false;
       }
     }

@@ -251,10 +251,16 @@ class PostInteractionManager {
                     return
                 }
         guard uid != authorId else { return }
+               // Match the like/save 0.8s rate limit so rapid taps don't queue
+               // multiple dedup checks against Firestore. The optimistic UI
+               // visibly toggles on the first tap, so subsequent taps within
+               // the window are silently dropped.
+               if let last = RateLimiter.shared.lastRepostTime, Date().timeIntervalSince(last) < 0.8 { return }
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ repost — offline, skipping")
                    return
                }
+               RateLimiter.shared.lastRepostTime = Date()
 
                let db = Firestore.firestore()
 

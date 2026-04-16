@@ -33,7 +33,16 @@ class LateNightThemeManager {
 
     func refresh() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = hour >= 0 && hour < 5
+        let newValue = hour >= 0 && hour < 5
+        // Wrap the rollover in withAnimation so views observing this
+        // manager via @Environment animate the color crossover instead of
+        // hard-cutting to dark/light at 00:00 / 05:00. Skip the wrap when
+        // the value didn't change to avoid pointless transactions.
+        if newValue != isLateNight {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                isLateNight = newValue
+            }
+        }
     }
 
     private func startTimer() {

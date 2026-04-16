@@ -61,7 +61,7 @@ struct PasswordResetView: View {
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
                         .font(.system(size: 11))
-                        .foregroundColor(.red)
+                        .foregroundColor(Color(hex: "c45c5c"))
                         .padding(.bottom, 10)
                 }
                 
@@ -112,6 +112,10 @@ struct PasswordResetView: View {
     }
     
     func sendReset() {
+                // Resend button flips isSent=false *then* calls this, so a
+                // rapid double-tap can enter sendReset twice before isLoading
+                // flips true. Guard here so only one request is in flight.
+                guard !isLoading else { return }
                 let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 guard trimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {
                     errorMessage = "please enter a valid email"

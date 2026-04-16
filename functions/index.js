@@ -120,6 +120,66 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       }).catch(() => {});
     }
 
+    // Cross-user notifications authored by the deleted user — likes,
+    // replies, follows, reposts, saves, messages all leave a doc in
+    // the *recipient's* notifications subcollection with fromUserId
+    // set to the actor. The user-doc trigger never visits those, so
+    // they used to linger forever showing a deleted user's old handle.
+    // collectionGroup walks every user's notifications in one query.
+    try {
+      const orphanedNotifs = await db.collectionGroup("notifications")
+        .where("fromUserId", "==", uid)
+        .limit(500)
+        .get();
+      if (!orphanedNotifs.empty) {
+        const batch = db.batch();
+        orphanedNotifs.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`Deleted ${orphanedNotifs.size} orphaned notifications for user:`, uid);
+      }
+    } catch (err) {
+      console.warn("Orphaned notification cleanup failed:", err.message);
+    }
+
+    // Feeling-circle messages authored by the deleted user. The circles
+    // themselves expire on their own schedule (cleanupExpiredCircles),
+    // but their messages are addressable via collectionGroup and would
+    // otherwise stay visible inside still-active circles.
+    try {
+      const orphanedCircleMsgs = await db.collectionGroup("messages")
+        .where("authorId", "==", uid)
+        .limit(500)
+        .get();
+      if (!orphanedCircleMsgs.empty) {
+        const batch = db.batch();
+        orphanedCircleMsgs.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`Deleted ${orphanedCircleMsgs.size} feeling-circle messages for user:`, uid);
+      }
+    } catch (err) {
+      console.warn("Feeling-circle message cleanup failed:", err.message);
+    }
+
+    // Reports submitted by the deleted user. We keep reports filed
+    // *against* this user (moderation history must survive deletion)
+    // but clear the ones they filed so the moderation queue doesn't
+    // attribute pending items to a tombstoned uid.
+    try {
+      const submittedReports = await db.collection("reports")
+        .where("reportedBy", "==", uid)
+        .where("status", "==", "pending")
+        .limit(500)
+        .get();
+      if (!submittedReports.empty) {
+        const batch = db.batch();
+        submittedReports.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`Deleted ${submittedReports.size} pending reports filed by user:`, uid);
+      }
+    } catch (err) {
+      console.warn("Pending-report cleanup failed:", err.message);
+    }
+
     console.log("Cleanup complete for user:", uid);
   } catch (error) {
     console.error("Cleanup failed for user:", uid, error);

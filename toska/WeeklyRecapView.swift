@@ -13,6 +13,9 @@ struct WeeklyRecapView: View {
     @State private var communityPostCount = 0
     @State private var isLoading = true
     @State private var isVisible = false
+    // Surfaced when ImageRenderer.uiImage returns nil (e.g. backgrounded
+    // app, GPU pressure). Previously the share button silently no-op'd.
+    @State private var shareError: String? = nil
     
     var body: some View {
         ZStack {
@@ -27,6 +30,7 @@ struct WeeklyRecapView: View {
                             .foregroundColor(.white.opacity(0.3))
                             .frame(width: 32, height: 32)
                     }
+                    .accessibilityLabel("Close weekly recap")
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -139,6 +143,12 @@ struct WeeklyRecapView: View {
                                   .opacity(isVisible ? 1 : 0)
                                   .animation(.easeIn(duration: 0.6).delay(1.7), value: isVisible)
                               }
+                if let shareError = shareError {
+                    Text(shareError)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.5))
+                        .padding(.top, 6)
+                }
                 Text("toska")
                     .font(.custom("Georgia-Italic", size: 13))
                     .foregroundColor(.white.opacity(0.12))
@@ -285,7 +295,13 @@ struct WeeklyRecapView: View {
                     let renderer = ImageRenderer(content: cardView)
         renderer.scale = 3.0
         if let image = renderer.uiImage {
+                            shareError = nil
                             presentShareSheet(with: [image])
+                        } else {
+                            // ImageRenderer can return nil under GPU pressure
+                            // or if the view tree contains a non-renderable
+                            // node. Tell the user instead of silently dropping.
+                            shareError = "couldnt build the image. try again in a moment."
                         }
             }
         }

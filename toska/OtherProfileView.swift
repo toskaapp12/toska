@@ -22,6 +22,11 @@ struct OtherProfileView: View {
     @State private var hasFetchedInitial = false
     @State private var showMessages = false
     @State private var activeConversationId = ""
+    // True when loadProfile finds no user doc (account deleted) — drives the
+    // empty-state UI so the view doesn't sit on a half-rendered shell with
+    // 0/0/0 counts and no clue what's wrong.
+    @State private var profileNotFound = false
+    @State private var hasAttemptedProfileLoad = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -59,7 +64,32 @@ struct OtherProfileView: View {
                 .padding(.vertical, 12)
                 
                 Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
-                
+
+                if profileNotFound {
+                    Spacer()
+                    VStack(spacing: 10) {
+                        Image(systemName: "person.fill.questionmark")
+                            .font(.system(size: 28, weight: .light))
+                            .foregroundColor(Color.toskaDivider)
+                        Text("this person isnt here anymore")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(Color.toskaTextLight)
+                        Text("their account was deleted.")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color.toskaTimestamp)
+                        Button { dismiss() } label: {
+                            Text("go back")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color.toskaBlue)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 8)
+                                .background(Color.toskaBlue.opacity(0.1))
+                                .cornerRadius(16)
+                        }
+                        .padding(.top, 6)
+                    }
+                    Spacer()
+                } else {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         VStack(spacing: 10) {
@@ -222,6 +252,7 @@ struct OtherProfileView: View {
                         Color.clear.frame(height: 40)
                     }
                 }
+                } // end else (profileNotFound)
             }
         }
         .onAppear {
@@ -290,9 +321,17 @@ struct OtherProfileView: View {
     // MARK: - Load Profile
     
     func loadProfile() {
-        Firestore.firestore().collection("users").document(userId).getDocument { snapshot, _ in
+        Firestore.firestore().collection("users").document(userId).getDocument { snapshot, error in
             Task { @MainActor in
-                guard let data = snapshot?.data() else { return }
+                hasAttemptedProfileLoad = true
+                if error != nil { return }
+                guard let snapshot = snapshot, snapshot.exists, let data = snapshot.data() else {
+                    // User document deleted (account-deletion cascade). Flag
+                    // so the view shows the "no longer here" empty state
+                    // instead of a permanently-spinning loader.
+                    profileNotFound = true
+                    return
+                }
                 followerCount = data["followerCount"] as? Int ?? 0
                 followingCount = data["followingCount"] as? Int ?? 0
                 totalLikes = data["totalLikes"] as? Int ?? 0
@@ -387,20 +426,6 @@ struct OtherProfileView: View {
             }
         }
     }
-    
-    // MARK: - Safe Decrement
-    
-    func safeDecrement(db: Firestore, docRef: DocumentReference, field: String) {
-            guard NetworkMonitor.shared.isConnected else { return }
-            db.runTransaction({ transaction, _ in
-                let snap = try? transaction.getDocument(docRef)
-                let current = snap?.data()?[field] as? Int ?? 0
-                if current > 0 {
-                    transaction.updateData([field: current - 1], forDocument: docRef)
-                }
-                return nil
-            }, completion: { _, _ in })
-        }
     
     // MARK: - Toggle Follow
     
@@ -553,6 +578,8 @@ struct OtherProfileView: View {
     
     func reportUser() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        if let last = RateLimiter.shared.lastReportTime, Date().timeIntervalSince(last) < 5.0 { return }
+        RateLimiter.shared.lastReportTime = Date()
         // Match the hardened firestore.rules schema: required type / status /
         // createdAt and a reason inside the bounded enum. Without the type
         // field the rule rejects this write silently.

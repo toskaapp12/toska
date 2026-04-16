@@ -12,6 +12,8 @@
 		3F33E6DC2F69982500E7F27D /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E6DB2F69982500E7F27D /* FirebaseMessaging */; };
 		3F33E7182F69C17200E7F27D /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E7172F69C17200E7F27D /* GoogleSignIn */; };
 		3F33E71A2F69C17200E7F27D /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E7192F69C17200E7F27D /* GoogleSignInSwift */; };
+		3F7B32B72F91408B0014C0DA /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32B62F91408B0014C0DA /* FirebaseAnalytics */; };
+		3F7B32B92F91408B0014C0DA /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +64,8 @@
 			files = (
 				3F33E71A2F69C17200E7F27D /* GoogleSignInSwift in Frameworks */,
 				3F33E6DC2F69982500E7F27D /* FirebaseMessaging in Frameworks */,
+				3F7B32B72F91408B0014C0DA /* FirebaseAnalytics in Frameworks */,
+				3F7B32B92F91408B0014C0DA /* FirebaseCrashlytics in Frameworks */,
 				3F33E7182F69C17200E7F27D /* GoogleSignIn in Frameworks */,
 				3F33E6D82F69982500E7F27D /* FirebaseAuth in Frameworks */,
 				3F33E6DA2F69982500E7F27D /* FirebaseFirestore in Frameworks */,
@@ -129,6 +133,8 @@
 				3F33E6DB2F69982500E7F27D /* FirebaseMessaging */,
 				3F33E7172F69C17200E7F27D /* GoogleSignIn */,
 				3F33E7192F69C17200E7F27D /* GoogleSignInSwift */,
+				3F7B32B62F91408B0014C0DA /* FirebaseAnalytics */,
+				3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */,
 			);
 			productName = toska;
 			productReference = 3F33E6C62F69977700E7F27D /* toska.app */;
@@ -554,6 +560,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 3F33E7162F69C17200E7F27D /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		3F7B32B62F91408B0014C0DA /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

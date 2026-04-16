@@ -351,6 +351,15 @@ struct ConversationView: View {
             typingDotTask?.cancel()
             typingDotTask = nil
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Defensive re-attach. Firestore's snapshot listeners normally
+            // recover on their own when the network comes back, but on long
+            // backgrounds the connection can stay broken until something
+            // pokes it. startListening() removes the prior listeners at the
+            // top before reattaching, so this is safe to call repeatedly.
+            guard !isBlockedEitherDirection else { return }
+            startListening()
+        }
         .confirmationDialog("", isPresented: $showBlockAlert) {
             Button("report conversation") {
                 reportConversation()

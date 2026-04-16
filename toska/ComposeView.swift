@@ -8,6 +8,11 @@ struct ComposeView: View {
     var initialText: String = ""
     var initialTag: String? = nil
     var onPostSuccess: (() -> Void)? = nil
+    // Draft persistence keys. AppStorage survives force-quit so a user mid-
+    // compose doesn't lose their words if iOS terminates the app or they
+    // accidentally swipe it away. Cleared on successful post.
+    @AppStorage("toska_composeDraftText") private var draftText: String = ""
+    @AppStorage("toska_composeDraftTag") private var draftTag: String = ""
     @State private var text = ""
     @State private var selectedTag: String? = nil
     @State private var showTagPicker = false
@@ -128,6 +133,10 @@ struct ComposeView: View {
                                     if showRateLimitWarning { showRateLimitWarning = false }
                                     if showOfflineWarning { showOfflineWarning = false }
                                     if !postError.isEmpty { postError = "" }
+                                    // Persist draft on each keystroke so a
+                                    // force-quit doesn't lose the user's
+                                    // words. Cleared when the post succeeds.
+                                    draftText = newValue
                                 }
                         }
 
@@ -488,6 +497,12 @@ struct ComposeView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(false)
+        .onChange(of: selectedTag) { _, newValue in
+            // Persist tag selection alongside text draft so a kill mid-
+            // compose restores both. Empty string when nil since
+            // @AppStorage doesn't accept Optional<String>.
+            draftTag = newValue ?? ""
+        }
         // Drives the fade/scale transition on the gentle-check overlay
         // regardless of which surface (button, tap-outside, etc.) flips it.
         .animation(.easeOut(duration: 0.2), value: showGentleCheck)
@@ -501,9 +516,18 @@ struct ComposeView: View {
                     loadHandle()
                     if text.isEmpty && !initialText.isEmpty {
                         text = initialText
+                    } else if text.isEmpty && !draftText.isEmpty {
+                        // Restore draft from a prior session that was killed
+                        // before the user could post. Only when we have no
+                        // initialText override (e.g. tapping "say something"
+                        // from the empty feed shouldn't pre-fill an old
+                        // anniversary reflection draft).
+                        text = draftText
                     }
                     if selectedTag == nil, let tag = initialTag {
                         selectedTag = tag
+                    } else if selectedTag == nil, !draftTag.isEmpty {
+                        selectedTag = draftTag
                     }
                     focusTask?.cancel()
                     focusTask = Task {
@@ -653,6 +677,10 @@ struct ComposeView: View {
                             isWhisper: self.isWhisper,
                             hasGif: self.selectedGifUrl != nil
                         )
+                        // Post landed on the server — drop the draft so the
+                        // next compose opens clean.
+                        self.draftText = ""
+                        self.draftTag = ""
                         RateLimiter.shared.lastPostTime = Date()
                         NotificationCenter.default.post(name: NSNotification.Name("NewPostCreated"), object: nil)
                         if let onPostSuccess = self.onPostSuccess {

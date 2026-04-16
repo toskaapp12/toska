@@ -156,6 +156,13 @@ struct NotificationsView: View {
         .onChange(of: notifications) { _, _ in
             recomputeNotificationGroups()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // Came back from background — fetch fresh notifications. The
+            // existing lastFetchTime debounce inside loadNotifications keeps
+            // this cheap if the user only blinked away briefly.
+            lastFetchTime = nil
+            loadNotifications()
+        }
         .onDisappear {
             markAsReadTask?.cancel()
             markAsReadTask = nil

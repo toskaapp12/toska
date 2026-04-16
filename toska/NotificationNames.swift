@@ -12,7 +12,6 @@ extension NSNotification.Name {
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")
         static let postInteractionChanged  = NSNotification.Name("PostInteractionChanged")
         static let saveFeedScrollPosition  = NSNotification.Name("SaveFeedScrollPosition")
-        static let restoreFeedScroll       = NSNotification.Name("RestoreFeedScroll")
         // Posted when the empty-feed coaching state's "say something" button
         // is tapped. MainTabView listens for this and opens the compose
         // sheet, since FeedView doesn't own the showCompose state.

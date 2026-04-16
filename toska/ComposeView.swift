@@ -682,7 +682,7 @@ struct ComposeView: View {
                         self.draftText = ""
                         self.draftTag = ""
                         RateLimiter.shared.lastPostTime = Date()
-                        NotificationCenter.default.post(name: NSNotification.Name("NewPostCreated"), object: nil)
+                        NotificationCenter.default.post(name: .newPostCreated, object: nil)
                         if let onPostSuccess = self.onPostSuccess {
                             onPostSuccess()
                         } else {

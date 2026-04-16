@@ -207,6 +207,28 @@ struct MainTabView: View {
         .onAppear {
             print("⚡️ MainTabView appeared")
             startUnreadListener()
+            // Drain any push-tap intent that fired before this view's
+            // NotificationCenter observers were attached (cold-launch race).
+            // PushNotificationManager stashes the intent in pendingIntent;
+            // we replay it here so the deep link still routes correctly.
+            if let intent = PushNotificationManager.shared.pendingIntent {
+                PushNotificationManager.shared.pendingIntent = nil
+                switch intent.kind {
+                case .post where !intent.postId.isEmpty:
+                    selectedTab = .feed
+                    pushPostId = intent.postId
+                case .conversation where !intent.conversationId.isEmpty:
+                    pushConversation = ConversationSelection(
+                        id: intent.conversationId,
+                        handle: "",
+                        userId: intent.userId
+                    )
+                case .profile where !intent.userId.isEmpty:
+                    pushProfileUser = UserSelection(id: intent.userId, handle: "")
+                default:
+                    break
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
             feedVM.loadInitialData()

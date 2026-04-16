@@ -299,18 +299,11 @@ struct FeedView: View {
                                                         proxy.scrollTo("feedTop", anchor: .top)
                                                     }
                                                 }
-                .onReceive(NotificationCenter.default.publisher(for: .restoreFeedScroll)) { _ in
-                                                    if let postId = vm.savedScrollPostId,
-                                                       vm.posts.contains(where: { $0.id == postId }) {
-                                                        Task { @MainActor in
-                                                            try? await Task.sleep(nanoseconds: 100_000_000)
-                                                            guard !Task.isCancelled else { return }
-                                                            proxy.scrollTo(postId, anchor: .top)
-                                                        }
-                                                    } else {
-                                                        vm.savedScrollPostId = nil
-                                                    }
-                                                }
+                // Removed .restoreFeedScroll observer — it was never posted
+                // anywhere in the project (orphaned wiring). MainTabView's
+                // tab-keep-alive (.opacity trick on each NavigationStack)
+                // already preserves scroll position when switching tabs, so
+                // an explicit save/restore round-trip isn't needed here.
                                             } // end ScrollViewReader
                                                             .simultaneousGesture(
                                                     DragGesture()

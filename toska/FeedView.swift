@@ -51,8 +51,15 @@ struct FeedView: View {
     @State private var selectedFeedPost: SelectedFeedPost? = nil
 
     var body: some View {
+            // Read all @Published properties that drive the view at the TOP
+            // of body so SwiftUI registers the observation dependency before
+            // entering lazy containers. vm.posts is used inside a LazyVStack
+            // where SwiftUI may not track the read — capturing it here
+            // guarantees a re-render when posts arrive from Firestore.
             let isRefreshing = vm.isRefreshing
             let dragOffset = vm.dragOffset
+            let posts = vm.posts
+            let hasLoadedOnce = vm.hasLoadedOnce
         return VStack(spacing: 0) {
                     // MARK: - Header
             HStack {
@@ -170,12 +177,12 @@ struct FeedView: View {
                                         }
                     
                     
-                                if vm.posts.isEmpty && !vm.hasLoadedOnce {
+                                if posts.isEmpty && !hasLoadedOnce {
                                     ForEach(0..<6, id: \.self) { _ in
                                         SkeletonPostRow()
                                             .background(LateNightTheme.background)
                                     }
-                                } else if vm.posts.isEmpty && vm.hasLoadedOnce && vm.selectedTab == 0 {
+                                } else if posts.isEmpty && hasLoadedOnce && vm.selectedTab == 0 {
                                     // First-run empty state. The fetch finished
                                     // and there's genuinely nothing to show
                                     // (no posts in window, none from people
@@ -238,7 +245,7 @@ struct FeedView: View {
                                     .padding(.bottom, 40)
                                 } else {
                                                                                                                                     
-                                                                                                                                    ForEach(vm.posts) { post in
+                                                                                                                                    ForEach(posts) { post in
                                                                 if post.id.hasPrefix("sample_") {
                                                 FeedPostRow(
                                                     handle: post.handle,
@@ -288,7 +295,7 @@ struct FeedView: View {
                     
                                         } // end else hasLoadedOnce
 
-                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
+                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !posts.isEmpty {
                                             ProgressView()
                                                 .tint(Color.toskaBlue)
                                                 .padding(.vertical, 20)
@@ -299,7 +306,7 @@ struct FeedView: View {
                                                 }
                                         }
                     
-                    if vm.selectedTab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
+                    if vm.selectedTab == 0 && !vm.hasMorePosts && !posts.isEmpty {
                                                                 VStack(spacing: 4) {
                                                                     Text(vm.endedDueToBlocking
                                                                          ? "no more posts to show"
@@ -319,12 +326,6 @@ struct FeedView: View {
                     
                     Color.clear.frame(height: 80)
                 }
-                // Force the LazyVStack to rebuild when the post count
-                // transitions from 0 → N. Without this, SwiftUI's lazy
-                // container can fail to invalidate after the initial
-                // skeleton → real-posts state change, leaving the feed
-                // blank until a manual scroll forces layout.
-                .id("feed_\(vm.posts.count)_\(vm.selectedTab)")
             }
                 .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
                                                         proxy.scrollTo("feedTop", anchor: .top)
@@ -383,14 +384,14 @@ struct FeedView: View {
                .onAppear {
                                   vm.dragOffset = 0
                                   vm.savedScrollPostId = nil
-                                  if !vm.hasLoadedOnce {
+                                  if !hasLoadedOnce {
                                       if Auth.auth().currentUser != nil {
                                           vm.loadInitialData()
                                       }
                                   }
                               }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
-                                  if !vm.hasLoadedOnce {
+                                  if !hasLoadedOnce {
                                       print("⚡️ AuthDidVerify received in FeedView — calling loadInitialData")
                                       vm.loadInitialData()
                                   }

@@ -519,14 +519,6 @@ class FeedViewModel: ObservableObject {
                                                                                                                             self.hasMorePosts = documents.count >= 60
                                                                                                                             self.hasLoadedOnce = true
                                                                                                                             self.posts = newPosts
-                                                                                                                            // Belt-and-suspenders: schedule
-                                                                                                                            // a second objectWillChange on the
-                                                                                                                            // next run loop in case SwiftUI
-                                                                                                                            // missed the @Published mutation
-                                                                                                                            // during the initial layout pass.
-                                                                                                                            DispatchQueue.main.async {
-                                                                                                                                self.objectWillChange.send()
-                                                                                                                            }
                                                                                         } else if documents.count >= 60 {
                                                                                                                                                     self.hasLoadedOnce = true
                                                                                                                                                     self.posts = []

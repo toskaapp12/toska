@@ -348,13 +348,9 @@ private struct ToskaPadConstrainedModifier: ViewModifier {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     func body(content: Content) -> some View {
-        if sizeClass == .regular {
-            content
-                .frame(maxWidth: 600)
-                .frame(maxWidth: .infinity)
-        } else {
-            content
-        }
+        content
+            .frame(maxWidth: sizeClass == .regular ? 600 : .infinity)
+            .frame(maxWidth: .infinity)
     }
 }
 

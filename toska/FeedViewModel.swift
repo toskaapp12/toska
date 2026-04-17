@@ -515,13 +515,14 @@ class FeedViewModel: ObservableObject {
                 print("✅ fetchPosts — setting \(newPosts.count) posts after scoring/filtering")
 
                 if !newPosts.isEmpty {
-                                                                                                                            self.posts = newPosts
-                                                                                                                            self.hasLoadedOnce = true
                                                                                                                             self.lastDocument = topDocs.last?.doc ?? documents.last
                                                                                                                             self.hasMorePosts = documents.count >= 60
-                                                                                                                            // Force a second layout pass to ensure SwiftUI renders the rows
-                                                                                                                            try? await Task.sleep(nanoseconds: 100_000_000)
-                                                                                                                            self.objectWillChange.send()
+                                                                                                                            // Set hasLoadedOnce BEFORE posts so the
+                                                                                                                            // view's condition branches correctly on
+                                                                                                                            // the same render pass that sees the new
+                                                                                                                            // posts array.
+                                                                                                                            self.hasLoadedOnce = true
+                                                                                                                            self.posts = newPosts
                                                                                         } else if documents.count >= 60 {
                                                                                                                                                     self.hasLoadedOnce = true
                                                                                                                                                     self.posts = []

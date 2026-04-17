@@ -53,9 +53,8 @@ struct SettingsView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.toskaGray)
+                            .foregroundColor(Color(hex: "999999"))
                     }
-                    .accessibilityLabel("Close settings")
                     Spacer()
                     Text("settings")
                         .font(.system(size: 15, weight: .semibold))
@@ -74,11 +73,11 @@ struct SettingsView: View {
                             .font(.system(size: 11))
                         Spacer()
                     }
-                    .foregroundColor(Color.toskaError)
+                    .foregroundColor(Color(hex: "c45c5c"))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
-                    .background(Color.toskaError.opacity(0.06))
+                    .background(Color(hex: "c45c5c").opacity(0.06))
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
@@ -97,8 +96,8 @@ struct SettingsView: View {
                                 Divider().padding(.leading, 14)
                                 actionRow("view content policy") { showContentPolicy = true }
                             }
-                            .background(LateNightTheme.cardBackground)
-                            .cornerRadius(Toska.cornerRadius)
+                            .background(Color.white)
+                            .cornerRadius(12)
                         }
                         
                         // MARK: - Notifications
@@ -123,8 +122,8 @@ struct SettingsView: View {
                                     miniToggle("milestones", isOn: $settings.notifyMilestones)
                                 }
                             }
-                            .background(LateNightTheme.cardBackground)
-                            .cornerRadius(Toska.cornerRadius)
+                            .background(Color.white)
+                            .cornerRadius(12)
                         }
                         
                         // MARK: - Content
@@ -147,8 +146,8 @@ struct SettingsView: View {
                                     .padding(.horizontal, 14)
                                 }
                             }
-                            .background(LateNightTheme.cardBackground)
-                            .cornerRadius(Toska.cornerRadius)
+                            .background(Color.white)
+                            .cornerRadius(12)
                         }
                         
                         // MARK: - Account
@@ -175,7 +174,7 @@ struct SettingsView: View {
                         } label: {
                             Text("sign out")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color.toskaGray)
+                                .foregroundColor(Color(hex: "999999"))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
@@ -186,14 +185,14 @@ struct SettingsView: View {
                         } label: {
                             Text(isDeleting ? "deleting..." : "delete account")
                                 .font(.system(size: 12))
-                                .foregroundColor(Color.toskaError.opacity(0.7))
+                                .foregroundColor(Color(hex: "c45c5c").opacity(0.7))
                         }
                         .disabled(isDeleting)
                         
                         if !deleteError.isEmpty {
                             Text(deleteError)
                                 .font(.system(size: 10))
-                                .foregroundColor(Color.toskaError)
+                                .foregroundColor(Color(hex: "c45c5c"))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
                         }
@@ -201,7 +200,7 @@ struct SettingsView: View {
                         // MARK: - Why toska exists
                                                 VStack(spacing: 12) {
                                                     Rectangle()
-                                                        .fill(LateNightTheme.divider)
+                                                        .fill(Color(hex: "dfe1e5"))
                                                         .frame(width: 32, height: 0.5)
                                                     
                                                     Text("why this exists")
@@ -210,7 +209,7 @@ struct SettingsView: View {
                                                     
                                                     Text("i went through a breakup. talked to everyone. they ran out of things to say and i ran out of people to say it to. everyone had moved on but i was still sad. i was on reddit at 2am, downloading random apps, watching sad tiktoks. none of it was it. i just wanted somewhere anonymous where people are going through the same thing and nobody's pretending they're not. so i built it.")
                                                         .font(.custom("Georgia", size: 12))
-                                                        .foregroundColor(Color.toskaGray)
+                                                        .foregroundColor(Color(hex: "999999"))
                                                         .lineSpacing(4)
                                                         .multilineTextAlignment(.center)
                                                         .padding(.horizontal, 24)
@@ -304,17 +303,13 @@ struct SettingsView: View {
                 Text(title)
                     .font(.system(size: 14))
                     .foregroundColor(Color.toskaTextDark)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let sub = subtitle {
                     Text(sub)
                         .font(.system(size: 11))
                         .foregroundColor(Color.toskaTimestamp)
-                        .lineLimit(nil)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer(minLength: 8)
+            Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(Color.toskaBlue)
@@ -536,50 +531,30 @@ struct SettingsView: View {
                 payload["account"] = sanitizeForJSON(account)
             }
 
-            // Posts authored — capped at 500 per page to avoid memory
-            // spikes for prolific users. Multiple pages are fetched
-            // sequentially using the last doc as a cursor.
-            var allPostDocs: [[String: Any]] = []
-            var postCursor: DocumentSnapshot? = nil
-            let postPageSize = 500
-            while true {
-                var query = db.collection("posts")
-                    .whereField("authorId", isEqualTo: uid)
-                    .order(by: "createdAt", descending: true)
-                    .limit(to: postPageSize)
-                if let cursor = postCursor { query = query.start(afterDocument: cursor) }
-                guard let postsSnap = try? await query.getDocumentsAsync() else { break }
-                for doc in postsSnap.documents {
+            // Posts authored
+            if let postsSnap = try? await db.collection("posts")
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: true)
+                .getDocumentsAsync() {
+                payload["posts"] = postsSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
-                    allPostDocs.append(sanitizeForJSON(item) as? [String: Any] ?? item)
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
-                if postsSnap.documents.count < postPageSize { break }
-                postCursor = postsSnap.documents.last
             }
-            payload["posts"] = allPostDocs
 
-            // Replies authored — same paging strategy.
-            var allReplyDocs: [[String: Any]] = []
-            var replyCursor: DocumentSnapshot? = nil
-            let replyPageSize = 500
-            while true {
-                var query = db.collectionGroup("replies")
-                    .whereField("authorId", isEqualTo: uid)
-                    .order(by: "createdAt", descending: true)
-                    .limit(to: replyPageSize)
-                if let cursor = replyCursor { query = query.start(afterDocument: cursor) }
-                guard let repliesSnap = try? await query.getDocumentsAsync() else { break }
-                for doc in repliesSnap.documents {
+            // Replies authored (collection group across all posts)
+            if let repliesSnap = try? await db.collectionGroup("replies")
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: true)
+                .getDocumentsAsync() {
+                payload["replies"] = repliesSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
                     item["postId"] = doc.reference.parent.parent?.documentID ?? ""
-                    allReplyDocs.append(sanitizeForJSON(item) as? [String: Any] ?? item)
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
-                if repliesSnap.documents.count < replyPageSize { break }
-                replyCursor = repliesSnap.documents.last
             }
-            payload["replies"] = allReplyDocs
 
             // Liked + saved post IDs (just IDs — full post content belongs
             // to the original author)
@@ -679,7 +654,7 @@ struct ChangeEmailView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaGray)
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
                     Text("change email").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -695,7 +670,7 @@ struct ChangeEmailView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
                 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("current email")
@@ -707,7 +682,7 @@ struct ChangeEmailView: View {
                         .foregroundColor(Color.toskaTextDark)
                         .padding(11)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(LateNightTheme.divider.opacity(0.5))
+                        .background(Color(hex: "e4e6ea").opacity(0.5))
                         .cornerRadius(10)
                     
                     Text("new email")
@@ -722,17 +697,17 @@ struct ChangeEmailView: View {
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LateNightTheme.divider, lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
                     
                     if !message.isEmpty {
                         Text(message)
                             .font(.system(size: 11))
-                            .foregroundColor(isError ? Color.toskaError : Color.toskaGreen)
+                            .foregroundColor(isError ? Color(hex: "c45c5c") : Color(hex: "6ba58e"))
                     }
                     
                     Text("you may need to sign out and back in before changing your email.")
                         .font(.system(size: 9))
-                        .foregroundColor(Color.toskaGrayLight)
+                        .foregroundColor(Color(hex: "cccccc"))
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
@@ -793,7 +768,7 @@ struct ChangePasswordView: View {
                         dismissTask?.cancel()
                         dismiss()
                     } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaGray)
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
                     Text("change password").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -809,7 +784,7 @@ struct ChangePasswordView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
                 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("new password")
@@ -821,7 +796,7 @@ struct ChangePasswordView: View {
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LateNightTheme.divider, lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
                     
                     Text("confirm password")
                         .font(.system(size: 10, weight: .medium))
@@ -832,17 +807,17 @@ struct ChangePasswordView: View {
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(LateNightTheme.divider, lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
                     
                     if !message.isEmpty {
                         Text(message)
                             .font(.system(size: 11))
-                            .foregroundColor(isError ? Color.toskaError : Color.toskaGreen)
+                            .foregroundColor(isError ? Color(hex: "c45c5c") : Color(hex: "6ba58e"))
                     }
                     
                     Text("you may need to sign out and back in before changing your password.")
                         .font(.system(size: 9))
-                        .foregroundColor(Color.toskaGrayLight)
+                        .foregroundColor(Color(hex: "cccccc"))
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
@@ -929,7 +904,7 @@ struct BlockedUsersListView: View {
                             .foregroundColor(Color.toskaTextLight)
                         Text("people you block will show up here. you can unblock them any time.")
                             .font(.system(size: 11))
-                            .foregroundColor(Color.toskaGrayLight)
+                            .foregroundColor(Color(hex: "cccccc"))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                     }

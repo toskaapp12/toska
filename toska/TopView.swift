@@ -10,12 +10,6 @@ struct TopView: View {
     @State private var selectedPostData: PostDetailData? = nil
     @State private var showPost = false
             @State private var hasFetchedInitial = false
-    // How many ranked items to display. Starts at 10 and extends by 20
-    // when the user taps "show more." The underlying fetch always pulls up
-    // to 200 docs so the extra items are pre-computed in memory.
-    @State private var displayLimit: Int = 10
-    @State private var totalEngaged: Int = 0
-    @State private var lastForegroundFetch: Date? = nil
     
     var body: some View {
         ZStack {
@@ -29,17 +23,17 @@ struct TopView: View {
                         Spacer()
                         HStack(spacing: 4) {
                             Circle()
-                                .fill(Color.toskaGreen)
+                                .fill(Color(hex: "6ba58e"))
                                 .frame(width: 5, height: 5)
                             Text("right now")
                                                             .font(.system(size: 10, weight: .semibold))
-                                                            .foregroundColor(Color.toskaGreen)
+                                                            .foregroundColor(Color(hex: "6ba58e"))
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     
-                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                     
                     if isLoading {
                         Spacer()
@@ -57,7 +51,7 @@ struct TopView: View {
                                                                                                                                                                                                     .foregroundColor(Color.toskaTextLight)
                                                                                                                                                                                                 Text("everyones being quiet right now.")
                                                                                                                                                                                                     .font(.system(size: 11))
-                                                                                                                                                                                                    .foregroundColor(Color.toskaGrayLight)
+                                                                                                                                                                                                    .foregroundColor(Color(hex: "cccccc"))
                                                             }
                                                             .frame(maxWidth: .infinity)
                                                             .padding(.vertical, 80)
@@ -73,7 +67,7 @@ struct TopView: View {
                                                                                             // Rank badge
                                                                                             Text("\(rank)")
                                                                                                 .font(.system(size: rank <= 3 ? 16 : 11, weight: .bold, design: .rounded))
-                                                                                                .foregroundColor(rank == 1 ? Color.toskaGold : rank == 2 ? Color.toskaTextLight : rank == 3 ? Color(hex: "cd7f32") : Color.toskaDivider)
+                                                                                                .foregroundColor(rank == 1 ? Color(hex: "c9a97a") : rank == 2 ? Color.toskaTextLight : rank == 3 ? Color(hex: "cd7f32") : Color.toskaDivider)
                                                                                                 .frame(width: 24, alignment: .center)
                                                                                                 .padding(.top, 2)
                                                                                             
@@ -107,7 +101,7 @@ struct TopView: View {
                                                                                                     Text("\(formatCount(post.likes)) felt this")
                                                                                                         .font(.system(size: 10))
                                                                                                 }
-                                                                                                .foregroundColor(Color.toskaPink.opacity(0.6))
+                                                                                                .foregroundColor(Color(hex: "c47a8a").opacity(0.6))
                                                                                             }
                                                                                         }
                                                                                     }
@@ -117,24 +111,10 @@ struct TopView: View {
                                                                                 .buttonStyle(.plain)
                                                                                 
                                                                                 Rectangle()
-                                                                                    .fill(LateNightTheme.divider)
+                                                                                    .fill(Color(hex: "dfe1e5"))
                                                                                     .frame(height: 0.5)
                                     }
                                     
-                                    if rankedPosts.count < totalEngaged {
-                                        Button {
-                                            displayLimit += 20
-                                            fetchTopPosts()
-                                        } label: {
-                                            Text("show more")
-                                                .font(.system(size: 12, weight: .medium))
-                                                .foregroundColor(Color.toskaBlue)
-                                                .padding(.vertical, 12)
-                                                .frame(maxWidth: .infinity)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-
                                     Color.clear.frame(height: 80)
                                 }
                             }
@@ -152,12 +132,6 @@ struct TopView: View {
                     hasFetchedInitial = true
             fetchTopPosts()
                 }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            guard hasFetchedInitial else { return }
-            if let last = lastForegroundFetch, Date().timeIntervalSince(last) < 60 { return }
-            lastForegroundFetch = Date()
-            fetchTopPosts()
-        }
         .navigationDestination(isPresented: $showPost) {
                                                     if let post = selectedPostData, let postId = selectedPostId {
                                                         PostDetailView(
@@ -182,7 +156,7 @@ struct TopView: View {
         Firestore.firestore().collection("posts")
                             .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                             .order(by: "createdAt", descending: true)
-                            .limit(to: 200)
+                            .limit(to: 50)
                     .getDocuments { snapshot, error in
                     Task { @MainActor in
                         if let error = error {
@@ -240,10 +214,9 @@ struct TopView: View {
                         // Only show posts with actual engagement — if nothing has
                                                 // any likes/replies/reposts yet, show the empty state rather
                                                 // than listing posts in an arbitrary order labeled "trending"
-                                                self.totalEngaged = engaged.count
-                                rankedPosts = engaged
+                                                rankedPosts = engaged
                                                     .sorted { $0.score > $1.score }
-                                                    .prefix(self.displayLimit)
+                                                    .prefix(10)
                                                     .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId) }
                         print("📊 TopView showing \(rankedPosts.count) ranked, engaged: \(engaged.count)")
                         isLoading = false
@@ -256,7 +229,7 @@ struct TopView: View {
         switch rank {
         case 2: return Color.toskaTimestamp
         case 3: return Color(hex: "cd7f32")
-        default: return Color.toskaGrayLight
+        default: return Color(hex: "cccccc")
         }
     }
     
@@ -266,14 +239,8 @@ struct TopView: View {
         
         func openPost(postId: String, authorId: String) {
             guard !postId.isEmpty else { return }
-            Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
+            Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, _ in
                 Task { @MainActor in
-                    if let error = error {
-                        // Don't prune the row on transient failure — only on
-                        // confirmed missing snapshot below. The user can re-tap.
-                        print("⚠️ TopView openPost failed: \(error)")
-                        return
-                    }
                     guard let data = snapshot?.data() else {
                                             rankedPosts.removeAll { $0.id == postId }
                                             return

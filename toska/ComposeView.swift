@@ -250,14 +250,13 @@ struct ComposeView: View {
                         Button { isLetter = false } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color.toskaGold.opacity(0.5))
+                                .foregroundColor(Color(hex: "c9a97a").opacity(0.5))
                         }
-                        .accessibilityLabel("Cancel letter mode")
                     }
-                    .foregroundColor(Color.toskaGold)
+                    .foregroundColor(Color(hex: "c9a97a"))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.toskaGold.opacity(0.06))
+                    .background(Color(hex: "c9a97a").opacity(0.06))
                 }
 
                 // Whisper mode banner
@@ -271,14 +270,13 @@ struct ComposeView: View {
                         Button { isWhisper = false } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color.toskaPink.opacity(0.5))
+                                .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
                         }
-                        .accessibilityLabel("Cancel whisper mode")
                     }
-                    .foregroundColor(Color.toskaPink)
+                    .foregroundColor(Color(hex: "c47a8a"))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.toskaPink.opacity(0.06))
+                    .background(Color(hex: "c47a8a").opacity(0.06))
                 }
 
                 // Midnight mode banner
@@ -292,14 +290,13 @@ struct ComposeView: View {
                         Button { expiresAtMidnight = false } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color.toskaPurple.opacity(0.5))
+                                .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
                         }
-                        .accessibilityLabel("Cancel midnight expiration")
                     }
-                    .foregroundColor(Color.toskaPurple)
+                    .foregroundColor(Color(hex: "8b7ec8"))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.toskaPurple.opacity(0.06))
+                    .background(Color(hex: "8b7ec8").opacity(0.06))
                 }
 
                 // MARK: - Tag picker (expandable)
@@ -370,7 +367,7 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .medium))
                             }
                         }
-                        .foregroundColor(isWhisper ? Color.toskaPink : LateNightTheme.secondaryText)
+                        .foregroundColor(isWhisper ? Color(hex: "c47a8a") : LateNightTheme.secondaryText)
                                             }
                                             .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
 
@@ -389,7 +386,7 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .medium))
                             }
                         }
-                        .foregroundColor(expiresAtMidnight ? Color.toskaPurple : LateNightTheme.secondaryText)
+                        .foregroundColor(expiresAtMidnight ? Color(hex: "8b7ec8") : LateNightTheme.secondaryText)
                                             }
                                             .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
 
@@ -399,7 +396,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(isLetter ? Color.toskaGold : LateNightTheme.secondaryText)
+                            .foregroundColor(isLetter ? Color(hex: "c9a97a") : LateNightTheme.secondaryText)
                                                 }
                                                 .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
 
@@ -429,7 +426,7 @@ struct ComposeView: View {
                                 Circle()
                                     .trim(from: 0, to: CGFloat(text.count) / CGFloat(activeCharLimit))
                                     .stroke(
-                                        isNearLimit ? Color.toskaError : Color.toskaBlue,
+                                        isNearLimit ? Color(hex: "c45c5c") : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 2, lineCap: .round)
                                     )
                                     .frame(width: 24, height: 24)
@@ -439,7 +436,7 @@ struct ComposeView: View {
                             if isNearLimit {
                                 Text("\(charRemaining)")
                                     .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundColor(charRemaining < 0 ? Color.toskaError : LateNightTheme.secondaryText)
+                                    .foregroundColor(charRemaining < 0 ? Color(hex: "c45c5c") : LateNightTheme.secondaryText)
                             }
                         }
                     }
@@ -467,7 +464,7 @@ struct ComposeView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "theatermasks")
                         .font(.system(size: 32))
-                        .foregroundColor(Color.toskaGold)
+                        .foregroundColor(Color(hex: "c9a97a"))
 
                     Text("keep it anonymous")
                         .font(.custom("Georgia-Italic", size: 18))

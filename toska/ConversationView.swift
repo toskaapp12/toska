@@ -47,15 +47,6 @@ struct ConversationView: View {
     @State private var lastReadByOther: Date? = nil
     @State private var isCountsLoaded = false
     @State private var isSending = false
-    // Confirm before discarding the unsent draft when the user picks "block" —
-    // otherwise tapping the menu while mid-sentence wipes the message with no
-    // indication. Skip the prompt when the draft is empty.
-    @State private var showBlockWithDraftConfirm = false
-    // Inline toast for send/report errors. Previously the send-failure
-    // path silently restored the input — the user had no way to know
-    // the message hadn't gone through.
-    @State private var inlineErrorBanner: String? = nil
-    @State private var inlineErrorTask: Task<Void, Never>? = nil
     // FIX: added to surface network errors from checkIfBlocked to the user
     // instead of silently dismissing the view.
     @State private var blockCheckError: String? = nil
@@ -91,11 +82,7 @@ struct ConversationView: View {
                     }
                     Spacer()
                     VStack(spacing: 1) {
-                        // Deep-link paths occasionally hand us an empty
-                        // otherHandle (push payload stripped, legacy convo
-                        // missing participantHandles entry). Render a
-                        // placeholder instead of a blank row.
-                        Text(otherHandle.isEmpty ? "anonymous" : otherHandle)
+                        Text(otherHandle)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(Color.toskaTextDark)
                         if isSealed {
@@ -119,18 +106,7 @@ struct ConversationView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-
-                if let banner = inlineErrorBanner {
-                    Text(banner)
-                        .font(.system(size: 11))
-                        .foregroundColor(Color.toskaError)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.toskaError.opacity(0.06))
-                        .transition(.opacity)
-                }
+                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
 
                 // FIX: show a retry state when checkIfBlocked fails due to a
                 // network error instead of leaving the user on a blank screen.
@@ -174,7 +150,7 @@ struct ConversationView: View {
                                         .foregroundColor(Color.toskaTextLight)
                                     Text("you each get 5 messages.\nsay what matters.")
                                         .font(.system(size: 11))
-                                        .foregroundColor(Color.toskaGrayLight)
+                                        .foregroundColor(Color(hex: "cccccc"))
                                         .multilineTextAlignment(.center)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -256,11 +232,11 @@ struct ConversationView: View {
                                 if isSealed {
                                     VStack(spacing: 6) {
                                         Rectangle()
-                                            .fill(LateNightTheme.divider)
+                                            .fill(Color(hex: "dfe1e5"))
                                             .frame(width: 40, height: 0.5)
                                         Text("this conversation is sealed")
                                             .font(.system(size: 10))
-                                            .foregroundColor(Color.toskaGrayLight)
+                                            .foregroundColor(Color(hex: "cccccc"))
                                         Text("some things only need to be said once")
                                             .font(.system(size: 9))
                                             .foregroundColor(Color(hex: "d8d8d8"))
@@ -293,7 +269,7 @@ struct ConversationView: View {
                 EmptyView()
             } else if !isSealed {
                 VStack(spacing: 0) {
-                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
 
                     if myMessageCount >= messageLimit {
                         HStack {
@@ -304,14 +280,14 @@ struct ConversationView: View {
                             Spacer()
                         }
                         .padding(.vertical, 12)
-                        .background(LateNightTheme.cardBackground)
+                        .background(Color.white)
                     } else {
                         HStack(spacing: 4) {
                             Text("\(messagesRemaining)")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(
                                     messagesRemaining <= 2
-                                        ? Color.toskaWarm
+                                        ? Color(hex: "c49a6c")
                                         : Color.toskaTimestamp
                                 )
                                 .frame(width: 20)
@@ -321,7 +297,7 @@ struct ConversationView: View {
                                 .focused($inputFocused)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
-                                .background(LateNightTheme.inputBackground)
+                                .background(Color(hex: "e8eaed"))
                                 .cornerRadius(20)
                                 .onChange(of: messageText) { _, newValue in
                                     if newValue.count > 500 {
@@ -356,7 +332,7 @@ struct ConversationView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(LateNightTheme.cardBackground)
+                        .background(Color.white)
                     }
                 }
                 .background(Color.white.ignoresSafeArea(edges: .bottom))
@@ -399,23 +375,8 @@ struct ConversationView: View {
                 reportConversation()
                 showReportAlert = true
             }
-            Button("block user", role: .destructive) {
-                // Re-prompt only when there's an unsent draft so the user
-                // doesn't lose mid-sentence text without realising. Empty
-                // drafts skip the second confirmation.
-                if !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    showBlockWithDraftConfirm = true
-                } else {
-                    blockAndDismiss()
-                }
-            }
+            Button("block user", role: .destructive) { blockAndDismiss() }
             Button("cancel", role: .cancel) {}
-        }
-        .alert("discard your draft?", isPresented: $showBlockWithDraftConfirm) {
-            Button("cancel", role: .cancel) {}
-            Button("block anyway", role: .destructive) { blockAndDismiss() }
-        } message: {
-            Text("you have an unsent message. blocking will discard it.")
         }
         .alert("reported", isPresented: $showReportAlert) {
             Button("ok") {}
@@ -625,11 +586,6 @@ struct ConversationView: View {
         guard !trimmed.isEmpty, myMessageCount < messageLimit else { return }
         guard Auth.auth().currentUser?.uid != nil else { return }
         guard !isBlockedEitherDirection else { dismiss(); return }
-        // Cap one outbound message per second so a held send button or
-        // accessibility automation can't burst-fire to the rule cap.
-        if let last = RateLimiter.shared.lastMessageTime, Date().timeIntervalSince(last) < 1.0 {
-            return
-        }
 
         // Safety chain: name-check first (least disruptive), then crisis-
         // check (more disruptive). Match the pattern used in ComposeView,
@@ -655,7 +611,6 @@ struct ConversationView: View {
     private func performSendChecked(_ trimmed: String) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         isSending = true
-        RateLimiter.shared.lastMessageTime = Date()
         performSend(trimmed: trimmed, uid: uid)
     }
 
@@ -687,15 +642,9 @@ struct ConversationView: View {
         batch.commit { error in
             Task { @MainActor in
                 self.isSending = false
-                if let error = error {
+                if error != nil {
                     self.messageText = previousText
                     self.myMessageCount = max(0, self.myMessageCount - 1)
-                    let nsError = error as NSError
-                    if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
-                        self.showInlineError("couldnt send. they may have blocked you.")
-                    } else {
-                        self.showInlineError("couldnt send. check your connection and try again.")
-                    }
                     return
                 }
                 guard !self.isBlockedEitherDirection else { return }
@@ -744,8 +693,6 @@ struct ConversationView: View {
 
     func reportConversation() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        if let last = RateLimiter.shared.lastReportTime, Date().timeIntervalSince(last) < 5.0 { return }
-        RateLimiter.shared.lastReportTime = Date()
         // Match the hardened firestore.rules schema for the reports
         // collection: required type / status / createdAt and a bounded
         // reason. Without these the rule rejects the write silently.
@@ -761,18 +708,6 @@ struct ConversationView: View {
             "reportedHandle": otherHandle,
         ])
         Telemetry.reportSubmitted(target: .conversation, reasonCode: "other")
-    }
-
-    // MARK: - Inline error
-
-    private func showInlineError(_ message: String) {
-        inlineErrorTask?.cancel()
-        inlineErrorBanner = message
-        inlineErrorTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled else { return }
-            inlineErrorBanner = nil
-        }
     }
 
     // MARK: - Block

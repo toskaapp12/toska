@@ -173,17 +173,8 @@ struct LastThingSaidView: View {
         db.collection("finalPosts")
                     .order(by: "createdAt", descending: true)
                     .limit(to: 20)
-                    .getDocuments { snapshot, error in
+                    .getDocuments { snapshot, _ in
                         Task { @MainActor in
-                            // Always drop the spinner — previously the error
-                            // path silently returned via the documents-nil
-                            // guard, so a permission failure would leave the
-                            // view spinning forever.
-                            if let error = error {
-                                print("⚠️ LastThingSaidView fetch failed: \(error)")
-                                isLoading = false
-                                return
-                            }
                             guard let documents = snapshot?.documents else {
                                 isLoading = false
                                 return

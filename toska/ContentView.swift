@@ -160,14 +160,6 @@ struct ContentView: View {
                 } else {
                     UIApplication.shared.applicationIconBadgeNumber = 0
                 }
-                // Force a token refresh on resume. Firebase Auth refreshes
-                // tokens automatically, but a long background can let the
-                // current token expire before the next listener
-                // re-attaches — the first read after resume then fails with
-                // permission-denied. Forcing a refresh closes that window.
-                Task { @MainActor in
-                    _ = try? await Auth.auth().currentUser?.getIDTokenResult(forcingRefresh: true)
-                }
             }
         }
         // Timer.publish workaround removed — LateNightThemeManager is now

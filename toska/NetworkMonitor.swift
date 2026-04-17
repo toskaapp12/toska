@@ -50,14 +50,6 @@ class RateLimiter {
     var lastLikeTime: Date? = nil
     var lastReplyTime: Date? = nil
     var lastSaveTime: Date? = nil
-    // Repost was previously unrate-limited — rapid taps could fire several
-    // dedup-check round trips before the first one's optimistic UI settled.
-    var lastRepostTime: Date? = nil
-    // Messages, reports had no client rate limiter — a held send button or
-    // repeated flag taps could burst writes before the 5-per-convo rule
-    // kicked in (messages) or add duplicate reports with no feedback.
-    var lastMessageTime: Date? = nil
-    var lastReportTime: Date? = nil
 
     private init() {}
 }

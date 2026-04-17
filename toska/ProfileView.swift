@@ -44,9 +44,9 @@ struct ProfileView: View {
     
     var avatarColor: Color {
         let colors: [Color] = [
-            Color.toskaBlue, Color.toskaPurple, Color.toskaGreen,
-            Color.toskaPink, Color.toskaWarm, Color(hex: "7a97b5"),
-            Color.toskaTeal, Color.toskaError
+            Color.toskaBlue, Color(hex: "8b7ec8"), Color(hex: "6ba58e"),
+            Color(hex: "c47a8a"), Color(hex: "c49a6c"), Color(hex: "7a97b5"),
+            Color(hex: "5a9e8f"), Color(hex: "c45c5c")
         ]
         var hash: UInt64 = 5381
         for char in userHandle.utf8 {
@@ -69,12 +69,12 @@ struct ProfileView: View {
                         Button { showMessagesList = true } label: {
                             Image(systemName: "envelope")
                                 .font(.system(size: 16, weight: .light))
-                                .foregroundColor(Color.toskaGray)
+                                .foregroundColor(Color(hex: "999999"))
                         }
                         Button { showSettings = true } label: {
                             Image(systemName: "gearshape")
                                 .font(.system(size: 16, weight: .light))
-                                .foregroundColor(Color.toskaGray)
+                                .foregroundColor(Color(hex: "999999"))
                         }
                     }
                 }
@@ -150,7 +150,7 @@ struct ProfileView: View {
                                                                             VStack(spacing: 6) {
                                                                                 Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
                                                                                     .font(.system(size: 18, weight: selectedTab == index ? .medium : .light))
-                                                                                    .foregroundColor(selectedTab == index ? Color.toskaBlue : Color.toskaGrayMid)
+                                                                                    .foregroundColor(selectedTab == index ? Color.toskaBlue : Color(hex: "c8c8c8"))
                                                                                 Capsule()
                                                                                     .fill(selectedTab == index ? Color.toskaBlue : Color.clear)
                                                                                     .frame(height: 2)
@@ -162,7 +162,7 @@ struct ProfileView: View {
                                                                 .padding(.horizontal, 16)
                                                                 .padding(.vertical, 6)
                         
-                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                        Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                         
                                         switch selectedTab {
                                                                 case 0:
@@ -180,7 +180,7 @@ struct ProfileView: View {
                                                                                                 Text("you reposted")
                                                                                                     .font(.system(size: 10, weight: .medium))
                                                                                             }
-                                                                                            .foregroundColor(Color.toskaTeal)
+                                                                                            .foregroundColor(Color(hex: "5a9e8f"))
                                                                                             .padding(.horizontal, 16)
                                                                                             .padding(.top, 8)
                                                                                         }
@@ -191,7 +191,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if myPosts.count >= 50 {
                                                                                 Text("showing your 50 most recent posts")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaGrayLight)
+                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -209,7 +209,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if likedPosts.count >= 50 {
                                                                                 Text("showing your 50 most recent likes")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaGrayLight)
+                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -227,7 +227,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if savedPosts.count >= 50 {
                                                                                 Text("showing your 50 most recent saves")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaGrayLight)
+                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -239,23 +239,14 @@ struct ProfileView: View {
                     }
                 }
                 .refreshable {
-                                    // Kick off the loads synchronously; they're
-                                    // fire-and-forget into Firestore callbacks.
-                                    // The 1.5s sleep is a pragmatic "pull feels
-                                    // real" delay since those callbacks don't
-                                    // bridge to async here — but it now runs
-                                    // concurrently with the loads rather than
-                                    // after an instant return. Worth replacing
-                                    // with proper async Firestore helpers later.
                                     loadProfile()
                                     switch selectedTab {
                                     case 0: loadMyPosts()
                                     case 1: loadLikedPosts()
                                     case 2: loadSavedPosts()
-                                    case 3: loadMyReplies()
                                     default: break
                                     }
-                                    try? await Task.sleep(nanoseconds: 900_000_000)
+                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
                                 }
             }
         }
@@ -406,7 +397,7 @@ struct ProfileView: View {
                     Image(systemName: "arrowshape.turn.up.left").font(.system(size: 8))
                     Text("replying to \(reply.parentHandle)").font(.system(size: 10, weight: .medium))
                     Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
-                    Text(reply.replyTime).font(.system(size: 10, weight: .light)).foregroundColor(Color.toskaGrayMid)
+                    Text(reply.replyTime).font(.system(size: 10, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
                 }.foregroundColor(Color.toskaTextLight)
                 
                 Text(reply.parentText)
@@ -520,7 +511,7 @@ struct ProfileView: View {
                         Text(streakLabel)
                             .font(.system(size: 12, weight: .medium))
                     }
-                    .foregroundColor(Color.toskaWarm)
+                    .foregroundColor(Color(hex: "c49a6c"))
                     .padding(.bottom, 8)
                 }
                 
@@ -775,26 +766,9 @@ struct ProfileView: View {
                         let replyDocId = doc.documentID
                         let parentPostId = parentRef.documentID
                         group.addTask {
-                            // Distinguish "parent post genuinely deleted" from
-                            // "fetch failed (network/permission)." Previously
-                            // try? swallowed errors, treating every failure as
-                            // a deletion — confusing when offline.
-                            let parentText: String
-                            let parentHandle: String
-                            do {
-                                let parentSnap = try await parentRef.getDocumentAsync()
-                                if let parentData = parentSnap.data() {
-                                    parentText = parentData["text"] as? String ?? ""
-                                    parentHandle = parentData["authorHandle"] as? String ?? "anonymous"
-                                } else {
-                                    parentText = "deleted post"
-                                    parentHandle = "anonymous"
-                                }
-                            } catch {
-                                parentText = "couldnt load original post"
-                                parentHandle = ""
-                            }
-                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                            let parentSnap = try? await parentRef.getDocumentAsync()
+                            let parentData = parentSnap?.data()
+                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentData?["text"] as? String ?? "deleted post", parentHandle: parentData?["authorHandle"] as? String ?? "anonymous", parentPostId: parentPostId, createdAt: createdAt)
                         }
                     }
                 }
@@ -825,10 +799,7 @@ struct FollowListView: View {
     @State private var selectedUser: FollowUser? = nil
     @State private var hasFetchedInitial = false
     @State private var blockedUserIds: Set<String> = []
-    // Pre-filter doc count so the "showing first 50" footer can disclose
-    // when blocked-user filtering trimmed visible rows below 50.
-    @State private var rawCount: Int = 0
-
+    
     var body: some View {
         NavigationStack {
             ZStack {
@@ -836,24 +807,22 @@ struct FollowListView: View {
                 VStack(spacing: 0) {
                     HStack {
                         Button { dismiss() } label: {
-                            Image(systemName: "xmark").font(.system(size: 14, weight: .light)).foregroundColor(Color.toskaGray)
+                            Image(systemName: "xmark").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: "999999"))
                         }
-                        .accessibilityLabel("Close \(title) list")
                         Spacer()
                         Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
                         Spacer()
                         Image(systemName: "xmark").font(.system(size: 14)).foregroundColor(.clear)
-                            .accessibilityHidden(true)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
-                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                     if isLoading {
                         Spacer(); ProgressView().tint(Color.toskaBlue); Spacer()
                     } else if users.isEmpty {
                         Spacer()
                         VStack(spacing: 8) {
                             Text("no \(title) yet").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextLight)
-                            Text("explore and connect with others").font(.system(size: 12)).foregroundColor(Color.toskaGrayLight)
+                            Text("explore and connect with others").font(.system(size: 12)).foregroundColor(Color(hex: "cccccc"))
                         }
                         Spacer()
                     } else {
@@ -870,18 +839,12 @@ struct FollowListView: View {
                                                                         }
                                     .buttonStyle(.plain)
                                     if index < users.count - 1 {
-                                                                            Rectangle().fill(LateNightTheme.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
+                                                                            Rectangle().fill(Color(hex: "dfe1e5").opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
                                                                         }
                                 }
-                                if rawCount >= 50 {
-                                    // Use the raw fetched count, not `users.count`,
-                                    // because users have already been filtered against
-                                    // blocked uids — saying "showing first 50" while
-                                    // displaying 38 rows was misleading.
-                                    Text(rawCount > users.count
-                                         ? "showing your first 50 \(title) (\(rawCount - users.count) hidden)"
-                                         : "showing your first 50 \(title)")
-                                        .font(.system(size: 9)).foregroundColor(Color.toskaGrayLight)
+                                if users.count >= 50 {
+                                    Text("showing your first 50 \(title)")
+                                        .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                         .frame(maxWidth: .infinity).padding(.vertical, 12)
                                 }
                             }
@@ -914,7 +877,6 @@ struct FollowListView: View {
             guard let snapshot = try? await db.collection("users").document(uid).collection(collection)
                 .limit(to: 50)
                 .getDocumentsAsync() else { isLoading = false; return }
-            rawCount = snapshot.documents.count
             let documents = snapshot.documents.filter { !blockedUserIds.contains($0.documentID) }
             if documents.isEmpty { isLoading = false; return }
             var fetched: [(id: String, handle: String)] = []
@@ -964,7 +926,7 @@ struct EditReplyView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaGray)
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
                     Text("edit reply").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -979,7 +941,7 @@ struct EditReplyView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
                 ZStack(alignment: .topLeading) {
                     if replyText.isEmpty {

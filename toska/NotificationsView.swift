@@ -58,14 +58,14 @@ struct NotificationsView: View {
                 HStack {
                     Text("notifications")
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(LateNightTheme.primaryText)
+                        .foregroundColor(Color(hex: "1a1a1a"))
                     Spacer()
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
 
                 // MARK: - Content
                 if isLoading {
@@ -113,7 +113,7 @@ struct NotificationsView: View {
                             if notifications.count >= 50 {
                                 Text("showing your 50 most recent notifications")
                                     .font(.system(size: 9))
-                                    .foregroundColor(Color.toskaGrayLight)
+                                    .foregroundColor(Color(hex: "cccccc"))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                             }
@@ -212,7 +212,7 @@ struct NotificationsView: View {
         HStack {
             Text(title)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(LateNightTheme.primaryText)
+                .foregroundColor(Color(hex: "1a1a1a"))
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -256,7 +256,7 @@ struct NotificationsView: View {
                 .background(notif.isUnread ? Color.toskaBlue.opacity(0.04) : Color.clear)
                 .overlay(
                     Rectangle()
-                        .fill(LateNightTheme.divider.opacity(0.5))
+                        .fill(Color(hex: "dfe1e5").opacity(0.5))
                         .frame(height: 0.5),
                     alignment: .bottom
                 )
@@ -285,15 +285,8 @@ struct NotificationsView: View {
 
     func handleNotifTap(_ notif: NotificationItem) {
         if notif.type == "follow" && !notif.fromUserId.isEmpty {
-            Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, error in
+            Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, _ in
                 Task { @MainActor in
-                    if let error = error {
-                        print("⚠️ handleNotifTap follow: getDocument failed: \(error)")
-                        // Open the profile anyway with a fallback handle —
-                        // OtherProfileView surfaces a "deleted" state if the
-                        // doc truly doesn't exist; transient errors recover
-                        // when the destination view's own listener attaches.
-                    }
                     let handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
                     selectedFollowUser = NotifFollowUser(id: notif.fromUserId, handle: handle)
                 }
@@ -309,15 +302,8 @@ struct NotificationsView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
         let convoId = [uid, fromUserId].sorted().joined(separator: "_")
-        db.collection("conversations").document(convoId).getDocument { snapshot, error in
+        db.collection("conversations").document(convoId).getDocument { snapshot, _ in
             Task { @MainActor in
-                if let error = error {
-                    print("⚠️ openConversation: getDocument failed: \(error)")
-                    // Don't open a half-loaded conversation when the metadata
-                    // read failed — the user can retry by re-tapping the
-                    // notification once the network recovers.
-                    return
-                }
                 guard let data = snapshot?.data() else { return }
                 let handles = data["participantHandles"] as? [String: String] ?? [:]
                 let otherHandle = handles[fromUserId] ?? "anonymous"
@@ -373,14 +359,14 @@ struct NotificationsView: View {
 
     func iconColor(for type: String) -> Color {
         switch type {
-        case "like": return Color.toskaPink
+        case "like": return Color(hex: "c47a8a")
         case "reply": return Color.toskaBlue
-        case "follow": return Color.toskaGreen
-        case "repost": return Color.toskaTeal
-        case "save": return Color.toskaWarm
-        case "milestone": return Color.toskaGold
+        case "follow": return Color(hex: "6ba58e")
+        case "repost": return Color(hex: "5a9e8f")
+        case "save": return Color(hex: "c49a6c")
+        case "milestone": return Color(hex: "c9a97a")
         case "message": return Color.toskaBlue
-        default: return Color.toskaGrayLight
+        default: return Color(hex: "cccccc")
         }
     }
 

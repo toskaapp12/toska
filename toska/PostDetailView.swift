@@ -10,9 +10,6 @@ struct ThreadedReply: Identifiable {
     let time: String
     let authorId: String
     let parentReplyId: String?
-    /// Optional GIF written by ComposeView reply path. Was previously stored
-    /// in Firestore but never read back, so reply GIFs never rendered.
-    let gifUrl: String?
     var children: [ThreadedReply]
 }
 
@@ -227,7 +224,7 @@ struct PostDetailView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -257,10 +254,10 @@ struct PostDetailView: View {
                                         replyingToId = item.reply.id
                                         replyingToHandle = item.reply.handle
                                         replyFocused = true
-                                    }, postId: postId, postAuthorId: authorUserId)
+                                    }, postId: postId)
                                     if index < flat.count - 1 {
                                         Rectangle()
-                                            .fill(LateNightTheme.divider.opacity(item.depth > 0 ? 0.3 : 0.5))
+                                            .fill(Color(hex: "e4e6ea").opacity(item.depth > 0 ? 0.3 : 0.5))
                                             .frame(height: 0.5)
                                             .padding(.leading, 18 + indent)
                                     }
@@ -277,7 +274,7 @@ struct PostDetailView: View {
 
     var replyBarView: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
             if let gifUrl = replyGifUrl, let url = URL(string: gifUrl) {
                 HStack {
@@ -302,7 +299,7 @@ struct PostDetailView: View {
                         Button { withAnimation { replyGifUrl = nil } } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 16))
-                                .foregroundColor(Color.toskaGray)
+                                .foregroundColor(Color(hex: "999999"))
                                 .background(Circle().fill(.white))
                         }
                         .offset(x: -2, y: 2)
@@ -388,7 +385,7 @@ struct PostDetailView: View {
                 Spacer()
                 Text(time)
                     .font(.system(size: 10, weight: .light))
-                    .foregroundColor(Color.toskaGrayMid)
+                    .foregroundColor(Color(hex: "c8c8c8"))
             }
             .padding(.bottom, 10)
 
@@ -415,62 +412,55 @@ struct PostDetailView: View {
                         }
                         .padding(.bottom, 10)
 
-            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
             HStack(spacing: 0) {
-                // Left group: reply + repost
-                Button { replyFocused = true } label: {
-                    Image(systemName: "bubble.left")
-                        .font(.system(size: 17, weight: .light))
-                        .foregroundColor(Color.toskaTextLight)
-                }
-                .accessibilityLabel("Reply")
+                           Button { replyFocused = true } label: {
+                               Image(systemName: "bubble.left")
+                                   .font(.system(size: 15, weight: .light))
+                                   .foregroundColor(Color.toskaTextLight)
+                           }
+                           .accessibilityLabel("Reply")
+                           .frame(maxWidth: .infinity)
 
-                Spacer().frame(width: 32)
+                           Button { toggleLike() } label: {
+                               Image(systemName: isLiked ? "heart.fill" : "heart")
+                                   .font(.system(size: 15, weight: isLiked ? .medium : .light))
+                                   .foregroundColor(isLiked ? Color(hex: "c47a8a") : Color.toskaTextLight)
+                           }
+                           .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                           .accessibilityValue("\(formatFull(likeCount)) people felt this")
+                           .frame(maxWidth: .infinity)
 
-                Button { repostPost() } label: {
-                    Image(systemName: "arrow.2.squarepath")
-                        .font(.system(size: 17, weight: .light))
-                        .foregroundColor(isReposted ? Color.toskaTeal : Color.toskaTextLight)
-                }
-                .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
-                .disabled(isReposted)
-                .opacity(isReposted ? Toska.disabledOpacity : 1.0)
+                           Button { repostPost() } label: {
+                               Image(systemName: "arrow.2.squarepath")
+                                   .font(.system(size: 15, weight: .light))
+                                   .foregroundColor(isReposted ? Color(hex: "5a9e8f") : Color.toskaTextLight)
+                           }
+                           .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                           .frame(maxWidth: .infinity)
+                           .disabled(isReposted)
 
-                if !isOwnPost && !isAuthorIdLoading && !authorUserId.isEmpty {
-                    Spacer().frame(width: 32)
+                           Button { toggleSave() } label: {
+                               Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                                   .font(.system(size: 15, weight: .light))
+                                   .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
+                           }
+                           .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
+                           .frame(maxWidth: .infinity)
 
-                    Button { startConversation() } label: {
-                        Image(systemName: "envelope")
-                            .font(.system(size: 17, weight: .light))
-                            .foregroundColor(Color.toskaTextLight)
-                    }
-                    .accessibilityLabel("Send message")
-                }
-
-                Spacer()
-
-                // Right group: bookmark + heart (thumb zone)
-                Button { toggleSave() } label: {
-                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: 17, weight: .light))
-                        .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
-                }
-                .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-
-                Spacer().frame(width: 32)
-
-                Button { toggleLike() } label: {
-                    Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 17, weight: isLiked ? .medium : .light))
-                        .foregroundColor(isLiked ? Color.toskaPink : Color.toskaTextLight)
-                }
-                .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                .accessibilityValue("\(formatFull(likeCount)) people felt this")
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, Toska.horizontalPadding)
-            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                           if !isOwnPost && !isAuthorIdLoading && !authorUserId.isEmpty {
+                               Button { startConversation() } label: {
+                                   Image(systemName: "envelope")
+                                       .font(.system(size: 15, weight: .light))
+                                       .foregroundColor(Color.toskaTextLight)
+                               }
+                               .accessibilityLabel("Send message")
+                               .frame(maxWidth: .infinity)
+                           }
+                       }
+                       .padding(.vertical, 8)
+            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
         }
     }
 
@@ -489,7 +479,7 @@ struct PostDetailView: View {
                 Image(systemName: icon).font(.system(size: 14, weight: .light))
                 Text(label).font(.system(size: 8))
             }
-            .foregroundColor(active ? Color.toskaBlue : Color.toskaGrayMid)
+            .foregroundColor(active ? Color.toskaBlue : Color(hex: "c8c8c8"))
             .frame(maxWidth: .infinity)
         }
     }
@@ -524,22 +514,8 @@ struct PostDetailView: View {
         guard !postId.isEmpty else { return }
         liveListener?.remove()
         let registration = Firestore.firestore().collection("posts").document(postId)
-            .addSnapshotListener { snapshot, error in
+            .addSnapshotListener { snapshot, _ in
                 Task { @MainActor in
-                    if let error = error {
-                        // code 7 = permission-denied. Auth state changed
-                        // (sign-out, token expiry, account deletion) — the
-                        // current uid no longer satisfies the read rule.
-                        // Tear down the listener and dismiss so we don't
-                        // sit on a dead view that can never recover.
-                        let nsError = error as NSError
-                        if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
-                            self.liveListener?.remove()
-                            self.liveListener = nil
-                            self.dismiss()
-                        }
-                        return
-                    }
                     if snapshot?.exists == false {
                         self.liveListener?.remove()
                         self.liveListener = nil
@@ -685,8 +661,6 @@ struct PostDetailView: View {
 
     func reportPost() {
             guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
-            if let last = RateLimiter.shared.lastReportTime, Date().timeIntervalSince(last) < 5.0 { return }
-            RateLimiter.shared.lastReportTime = Date()
             // Writes must match the hardened firestore.rules schema for the
             // reports collection: required type/status/createdAt, only fields
             // in the keys.hasOnly() allow list, reportedBy must match the
@@ -782,18 +756,8 @@ struct PostDetailView: View {
             replyListener?.remove()
             replyListener = Firestore.firestore().collection("posts").document(postId).collection("replies")
                 .order(by: "createdAt", descending: false)
-                .addSnapshotListener { snapshot, error in
+                .addSnapshotListener { snapshot, _ in
                 Task { @MainActor in
-                    if let error = error {
-                        let nsError = error as NSError
-                        if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
-                            // Auth changed underneath us — tear down & bail.
-                            self.replyListener?.remove()
-                            self.replyListener = nil
-                            self.dismiss()
-                        }
-                        return
-                    }
                     guard let documents = snapshot?.documents else { return }
                     let flat = documents.compactMap { doc -> ThreadedReply? in
                         let data = doc.data()
@@ -808,26 +772,12 @@ struct PostDetailView: View {
                             time: FeedView.timeAgoString(from: createdAt),
                             authorId: authorId,
                             parentReplyId: data["parentReplyId"] as? String,
-                            gifUrl: data["gifUrl"] as? String,
                             children: []
                         )
                     }
                     replyList = buildThreadedReplies(from: flat)
                 }
             }
-    }
-
-    /// Walks the threaded reply tree to find the author of `replyId`.
-    /// Used by the nested-reply notification path so the parent reply's
-    /// author gets pinged when someone responds beneath them.
-    func findReplyAuthor(in nodes: [ThreadedReply], replyId: String) -> String? {
-        for node in nodes {
-            if node.id == replyId { return node.authorId }
-            if let nested = findReplyAuthor(in: node.children, replyId: replyId) {
-                return nested
-            }
-        }
-        return nil
     }
 
     func buildThreadedReplies(from flat: [ThreadedReply]) -> [ThreadedReply] {
@@ -930,25 +880,10 @@ struct PostDetailView: View {
                     if !self.authorUserId.isEmpty, self.authorUserId != uid {
                         self.sendNotification(toUserId: self.authorUserId, type: "reply", message: currentReplyText)
                     }
-                    // Nested reply: also notify the parent reply's author so
-                    // they know someone responded to *them*, not just the
-                    // post owner. Skip when the parent reply was authored by
-                    // the post owner (already notified above) or by self.
-                    if let parentId = self.replyingToId {
-                        let parentAuthorId = self.findReplyAuthor(in: self.replyList, replyId: parentId)
-                        if let parentAuthorId = parentAuthorId,
-                           !parentAuthorId.isEmpty,
-                           parentAuthorId != uid,
-                           parentAuthorId != self.authorUserId {
-                            self.sendNotification(toUserId: parentAuthorId, type: "reply", message: currentReplyText)
-                        }
-                    }
                     let newReply = ThreadedReply(
                         id: replyRef.documentID, handle: replyHandle, text: currentReplyText,
                         likes: 0, time: "now", authorId: uid,
-                        parentReplyId: self.replyingToId,
-                        gifUrl: self.replyGifUrl,
-                        children: []
+                        parentReplyId: self.replyingToId, children: []
                     )
                     if let parentId = self.replyingToId {
                         func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
@@ -1036,7 +971,7 @@ struct EditPostView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaGray)
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
                     }
                     Spacer()
                     Text("edit post").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -1055,17 +990,17 @@ struct EditPostView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
                 if !saveError.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.circle").font(.system(size: 10))
                         Text(saveError).font(.system(size: 11))
                     }
-                    .foregroundColor(Color.toskaError)
+                    .foregroundColor(Color(hex: "c45c5c"))
                     .padding(.horizontal, 18).padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.toskaError.opacity(0.05))
+                    .background(Color(hex: "c45c5c").opacity(0.05))
                 }
 
                 ZStack(alignment: .topLeading) {
@@ -1086,25 +1021,25 @@ struct EditPostView: View {
                 .frame(maxHeight: .infinity)
 
                 VStack(spacing: 0) {
-                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                    Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: "pencil").font(.system(size: 10))
                             Text("editing your post").font(.system(size: 10))
                         }
-                        .foregroundColor(Color.toskaGold)
+                        .foregroundColor(Color(hex: "c9a97a"))
                         Spacer()
                         ZStack {
-                            Circle().stroke(LateNightTheme.divider, lineWidth: 1.5).frame(width: 22, height: 22)
+                            Circle().stroke(Color(hex: "e4e6ea"), lineWidth: 1.5).frame(width: 22, height: 22)
                             Circle()
                                 .trim(from: 0, to: CGFloat(editText.count) / CGFloat(charLimit))
-                                .stroke(editText.count > charLimit - 50 ? Color.toskaError : Color.toskaBlue,
+                                .stroke(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                                 .frame(width: 22, height: 22).rotationEffect(.degrees(-90))
                         }
                         Text("\(charLimit - editText.count)")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(editText.count > charLimit - 50 ? Color.toskaError : Color.toskaTimestamp)
+                            .foregroundColor(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color.toskaTimestamp)
                     }
                     .padding(.horizontal, 18).padding(.vertical, 10)
                 }
@@ -1175,17 +1110,10 @@ struct SwipeToReplyRow: View {
     /// Parent post ID — needed so the report payload knows which post this
     /// reply belongs to. Empty string disables the report/block menu.
     var postId: String = ""
-    /// The author of the parent post. When the logged-in user is the post
-    /// author, a "delete reply" option appears even for others' replies —
-    /// matching the server-side delete rule that allows the post author to
-    /// remove any reply on their post.
-    var postAuthorId: String = ""
     @State private var dragOffset: CGFloat = 0
     @State private var hasTriggered = false
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
-    @State private var showDeleteConfirm = false
-    @State private var isDeleting = false
     private let triggerThreshold: CGFloat = 60
 
     var body: some View {
@@ -1205,77 +1133,37 @@ struct SwipeToReplyRow: View {
                         Rectangle().fill(Color.toskaBlue.opacity(0.2))
                             .frame(width: 2, height: 14).cornerRadius(1).padding(.trailing, 4)
                     }
-                    // Empty handle slips through when fetchReplies hits a doc
-                    // missing authorHandle (legacy data, mid-write race). Render
-                    // a placeholder rather than a blank slot beside the dot/time.
-                    Text(item.reply.handle.isEmpty ? "anonymous" : item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
+                    Text(item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
                     Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
-                    Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color.toskaGrayMid)
+                    Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
                     // and when postId is unknown (empty string parent).
-                    if !postId.isEmpty, !item.reply.authorId.isEmpty {
-                        let isOwnReply = item.reply.authorId == Auth.auth().currentUser?.uid
-                        let isPostAuthor = postAuthorId == Auth.auth().currentUser?.uid
-                        // Show menu when: not own reply (report/block/delete options)
-                        // OR own reply + post-author (delete own reply option, rare but consistent)
-                        if !isOwnReply || isPostAuthor {
-                            Menu {
-                                if !isOwnReply {
-                                    Button {
-                                        showReportSheet = true
-                                    } label: {
-                                        Label("report", systemImage: "flag")
-                                    }
-                                    Button(role: .destructive) {
-                                        showBlockConfirm = true
-                                    } label: {
-                                        Label("block \(item.reply.handle)", systemImage: "person.slash")
-                                    }
-                                }
-                                // Post author can delete any reply on their
-                                // post per firestore.rules; own replies can
-                                // also be deleted. Surface both here.
-                                if isPostAuthor || isOwnReply {
-                                    Button(role: .destructive) {
-                                        showDeleteConfirm = true
-                                    } label: {
-                                        Label("delete reply", systemImage: "trash")
-                                    }
-                                }
+                    if !postId.isEmpty,
+                       !item.reply.authorId.isEmpty,
+                       item.reply.authorId != Auth.auth().currentUser?.uid {
+                        Menu {
+                            Button {
+                                showReportSheet = true
                             } label: {
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(Color.toskaTimestamp)
-                                    .padding(.horizontal, 4)
-                                    .contentShape(Rectangle())
+                                Label("report", systemImage: "flag")
                             }
-                            .accessibilityLabel("More options for \(item.reply.handle)'s reply")
+                            Button(role: .destructive) {
+                                showBlockConfirm = true
+                            } label: {
+                                Label("block \(item.reply.handle)", systemImage: "person.slash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color.toskaTimestamp)
+                                .padding(.horizontal, 4)
+                                .contentShape(Rectangle())
                         }
+                        .accessibilityLabel("More options for \(item.reply.handle)'s reply")
                     }
                 }
                 Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
-                if let gifUrl = item.reply.gifUrl, let url = URL(string: gifUrl) {
-                    AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().aspectRatio(contentMode: .fit)
-                                .frame(maxHeight: 160)
-                                .cornerRadius(8)
-                        case .failure:
-                            LateNightTheme.inputBackground.frame(height: 100).cornerRadius(8)
-                                .overlay(
-                                    Image(systemName: "photo.badge.exclamationmark")
-                                        .font(.system(size: 14, weight: .light))
-                                        .foregroundColor(LateNightTheme.tertiaryText)
-                                )
-                        default:
-                            LateNightTheme.inputBackground.frame(height: 100).cornerRadius(8)
-                                .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
-                        }
-                    }
-                    .padding(.top, 4)
-                }
                 if item.reply.likes > 0 {
                     HStack(spacing: 3) {
                         Image(systemName: "heart").font(.system(size: 9, weight: .light))
@@ -1325,37 +1213,6 @@ struct SwipeToReplyRow: View {
             Button("cancel", role: .cancel) {}
         } message: {
             Text("you wont see their posts or messages. they wont be notified.")
-        }
-        .confirmationDialog(
-            "delete this reply?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("delete", role: .destructive) { deleteReply() }
-            Button("cancel", role: .cancel) {}
-        } message: {
-            Text("this cant be undone.")
-        }
-    }
-
-    private func deleteReply() {
-        guard !postId.isEmpty, !isDeleting else { return }
-        isDeleting = true
-        let db = Firestore.firestore()
-        let postRef = db.collection("posts").document(postId)
-        let replyRef = postRef.collection("replies").document(item.reply.id)
-
-        let batch = db.batch()
-        batch.deleteDocument(replyRef)
-        batch.updateData(["replyCount": FieldValue.increment(Int64(-1))], forDocument: postRef)
-
-        batch.commit { error in
-            Task { @MainActor in
-                isDeleting = false
-                if let error = error {
-                    print("⚠️ SwipeToReplyRow deleteReply failed: \(error)")
-                }
-            }
         }
     }
 }

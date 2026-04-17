@@ -64,7 +64,7 @@ struct CreateAccountView: View {
                                             withAnimation(.easeInOut(duration: 0.15)) {
                                                 assignedHandle = "..."
                                             }
-                                            generateUniqueHandleWithTimeout { handle in
+                                            generateUniqueHandle { handle in
                                                 withAnimation(.easeInOut(duration: 0.15)) {
                                                     assignedHandle = handle
                                                 }
@@ -91,7 +91,7 @@ struct CreateAccountView: View {
                                 .padding(.bottom, 12)
                 
                 Rectangle()
-                    .fill(LateNightTheme.divider)
+                    .fill(Color(hex: "e4e6ea"))
                     .frame(height: 0.5)
                     .padding(.bottom, 16)
                 
@@ -108,7 +108,7 @@ struct CreateAccountView: View {
                     .cornerRadius(10)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(LateNightTheme.divider, lineWidth: 0.5)
+                            .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
                     )
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -129,7 +129,7 @@ struct CreateAccountView: View {
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
-                                            .stroke(LateNightTheme.divider, lineWidth: 0.5)
+                                            .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
                                     )
                                     .padding(.bottom, 12)
                                     .textContentType(.oneTimeCode)
@@ -148,7 +148,7 @@ struct CreateAccountView: View {
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
-                                            .stroke(LateNightTheme.divider, lineWidth: 0.5)
+                                            .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
                                     )
                                     .padding(.bottom, 20)
                                     .textContentType(.oneTimeCode)
@@ -157,7 +157,7 @@ struct CreateAccountView: View {
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
                         .font(.system(size: 11))
-                        .foregroundColor(Color.toskaError)
+                        .foregroundColor(Color(hex: "c45c5c"))
                         .padding(.bottom, 10)
                 }
                 
@@ -249,33 +249,8 @@ struct CreateAccountView: View {
     }
     
     func loadUniqueHandle() {
-        generateUniqueHandleWithTimeout { handle in
-            assignedHandle = handle
-        }
-    }
-
-    /// Wraps generateUniqueHandle in an 8s timeout so a slow Firestore
-    /// uniqueness check (or a dead network) doesn't leave the user staring
-    /// at "..." forever. On timeout we fall through to the same fallback
-    /// generateUniqueHandle uses internally after 10 attempts. AppleSignIn
-    /// already does this; CreateAccountView previously didn't.
-    func generateUniqueHandleWithTimeout(completion: @escaping (String) -> Void) {
-        var didComplete = false
-        let timeoutTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 8_000_000_000)
-            if !didComplete {
-                didComplete = true
-                completion("anonymous_\(UUID().uuidString.prefix(8).lowercased())")
-            }
-        }
         generateUniqueHandle { handle in
-            Task { @MainActor in
-                if !didComplete {
-                    didComplete = true
-                    timeoutTask.cancel()
-                    completion(handle)
-                }
-            }
+            assignedHandle = handle
         }
     }
     

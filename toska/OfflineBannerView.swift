@@ -8,27 +8,13 @@ struct OfflineBannerView: View {
             HStack(spacing: 8) {
                 Image(systemName: network.isConnected ? "wifi" : "wifi.slash")
                     .font(.system(size: 11))
-                Text(network.isConnected ? "back online" : "no connection · tap to retry")
+                Text(network.isConnected ? "back online" : "no connection")
                     .font(.system(size: 11, weight: .medium))
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-            .background(network.isConnected ? Color.toskaGreen : Color.toskaError)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                // Tap acts as a soft refresh hint — the offline-detection
-                // path is passive (NWPathMonitor) so tapping doesn't itself
-                // re-check connectivity, but it gives the user agency to
-                // close the banner and re-trigger their last action manually.
-                guard !network.isConnected else { return }
-                NotificationCenter.default.post(
-                    name: NSNotification.Name("UserRequestedNetworkRetry"),
-                    object: nil
-                )
-            }
-            .accessibilityLabel(network.isConnected ? "Back online" : "No connection")
-            .accessibilityHint(network.isConnected ? "" : "Double-tap to retry")
+            .background(network.isConnected ? Color(hex: "6ba58e") : Color(hex: "c45c5c"))
             .transition(.move(edge: .top).combined(with: .opacity))
             .animation(.easeInOut(duration: 0.3), value: network.showOfflineBanner)
             .animation(.easeInOut(duration: 0.3), value: network.isConnected)

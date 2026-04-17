@@ -15,31 +15,24 @@ struct AnniversaryCardView: View {
     @State private var showGentleCheck = false
     @State private var gentleCheckLevel: CrisisLevel = .soft
     @State private var saveError = ""
-    // Suppress the form/affordance until checkExistingReflection completes —
-    // otherwise tapping "reflect" before the read returns flashes the empty
-    // form for ~150ms before swapping to the saved view.
-    @State private var hasCheckedExisting = false
-    // Report path for anniversary reflections — Agent 8 noted these were
-    // a moderation blind spot (no report button on user-submitted text).
-    @State private var showReportSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 11))
-                    .foregroundColor(Color.toskaGold)
+                    .foregroundColor(Color(hex: "c9a97a"))
 
                 Text("one year ago today")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color.toskaGold)
+                    .foregroundColor(Color(hex: "c9a97a"))
                     .tracking(0.3)
 
                 Spacer()
 
                 Text(post.dateString)
                     .font(.system(size: 9, weight: .light))
-                    .foregroundColor(Color.toskaGold.opacity(0.5))
+                    .foregroundColor(Color(hex: "c9a97a").opacity(0.5))
             }
             .padding(.bottom, 10)
 
@@ -60,14 +53,14 @@ struct AnniversaryCardView: View {
             if !saveError.isEmpty {
                 Text(saveError)
                     .font(.system(size: 10))
-                    .foregroundColor(Color.toskaError)
+                    .foregroundColor(Color(hex: "c45c5c"))
                     .padding(.bottom, 4)
             }
 
             if reflectionSaved {
                 VStack(alignment: .leading, spacing: 6) {
                     Rectangle()
-                        .fill(Color.toskaGold.opacity(0.2))
+                        .fill(Color(hex: "c9a97a").opacity(0.2))
                         .frame(height: 0.5)
 
                     HStack(spacing: 4) {
@@ -76,7 +69,7 @@ struct AnniversaryCardView: View {
                         Text("how you feel now")
                             .font(.system(size: 9, weight: .medium))
                     }
-                    .foregroundColor(Color.toskaGold.opacity(0.6))
+                    .foregroundColor(Color(hex: "c9a97a").opacity(0.6))
                     .padding(.top, 4)
 
                     Text(reflectionText)
@@ -87,12 +80,12 @@ struct AnniversaryCardView: View {
             } else if showReflection {
                 VStack(alignment: .leading, spacing: 8) {
                     Rectangle()
-                        .fill(Color.toskaGold.opacity(0.2))
+                        .fill(Color(hex: "c9a97a").opacity(0.2))
                         .frame(height: 0.5)
 
                     Text("how do you feel about this now?")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color.toskaGold.opacity(0.7))
+                        .foregroundColor(Color(hex: "c9a97a").opacity(0.7))
                         .padding(.top, 4)
 
                     TextField("reflect on this moment...", text: $reflectionText, axis: .vertical)
@@ -123,14 +116,14 @@ struct AnniversaryCardView: View {
                             .background(
                                 reflectionText.isEmpty || isSaving
                                     ? Color.toskaDivider
-                                    : Color.toskaGold
+                                    : Color(hex: "c9a97a")
                             )
                             .cornerRadius(14)
                         }
                         .disabled(reflectionText.isEmpty || isSaving)
                     }
                 }
-            } else if hasCheckedExisting {
+            } else {
                 Button {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         showReflection = true
@@ -142,19 +135,19 @@ struct AnniversaryCardView: View {
                         Text("how do you feel about this now?")
                             .font(.system(size: 10, weight: .medium))
                     }
-                    .foregroundColor(Color.toskaGold)
+                    .foregroundColor(Color(hex: "c9a97a"))
                     .padding(.top, 4)
                 }
             }
         }
         .padding(14)
-        .background(LateNightTheme.cardBackground)
+        .background(Color.white)
         .cornerRadius(14)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.toskaGold.opacity(0.2), lineWidth: 0.5)
+                .stroke(Color(hex: "c9a97a").opacity(0.2), lineWidth: 0.5)
         )
-        .shadow(color: Color.toskaGold.opacity(0.06), radius: 8, y: 2)
+        .shadow(color: Color(hex: "c9a97a").opacity(0.06), radius: 8, y: 2)
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .onAppear {
@@ -189,10 +182,7 @@ struct AnniversaryCardView: View {
     // MARK: - Functions
 
     func checkExistingReflection() {
-           guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
-               hasCheckedExisting = true
-               return
-           }
+           guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
            Task { @MainActor in
                do {
                    let snapshot = try await Firestore.firestore()
@@ -206,7 +196,6 @@ struct AnniversaryCardView: View {
                } catch {
                    print("⚠️ checkExistingReflection failed: \(error)")
                }
-               hasCheckedExisting = true
            }
        }
 

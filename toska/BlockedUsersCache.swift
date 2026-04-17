@@ -44,19 +44,12 @@ class BlockedUsersCache {
         stopListening()
         currentUid = uid
 
-        // Capture the uid in the closure so a late-arriving snapshot from
-        // the previous user doesn't contaminate the new user's blocklist
-        // after a fast switch (signOut → signIn another account, or test
-        // automation). The currentUid check inside the MainActor task is
-        // the authoritative gate.
-        let listenerUid = uid
         listener = Firestore.firestore()
             .collection("users").document(uid).collection("blocked")
             .addSnapshotListener { [weak self] snapshot, _ in
                 let ids = Set(snapshot?.documents.map { $0.documentID } ?? [])
                 Task { @MainActor [weak self] in
-                    guard let self = self, self.currentUid == listenerUid else { return }
-                    self.setBlockedUserIds(ids)
+                    self?.setBlockedUserIds(ids)
                 }
             }
     }

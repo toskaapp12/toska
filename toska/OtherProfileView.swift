@@ -22,11 +22,6 @@ struct OtherProfileView: View {
     @State private var hasFetchedInitial = false
     @State private var showMessages = false
     @State private var activeConversationId = ""
-    // True when loadProfile finds no user doc (account deleted) — drives the
-    // empty-state UI so the view doesn't sit on a half-rendered shell with
-    // 0/0/0 counts and no clue what's wrong.
-    @State private var profileNotFound = false
-    @State private var hasAttemptedProfileLoad = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -63,33 +58,8 @@ struct OtherProfileView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-
-                if profileNotFound {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "person.fill.questionmark")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundColor(Color.toskaDivider)
-                        Text("this person isnt here anymore")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.toskaTextLight)
-                        Text("their account was deleted.")
-                            .font(.system(size: 11))
-                            .foregroundColor(Color.toskaTimestamp)
-                        Button { dismiss() } label: {
-                            Text("go back")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(Color.toskaBlue)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 8)
-                                .background(Color.toskaBlue.opacity(0.1))
-                                .cornerRadius(16)
-                        }
-                        .padding(.top, 6)
-                    }
-                    Spacer()
-                } else {
+                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         VStack(spacing: 10) {
@@ -126,10 +96,10 @@ struct OtherProfileView: View {
                                     Button { toggleFollow() } label: {
                                         Text(isFollowing ? "following" : "follow")
                                             .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(isFollowing ? Color.toskaGray : .white)
+                                            .foregroundColor(isFollowing ? Color(hex: "999999") : .white)
                                             .frame(width: 100)
                                             .padding(.vertical, 8)
-                                            .background(isFollowing ? LateNightTheme.divider : Color.toskaBlue)
+                                            .background(isFollowing ? Color(hex: "e4e6ea") : Color.toskaBlue)
                                             .cornerRadius(16)
                                     }
                                     
@@ -157,7 +127,7 @@ struct OtherProfileView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 0 ? "square.grid.2x2.fill" : "square.grid.2x2")
                                         .font(.system(size: 14, weight: selectedTab == 0 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color.toskaGrayMid)
+                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color(hex: "c8c8c8"))
                                     Capsule().fill(selectedTab == 0 ? Color.toskaBlue : Color.clear).frame(height: 2)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -166,7 +136,7 @@ struct OtherProfileView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 1 ? "bubble.left.fill" : "bubble.left")
                                         .font(.system(size: 14, weight: selectedTab == 1 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color.toskaGrayMid)
+                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color(hex: "c8c8c8"))
                                     Capsule().fill(selectedTab == 1 ? Color.toskaBlue : Color.clear).frame(height: 2)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -174,7 +144,7 @@ struct OtherProfileView: View {
                         }
                         .padding(.horizontal, 40)
                         
-                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
                         
                         if selectedTab == 0 {
                             if posts.isEmpty {
@@ -230,7 +200,7 @@ struct OtherProfileView: View {
                                                     
                                                     Text(reply.replyTime)
                                                         .font(.system(size: 9, weight: .light))
-                                                        .foregroundColor(Color.toskaGrayMid)
+                                                        .foregroundColor(Color(hex: "c8c8c8"))
                                                 }
                                             }
                                             .padding(.top, 2)
@@ -240,7 +210,7 @@ struct OtherProfileView: View {
                                         .background(Color.white)
                                         .overlay(
                                             Rectangle()
-                                                .fill(LateNightTheme.divider)
+                                                .fill(Color(hex: "e4e6ea"))
                                                 .frame(height: 0.5),
                                             alignment: .bottom
                                         )
@@ -252,7 +222,6 @@ struct OtherProfileView: View {
                         Color.clear.frame(height: 40)
                     }
                 }
-                } // end else (profileNotFound)
             }
         }
         .onAppear {
@@ -321,17 +290,9 @@ struct OtherProfileView: View {
     // MARK: - Load Profile
     
     func loadProfile() {
-        Firestore.firestore().collection("users").document(userId).getDocument { snapshot, error in
+        Firestore.firestore().collection("users").document(userId).getDocument { snapshot, _ in
             Task { @MainActor in
-                hasAttemptedProfileLoad = true
-                if error != nil { return }
-                guard let snapshot = snapshot, snapshot.exists, let data = snapshot.data() else {
-                    // User document deleted (account-deletion cascade). Flag
-                    // so the view shows the "no longer here" empty state
-                    // instead of a permanently-spinning loader.
-                    profileNotFound = true
-                    return
-                }
+                guard let data = snapshot?.data() else { return }
                 followerCount = data["followerCount"] as? Int ?? 0
                 followingCount = data["followingCount"] as? Int ?? 0
                 totalLikes = data["totalLikes"] as? Int ?? 0
@@ -396,21 +357,10 @@ struct OtherProfileView: View {
                                                                     let replyDocId = doc.documentID
                                                                     let parentPostId = parentRef.documentID
                                                                                                                                         group.addTask {
-                                                                                                                                                                                                                let parentText: String
-                                                                                                                                                                                                                let parentHandle: String
-                                                                                                                                                                                                                do {
-                                                                                                                                                                                                                    let parentSnap = try await parentRef.getDocumentAsync()
-                                                                                                                                                                                                                    if let parentData = parentSnap.data() {
-                                                                                                                                                                                                                        parentText = parentData["text"] as? String ?? ""
-                                                                                                                                                                                                                        parentHandle = parentData["authorHandle"] as? String ?? "anonymous"
-                                                                                                                                                                                                                    } else {
-                                                                                                                                                                                                                        parentText = "deleted post"
-                                                                                                                                                                                                                        parentHandle = "anonymous"
-                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                } catch {
-                                                                                                                                                                                                                    parentText = "couldnt load original post"
-                                                                                                                                                                                                                    parentHandle = ""
-                                                                                                                                                                                                                }
+                                                                                                                                                                                                                let parentSnap = try? await parentRef.getDocumentAsync()
+                                                                                                                                                                                                                let parentData = parentSnap?.data()
+                                                                                                                                                                                                                let parentText = parentData?["text"] as? String ?? "deleted post"
+                                                                                                                                                                                                                let parentHandle = parentData?["authorHandle"] as? String ?? "anonymous"
                                                                                                                                                                                                                 return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
                                                                                                                                                                                                             }
                                                                 }
@@ -437,6 +387,20 @@ struct OtherProfileView: View {
             }
         }
     }
+    
+    // MARK: - Safe Decrement
+    
+    func safeDecrement(db: Firestore, docRef: DocumentReference, field: String) {
+            guard NetworkMonitor.shared.isConnected else { return }
+            db.runTransaction({ transaction, _ in
+                let snap = try? transaction.getDocument(docRef)
+                let current = snap?.data()?[field] as? Int ?? 0
+                if current > 0 {
+                    transaction.updateData([field: current - 1], forDocument: docRef)
+                }
+                return nil
+            }, completion: { _, _ in })
+        }
     
     // MARK: - Toggle Follow
     
@@ -589,8 +553,6 @@ struct OtherProfileView: View {
     
     func reportUser() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        if let last = RateLimiter.shared.lastReportTime, Date().timeIntervalSince(last) < 5.0 { return }
-        RateLimiter.shared.lastReportTime = Date()
         // Match the hardened firestore.rules schema: required type / status /
         // createdAt and a reason inside the bounded enum. Without the type
         // field the rule rejects this write silently.

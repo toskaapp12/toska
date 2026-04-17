@@ -72,10 +72,6 @@ struct SplashView: View {
 
                     HStack(spacing: 10) {
                         Button {
-                            // Clear any prior provider's error so a stale
-                            // Google failure doesn't sit on top of an Apple
-                            // success (or vice versa) when the user retries.
-                            errorMessage = ""
                             signInWithGoogle()
                         } label: {
                             Text(isSigningIn ? "..." : "Google")
@@ -94,10 +90,6 @@ struct SplashView: View {
 
                         Button {
                             guard !isSigningIn else { return }
-                            // Same rationale as Google above — drop any stale
-                            // provider error so the user sees the result of
-                            // *this* attempt, not the previous one.
-                            errorMessage = ""
                             isSigningIn = true
                             Task {
                                 do {

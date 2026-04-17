@@ -22,9 +22,8 @@ struct GifPickerView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .light))
-                        .foregroundColor(Color.toskaGray)
+                        .foregroundColor(Color(hex: "999999"))
                 }
-                .accessibilityLabel("Close GIF picker")
                 Spacer()
                 Text("GIFs")
                     .font(.system(size: 14, weight: .semibold))
@@ -33,7 +32,6 @@ struct GifPickerView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14))
                     .foregroundColor(.clear)
-                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -74,12 +72,12 @@ struct GifPickerView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(LateNightTheme.inputBackground)
+            .background(Color(hex: "e8eaed"))
             .cornerRadius(10)
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
             
-            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+            Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
             
             // GIF grid
             if isLoading && gifs.isEmpty {
@@ -131,7 +129,7 @@ struct GifPickerView: View {
                                             .clipped()
                                             .transition(.opacity)
                                     case .failure:
-                                        LateNightTheme.inputBackground
+                                        Color(hex: "e4e6ea")
                                             .frame(height: 120)
                                             .overlay(
                                                 Image(systemName: "photo.badge.exclamationmark")
@@ -139,7 +137,7 @@ struct GifPickerView: View {
                                                     .foregroundColor(Color.toskaTimestamp)
                                             )
                                     default:
-                                        LateNightTheme.inputBackground
+                                        Color(hex: "e8eaed")
                                             .frame(height: 120)
                                             .overlay(ProgressView().scaleEffect(0.6))
                                     }
@@ -159,12 +157,12 @@ struct GifPickerView: View {
                 Spacer()
                 Text("Powered by GIPHY")
                     .font(.system(size: 9))
-                    .foregroundColor(Color.toskaGrayLight)
+                    .foregroundColor(Color(hex: "cccccc"))
                 Spacer()
             }
             .padding(.bottom, 8)
         }
-        .background(LateNightTheme.background)
+        .background(Color(hex: "f0f1f3"))
         .onAppear {
             fetchTrending()
         }

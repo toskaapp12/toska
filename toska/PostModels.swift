@@ -17,9 +17,8 @@ struct FeedPost: Identifiable, Equatable {
 }
 
 /// Used in ProfileView for selectedPostData, NotificationsView, TopView
-/// (the "open post" shape passed to PostDetailView). Equatable so SwiftUI
-/// can short-circuit re-renders when the same payload is re-emitted.
-struct PostDetailData: Equatable {
+/// (the "open post" shape passed to PostDetailView)
+struct PostDetailData {
     let handle: String
     let text: String
     let tag: String?
@@ -103,7 +102,6 @@ struct MyReply: Identifiable {
 /// Used in FeelingCircleView for temporary group chat messages
 struct CircleMessage: Identifiable {
     let id: String
-    let authorId: String
     let handle: String
     let text: String
     let time: String

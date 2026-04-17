@@ -636,7 +636,7 @@ struct FeedPostRow: View {
                 
                     // Action bar
                                     if !postId.isEmpty {
-                                        HStack(spacing: 16) {
+                                        HStack(spacing: 22) {
                                                                                    Button {
                                                                                        NotificationCenter.default.post(
                                                                                            name: .saveFeedScrollPosition,
@@ -671,7 +671,7 @@ struct FeedPostRow: View {
 
                                                                                    Button { toggleSave() } label: {
                                                                                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                                                           .font(.system(size: 14, weight: .light))
+                                                                                           .font(.system(size: 16, weight: .light))
                                                                                            .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
                                                                                    }
                                                                                    .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
@@ -680,7 +680,7 @@ struct FeedPostRow: View {
                                                                                    if isShareable {
                                                                                        Button { showShareCard = true } label: {
                                                                                            Image(systemName: "square.and.arrow.up")
-                                                                                               .font(.system(size: 14, weight: .light))
+                                                                                               .font(.system(size: 16, weight: .light))
                                                                                                .foregroundColor(Color.toskaDivider)
                                                                                        }
                                                                                        .accessibilityLabel("Share post")
@@ -689,7 +689,7 @@ struct FeedPostRow: View {
 
                                                                                    Spacer()
                                                                                }
-                                        .padding(.top, 6)
+                                        .padding(.top, 10)
                                     }
                                 }
                                             .padding(.horizontal, 16)
@@ -819,12 +819,12 @@ struct FeedPostRow: View {
     // MARK: - Action Label
     
     func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "9198a8") -> some View {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .light))
+                    .font(.system(size: 16, weight: .light))
                 if count > 0 {
                     Text(formatCount(count))
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                 }
             }
             .foregroundColor(isActive ? Color(hex: activeColor) : Color.toskaDivider)

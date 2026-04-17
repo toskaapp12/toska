@@ -238,12 +238,7 @@ struct FeedView: View {
                                     .padding(.bottom, 40)
                                 } else {
                                                                                                                                     
-                                                                                                                                    // Defensive client-side filter: server rules block new
-                                                                                                                                    // writes from blocked users, but posts already cached in
-                                                                                                                                    // vm.posts before the block action still sit in the array
-                                                                                                                                    // until the next fetch. Filter at render so they vanish
-                                                                                                                                    // immediately after the user taps "block".
-                                                                                                                                    ForEach(vm.posts.filter { !BlockedUsersCache.shared.isBlocked($0.authorId) }) { post in
+                                                                                                                                    ForEach(vm.posts) { post in
                                                                 if post.id.hasPrefix("sample_") {
                                                 FeedPostRow(
                                                     handle: post.handle,
@@ -335,23 +330,6 @@ struct FeedView: View {
                 // already preserves scroll position when switching tabs, so
                 // an explicit save/restore round-trip isn't needed here.
                                             } // end ScrollViewReader
-                                                            .navigationDestination(item: $selectedFeedPost) { post in
-                                                                PostDetailView(
-                                                                    postId: post.id,
-                                                                    handle: post.handle,
-                                                                    text: post.text,
-                                                                    tag: post.tag,
-                                                                    likes: post.likes,
-                                                                    reposts: post.reposts,
-                                                                    replies: post.replies,
-                                                                    time: post.time,
-                                                                    authorId: post.authorId,
-                                                                    isAlreadyLiked: post.isLiked,
-                                                                    isAlreadySaved: post.isSaved,
-                                                                    isAlreadyReposted: post.isReposted
-                                                                )
-                                                                .navigationBarHidden(true)
-                                                            }
                                                             .simultaneousGesture(
                                                     DragGesture()
                                 .onChanged { value in
@@ -378,6 +356,23 @@ struct FeedView: View {
                         )
         }
         .background(LateNightTheme.background)
+               .navigationDestination(item: $selectedFeedPost) { post in
+                   PostDetailView(
+                       postId: post.id,
+                       handle: post.handle,
+                       text: post.text,
+                       tag: post.tag,
+                       likes: post.likes,
+                       reposts: post.reposts,
+                       replies: post.replies,
+                       time: post.time,
+                       authorId: post.authorId,
+                       isAlreadyLiked: post.isLiked,
+                       isAlreadySaved: post.isSaved,
+                       isAlreadyReposted: post.isReposted
+                   )
+                   .navigationBarHidden(true)
+               }
                .accessibilityIdentifier("feedView")
                .onAppear {
                                   vm.dragOffset = 0

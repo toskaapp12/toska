@@ -35,16 +35,7 @@ class FeedViewModel: ObservableObject {
         @Published var showPromptCompose = false
 
     // MARK: - Post Data
-    @Published var posts: [FeedPost] = [] {
-        didSet {
-            postVersion += 1
-        }
-    }
-    // Monotonic counter bumped every time `posts` is assigned. FeedView
-    // reads this at the top of its body so SwiftUI can't miss the change —
-    // even if the @Published observation for the array itself gets lost in
-    // a lazy container or Task timing gap.
-    @Published var postVersion: Int = 0
+    @Published var posts: [FeedPost] = []
         @Published var followingPosts: [FeedPost] = []
         @Published var recentPosts: [FeedPost] = []
         @Published var followingFetchIncomplete = false
@@ -524,10 +515,13 @@ class FeedViewModel: ObservableObject {
                 print("✅ fetchPosts — setting \(newPosts.count) posts after scoring/filtering")
 
                 if !newPosts.isEmpty {
+                                                                                                                            self.posts = newPosts
+                                                                                                                            self.hasLoadedOnce = true
                                                                                                                             self.lastDocument = topDocs.last?.doc ?? documents.last
                                                                                                                             self.hasMorePosts = documents.count >= 60
-                                                                                                                            self.hasLoadedOnce = true
-                                                                                                                            self.posts = newPosts
+                                                                                                                            // Force a second layout pass to ensure SwiftUI renders the rows
+                                                                                                                            try? await Task.sleep(nanoseconds: 100_000_000)
+                                                                                                                            self.objectWillChange.send()
                                                                                         } else if documents.count >= 60 {
                                                                                                                                                     self.hasLoadedOnce = true
                                                                                                                                                     self.posts = []
@@ -921,7 +915,7 @@ class FeedViewModel: ObservableObject {
 
                 Text("\(formatCount(mostUnsaidLikes)) felt this")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color.toskaPink.opacity(0.7))
+                    .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
                     .padding(.bottom, 24)
 
                 VStack(spacing: 4) {

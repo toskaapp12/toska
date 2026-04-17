@@ -33,16 +33,7 @@ class LateNightThemeManager {
 
     func refresh() {
         let hour = Calendar.current.component(.hour, from: Date())
-        let newValue = hour >= 0 && hour < 5
-        // Wrap the rollover in withAnimation so views observing this
-        // manager via @Environment animate the color crossover instead of
-        // hard-cutting to dark/light at 00:00 / 05:00. Skip the wrap when
-        // the value didn't change to avoid pointless transactions.
-        if newValue != isLateNight {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                isLateNight = newValue
-            }
-        }
+        isLateNight = hour >= 0 && hour < 5
     }
 
     private func startTimer() {
@@ -100,21 +91,8 @@ extension LateNightThemeManager {
 // property in body is what registers the SwiftUI observation dependency.
 
 struct LateNightTheme {
-    // Read the hour directly instead of going through
-    // LateNightThemeManager.shared.isLateNight. The manager is @Observable,
-    // and reading an @Observable property inside a view body that also uses
-    // @ObservedObject (e.g. FeedViewModel) can cause SwiftUI's observation
-    // tracking to break — the @Observable tracking silently replaces the
-    // Combine-based objectWillChange subscription, so @Published mutations
-    // on the ObservableObject stop triggering re-renders.
-    //
-    // Views that need REACTIVE theme changes (animate at midnight) should
-    // inject LateNightThemeManager via @Environment and read from it
-    // directly. These static properties are for the common case where
-    // "pick the right color for now" is sufficient.
     static var isLateNight: Bool {
-        let hour = Calendar.current.component(.hour, from: Date())
-        return hour >= 0 && hour < 5
+        LateNightThemeManager.shared.isLateNight
     }
 
     // Backgrounds

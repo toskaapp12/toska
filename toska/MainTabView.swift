@@ -47,7 +47,6 @@ struct MainTabView: View {
                             TopView()
                                 .navigationBarHidden(true)
                         }
-                        .toskaPadConstrained()
                         .opacity(selectedTab == .top ? 1 : 0)
                         .allowsHitTesting(selectedTab == .top)
                     }
@@ -58,7 +57,6 @@ struct MainTabView: View {
                             NotificationsView()
                                 .navigationBarHidden(true)
                         }
-                        .toskaPadConstrained()
                         .opacity(selectedTab == .notifications ? 1 : 0)
                         .allowsHitTesting(selectedTab == .notifications)
                     }
@@ -69,7 +67,6 @@ struct MainTabView: View {
                             ProfileView()
                                 .navigationBarHidden(true)
                         }
-                        .toskaPadConstrained()
                         .opacity(selectedTab == .profile ? 1 : 0)
                         .allowsHitTesting(selectedTab == .profile)
                     }
@@ -131,7 +128,7 @@ struct MainTabView: View {
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 2)
-                                    .background(Color.toskaPink)
+                                    .background(Color(hex: "c47a8a"))
                                     .clipShape(Capsule())
                                     .offset(x: 4, y: 2)
                             }
@@ -338,23 +335,5 @@ struct MainTabView: View {
                     self.unreadCount = snapshot?.documents.count ?? 0
                 }
             }
-    }
-}
-
-// MARK: - iPad Readable-Width Constraint
-
-private struct ToskaPadConstrainedModifier: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
-    func body(content: Content) -> some View {
-        content
-            .frame(maxWidth: sizeClass == .regular ? 600 : .infinity)
-            .frame(maxWidth: .infinity)
-    }
-}
-
-extension View {
-    func toskaPadConstrained() -> some View {
-        modifier(ToskaPadConstrainedModifier())
     }
 }

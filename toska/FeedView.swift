@@ -30,37 +30,14 @@ import FirebaseAuth
  without it, repost checks will fail at runtime.
 */
 
-struct SelectedFeedPost: Identifiable, Hashable {
-    let id: String
-    let handle: String
-    let text: String
-    let tag: String?
-    let likes: Int
-    let reposts: Int
-    let replies: Int
-    let time: String
-    let authorId: String
-    let isLiked: Bool
-    let isSaved: Bool
-    let isReposted: Bool
-}
-
 @MainActor
 struct FeedView: View {
     @ObservedObject var vm: FeedViewModel
-    @State private var selectedFeedPost: SelectedFeedPost? = nil
+
 
     var body: some View {
-            // Read all @Published properties that drive the view at the TOP
-            // of body so SwiftUI registers the observation dependency before
-            // entering lazy containers. vm.posts is used inside a LazyVStack
-            // where SwiftUI may not track the read — capturing it here
-            // guarantees a re-render when posts arrive from Firestore.
             let isRefreshing = vm.isRefreshing
             let dragOffset = vm.dragOffset
-            let posts = vm.posts
-            let hasLoadedOnce = vm.hasLoadedOnce
-            let _ = vm.postVersion
         return VStack(spacing: 0) {
                     // MARK: - Header
             HStack {
@@ -178,12 +155,12 @@ struct FeedView: View {
                                         }
                     
                     
-                                if posts.isEmpty && !hasLoadedOnce {
+                                if vm.posts.isEmpty && !vm.hasLoadedOnce {
                                     ForEach(0..<6, id: \.self) { _ in
                                         SkeletonPostRow()
                                             .background(LateNightTheme.background)
                                     }
-                                } else if posts.isEmpty && hasLoadedOnce && vm.selectedTab == 0 {
+                                } else if vm.posts.isEmpty && vm.hasLoadedOnce && vm.selectedTab == 0 {
                                     // First-run empty state. The fetch finished
                                     // and there's genuinely nothing to show
                                     // (no posts in window, none from people
@@ -246,7 +223,7 @@ struct FeedView: View {
                                     .padding(.bottom, 40)
                                 } else {
                                                                                                                                     
-                                                                                                                                    ForEach(posts) { post in
+                                                                                                                                    ForEach(vm.posts) { post in
                                                                 if post.id.hasPrefix("sample_") {
                                                 FeedPostRow(
                                                     handle: post.handle,
@@ -278,17 +255,7 @@ struct FeedView: View {
                                                                                                                                 isRepostPost: vm.repostPostIds.contains(post.id),
                                                                                                                                 isWhisperPost: vm.whisperPostIds.contains(post.id),
                                                                                                                                 isLetterExpanded: vm.expandedLetterIds.contains(post.id),
-                                                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
-                                                                                                                                onSelectPost: {
-                                                                                                                                    selectedFeedPost = SelectedFeedPost(
-                                                                                                                                        id: post.id, handle: post.handle, text: post.text,
-                                                                                                                                        tag: post.tag, likes: post.likes, reposts: post.reposts,
-                                                                                                                                        replies: post.replies, time: post.time, authorId: post.authorId,
-                                                                                                                                        isLiked: vm.likedPostIds.contains(post.id),
-                                                                                                                                        isSaved: vm.savedPostIds.contains(post.id),
-                                                                                                                                        isReposted: vm.repostedPostIds.contains(post.id)
-                                                                                                                                    )
-                                                                                                                                }
+                                                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) }
                                                                                                                                                                                                                                                                                 )
                                                                                                                                                                                                                                                                                 .id(post.id)
                                                                                                                                                                                                                                                              }
@@ -296,7 +263,7 @@ struct FeedView: View {
                     
                                         } // end else hasLoadedOnce
 
-                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !posts.isEmpty {
+                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
                                             ProgressView()
                                                 .tint(Color.toskaBlue)
                                                 .padding(.vertical, 20)
@@ -307,7 +274,7 @@ struct FeedView: View {
                                                 }
                                         }
                     
-                    if vm.selectedTab == 0 && !vm.hasMorePosts && !posts.isEmpty {
+                    if vm.selectedTab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
                                                                 VStack(spacing: 4) {
                                                                     Text(vm.endedDueToBlocking
                                                                          ? "no more posts to show"
@@ -364,35 +331,18 @@ struct FeedView: View {
                         )
         }
         .background(LateNightTheme.background)
-               .navigationDestination(item: $selectedFeedPost) { post in
-                   PostDetailView(
-                       postId: post.id,
-                       handle: post.handle,
-                       text: post.text,
-                       tag: post.tag,
-                       likes: post.likes,
-                       reposts: post.reposts,
-                       replies: post.replies,
-                       time: post.time,
-                       authorId: post.authorId,
-                       isAlreadyLiked: post.isLiked,
-                       isAlreadySaved: post.isSaved,
-                       isAlreadyReposted: post.isReposted
-                   )
-                   .navigationBarHidden(true)
-               }
                .accessibilityIdentifier("feedView")
                .onAppear {
                                   vm.dragOffset = 0
                                   vm.savedScrollPostId = nil
-                                  if !hasLoadedOnce {
+                                  if !vm.hasLoadedOnce {
                                       if Auth.auth().currentUser != nil {
                                           vm.loadInitialData()
                                       }
                                   }
                               }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
-                                  if !hasLoadedOnce {
+                                  if !vm.hasLoadedOnce {
                                       print("⚡️ AuthDidVerify received in FeedView — calling loadInitialData")
                                       vm.loadInitialData()
                                   }
@@ -500,7 +450,6 @@ struct FeedPostRow: View {
             var isWhisperPost: Bool = false
         var isLetterExpanded: Bool = false
         var onLetterExpand: (() -> Void)? = nil
-        var onSelectPost: (() -> Void)? = nil
         
         @State private var isSaved = false
         @State private var isLiked = false
@@ -510,6 +459,7 @@ struct FeedPostRow: View {
     @State private var hasInitialized = false
         @State private var likePulse = false
             @State private var repostPulse = false
+            @State private var showPostDetail = false
             @State private var likePulseTask: Task<Void, Never>? = nil
             @State private var repostPulseTask: Task<Void, Never>? = nil
             @State private var showShareCard = false
@@ -675,74 +625,66 @@ struct FeedPostRow: View {
                     .padding(.bottom, 10)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if !postId.isEmpty { onSelectPost?() }
+                        if !postId.isEmpty { showPostDetail = true }
                     }
                 }
                 
                     // Action bar
                                     if !postId.isEmpty {
-                                        HStack(spacing: 0) {
-                                            // Left group: reply + repost
-                                            Button {
-                                                NotificationCenter.default.post(
-                                                    name: .saveFeedScrollPosition,
-                                                    object: nil,
-                                                    userInfo: ["postId": postId]
-                                                )
-                                                onSelectPost?()
-                                            } label: {
-                                                actionLabel(icon: "bubble.left", count: replies, isActive: false)
-                                            }
-                                            .accessibilityLabel("Reply")
-                                            .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
-                                            .buttonStyle(.plain)
+                                        HStack(spacing: 16) {
+                                                                                   Button {
+                                                                                       NotificationCenter.default.post(
+                                                                                           name: .saveFeedScrollPosition,
+                                                                                           object: nil,
+                                                                                           userInfo: ["postId": postId]
+                                                                                       )
+                                                                                       showPostDetail = true
+                                                                                   } label: {
+                                                                                       actionLabel(icon: "bubble.left", count: replies, isActive: false)
+                                                                                   }
+                                                                                   .accessibilityLabel("Reply")
+                                                                                   .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
+                                                                                   .buttonStyle(.plain)
 
-                                            Spacer().frame(width: 28)
+                                                                                   Button { toggleLike() } label: {
+                                                                                       actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                                                                   }
+                                                                                   .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                                                                                   .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                                                                   .buttonStyle(.plain)
+                                                                                   .scaleEffect(likePulse ? 1.15 : 1.0)
+                                                                                   .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
 
-                                            Button { repostPost() } label: {
-                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
-                                            }
-                                            .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
-                                            .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                            .buttonStyle(.plain)
-                                            .disabled(isRepostPost)
-                                            .opacity(isRepostPost ? Toska.disabledOpacity : 1.0)
+                                                                                   Button { repostPost() } label: {
+                                                                                       actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
+                                                                                   }
+                                                                                   .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                                                                                   .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                                                                   .buttonStyle(.plain)
+                                                                                   .disabled(isRepostPost)
+                                                                                   .opacity(isRepostPost ? 0.3 : 1.0)
 
-                                            Spacer()
+                                                                                   Button { toggleSave() } label: {
+                                                                                       Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                                                                                           .font(.system(size: 14, weight: .light))
+                                                                                           .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
+                                                                                   }
+                                                                                   .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
+                                                                                   .buttonStyle(.plain)
 
-                                            // Right group: share + bookmark + heart (thumb zone)
-                                            if isShareable {
-                                                Button { showShareCard = true } label: {
-                                                    Image(systemName: "square.and.arrow.up")
-                                                        .font(.system(size: 16, weight: .light))
-                                                        .foregroundColor(Color.toskaDivider)
-                                                }
-                                                .accessibilityLabel("Share post")
-                                                .buttonStyle(.plain)
+                                                                                   if isShareable {
+                                                                                       Button { showShareCard = true } label: {
+                                                                                           Image(systemName: "square.and.arrow.up")
+                                                                                               .font(.system(size: 14, weight: .light))
+                                                                                               .foregroundColor(Color.toskaDivider)
+                                                                                       }
+                                                                                       .accessibilityLabel("Share post")
+                                                                                       .buttonStyle(.plain)
+                                                                                   }
 
-                                                Spacer().frame(width: 28)
-                                            }
-
-                                            Button { toggleSave() } label: {
-                                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                    .font(.system(size: 16, weight: .light))
-                                                    .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
-                                            }
-                                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-                                            .buttonStyle(.plain)
-
-                                            Spacer().frame(width: 28)
-
-                                            Button { toggleLike() } label: {
-                                                actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
-                                            }
-                                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                                            .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                            .buttonStyle(.plain)
-                                            .scaleEffect(likePulse ? 1.15 : 1.0)
-                                            .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
-                                        }
-                                        .padding(.top, 12)
+                                                                                   Spacer()
+                                                                               }
+                                        .padding(.top, 6)
                                     }
                                 }
                                             .padding(.horizontal, 16)
@@ -757,7 +699,7 @@ struct FeedPostRow: View {
                                                                                     object: nil,
                                                                                     userInfo: ["postId": postId]
                                                                                 )
-                                    onSelectPost?()
+                                    showPostDetail = true
                                 }
                             }
                             .overlay(
@@ -799,7 +741,7 @@ struct FeedPostRow: View {
                     Divider()
 
                     Button {
-                        onSelectPost?()
+                        showPostDetail = true
                     } label: {
                         Label("open post", systemImage: "bubble.left")
                     }
@@ -827,7 +769,24 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
-                .sheet(isPresented: $showShareCard) {
+                .navigationDestination(isPresented: $showPostDetail) {
+                                    PostDetailView(
+                                        postId: postId,
+                                        handle: handle,
+                                        text: text,
+                                        tag: tag,
+                                        likes: localLikeCount,
+                                        reposts: localRepostCount,
+                                        replies: replies,
+                                        time: time,
+                                        authorId: authorId,
+                                        isAlreadyLiked: isLiked,
+                                        isAlreadySaved: isSaved,
+                                        isAlreadyReposted: isReposted
+                                    )
+                                    .navigationBarHidden(true)
+                                }
+                                .sheet(isPresented: $showShareCard) {
                                     ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
                                 }
                                 .sheet(isPresented: $showReportSheet) {
@@ -855,12 +814,12 @@ struct FeedPostRow: View {
     // MARK: - Action Label
     
     func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "9198a8") -> some View {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .light))
+                    .font(.system(size: 14, weight: .light))
                 if count > 0 {
                     Text(formatCount(count))
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                 }
             }
             .foregroundColor(isActive ? Color(hex: activeColor) : Color.toskaDivider)
@@ -1230,32 +1189,32 @@ struct SkeletonPostRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
+                    .fill(Color(hex: "dfe1e5"))
                     .frame(width: 100, height: 11)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
+                    .fill(Color(hex: "dfe1e5"))
                     .frame(width: 28, height: 11)
                 Spacer()
             }
             .padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
+                    .fill(Color(hex: "dfe1e5"))
                     .frame(maxWidth: .infinity)
                     .frame(height: 13)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
+                    .fill(Color(hex: "dfe1e5"))
                     .frame(maxWidth: .infinity)
                     .frame(height: 13)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
+                    .fill(Color(hex: "dfe1e5"))
                     .frame(width: 160, height: 13)
             }
             .padding(.bottom, 12)
             HStack(spacing: 0) {
                 ForEach(0..<3, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(LateNightTheme.divider)
+                        .fill(Color(hex: "dfe1e5"))
                         .frame(width: 28, height: 11)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1266,7 +1225,7 @@ struct SkeletonPostRow: View {
         .padding(.vertical, 12)
         .overlay(
             Rectangle()
-                .fill(LateNightTheme.divider.opacity(0.4))
+                .fill(Color(hex: "dfe1e5").opacity(0.4))
                 .frame(height: 0.5),
             alignment: .bottom
         )

@@ -100,8 +100,21 @@ extension LateNightThemeManager {
 // property in body is what registers the SwiftUI observation dependency.
 
 struct LateNightTheme {
+    // Read the hour directly instead of going through
+    // LateNightThemeManager.shared.isLateNight. The manager is @Observable,
+    // and reading an @Observable property inside a view body that also uses
+    // @ObservedObject (e.g. FeedViewModel) can cause SwiftUI's observation
+    // tracking to break — the @Observable tracking silently replaces the
+    // Combine-based objectWillChange subscription, so @Published mutations
+    // on the ObservableObject stop triggering re-renders.
+    //
+    // Views that need REACTIVE theme changes (animate at midnight) should
+    // inject LateNightThemeManager via @Environment and read from it
+    // directly. These static properties are for the common case where
+    // "pick the right color for now" is sufficient.
     static var isLateNight: Bool {
-        LateNightThemeManager.shared.isLateNight
+        let hour = Calendar.current.component(.hour, from: Date())
+        return hour >= 0 && hour < 5
     }
 
     // Backgrounds

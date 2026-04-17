@@ -648,7 +648,7 @@ struct FeedPostRow: View {
                 
                     // Action bar
                                     if !postId.isEmpty {
-                                        HStack(spacing: 16) {
+                                        HStack(spacing: 28) {
                                                                                    Button {
                                                                                        NotificationCenter.default.post(
                                                                                            name: .saveFeedScrollPosition,
@@ -663,15 +663,6 @@ struct FeedPostRow: View {
                                                                                    .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
                                                                                    .buttonStyle(.plain)
 
-                                                                                   Button { toggleLike() } label: {
-                                                                                       actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
-                                                                                   }
-                                                                                   .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                                                                                   .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                                                                   .buttonStyle(.plain)
-                                                                                   .scaleEffect(likePulse ? 1.15 : 1.0)
-                                                                                   .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
-
                                                                                    Button { repostPost() } label: {
                                                                                        actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
                                                                                    }
@@ -683,7 +674,7 @@ struct FeedPostRow: View {
 
                                                                                    Button { toggleSave() } label: {
                                                                                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                                                           .font(.system(size: 14, weight: .light))
+                                                                                           .font(.system(size: 16, weight: .light))
                                                                                            .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
                                                                                    }
                                                                                    .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
@@ -692,7 +683,7 @@ struct FeedPostRow: View {
                                                                                    if isShareable {
                                                                                        Button { showShareCard = true } label: {
                                                                                            Image(systemName: "square.and.arrow.up")
-                                                                                               .font(.system(size: 14, weight: .light))
+                                                                                               .font(.system(size: 16, weight: .light))
                                                                                                .foregroundColor(Color.toskaDivider)
                                                                                        }
                                                                                        .accessibilityLabel("Share post")
@@ -700,6 +691,15 @@ struct FeedPostRow: View {
                                                                                    }
 
                                                                                    Spacer()
+
+                                                                                   Button { toggleLike() } label: {
+                                                                                       actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                                                                   }
+                                                                                   .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                                                                                   .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                                                                   .buttonStyle(.plain)
+                                                                                   .scaleEffect(likePulse ? 1.15 : 1.0)
+                                                                                   .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                                                                }
                                         .padding(.top, 6)
                                     }

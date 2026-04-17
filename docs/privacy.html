@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Policy - toska</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #faf8f5;
+            color: #1a1c22;
+            line-height: 1.7;
+        }
+        .header {
+            padding: 32px 24px 16px;
+            border-bottom: 1px solid #e8e2d9;
+        }
+        .header a {
+            font-family: Georgia, serif;
+            font-style: italic;
+            font-size: 22px;
+            color: #1a1c22;
+            text-decoration: none;
+        }
+        .content {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+        h1 {
+            font-family: Georgia, serif;
+            font-size: 28px;
+            font-weight: normal;
+            margin-bottom: 8px;
+        }
+        .updated {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 32px;
+        }
+        h2 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-top: 28px;
+            margin-bottom: 8px;
+        }
+        p, li {
+            font-size: 14px;
+            color: #444;
+            margin-bottom: 12px;
+        }
+        ul {
+            padding-left: 20px;
+            margin-bottom: 12px;
+        }
+        li { margin-bottom: 6px; }
+        a { color: #4a6fa5; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 13px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px 12px;
+            border: 1px solid #e8e2d9;
+            color: #444;
+        }
+        th {
+            background: #f5f3f0;
+            font-weight: 600;
+            color: #1a1c22;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="/">toska</a>
+    </div>
+    <div class="content">
+        <h1>Privacy Policy</h1>
+        <p class="updated">Last updated: April 17, 2026</p>
+
+        <p>toska is built around anonymity. We collect as little as possible and never sell your data. This policy explains what we collect, why, and what you can do about it.</p>
+
+        <h2>1. What we collect</h2>
+
+        <table>
+            <tr>
+                <th>Data</th>
+                <th>Why</th>
+                <th>Stored where</th>
+            </tr>
+            <tr>
+                <td>Email address</td>
+                <td>Account creation, password reset, support</td>
+                <td>Firebase Auth + Firestore (private subcollection)</td>
+            </tr>
+            <tr>
+                <td>Anonymous handle</td>
+                <td>Display identity (randomly generated, not your real name)</td>
+                <td>Firestore</td>
+            </tr>
+            <tr>
+                <td>Posts, replies, messages</td>
+                <td>Core app functionality</td>
+                <td>Firestore</td>
+            </tr>
+            <tr>
+                <td>Likes, saves, follows</td>
+                <td>Personalization and engagement features</td>
+                <td>Firestore</td>
+            </tr>
+            <tr>
+                <td>Push notification token</td>
+                <td>Delivering notifications you opted into</td>
+                <td>Firestore (private subcollection)</td>
+            </tr>
+            <tr>
+                <td>Crash reports</td>
+                <td>Fixing bugs</td>
+                <td>Firebase Crashlytics</td>
+            </tr>
+            <tr>
+                <td>Anonymous usage analytics</td>
+                <td>Understanding how the app is used (opt-out available in Settings)</td>
+                <td>Firebase Analytics</td>
+            </tr>
+        </table>
+
+        <h2>2. What we don't collect</h2>
+        <ul>
+            <li>Your real name</li>
+            <li>Your phone number</li>
+            <li>Your location</li>
+            <li>Your contacts</li>
+            <li>Photos or camera data</li>
+            <li>Advertising identifiers (IDFA)</li>
+        </ul>
+
+        <h2>3. How we use your data</h2>
+        <ul>
+            <li>To operate the app (display posts, deliver messages, send notifications)</li>
+            <li>To personalize your feed based on your engagement</li>
+            <li>To detect and remove content that violates our terms</li>
+            <li>To fix crashes and improve the app</li>
+        </ul>
+        <p>We do not sell, rent, or share your personal data with advertisers or third parties for marketing purposes.</p>
+
+        <h2>4. Third-party services</h2>
+        <p>toska uses the following third-party services:</p>
+        <ul>
+            <li><strong>Firebase</strong> (Google) — authentication, database, analytics, crash reporting, push notifications. <a href="https://firebase.google.com/support/privacy">Firebase Privacy Policy</a></li>
+            <li><strong>Giphy</strong> — GIF search within the app. When you search for GIFs, your search query is sent to Giphy's API. <a href="https://support.giphy.com/hc/en-us/articles/360032872931-GIPHY-Privacy-Policy">Giphy Privacy Policy</a></li>
+            <li><strong>Apple Sign-In / Google Sign-In</strong> — optional authentication methods. These services share only your email (and in Apple's case, you can hide it).</li>
+        </ul>
+
+        <h2>5. Data retention</h2>
+        <ul>
+            <li>Your posts and messages are stored until you delete them or delete your account</li>
+            <li>Expired posts (if you set an expiration) are automatically deleted</li>
+            <li>When you delete your account, we remove your data within 30 days. Some data may persist in encrypted backups for up to 90 days.</li>
+            <li>Reports and moderation logs may be retained separately for safety purposes</li>
+        </ul>
+
+        <h2>6. Your rights</h2>
+        <p>You can:</p>
+        <ul>
+            <li><strong>Export your data</strong> — available in Settings</li>
+            <li><strong>Delete your account</strong> — available in Settings, removes your profile and content</li>
+            <li><strong>Opt out of analytics</strong> — toggle in Settings</li>
+            <li><strong>Block users</strong> — prevents them from seeing your content or contacting you</li>
+        </ul>
+
+        <h2>7. Children's privacy</h2>
+        <p>toska is not intended for anyone under 17 years of age. We do not knowingly collect data from children. If we learn that we have collected data from someone under 17, we will delete their account.</p>
+
+        <h2>8. Security</h2>
+        <p>We use industry-standard security measures including encrypted connections (TLS), Firebase security rules, and access controls. However, no system is 100% secure. Use toska at your own risk.</p>
+
+        <h2>9. Changes to this policy</h2>
+        <p>We may update this policy. If we make significant changes, we'll notify you in the app. The "last updated" date at the top reflects the most recent version.</p>
+
+        <h2>10. Contact</h2>
+        <p>Questions about your privacy? Email us at <a href="mailto:support@toskaapp.com">support@toskaapp.com</a>.</p>
+    </div>
+</body>
+</html>

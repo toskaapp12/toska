@@ -122,20 +122,17 @@ struct SplashView: View {
                             .padding(.top, 2)
                     }
 
-                    // FIX: replace YOUR_REAL_DOMAIN with your actual URLs before
-                    // submitting to the App Store. Apple requires a working privacy
-                    // policy link or the app will be rejected during review.
                     HStack(spacing: 0) {
                         Text("by being here you agree to our ")
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.3))
-                        Link("terms", destination: URL(string: "https://YOUR_REAL_DOMAIN/terms")!)
+                        Link("terms", destination: URL(string: "https://toskaapp.com/terms")!)
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.5))
                         Text(" and ")
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.3))
-                        Link("privacy policy", destination: URL(string: "https://YOUR_REAL_DOMAIN/privacy")!)
+                        Link("privacy policy", destination: URL(string: "https://toskaapp.com/privacy")!)
                             .font(.system(size: 10))
                             .foregroundColor(.white.opacity(0.5))
                     }

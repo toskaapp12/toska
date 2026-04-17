@@ -641,9 +641,7 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 /// their stored `acceptedPolicyVersion` matches this value.
 let currentPolicyVersion = 1
 
-/// Shared support contact surfaced in the policy and in-app. Replace before
-/// shipping to the App Store.
-let toskaSupportEmail = "support@toska.app"
+let toskaSupportEmail = "support@toskaapp.com"
 
 /// Full Terms of Service + Content Policy body, rendered inside the
 /// acceptance screen. Written in the app's own (lowercase, first-person-ish)

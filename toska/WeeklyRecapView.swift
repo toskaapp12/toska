@@ -166,13 +166,17 @@ struct WeeklyRecapView: View {
         }
     }
     
+    private static let weekRangeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
     func weekRangeString() -> String {
-        let calendar = Calendar.current
         let today = Date()
-        let weekAgo = calendar.date(byAdding: .day, value: -7, to: today) ?? today
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d"
-        return "\(formatter.string(from: weekAgo).lowercased()) – \(formatter.string(from: today).lowercased())"
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: today) ?? today
+        let fmt = Self.weekRangeFormatter
+        return "\(fmt.string(from: weekAgo).lowercased()) – \(fmt.string(from: today).lowercased())"
     }
     
     func fetchRecapData() {

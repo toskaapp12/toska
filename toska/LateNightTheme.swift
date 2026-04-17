@@ -11,7 +11,7 @@ class LateNightThemeManager {
 
     private init() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = hour >= 0 && hour < 5
+        isLateNight = hour < 5
         startTimer()
 
         backgroundObserver = NotificationCenter.default.addObserver(
@@ -33,7 +33,7 @@ class LateNightThemeManager {
 
     func refresh() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = hour >= 0 && hour < 5
+        isLateNight = hour < 5
     }
 
     private func startTimer() {

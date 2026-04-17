@@ -41,10 +41,10 @@ class FeedViewModel: ObservableObject {
         @Published var followingFetchIncomplete = false
 
     // MARK: - Post Metadata (per-post flags keyed by post ID)
-    var repostedPostIds: Set<String> = []
-    var likedPostIds: Set<String> = []
-    var savedPostIds: Set<String> = []
-    var postGifUrls: [String: String] = [:]
+    @Published var repostedPostIds: Set<String> = []
+    @Published var likedPostIds: Set<String> = []
+    @Published var savedPostIds: Set<String> = []
+    @Published var postGifUrls: [String: String] = [:]
     var midnightPostIds: Set<String> = []
     var letterPostIds: Set<String> = []
     var whisperPostIds: Set<String> = []
@@ -180,7 +180,7 @@ class FeedViewModel: ObservableObject {
     var supplementaryTask: Task<Void, Never>? = nil
 
         func loadInitialData() {
-            print("⚡️ loadInitialData called — hasFetchedInitial: \(hasFetchedInitial), uid: \(Auth.auth().currentUser?.uid ?? "NIL")")
+            print("⚡️ loadInitialData called — hasFetchedInitial: \(hasFetchedInitial), hasAuth: \(Auth.auth().currentUser != nil)")
             guard !hasFetchedInitial else {
                 print("⚡️ loadInitialData — already fetched, posts.count: \(posts.count)")
                 if posts.isEmpty {
@@ -200,7 +200,7 @@ class FeedViewModel: ObservableObject {
 
             supplementaryTask?.cancel()
                     supplementaryTask = Task { @MainActor in
-                        await self.refreshAll()
+                        self.refreshAll()
                         guard !Task.isCancelled, Auth.auth().currentUser != nil else { return }
                         self.fetchUserPreferences()
                         guard !Task.isCancelled, Auth.auth().currentUser != nil else { return }
@@ -258,7 +258,7 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Refresh All
 
-    func refreshAll() async {
+    func refreshAll() {
                 fetchError = nil
                 fetchRepostedPostIds()
                 fetchLikedPostIds()
@@ -268,9 +268,8 @@ class FeedViewModel: ObservableObject {
                 fetchRecentPosts()
                 fetchWitnessPost()
                 fetchEmotionalWeather()
-                fetchMostUnsaid()
+                fetchMostUnsaidAndDailyMoment()
                 fetchAnniversaryPost()
-                checkForDailyMoment()
             }
 
     // MARK: - Fetch User Interaction States
@@ -422,11 +421,6 @@ class FeedViewModel: ObservableObject {
         letterPostIds = letterPostIds.intersection(keepIds)
         repostPostIds = repostPostIds.intersection(keepIds)
         whisperPostIds = whisperPostIds.intersection(keepIds)
-        // Same for like/save/repost flags, which only matter for posts
-        // currently visible in the feed.
-        likedPostIds = likedPostIds.intersection(keepIds)
-        savedPostIds = savedPostIds.intersection(keepIds)
-        repostedPostIds = repostedPostIds.intersection(keepIds)
     }
 
     // MARK: - Fetch Posts
@@ -445,7 +439,7 @@ class FeedViewModel: ObservableObject {
             }
             isFetchingPosts = true
             let db = Firestore.firestore()
-            print("🔄 fetchPosts — firing Firestore query, uid: \(Auth.auth().currentUser?.uid ?? "nil")")
+            print("🔄 fetchPosts — firing Firestore query, hasAuth: \(Auth.auth().currentUser != nil)")
 
             Task { @MainActor in
                 defer { self.isFetchingPosts = false }
@@ -519,9 +513,6 @@ class FeedViewModel: ObservableObject {
                                                                                                                             self.hasLoadedOnce = true
                                                                                                                             self.lastDocument = topDocs.last?.doc ?? documents.last
                                                                                                                             self.hasMorePosts = documents.count >= 60
-                                                                                                                            // Force a second layout pass to ensure SwiftUI renders the rows
-                                                                                                                            try? await Task.sleep(nanoseconds: 100_000_000)
-                                                                                                                            self.objectWillChange.send()
                                                                                         } else if documents.count >= 60 {
                                                                                                                                                     self.hasLoadedOnce = true
                                                                                                                                                     self.posts = []
@@ -569,7 +560,8 @@ class FeedViewModel: ObservableObject {
                         return
                     }
                     let filtered = self.filterBlocked(documents: documents)
-                    for doc in filtered {
+                    let existingIds = Set(self.posts.map { $0.id })
+                    for doc in filtered where !existingIds.contains(doc.documentID) {
                         self.posts.append(FeedView.feedPost(from: doc))
                         self.extractPostMetadata(from: doc)
                     }
@@ -713,7 +705,8 @@ class FeedViewModel: ObservableObject {
                     print("⚠️ fetchWitnessPost — check composite index (replyCount, isRepost, createdAt): \(error)")
                     return
                 }
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     guard let documents = snapshot?.documents else { return }
                     guard let doc = documents.first(where: {
                         let data = $0.data()
@@ -737,7 +730,7 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Most Unsaid Today
 
-    func fetchMostUnsaid() {
+    func fetchMostUnsaidAndDailyMoment() {
         guard Auth.auth().currentUser != nil else { return }
         let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
         Firestore.firestore().collection("posts")
@@ -745,21 +738,30 @@ class FeedViewModel: ObservableObject {
             .whereField("isRepost", isEqualTo: false)
             .order(by: "createdAt", descending: true)
             .limit(to: 50)
-            .getDocuments { snapshot, error in
-                Task { @MainActor in
+            .getDocuments { [weak self] snapshot, error in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     if let error = error {
-                        print("⚠️ fetchMostUnsaid error: \(error)")
+                        print("⚠️ fetchMostUnsaidAndDailyMoment error: \(error)")
                         return
                     }
                     guard let docs = snapshot?.documents else {
                         self.mostUnsaidText = ""
                         self.mostUnsaidLikes = 0
                         self.mostUnsaidPostId = ""
+                        self.hasDailyMoment = false
                         return
                     }
                     let sorted = docs.sorted {
                         ($0.data()["likeCount"] as? Int ?? 0) > ($1.data()["likeCount"] as? Int ?? 0)
                     }
+
+                    if let topDoc = sorted.first {
+                        self.hasDailyMoment = (topDoc.data()["likeCount"] as? Int ?? 0) > 0
+                    } else {
+                        self.hasDailyMoment = false
+                    }
+
                     guard let doc = sorted.first(where: {
                         let data = $0.data()
                         if BlockedUsersCache.shared.isBlocked(data["authorId"] as? String ?? "") { return false }
@@ -810,36 +812,6 @@ class FeedViewModel: ObservableObject {
                         tag: data["tag"] as? String,
                         dateString: ToskaFormatters.fullDate.string(from: createdAt).lowercased()
                     )
-                }
-            }
-    }
-
-    // MARK: - Daily Moment Check
-
-    func checkForDailyMoment() {
-        guard Auth.auth().currentUser != nil else { return }
-        let db = Firestore.firestore()
-        let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
-        db.collection("posts")
-            .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
-            .whereField("isRepost", isEqualTo: false)
-            .order(by: "createdAt", descending: true)
-            .limit(to: 50)
-            .getDocuments { snapshot, error in
-                Task { @MainActor in
-                    if let error = error {
-                        print("⚠️ checkForDailyMoment error: \(error)")
-                        return
-                    }
-                    let docs = snapshot?.documents ?? []
-                    let sorted = docs.sorted {
-                        ($0.data()["likeCount"] as? Int ?? 0) > ($1.data()["likeCount"] as? Int ?? 0)
-                    }
-                    if let doc = sorted.first {
-                        self.hasDailyMoment = (doc.data()["likeCount"] as? Int ?? 0) > 0
-                    } else {
-                        self.hasDailyMoment = false
-                    }
                 }
             }
     }

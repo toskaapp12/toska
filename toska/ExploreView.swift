@@ -193,7 +193,7 @@ struct ExploreView: View {
                             Spacer()
                         } else {
                             ScrollView(showsIndicators: false) {
-                                LazyVStack(spacing: 0) {
+                                VStack(spacing: 0) {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text("searching recent posts")
                                             .font(.system(size: 9, weight: .medium)).foregroundColor(Color.toskaTextLight)
@@ -239,7 +239,7 @@ struct ExploreView: View {
                             Spacer()
                         } else {
                             ScrollView(showsIndicators: false) {
-                                LazyVStack(spacing: 0) {
+                                VStack(spacing: 0) {
                                     if !feelingPeople.isEmpty {
                                         VStack(alignment: .leading, spacing: 10) {
                                             Text("people feeling this too")
@@ -308,7 +308,7 @@ struct ExploreView: View {
                             if isLoadingTrending {
                                 HStack { Spacer(); ProgressView().tint(Color.toskaBlue); Spacer() }.padding(.vertical, 30)
                             } else {
-                                LazyVStack(spacing: 0) {
+                                VStack(spacing: 0) {
                                     ForEach(Array(trendingPosts.enumerated()), id: \.element.id) { index, post in
                                         FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
                                     }

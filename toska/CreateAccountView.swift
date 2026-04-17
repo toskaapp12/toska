@@ -293,6 +293,9 @@ struct CreateAccountView: View {
                         "acceptedPolicyVersion": currentPolicyVersion,
                         "acceptedPolicyAt": FieldValue.serverTimestamp()
                     ])
+                    try? await db.collection("users").document(uid)
+                        .collection("private").document("data")
+                        .setData(["email": trimmedEmail], merge: true)
                     isLoading = false
                                         UserHandleCache.shared.startListening()
                                         Telemetry.signupCompleted(method: .email)

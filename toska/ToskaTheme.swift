@@ -943,6 +943,7 @@ func recordPolicyAcceptance(for uid: String, confirmedAdult: Bool = true) {
     Firestore.firestore().collection("users").document(uid).setData(data, merge: true) { error in
         if let error = error {
             print("⚠️ recordPolicyAcceptance write failed: \(error)")
+            Telemetry.recordError(error, context: "recordPolicyAcceptance")
         }
     }
 }
@@ -1262,12 +1263,10 @@ struct ReportSheet: View {
                 if let error = error {
                     print("⚠️ submitReport failed: \(error)")
                     Telemetry.recordError(error, context: "ReportSheet.submit")
-                    // Still move to thank-you state so the user isn't
-                    // confused — moderation queues usually tolerate duplicates.
                 } else {
                     Telemetry.reportSubmitted(target: telemetryTarget, reasonCode: reason.code)
+                    didSubmit = true
                 }
-                didSubmit = true
             }
         }
     }

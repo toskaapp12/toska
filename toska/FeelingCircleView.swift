@@ -149,7 +149,7 @@ struct FeelingCircleView: View {
                 } else {
                     ScrollViewReader { proxy in
                         ScrollView(showsIndicators: false) {
-                            LazyVStack(spacing: 0) {
+                            VStack(spacing: 0) {
                                 ForEach(messages) { msg in
                                     circleMessage(msg)
                                         .id(msg.id)

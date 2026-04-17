@@ -56,7 +56,7 @@ struct TopView: View {
                                                             .frame(maxWidth: .infinity)
                                                             .padding(.vertical, 80)
                             } else {
-                                LazyVStack(spacing: 0) {
+                                VStack(spacing: 0) {
                                     ForEach(Array(rankedPosts.enumerated()), id: \.element.id) { index, post in
                                                                             let rank = index + 1
                                         Button {

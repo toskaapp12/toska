@@ -36,9 +36,7 @@ struct FeedView: View {
 
 
     var body: some View {
-            let isRefreshing = vm.isRefreshing
-            let dragOffset = vm.dragOffset
-        return VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     // MARK: - Header
             HStack {
                             Text("toska")
@@ -85,19 +83,20 @@ struct FeedView: View {
                 .fill(LateNightTheme.divider)
                 .frame(height: 0.5)
             
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                            // LazyVStack so feed posts render only as they
-                            // scroll into view — avoids eager construction of
-                            // 60+ FeedPostRows on first load.
-                            LazyVStack(spacing: 0) {
-                                            Color.clear.frame(height: 0).id("feedTop")
+                GeometryReader { geo in
+                            ScrollViewReader { proxy in
+                                ScrollView(showsIndicators: false) {
+                            // VStack is used intentionally instead of LazyVStack
+                            // to avoid blank rendering issues with async data —
+                            // LazyVStack can skip rows that haven't resolved yet.
+                                    VStack(spacing: 0) {
+                                                                                Color.clear.frame(height: 0).id("feedTop")
                                 ToskaRefreshHeader(
-                                                                    isRefreshing: isRefreshing,
-                                                                    triggerProgress: CGFloat(min(Double(dragOffset) / 80.0, 1.0))
-                                                                )
-                                                                .frame(height: isRefreshing ? 60 : max(0, CGFloat(dragOffset) - 10))
-                                                                .clipped()
+                                                                                                    isRefreshing: vm.isRefreshing,
+                                                                                                    triggerProgress: CGFloat(min(Double(vm.dragOffset) / 80.0, 1.0))
+                                                                                                )
+                                                                                                .frame(height: vm.isRefreshing ? 60 : max(0, CGFloat(vm.dragOffset) - 10))
+                                                                                                .clipped()
                                             if let error = vm.fetchError {
                                                 HStack(spacing: 6) {
                                                     Image(systemName: "exclamationmark.circle")
@@ -155,12 +154,18 @@ struct FeedView: View {
                                         }
                     
                     
-                                if vm.posts.isEmpty && !vm.hasLoadedOnce {
-                                    ForEach(0..<6, id: \.self) { _ in
-                                        SkeletonPostRow()
-                                            .background(LateNightTheme.background)
-                                    }
-                                } else if vm.posts.isEmpty && vm.hasLoadedOnce && vm.selectedTab == 0 {
+                                if vm.currentPosts.isEmpty && !vm.hasLoadedOnce {
+                                                                    #if DEBUG
+                                                                    let _ = print("🎨 BODY — branch: SKELETONS (posts.isEmpty, !hasLoadedOnce)")
+                                                                    #endif
+                                                                    ForEach(0..<6, id: \.self) { _ in
+                                                                        SkeletonPostRow()
+                                                                            .background(LateNightTheme.background)
+                                                                    }
+                                                                } else if vm.currentPosts.isEmpty && vm.hasLoadedOnce && vm.selectedTab == 0 {
+                                                                    #if DEBUG
+                                                                    let _ = print("🎨 BODY — branch: EMPTY STATE (posts.isEmpty, hasLoadedOnce, tab 0)")
+                                                                    #endif
                                     // First-run empty state. The fetch finished
                                     // and there's genuinely nothing to show
                                     // (no posts in window, none from people
@@ -221,49 +226,48 @@ struct FeedView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.top, 60)
                                     .padding(.bottom, 40)
-                                } else {
-                                                                                                                                    
-                                                                                                                                    ForEach(vm.posts) { post in
-                                                                if post.id.hasPrefix("sample_") {
-                                                FeedPostRow(
-                                                    handle: post.handle,
-                                                    text: post.text,
-                                                    tag: post.tag,
-                                                    likes: post.likes,
-                                                    reposts: post.reposts,
-                                                    replies: post.replies,
-                                                    time: post.time
-                                                )
-                                            } else {
-                                                FeedPostRow(
-                                                                                                                                                                                handle: post.handle,
-                                                                                                                                                                                text: post.text,
-                                                                                                                                                                                tag: post.tag,
-                                                                                                                                                                                likes: post.likes,
-                                                                                                                                                                                reposts: post.reposts,
-                                                                                                                                                                                replies: post.replies,
-                                                                                                                                                                                time: post.time,
-                                                                                                                                                                                postId: post.id,
-                                                                                                                                                                                authorId: post.authorId,
-                                                                                                                                                                                isAlreadyReposted: vm.repostedPostIds.contains(post.id),
-                                                                                                                                                                                isAlreadyLiked: vm.likedPostIds.contains(post.id),
-                                                                                                                                                                                isAlreadySaved: vm.savedPostIds.contains(post.id),
-                                                                                                                                                                                isShareable: post.isShareable,
-                                                                                                                                gifUrl: vm.postGifUrls[post.id],
-                                                                                                                                isMidnightPost: vm.midnightPostIds.contains(post.id),
-                                                                                                                                isLetter: vm.letterPostIds.contains(post.id),
-                                                                                                                                isRepostPost: vm.repostPostIds.contains(post.id),
-                                                                                                                                isWhisperPost: vm.whisperPostIds.contains(post.id),
-                                                                                                                                isLetterExpanded: vm.expandedLetterIds.contains(post.id),
-                                                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) }
-                                                                                                                                                                                                                                                                                )
-                                                                                                                                                                                                                                                                                .id(post.id)
-                                                                                                                                                                                                                                                             }
-                                                                                        }
-                    
-                                        } // end else hasLoadedOnce
+                                                                } else {
+                                                                                                                                    ForEach(vm.currentPosts) { post in
+                                                                                                                                        if post.id.hasPrefix("sample_") {
+                                                                                                                                            FeedPostRow(
+                                                                                                                                                handle: post.handle,
+                                                                                                                                                text: post.text,
+                                                                                                                                                tag: post.tag,
+                                                                                                                                                likes: post.likes,
+                                                                                                                                                reposts: post.reposts,
+                                                                                                                                                replies: post.replies,
+                                                                                                                                                time: post.time
+                                                                                                                                            )
+                                                                                                                                        } else {
+                                                                                                                                            FeedPostRow(
+                                                                                                                                                handle: post.handle,
+                                                                                                                                                text: post.text,
+                                                                                                                                                tag: post.tag,
+                                                                                                                                                likes: post.likes,
+                                                                                                                                                reposts: post.reposts,
+                                                                                                                                                replies: post.replies,
+                                                                                                                                                time: post.time,
+                                                                                                                                                postId: post.id,
+                                                                                                                                                authorId: post.authorId,
+                                                                                                                                                isAlreadyReposted: vm.repostedPostIds.contains(post.id),
+                                                                                                                                                isAlreadyLiked: vm.likedPostIds.contains(post.id),
+                                                                                                                                                isAlreadySaved: vm.savedPostIds.contains(post.id),
+                                                                                                                                                isShareable: post.isShareable,
+                                                                                                                                                gifUrl: vm.postGifUrls[post.id],
+                                                                                                                                                isMidnightPost: vm.midnightPostIds.contains(post.id),
+                                                                                                                                                isLetter: vm.letterPostIds.contains(post.id),
+                                                                                                                                                isRepostPost: vm.repostPostIds.contains(post.id),
+                                                                                                                                                isWhisperPost: vm.whisperPostIds.contains(post.id),
+                                                                                                                                                isLetterExpanded: vm.expandedLetterIds.contains(post.id),
+                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) }
+                                                                                                                                                                                                                                                                                            )
+                                                                                                                                                                                                                                                                                            .id(post.id)
+                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                        } // end else hasLoadedOnce
 
-                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
+                                                                                                                                                                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
+                                                                                                                                                                                                                
                                             ProgressView()
                                                 .tint(Color.toskaBlue)
                                                 .padding(.vertical, 20)
@@ -292,10 +296,12 @@ struct FeedView: View {
                                                                 .padding(.vertical, 20)
                                                             }
                     
-                    Color.clear.frame(height: 80)
-                }
-            }
-                .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                Color.clear.frame(height: 80)
+                                                                                }
+                                                                                .id("feedVStack-loaded-\(vm.hasLoadedOnce)-count-\(vm.posts.count)")
+                                                                            }
+                                                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                                                .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
                                                         proxy.scrollTo("feedTop", anchor: .top)
                                                     }
                                                 }
@@ -304,19 +310,21 @@ struct FeedView: View {
                 // tab-keep-alive (.opacity trick on each NavigationStack)
                 // already preserves scroll position when switching tabs, so
                 // an explicit save/restore round-trip isn't needed here.
-                                            } // end ScrollViewReader
-                                                            .simultaneousGesture(
-                                                    DragGesture()
+            } // end ScrollViewReader
+                                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                                        .simultaneousGesture(
+                                                                DragGesture()
                                 .onChanged { value in
                                                                     guard value.translation.height > 0 else { return }
                                                                     vm.dragOffset = value.translation.height
                                                                 }
-                                                                .onEnded { value in
-                                                                    if value.translation.height > 80 && !isRefreshing {
+                                                        .onEnded { value in
+                                                                                                                            if value.translation.height > 80 && !vm.isRefreshing {
                                         vm.isRefreshing = true
                                         HapticManager.play(.tabSwitch)
                                         Task { @MainActor in
-                                            await vm.refreshAll()
+                                            vm.refreshAll()
+                                            try? await Task.sleep(nanoseconds: 800_000_000)
                                             withAnimation(.easeOut(duration: 0.3)) {
                                                 vm.isRefreshing = false
                                                 vm.dragOffset = 0
@@ -327,26 +335,35 @@ struct FeedView: View {
                                             vm.dragOffset = 0
                                         }
                                     }
-                                }
-                        )
-        }
-        .background(LateNightTheme.background)
+                                                                    }
+                                                            )
+                                                .frame(width: geo.size.width, height: geo.size.height)
+                                                }
+                                            }
+                                            .background(LateNightTheme.background)
                .accessibilityIdentifier("feedView")
                .onAppear {
-                                  vm.dragOffset = 0
-                                  vm.savedScrollPostId = nil
-                                  if !vm.hasLoadedOnce {
-                                      if Auth.auth().currentUser != nil {
-                                          vm.loadInitialData()
-                                      }
-                                  }
-                              }
+                                                 print("⚡️ FeedView onAppear — hasLoadedOnce: \(vm.hasLoadedOnce), hasAuth: \(Auth.auth().currentUser != nil), posts.count: \(vm.posts.count)")
+                                                 vm.dragOffset = 0
+                                                 vm.savedScrollPostId = nil
+                                                 if !vm.hasLoadedOnce {
+                                                     if Auth.auth().currentUser != nil {
+                                                         print("⚡️ FeedView onAppear — calling loadInitialData")
+                                                         vm.loadInitialData()
+                                                     } else {
+                                                         print("🛑 FeedView onAppear — skipped, auth is nil")
+                                                     }
+                                                 } else {
+                                                     print("⚡️ FeedView onAppear — skipped, hasLoadedOnce already true")
+                                                 }
+                                             }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
-                                  if !vm.hasLoadedOnce {
-                                      print("⚡️ AuthDidVerify received in FeedView — calling loadInitialData")
-                                      vm.loadInitialData()
-                                  }
-                              }
+                                                 print("⚡️ AuthDidVerify received in FeedView — hasLoadedOnce: \(vm.hasLoadedOnce), posts.count: \(vm.posts.count)")
+                                                 if !vm.hasLoadedOnce {
+                                                     print("⚡️ AuthDidVerify received in FeedView — calling loadInitialData")
+                                                     vm.loadInitialData()
+                                                 }
+                                             }
                .sheet(isPresented: $vm.showExplore) {
                    ExploreView()
                }
@@ -769,23 +786,25 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
-                .navigationDestination(isPresented: $showPostDetail) {
-                                    PostDetailView(
-                                        postId: postId,
-                                        handle: handle,
-                                        text: text,
-                                        tag: tag,
-                                        likes: localLikeCount,
-                                        reposts: localRepostCount,
-                                        replies: replies,
-                                        time: time,
-                                        authorId: authorId,
-                                        isAlreadyLiked: isLiked,
-                                        isAlreadySaved: isSaved,
-                                        isAlreadyReposted: isReposted
-                                    )
-                                    .navigationBarHidden(true)
-                                }
+                .fullScreenCover(isPresented: $showPostDetail) {
+                                                    NavigationStack {
+                                                        PostDetailView(
+                                                            postId: postId,
+                                                            handle: handle,
+                                                            text: text,
+                                                            tag: tag,
+                                                            likes: localLikeCount,
+                                                            reposts: localRepostCount,
+                                                            replies: replies,
+                                                            time: time,
+                                                            authorId: authorId,
+                                                            isAlreadyLiked: isLiked,
+                                                            isAlreadySaved: isSaved,
+                                                            isAlreadyReposted: isReposted
+                                                        )
+                                                        .navigationBarHidden(true)
+                                                    }
+                                                }
                                 .sheet(isPresented: $showShareCard) {
                                     ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
                                 }
@@ -887,75 +906,6 @@ struct FeedPostRow: View {
                 }
             }
     
-    
-    // MARK: - Share
-    
-    func sharePost() {
-            let cardView = ZStack {
-                Color(hex: "0a0908")
-                
-                VStack(spacing: 0) {
-                    Spacer()
-                    
-                    // Tag pill
-                    if let tag = tag {
-                        HStack(spacing: 5) {
-                            let tagData = sharedTags.first(where: { $0.name == tag })
-                            Image(systemName: tagData?.icon ?? "tag")
-                                .font(.system(size: 11))
-                            Text(tag)
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .foregroundColor(tagColor(for: tag).opacity(0.6))
-                        .padding(.bottom, 20)
-                    }
-                    
-                    // Post text
-                    Text(text)
-                        .font(.custom("Georgia", size: 22))
-                        .foregroundColor(.white.opacity(0.95))
-                        .lineSpacing(8)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                    
-                    Spacer()
-                    
-                    // Social proof
-                    if localLikeCount > 0 {
-                        Text("\(formatCount(localLikeCount)) felt this")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
-                            .padding(.bottom, 8)
-                    }
-                    
-                    // Handle
-                                        Text("— someone on toska")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.white.opacity(0.2))
-                                            .padding(.bottom, 24)
-                    
-                    // Branding
-                    VStack(spacing: 4) {
-                        Text("toska")
-                            .font(.custom("Georgia-Italic", size: 18))
-                            .foregroundColor(.white.opacity(0.15))
-                        Text("say what you never said")
-                            .font(.system(size: 9))
-                            .foregroundColor(.white.opacity(0.08))
-                    }
-                    .padding(.bottom, 40)
-                }
-            }
-            .frame(width: 1080 / 3, height: 1920 / 3)
-                        .environment(\.colorScheme, .dark)
-                        
-                        let renderer = ImageRenderer(content: cardView)
-            renderer.scale = 3.0
-            
-            if let image = renderer.uiImage {
-                presentShareSheet(with: [image])
-            }
-        }
     
 }
 // MARK: - Collapsible Feed Header Card
@@ -1189,32 +1139,32 @@ struct SkeletonPostRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(width: 100, height: 11)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(width: 28, height: 11)
                 Spacer()
             }
             .padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(maxWidth: .infinity)
                     .frame(height: 13)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(maxWidth: .infinity)
                     .frame(height: 13)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(width: 160, height: 13)
             }
             .padding(.bottom, 12)
             HStack(spacing: 0) {
                 ForEach(0..<3, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(hex: "dfe1e5"))
+                        .fill(LateNightTheme.divider)
                         .frame(width: 28, height: 11)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1225,7 +1175,7 @@ struct SkeletonPostRow: View {
         .padding(.vertical, 12)
         .overlay(
             Rectangle()
-                .fill(Color(hex: "dfe1e5").opacity(0.4))
+                .fill(LateNightTheme.divider.opacity(0.4))
                 .frame(height: 0.5),
             alignment: .bottom
         )

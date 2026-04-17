@@ -123,6 +123,9 @@ struct MessagesListView: View {
                         listener?.remove()
                         listener = nil
                     }
+                    .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                        startListening()
+                    }
                     .navigationDestination(item: $selectedConversation) { convo in
                         ConversationView(
                             conversationId: convo.id,

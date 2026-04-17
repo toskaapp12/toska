@@ -535,6 +535,7 @@ struct SettingsView: View {
             if let postsSnap = try? await db.collection("posts")
                 .whereField("authorId", isEqualTo: uid)
                 .order(by: "createdAt", descending: true)
+                .limit(to: 5000)
                 .getDocumentsAsync() {
                 payload["posts"] = postsSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
@@ -547,6 +548,7 @@ struct SettingsView: View {
             if let repliesSnap = try? await db.collectionGroup("replies")
                 .whereField("authorId", isEqualTo: uid)
                 .order(by: "createdAt", descending: true)
+                .limit(to: 5000)
                 .getDocumentsAsync() {
                 payload["replies"] = repliesSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
@@ -558,25 +560,26 @@ struct SettingsView: View {
 
             // Liked + saved post IDs (just IDs — full post content belongs
             // to the original author)
-            if let likedSnap = try? await db.collection("users").document(uid).collection("liked").getDocumentsAsync() {
+            if let likedSnap = try? await db.collection("users").document(uid).collection("liked").limit(to: 5000).getDocumentsAsync() {
                 payload["likedPostIds"] = likedSnap.documents.map { $0.documentID }
             }
-            if let savedSnap = try? await db.collection("users").document(uid).collection("saved").getDocumentsAsync() {
+            if let savedSnap = try? await db.collection("users").document(uid).collection("saved").limit(to: 5000).getDocumentsAsync() {
                 payload["savedPostIds"] = savedSnap.documents.map { $0.documentID }
             }
 
             // Following + followers (handles only — never user IDs of others,
             // which would let the export be cross-referenced with leaked data)
-            if let followingSnap = try? await db.collection("users").document(uid).collection("following").getDocumentsAsync() {
+            if let followingSnap = try? await db.collection("users").document(uid).collection("following").limit(to: 5000).getDocumentsAsync() {
                 payload["followingHandles"] = followingSnap.documents.compactMap { $0.data()["handle"] as? String }
             }
-            if let followersSnap = try? await db.collection("users").document(uid).collection("followers").getDocumentsAsync() {
+            if let followersSnap = try? await db.collection("users").document(uid).collection("followers").limit(to: 5000).getDocumentsAsync() {
                 payload["followerHandles"] = followersSnap.documents.compactMap { $0.data()["handle"] as? String }
             }
 
             // Notifications history (own inbox)
             if let notifSnap = try? await db.collection("users").document(uid).collection("notifications")
                 .order(by: "createdAt", descending: true)
+                .limit(to: 5000)
                 .getDocumentsAsync() {
                 payload["notifications"] = notifSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
@@ -847,6 +850,8 @@ struct ChangePasswordView: View {
                     message = error.localizedDescription
                     isError = true
                 } else {
+                    newPassword = ""
+                    confirmPassword = ""
                     message = "password updated"
                     isError = false
                     dismissTask?.cancel()

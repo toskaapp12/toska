@@ -103,7 +103,7 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       await safeDecrement(db.collection("users").doc(doc.id), "followerCount");
     }
 
-    const subs = ["saved", "liked", "following", "followers", "notifications", "blocked", "presence"];
+    const subs = ["saved", "liked", "following", "followers", "notifications", "blocked", "presence", "private"];
     for (const sub of subs) {
       await deleteCollection(db.collection("users").doc(uid).collection(sub));
     }
@@ -127,15 +127,21 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // they used to linger forever showing a deleted user's old handle.
     // collectionGroup walks every user's notifications in one query.
     try {
-      const orphanedNotifs = await db.collectionGroup("notifications")
-        .where("fromUserId", "==", uid)
-        .limit(500)
-        .get();
-      if (!orphanedNotifs.empty) {
+      let totalDeletedNotifs = 0;
+      while (true) {
+        const orphanedNotifs = await db.collectionGroup("notifications")
+          .where("fromUserId", "==", uid)
+          .limit(500)
+          .get();
+        if (orphanedNotifs.empty) break;
         const batch = db.batch();
         orphanedNotifs.docs.forEach((doc) => batch.delete(doc.ref));
         await batch.commit();
-        console.log(`Deleted ${orphanedNotifs.size} orphaned notifications for user:`, uid);
+        totalDeletedNotifs += orphanedNotifs.size;
+        if (orphanedNotifs.size < 500) break;
+      }
+      if (totalDeletedNotifs > 0) {
+        console.log(`Deleted ${totalDeletedNotifs} orphaned notifications for user:`, uid);
       }
     } catch (err) {
       console.warn("Orphaned notification cleanup failed:", err.message);
@@ -681,11 +687,12 @@ exports.cleanupExpiredPosts = onSchedule("every 60 minutes", async () => {
       return;
     }
 
-    const batch = db.batch();
     for (const doc of expiredSnap.docs) {
-      batch.delete(doc.ref);
+      await deleteCollection(doc.ref.collection("replies"));
+      await deleteCollection(doc.ref.collection("likes"));
+      await deleteCollection(doc.ref.collection("reflections"));
+      await doc.ref.delete();
     }
-    await batch.commit();
 
     console.log(`Deleted ${expiredSnap.size} expired posts.`);
   } catch (error) {

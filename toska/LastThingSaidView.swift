@@ -59,7 +59,7 @@ struct LastThingSaidView: View {
                     Spacer()
                 } else {
                     ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0) {
+                        VStack(spacing: 0) {
                             VStack(spacing: 8) {
                                 Image(systemName: "leaf")
                                     .font(.system(size: 18, weight: .light))

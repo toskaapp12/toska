@@ -639,6 +639,9 @@ struct PostDetailView: View {
             if followingSnap?.exists == true {
                 try? await db.collection("users").document(uid).collection("following").document(blockedUserId).delete()
                 try? await db.collection("users").document(blockedUserId).collection("followers").document(uid).delete()
+                // WARNING: These count decrements use try? — if either fails silently,
+                // followingCount/followerCount will drift (be 1 too high). A periodic
+                // recount or Cloud Function is recommended to reconcile over time.
                 try? await uidRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
                 try? await authorRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])
             }
@@ -648,6 +651,8 @@ struct PostDetailView: View {
             if followerSnap?.exists == true {
                 try? await db.collection("users").document(uid).collection("followers").document(blockedUserId).delete()
                 try? await db.collection("users").document(blockedUserId).collection("following").document(uid).delete()
+                // WARNING: Same count-drift risk as above — try? swallows errors on
+                // these decrements, so followerCount/followingCount may become stale.
                 try? await uidRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])
                 try? await authorRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
             }
@@ -689,37 +694,47 @@ struct PostDetailView: View {
         let db = Firestore.firestore()
 
         Task { @MainActor in
-            let replySnap = try? await db.collection("posts").document(postId).collection("replies")
-                .limit(to: 500).getDocumentsAsync()
-            let replyBatch = db.batch()
-            for doc in replySnap?.documents ?? [] { replyBatch.deleteDocument(doc.reference) }
-            try? await replyBatch.commit()
-
-            let likeSnap = try? await db.collection("posts").document(postId).collection("likes").getDocumentsAsync()
-            guard likeSnap != nil else {
-                isDeleting = false
-                deleteError = "couldn't delete — please check your connection and try again"
-                return
-            }
-            let likeDocs = likeSnap?.documents ?? []
-            let likeCount = likeDocs.count
-
-            let likeChunks = stride(from: 0, to: likeDocs.count, by: 249).map {
-                Array(likeDocs[$0..<min($0 + 249, likeDocs.count)])
-            }
-            for chunk in likeChunks {
-                let batch = db.batch()
-                for doc in chunk {
-                    batch.deleteDocument(doc.reference)
-                    batch.deleteDocument(db.collection("users").document(doc.documentID).collection("liked").document(postId))
+            do {
+                // Delete all replies in batches, looping until none remain
+                var hasMoreReplies = true
+                while hasMoreReplies {
+                    let replySnap = try await db.collection("posts").document(postId).collection("replies")
+                        .limit(to: 500).getDocumentsAsync()
+                    if replySnap.documents.isEmpty {
+                        hasMoreReplies = false
+                    } else {
+                        let replyBatch = db.batch()
+                        for doc in replySnap.documents { replyBatch.deleteDocument(doc.reference) }
+                        try await replyBatch.commit()
+                    }
                 }
-                try? await batch.commit()
-            }
 
-            if likeCount > 0 && !authorUserId.isEmpty {
-                try? await db.collection("users").document(authorUserId).updateData([
-                    "totalLikes": FieldValue.increment(Int64(-likeCount))
-                ])
+                // Delete all likes
+                let likeSnap = try await db.collection("posts").document(postId).collection("likes").getDocumentsAsync()
+                let likeDocs = likeSnap.documents
+                let likeCount = likeDocs.count
+
+                let likeChunks = stride(from: 0, to: likeDocs.count, by: 249).map {
+                    Array(likeDocs[$0..<min($0 + 249, likeDocs.count)])
+                }
+                for chunk in likeChunks {
+                    let batch = db.batch()
+                    for doc in chunk {
+                        batch.deleteDocument(doc.reference)
+                        batch.deleteDocument(db.collection("users").document(doc.documentID).collection("liked").document(postId))
+                    }
+                    try await batch.commit()
+                }
+
+                if likeCount > 0 && !authorUserId.isEmpty {
+                    try? await db.collection("users").document(authorUserId).updateData([
+                        "totalLikes": FieldValue.increment(Int64(-likeCount))
+                    ])
+                }
+            } catch {
+                isDeleting = false
+                deleteError = "couldn't delete — failed to clean up replies/likes: \(error.localizedDescription)"
+                return
             }
 
             let repostSnap = try? await db.collection("posts")
@@ -819,7 +834,7 @@ struct PostDetailView: View {
         Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, _ in
             Task { @MainActor in
                 guard let data = snapshot?.data() else {
-                    authorUserId = Auth.auth().currentUser?.uid ?? ""
+                    authorUserId = ""
                     isAuthorIdLoading = false
                     return
                 }
@@ -833,6 +848,7 @@ struct PostDetailView: View {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count >= 2 else { return }
         guard Auth.auth().currentUser?.uid != nil, !postId.isEmpty else { return }
+        if BlockedUsersCache.shared.isBlocked(authorUserId) { return }
         if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
         if containsNameOrIdentifyingInfo(trimmed) { pendingReplyText = trimmed; showReplyNameWarning = true; return }
         if let level = crisisCheckLevelRespectingSetting(for: trimmed) {

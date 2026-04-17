@@ -163,6 +163,7 @@ struct SignInView: View {
                     errorMessage = friendlyAuthErrorMessage(error)
                 } else if let uid = result?.user.uid {
                     Telemetry.signInCompleted(method: .email)
+                    UserHandleCache.shared.startListening()
                     NotificationCenter.default.post(
                         name: NSNotification.Name("UserDidSignIn"),
                         object: nil,

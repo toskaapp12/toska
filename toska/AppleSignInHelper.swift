@@ -78,6 +78,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             fullName: appleIDCredential.fullName
         )
 
+        var isNewUser = false
         do {
             let result = try await Auth.auth().signIn(with: credential)
             let uid = result.user.uid
@@ -103,6 +104,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                     group.cancelAll()
                     return first
                 }
+                isNewUser = true
                 try await db.collection("users").document(uid).setData([
                     "handle": handle,
                     "followerCount": 0,
@@ -144,9 +146,13 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             // account. Try to delete it (we just signed in so there's no
             // requires-recent-login risk). Fall back to signOut if delete
             // fails for any reason — at minimum the device session is cleared.
-            do {
-                try await Auth.auth().currentUser?.delete()
-            } catch {
+            if isNewUser {
+                do {
+                    try await Auth.auth().currentUser?.delete()
+                } catch {
+                    try? Auth.auth().signOut()
+                }
+            } else {
                 try? Auth.auth().signOut()
             }
             Telemetry.recordError(error, context: "AppleSignIn.userDocCreate")

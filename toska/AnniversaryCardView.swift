@@ -153,6 +153,9 @@ struct AnniversaryCardView: View {
         .onAppear {
             checkExistingReflection()
         }
+        .onChange(of: reflectionText) { _, newValue in
+            if newValue.count > 500 { reflectionText = String(newValue.prefix(500)) }
+        }
         .alert("keep it anonymous", isPresented: $showNameWarning) {
             Button("edit") {}
             Button("save anyway", role: .destructive) {

@@ -151,11 +151,6 @@ struct SplashView: View {
         .fullScreenCover(isPresented: $showSignIn) {
             SignInView()
         }
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active && isSigningIn {
-                isSigningIn = false
-            }
-        }
     }
 
     // MARK: - Shared User Document Creation

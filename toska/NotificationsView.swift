@@ -421,6 +421,8 @@ struct NotificationsView: View {
             }
     }
 
+    // TODO: Switch to addSnapshotListener for real-time notification updates
+    // instead of one-shot getDocuments + pull-to-refresh.
     func loadNotifications(onComplete: (() -> Void)? = nil) {
             guard let uid = Auth.auth().currentUser?.uid else { isLoading = false; onComplete?(); return }
         let db = Firestore.firestore()

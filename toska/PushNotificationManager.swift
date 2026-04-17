@@ -147,9 +147,8 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                     )
                 }
             }
+            completionHandler()
         }
-
-        completionHandler()
     }
 }
 

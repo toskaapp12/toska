@@ -1,35 +1,43 @@
 import UIKit
 
 enum HapticStyle {
-    case postAppear      // soft notification when scrolling past special content
-    case feltThis        // light impact on like
-    case milestone       // success notification
-    case compose         // soft when opening compose
-    case send            // medium on post/send
-    case streak          // rigid for streak celebration
-    case whisper         // soft for ephemeral content
-    case tabSwitch       // selection changed
+    case postAppear
+    case feltThis
+    case milestone
+    case compose
+    case send
+    case streak
+    case whisper
+    case tabSwitch
 }
 
+@MainActor
 struct HapticManager {
+    private static let softGenerator = UIImpactFeedbackGenerator(style: .soft)
+    private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+    private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
+    private static let rigidGenerator = UIImpactFeedbackGenerator(style: .rigid)
+    private static let notificationGenerator = UINotificationFeedbackGenerator()
+    private static let selectionGenerator = UISelectionFeedbackGenerator()
+
     static func play(_ style: HapticStyle) {
         switch style {
         case .postAppear:
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.4)
+            softGenerator.impactOccurred(intensity: 0.4)
         case .feltThis:
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            lightGenerator.impactOccurred()
         case .milestone:
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            notificationGenerator.notificationOccurred(.success)
         case .compose:
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.3)
+            softGenerator.impactOccurred(intensity: 0.3)
         case .send:
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            mediumGenerator.impactOccurred()
         case .streak:
-            UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.6)
+            rigidGenerator.impactOccurred(intensity: 0.6)
         case .whisper:
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.2)
+            softGenerator.impactOccurred(intensity: 0.2)
         case .tabSwitch:
-            UISelectionFeedbackGenerator().selectionChanged()
+            selectionGenerator.selectionChanged()
         }
     }
 }

@@ -194,7 +194,6 @@ class PostInteractionManager {
                     print("⚠️ toggleSave — offline, skipping")
                     return
                 }
-                RateLimiter.shared.lastSaveTime = Date()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let db = Firestore.firestore()
         let saveRef = db.collection("users").document(uid).collection("saved").document(postId)
@@ -210,17 +209,34 @@ class PostInteractionManager {
                 )
         if currentlySaved {
             saveRef.delete { error in
-                if error != nil {
-                    Task { @MainActor in onUpdate(true) }
+                Task { @MainActor in
+                    if error != nil {
+                        onUpdate(true)
+                        NotificationCenter.default.post(
+                            name: .postInteractionChanged,
+                            object: nil,
+                            userInfo: ["postId": postId, "action": "save", "value": true]
+                        )
+                    } else {
+                        RateLimiter.shared.lastSaveTime = Date()
+                    }
                 }
             }
         } else {
             saveRef.setData(["createdAt": FieldValue.serverTimestamp()]) { error in
-                if error != nil {
-                    Task { @MainActor in onUpdate(false) }
-                } else {
-                    if !authorId.isEmpty, authorId != uid {
-                        sendNotification(postId: postId, toUserId: authorId, type: "save", message: "")
+                Task { @MainActor in
+                    if error != nil {
+                        onUpdate(false)
+                        NotificationCenter.default.post(
+                            name: .postInteractionChanged,
+                            object: nil,
+                            userInfo: ["postId": postId, "action": "save", "value": false]
+                        )
+                    } else {
+                        RateLimiter.shared.lastSaveTime = Date()
+                        if !authorId.isEmpty, authorId != uid {
+                            sendNotification(postId: postId, toUserId: authorId, type: "save", message: "")
+                        }
                     }
                 }
             }
@@ -250,6 +266,7 @@ class PostInteractionManager {
                     }
                     return
                 }
+        if let last = RateLimiter.shared.lastRepostTime, Date().timeIntervalSince(last) < 2 { return }
         guard uid != authorId else { return }
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ repost — offline, skipping")

@@ -27,6 +27,7 @@ struct PostDetailData {
     let replies: Int
     let time: String
     let authorId: String
+    var isShareable: Bool = true
 }
 
 /// Used in ProfileView for saved/liked posts (has Date for sorting, handle for display)

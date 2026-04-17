@@ -175,12 +175,20 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .openPostFromPush)) { notification in
             guard let postId = notification.userInfo?["postId"] as? String, !postId.isEmpty else { return }
+            PushNotificationManager.shared.pendingIntent = nil
+            showCompose = false
+            pushConversation = nil
+            pushProfileUser = nil
             selectedTab = .feed
             pushPostId = postId
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenConversationFromPush"))) { notification in
             guard let convoId = notification.userInfo?["conversationId"] as? String, !convoId.isEmpty else { return }
             let otherUserId = notification.userInfo?["otherUserId"] as? String ?? ""
+            PushNotificationManager.shared.pendingIntent = nil
+            showCompose = false
+            pushPostId = nil
+            pushProfileUser = nil
             // We don't always know the other handle from push payload alone.
             // ConversationView fetches it from the conversation doc on appear,
             // so an empty handle is acceptable here.
@@ -188,6 +196,10 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenProfileFromPush"))) { notification in
             guard let userId = notification.userInfo?["userId"] as? String, !userId.isEmpty else { return }
+            PushNotificationManager.shared.pendingIntent = nil
+            showCompose = false
+            pushPostId = nil
+            pushConversation = nil
             pushProfileUser = UserSelection(id: userId, handle: "")
         }
         .onReceive(NotificationCenter.default.publisher(for: .openComposeFromEmptyFeed)) { _ in
@@ -234,6 +246,12 @@ struct MainTabView: View {
             feedVM.loadInitialData()
         }
         .onDisappear {
+            unreadListener?.remove()
+            unreadListener = nil
+            unreadPollTask?.cancel()
+            unreadPollTask = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
             unreadListener?.remove()
             unreadListener = nil
             unreadPollTask?.cancel()

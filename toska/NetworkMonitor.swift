@@ -37,8 +37,6 @@ class NetworkMonitor {
                 }
             }
             monitor.start(queue: queue)
-            // Initialise isConnected from the real monitor's path after it starts
-            isConnected = monitor.currentPath.status == .satisfied
         }
 }
 
@@ -50,6 +48,7 @@ class RateLimiter {
     var lastLikeTime: Date? = nil
     var lastReplyTime: Date? = nil
     var lastSaveTime: Date? = nil
+    var lastRepostTime: Date? = nil
 
     private init() {}
 }

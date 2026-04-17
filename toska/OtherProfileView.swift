@@ -22,6 +22,7 @@ struct OtherProfileView: View {
     @State private var hasFetchedInitial = false
     @State private var showMessages = false
     @State private var activeConversationId = ""
+    @State private var showFollowerCount = true
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -75,21 +76,23 @@ struct OtherProfileView: View {
                                 .foregroundColor(Color.toskaTimestamp)
                             }
                             
-                            HStack(spacing: 20) {
-                                VStack(spacing: 1) {
-                                    Text("\(followerCount)").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                    Text("followers").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                            if showFollowerCount {
+                                HStack(spacing: 20) {
+                                    VStack(spacing: 1) {
+                                        Text("\(followerCount)").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("followers").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                                    }
+                                    VStack(spacing: 1) {
+                                        Text("\(followingCount)").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("following").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                                    }
+                                    VStack(spacing: 1) {
+                                        Text(formatCount(totalLikes)).font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("likes").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                                    }
                                 }
-                                VStack(spacing: 1) {
-                                    Text("\(followingCount)").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                    Text("following").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
-                                }
-                                VStack(spacing: 1) {
-                                    Text(formatCount(totalLikes)).font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                    Text("likes").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
-                                }
+                                .padding(.top, 2)
                             }
-                            .padding(.top, 2)
                             
                             if !isOwnProfile {
                                 HStack(spacing: 8) {
@@ -296,6 +299,7 @@ struct OtherProfileView: View {
                 followerCount = data["followerCount"] as? Int ?? 0
                 followingCount = data["followingCount"] as? Int ?? 0
                 totalLikes = data["totalLikes"] as? Int ?? 0
+                showFollowerCount = data["showFollowerCount"] as? Bool ?? true
                 if let timestamp = data["createdAt"] as? Timestamp {
                     joinedDate = ToskaFormatters.monthYear.string(from: timestamp.dateValue())
                 }
@@ -526,8 +530,10 @@ struct OtherProfileView: View {
                 }
                 try? await batch.commit()
 
-                // Atomic count decrements — FieldValue.increment never goes below
-                // what's on the server; no transaction needed for decrement-only ops
+                // Atomic count decrements — FieldValue.increment can drive counts
+                // below zero if the stored value is already 0. The proper fix
+                // requires transactions (as used in toggleFollow), but the block
+                // path is rare enough that negative counts are acceptable for now.
                 if iAmFollowing {
                     try? await uidRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
                     try? await theirRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])

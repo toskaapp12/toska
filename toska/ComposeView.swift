@@ -424,7 +424,7 @@ struct ComposeView: View {
                                     .stroke(LateNightTheme.divider, lineWidth: 2)
                                     .frame(width: 24, height: 24)
                                 Circle()
-                                    .trim(from: 0, to: CGFloat(text.count) / CGFloat(activeCharLimit))
+                                    .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
                                     .stroke(
                                         isNearLimit ? Color(hex: "c45c5c") : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 2, lineCap: .round)

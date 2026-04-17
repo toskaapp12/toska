@@ -219,6 +219,9 @@ struct ContentView: View {
         for attempt in 1...8 {
             guard !isLoggedIn, !Task.isCancelled else { return }
 
+            // NOTE: try? swallows all errors including permanent ones like
+            // permission-denied, which will retry uselessly for all 8 attempts.
+            // Not changing this now given the fragile auth flow.
             let snapshot = try? await Firestore.firestore()
                 .collection("users").document(uid).getDocumentAsync()
 
@@ -241,10 +244,21 @@ struct ContentView: View {
                 }
 
                 showVerifyError = false
-                isLoggedIn = true
-                isLoading = false
-                NotificationCenter.default.post(name: .authDidVerify, object: nil)
-                recordPresence(uid: uid)
+                                isLoggedIn = true
+                                isLoading = false
+                                // Defer the notification by one run-loop tick so MainTabView
+                                // and FeedView have time to mount and attach their
+                                // .onReceive(.authDidVerify) subscribers before it fires.
+                                // Without this delay, the notification is posted in the same
+                                // tick that isLoggedIn = true triggers the SplashView ->
+                                // MainTabView swap, so the subscribers don't exist yet and
+                                // the feed stays blank until pull-to-refresh.
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 300_000_000)
+                                    guard self.isLoggedIn, !Task.isCancelled else { return }
+                                    NotificationCenter.default.post(name: .authDidVerify, object: nil)
+                                }
+                                recordPresence(uid: uid)
                 pruneOldNotifications(uid: uid)
                 return
             }

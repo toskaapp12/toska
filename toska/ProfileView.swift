@@ -283,18 +283,13 @@ struct ProfileView: View {
                                                 loadMyPosts()
                                                 loadLikedPosts()
                                                 loadSavedPosts()
+                        ensurePresenceThenLoadStreak()
                         Task {
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
                             reconcileCountsIfNeeded()
                         }
-                        ensurePresenceThenLoadStreak()
                     }
                     loadProfile()
-                    Task {
-                        try? await Task.sleep(nanoseconds: 1_500_000_000)
-                        reconcileCountsIfNeeded()
-                    }
-                    ensurePresenceThenLoadStreak()
                 }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showSettings = false

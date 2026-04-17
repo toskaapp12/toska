@@ -158,7 +158,7 @@ struct ExploreView: View {
                                     .padding(.bottom, 8)
                                 }
                                 
-                                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                 if hasSearched {
                     // MARK: - Search Results
@@ -183,7 +183,7 @@ struct ExploreView: View {
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         
-                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                         
                         if isSearching {
                             Spacer()
@@ -194,7 +194,7 @@ struct ExploreView: View {
                             VStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .light)).foregroundColor(Color.toskaDivider)
                                 Text("nothing found").font(.system(size: 13)).foregroundColor(Color.toskaTextLight)
-                                                                                                Text("nobody said it here yet. maybe you should.").font(.system(size: 11)).foregroundColor(Color(hex: "cccccc"))
+                                                                                                Text("nobody said it here yet. maybe you should.").font(.system(size: 11)).foregroundColor(Color.toskaGrayLight)
                             }
                             Spacer()
                         } else {
@@ -237,7 +237,7 @@ struct ExploreView: View {
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         
-                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                         
                         if isLoadingTag {
                             Spacer()
@@ -286,7 +286,7 @@ struct ExploreView: View {
                                         .padding(.vertical, 14)
                                         .background(Color.white)
                                         
-                                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                                                                             }
                                                                             
                                                                             
@@ -295,7 +295,7 @@ struct ExploreView: View {
                                         VStack(spacing: 8) {
                                             Image(systemName: "pencil.line").font(.system(size: 20, weight: .light)).foregroundColor(Color.toskaDivider)
                                             Text("nobody's said it yet").font(.system(size: 12)).foregroundColor(Color.toskaTextLight)
-                                                                                                                                    Text("be the first.").font(.system(size: 10)).foregroundColor(Color(hex: "cccccc"))
+                                                                                                                                    Text("be the first.").font(.system(size: 10)).foregroundColor(Color.toskaGrayLight)
                                         }.frame(maxWidth: .infinity).padding(.vertical, 60)
                                     } else {
                                         ForEach(Array(tagPosts.enumerated()), id: \.element.id) { index, post in
@@ -351,7 +351,7 @@ struct ExploreView: View {
                                                                     }
                                                                     .buttonStyle(.plain)
                                                                     
-                                                                    Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                                                                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                                                                 }
                                                                 
                                                                 Color.clear.frame(height: 40)

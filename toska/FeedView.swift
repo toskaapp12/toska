@@ -114,11 +114,11 @@ struct FeedView: View {
                                                             .font(.system(size: 11, weight: .semibold))
                                                     }
                                                 }
-                                                .foregroundColor(Color(hex: "c45c5c"))
+                                                .foregroundColor(Color.toskaError)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 8)
                                                 .frame(maxWidth: .infinity)
-                                                .background(Color(hex: "c45c5c").opacity(0.06))
+                                                .background(Color.toskaError.opacity(0.06))
                                             }
                                 // MARK: - Collapsed feed header
                                                     if vm.selectedTab == 0 {
@@ -147,11 +147,11 @@ struct FeedView: View {
                                                 Text("some posts may be missing — pull to refresh")
                                                     .font(.system(size: 11))
                                             }
-                                            .foregroundColor(Color(hex: "c49a6c"))
+                                            .foregroundColor(Color.toskaWarm)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 8)
                                             .frame(maxWidth: .infinity)
-                                            .background(Color(hex: "c49a6c").opacity(0.06))
+                                            .background(Color.toskaWarm.opacity(0.06))
                                         }
                     
                     
@@ -492,13 +492,13 @@ struct FeedPostRow: View {
                                             if isMidnightPost {
                                                 Image(systemName: "moon.fill")
                                                     .font(.system(size: 8))
-                                                    .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
+                                                    .foregroundColor(Color.toskaPurple.opacity(0.5))
                                             }
                                             
                                             if isWhisperPost {
                                                 Image(systemName: "eye.slash")
                                                     .font(.system(size: 8))
-                                                    .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
+                                                    .foregroundColor(Color.toskaPink.opacity(0.5))
                                             }
 
                                             // Report/block menu. Hidden on the user's
@@ -539,7 +539,7 @@ struct FeedPostRow: View {
                                 Text("letter")
                                     .font(.system(size: 10, weight: .semibold))
                             }
-                            .foregroundColor(Color(hex: "c9a97a"))
+                            .foregroundColor(Color.toskaGold)
                             
                             Text(text)
                                                             .font(.custom("Georgia", size: 15))
@@ -568,7 +568,7 @@ struct FeedPostRow: View {
                                     Text("letter")
                                         .font(.system(size: 10, weight: .semibold))
                                 }
-                                .foregroundColor(Color(hex: "c9a97a"))
+                                .foregroundColor(Color.toskaGold)
                             }
                             
                             Text(text)
@@ -929,7 +929,7 @@ struct FeedPostRow: View {
                     if localLikeCount > 0 {
                         Text("\(formatCount(localLikeCount)) felt this")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
+                            .foregroundColor(Color.toskaPink.opacity(0.7))
                             .padding(.bottom, 8)
                     }
                     
@@ -1051,7 +1051,7 @@ struct FeedHeaderCard: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "sparkles")
                                         .font(.system(size: 12))
-                                        .foregroundColor(Color(hex: "c49a6c"))
+                                        .foregroundColor(Color.toskaWarm)
                                     Text(vm.dailyMomentLabel)
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(LateNightTheme.handleText)
@@ -1194,32 +1194,32 @@ struct SkeletonPostRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(width: 100, height: 11)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(width: 28, height: 11)
                 Spacer()
             }
             .padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(maxWidth: .infinity)
                     .frame(height: 13)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(maxWidth: .infinity)
                     .frame(height: 13)
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color(hex: "dfe1e5"))
+                    .fill(LateNightTheme.divider)
                     .frame(width: 160, height: 13)
             }
             .padding(.bottom, 12)
             HStack(spacing: 0) {
                 ForEach(0..<3, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color(hex: "dfe1e5"))
+                        .fill(LateNightTheme.divider)
                         .frame(width: 28, height: 11)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -1230,7 +1230,7 @@ struct SkeletonPostRow: View {
         .padding(.vertical, 12)
         .overlay(
             Rectangle()
-                .fill(Color(hex: "dfe1e5").opacity(0.4))
+                .fill(LateNightTheme.divider.opacity(0.4))
                 .frame(height: 0.5),
             alignment: .bottom
         )
@@ -1286,13 +1286,13 @@ func timeOfDayLabel() -> String {
 func tagColor(for tag: String) -> Color {
     switch tag {
     case "longing": return Color.toskaBlue
-    case "anger": return Color(hex: "c45c5c")
-    case "regret": return Color(hex: "8b7ec8")
-    case "acceptance": return Color(hex: "6ba58e")
-    case "confusion": return Color(hex: "c49a6c")
+    case "anger": return Color.toskaError
+    case "regret": return Color.toskaPurple
+    case "acceptance": return Color.toskaGreen
+    case "confusion": return Color.toskaWarm
     case "unsent": return Color(hex: "7a97b5")
-    case "moving on": return Color(hex: "5a9e8f")
-    case "still love you": return Color(hex: "c47a8a")
+    case "moving on": return Color.toskaTeal
+    case "still love you": return Color.toskaPink
     default: return Color.toskaBlue
     }
 }

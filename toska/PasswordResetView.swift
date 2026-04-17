@@ -61,7 +61,7 @@ struct PasswordResetView: View {
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "c45c5c"))
+                        .foregroundColor(Color.toskaError)
                         .padding(.bottom, 10)
                 }
                 

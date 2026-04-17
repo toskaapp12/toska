@@ -119,16 +119,16 @@ struct ConversationView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                 if let banner = inlineErrorBanner {
                     Text(banner)
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "c45c5c"))
+                        .foregroundColor(Color.toskaError)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(hex: "c45c5c").opacity(0.06))
+                        .background(Color.toskaError.opacity(0.06))
                         .transition(.opacity)
                 }
 
@@ -174,7 +174,7 @@ struct ConversationView: View {
                                         .foregroundColor(Color.toskaTextLight)
                                     Text("you each get 5 messages.\nsay what matters.")
                                         .font(.system(size: 11))
-                                        .foregroundColor(Color(hex: "cccccc"))
+                                        .foregroundColor(Color.toskaGrayLight)
                                         .multilineTextAlignment(.center)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -256,11 +256,11 @@ struct ConversationView: View {
                                 if isSealed {
                                     VStack(spacing: 6) {
                                         Rectangle()
-                                            .fill(Color(hex: "dfe1e5"))
+                                            .fill(LateNightTheme.divider)
                                             .frame(width: 40, height: 0.5)
                                         Text("this conversation is sealed")
                                             .font(.system(size: 10))
-                                            .foregroundColor(Color(hex: "cccccc"))
+                                            .foregroundColor(Color.toskaGrayLight)
                                         Text("some things only need to be said once")
                                             .font(.system(size: 9))
                                             .foregroundColor(Color(hex: "d8d8d8"))
@@ -293,7 +293,7 @@ struct ConversationView: View {
                 EmptyView()
             } else if !isSealed {
                 VStack(spacing: 0) {
-                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                     if myMessageCount >= messageLimit {
                         HStack {
@@ -304,14 +304,14 @@ struct ConversationView: View {
                             Spacer()
                         }
                         .padding(.vertical, 12)
-                        .background(Color.white)
+                        .background(LateNightTheme.cardBackground)
                     } else {
                         HStack(spacing: 4) {
                             Text("\(messagesRemaining)")
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(
                                     messagesRemaining <= 2
-                                        ? Color(hex: "c49a6c")
+                                        ? Color.toskaWarm
                                         : Color.toskaTimestamp
                                 )
                                 .frame(width: 20)
@@ -321,7 +321,7 @@ struct ConversationView: View {
                                 .focused($inputFocused)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
-                                .background(Color(hex: "e8eaed"))
+                                .background(LateNightTheme.inputBackground)
                                 .cornerRadius(20)
                                 .onChange(of: messageText) { _, newValue in
                                     if newValue.count > 500 {
@@ -356,7 +356,7 @@ struct ConversationView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Color.white)
+                        .background(LateNightTheme.cardBackground)
                     }
                 }
                 .background(Color.white.ignoresSafeArea(edges: .bottom))

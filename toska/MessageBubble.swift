@@ -28,8 +28,8 @@ struct MessageBubble: View {
                     
                     Text(text)
                         .font(.custom("Georgia", size: 14))
-                        .foregroundColor(isMe ? Color.toskaTextDark : Color(hex: "3a3a3a"))
-                        .lineSpacing(3)
+                        .foregroundColor(LateNightTheme.primaryText)
+                        .lineSpacing(Toska.bodyLineSpacing)
                         .padding(.horizontal, isMe ? 0 : 10)
                         .padding(.vertical, 2)
                 }

@@ -63,7 +63,7 @@ struct OtherProfileView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                 if profileNotFound {
                     Spacer()
@@ -126,10 +126,10 @@ struct OtherProfileView: View {
                                     Button { toggleFollow() } label: {
                                         Text(isFollowing ? "following" : "follow")
                                             .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(isFollowing ? Color(hex: "999999") : .white)
+                                            .foregroundColor(isFollowing ? Color.toskaGray : .white)
                                             .frame(width: 100)
                                             .padding(.vertical, 8)
-                                            .background(isFollowing ? Color(hex: "e4e6ea") : Color.toskaBlue)
+                                            .background(isFollowing ? LateNightTheme.divider : Color.toskaBlue)
                                             .cornerRadius(16)
                                     }
                                     
@@ -157,7 +157,7 @@ struct OtherProfileView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 0 ? "square.grid.2x2.fill" : "square.grid.2x2")
                                         .font(.system(size: 14, weight: selectedTab == 0 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color(hex: "c8c8c8"))
+                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color.toskaGrayMid)
                                     Capsule().fill(selectedTab == 0 ? Color.toskaBlue : Color.clear).frame(height: 2)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -166,7 +166,7 @@ struct OtherProfileView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 1 ? "bubble.left.fill" : "bubble.left")
                                         .font(.system(size: 14, weight: selectedTab == 1 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color(hex: "c8c8c8"))
+                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color.toskaGrayMid)
                                     Capsule().fill(selectedTab == 1 ? Color.toskaBlue : Color.clear).frame(height: 2)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -174,7 +174,7 @@ struct OtherProfileView: View {
                         }
                         .padding(.horizontal, 40)
                         
-                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                         
                         if selectedTab == 0 {
                             if posts.isEmpty {
@@ -230,7 +230,7 @@ struct OtherProfileView: View {
                                                     
                                                     Text(reply.replyTime)
                                                         .font(.system(size: 9, weight: .light))
-                                                        .foregroundColor(Color(hex: "c8c8c8"))
+                                                        .foregroundColor(Color.toskaGrayMid)
                                                 }
                                             }
                                             .padding(.top, 2)
@@ -240,7 +240,7 @@ struct OtherProfileView: View {
                                         .background(Color.white)
                                         .overlay(
                                             Rectangle()
-                                                .fill(Color(hex: "e4e6ea"))
+                                                .fill(LateNightTheme.divider)
                                                 .frame(height: 0.5),
                                             alignment: .bottom
                                         )

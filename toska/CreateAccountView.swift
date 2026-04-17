@@ -91,7 +91,7 @@ struct CreateAccountView: View {
                                 .padding(.bottom, 12)
                 
                 Rectangle()
-                    .fill(Color(hex: "e4e6ea"))
+                    .fill(LateNightTheme.divider)
                     .frame(height: 0.5)
                     .padding(.bottom, 16)
                 
@@ -108,7 +108,7 @@ struct CreateAccountView: View {
                     .cornerRadius(10)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
+                            .stroke(LateNightTheme.divider, lineWidth: 0.5)
                     )
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -129,7 +129,7 @@ struct CreateAccountView: View {
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
+                                            .stroke(LateNightTheme.divider, lineWidth: 0.5)
                                     )
                                     .padding(.bottom, 12)
                                     .textContentType(.oneTimeCode)
@@ -148,7 +148,7 @@ struct CreateAccountView: View {
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
+                                            .stroke(LateNightTheme.divider, lineWidth: 0.5)
                                     )
                                     .padding(.bottom, 20)
                                     .textContentType(.oneTimeCode)
@@ -157,7 +157,7 @@ struct CreateAccountView: View {
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "c45c5c"))
+                        .foregroundColor(Color.toskaError)
                         .padding(.bottom, 10)
                 }
                 

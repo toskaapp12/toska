@@ -227,7 +227,7 @@ struct PostDetailView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -260,7 +260,7 @@ struct PostDetailView: View {
                                     }, postId: postId, postAuthorId: authorUserId)
                                     if index < flat.count - 1 {
                                         Rectangle()
-                                            .fill(Color(hex: "e4e6ea").opacity(item.depth > 0 ? 0.3 : 0.5))
+                                            .fill(LateNightTheme.divider.opacity(item.depth > 0 ? 0.3 : 0.5))
                                             .frame(height: 0.5)
                                             .padding(.leading, 18 + indent)
                                     }
@@ -277,7 +277,7 @@ struct PostDetailView: View {
 
     var replyBarView: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
             if let gifUrl = replyGifUrl, let url = URL(string: gifUrl) {
                 HStack {
@@ -302,7 +302,7 @@ struct PostDetailView: View {
                         Button { withAnimation { replyGifUrl = nil } } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 16))
-                                .foregroundColor(Color(hex: "999999"))
+                                .foregroundColor(Color.toskaGray)
                                 .background(Circle().fill(.white))
                         }
                         .offset(x: -2, y: 2)
@@ -388,7 +388,7 @@ struct PostDetailView: View {
                 Spacer()
                 Text(time)
                     .font(.system(size: 10, weight: .light))
-                    .foregroundColor(Color(hex: "c8c8c8"))
+                    .foregroundColor(Color.toskaGrayMid)
             }
             .padding(.bottom, 10)
 
@@ -415,7 +415,7 @@ struct PostDetailView: View {
                         }
                         .padding(.bottom, 10)
 
-            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
             HStack(spacing: 0) {
                            Button { replyFocused = true } label: {
@@ -429,7 +429,7 @@ struct PostDetailView: View {
                            Button { toggleLike() } label: {
                                Image(systemName: isLiked ? "heart.fill" : "heart")
                                    .font(.system(size: 15, weight: isLiked ? .medium : .light))
-                                   .foregroundColor(isLiked ? Color(hex: "c47a8a") : Color.toskaTextLight)
+                                   .foregroundColor(isLiked ? Color.toskaPink : Color.toskaTextLight)
                            }
                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
                            .accessibilityValue("\(formatFull(likeCount)) people felt this")
@@ -438,7 +438,7 @@ struct PostDetailView: View {
                            Button { repostPost() } label: {
                                Image(systemName: "arrow.2.squarepath")
                                    .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isReposted ? Color(hex: "5a9e8f") : Color.toskaTextLight)
+                                   .foregroundColor(isReposted ? Color.toskaTeal : Color.toskaTextLight)
                            }
                            .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
                            .frame(maxWidth: .infinity)
@@ -463,7 +463,7 @@ struct PostDetailView: View {
                            }
                        }
                        .padding(.vertical, 8)
-            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
         }
     }
 
@@ -482,7 +482,7 @@ struct PostDetailView: View {
                 Image(systemName: icon).font(.system(size: 14, weight: .light))
                 Text(label).font(.system(size: 8))
             }
-            .foregroundColor(active ? Color.toskaBlue : Color(hex: "c8c8c8"))
+            .foregroundColor(active ? Color.toskaBlue : Color.toskaGrayMid)
             .frame(maxWidth: .infinity)
         }
     }
@@ -1029,7 +1029,7 @@ struct EditPostView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaGray)
                     }
                     Spacer()
                     Text("edit post").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -1048,17 +1048,17 @@ struct EditPostView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                 if !saveError.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.circle").font(.system(size: 10))
                         Text(saveError).font(.system(size: 11))
                     }
-                    .foregroundColor(Color(hex: "c45c5c"))
+                    .foregroundColor(Color.toskaError)
                     .padding(.horizontal, 18).padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(hex: "c45c5c").opacity(0.05))
+                    .background(Color.toskaError.opacity(0.05))
                 }
 
                 ZStack(alignment: .topLeading) {
@@ -1079,25 +1079,25 @@ struct EditPostView: View {
                 .frame(maxHeight: .infinity)
 
                 VStack(spacing: 0) {
-                    Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: "pencil").font(.system(size: 10))
                             Text("editing your post").font(.system(size: 10))
                         }
-                        .foregroundColor(Color(hex: "c9a97a"))
+                        .foregroundColor(Color.toskaGold)
                         Spacer()
                         ZStack {
-                            Circle().stroke(Color(hex: "e4e6ea"), lineWidth: 1.5).frame(width: 22, height: 22)
+                            Circle().stroke(LateNightTheme.divider, lineWidth: 1.5).frame(width: 22, height: 22)
                             Circle()
                                 .trim(from: 0, to: CGFloat(editText.count) / CGFloat(charLimit))
-                                .stroke(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color.toskaBlue,
+                                .stroke(editText.count > charLimit - 50 ? Color.toskaError : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                                 .frame(width: 22, height: 22).rotationEffect(.degrees(-90))
                         }
                         Text("\(charLimit - editText.count)")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(editText.count > charLimit - 50 ? Color(hex: "c45c5c") : Color.toskaTimestamp)
+                            .foregroundColor(editText.count > charLimit - 50 ? Color.toskaError : Color.toskaTimestamp)
                     }
                     .padding(.horizontal, 18).padding(.vertical, 10)
                 }
@@ -1203,7 +1203,7 @@ struct SwipeToReplyRow: View {
                     // a placeholder rather than a blank slot beside the dot/time.
                     Text(item.reply.handle.isEmpty ? "anonymous" : item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
                     Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
-                    Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
+                    Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color.toskaGrayMid)
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
                     // and when postId is unknown (empty string parent).

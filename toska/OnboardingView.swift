@@ -127,7 +127,7 @@ struct OnboardingView: View {
                     if let skipError = skipError {
                         Text(skipError)
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "c45c5c"))
+                            .foregroundColor(Color.toskaError)
                             .multilineTextAlignment(.center)
                             .padding(.bottom, 4)
                     }
@@ -393,7 +393,7 @@ struct OnboardingView: View {
                         
                         Text("no names. no faces. just what you feel.")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "999999"))
+                            .foregroundColor(Color.toskaGray)
                             .padding(.bottom, 12)
             
             HStack {
@@ -403,7 +403,7 @@ struct OnboardingView: View {
                 Spacer()
                 Text("your handle")
                     .font(.system(size: 9))
-                    .foregroundColor(Color(hex: "cccccc"))
+                    .foregroundColor(Color.toskaGrayLight)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -417,7 +417,7 @@ struct OnboardingView: View {
             
             Text("nobody knows who you are here.\nthats the whole point.")
                 .font(.system(size: 10))
-                .foregroundColor(Color(hex: "cccccc"))
+                .foregroundColor(Color.toskaGrayLight)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
                 .padding(.top, 4)

@@ -28,18 +28,18 @@ struct AnniversaryCardView: View {
             HStack(spacing: 6) {
                 Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "c9a97a"))
+                    .foregroundColor(Color.toskaGold)
 
                 Text("one year ago today")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color(hex: "c9a97a"))
+                    .foregroundColor(Color.toskaGold)
                     .tracking(0.3)
 
                 Spacer()
 
                 Text(post.dateString)
                     .font(.system(size: 9, weight: .light))
-                    .foregroundColor(Color(hex: "c9a97a").opacity(0.5))
+                    .foregroundColor(Color.toskaGold.opacity(0.5))
             }
             .padding(.bottom, 10)
 
@@ -60,14 +60,14 @@ struct AnniversaryCardView: View {
             if !saveError.isEmpty {
                 Text(saveError)
                     .font(.system(size: 10))
-                    .foregroundColor(Color(hex: "c45c5c"))
+                    .foregroundColor(Color.toskaError)
                     .padding(.bottom, 4)
             }
 
             if reflectionSaved {
                 VStack(alignment: .leading, spacing: 6) {
                     Rectangle()
-                        .fill(Color(hex: "c9a97a").opacity(0.2))
+                        .fill(Color.toskaGold.opacity(0.2))
                         .frame(height: 0.5)
 
                     HStack(spacing: 4) {
@@ -76,7 +76,7 @@ struct AnniversaryCardView: View {
                         Text("how you feel now")
                             .font(.system(size: 9, weight: .medium))
                     }
-                    .foregroundColor(Color(hex: "c9a97a").opacity(0.6))
+                    .foregroundColor(Color.toskaGold.opacity(0.6))
                     .padding(.top, 4)
 
                     Text(reflectionText)
@@ -87,12 +87,12 @@ struct AnniversaryCardView: View {
             } else if showReflection {
                 VStack(alignment: .leading, spacing: 8) {
                     Rectangle()
-                        .fill(Color(hex: "c9a97a").opacity(0.2))
+                        .fill(Color.toskaGold.opacity(0.2))
                         .frame(height: 0.5)
 
                     Text("how do you feel about this now?")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color(hex: "c9a97a").opacity(0.7))
+                        .foregroundColor(Color.toskaGold.opacity(0.7))
                         .padding(.top, 4)
 
                     TextField("reflect on this moment...", text: $reflectionText, axis: .vertical)
@@ -123,7 +123,7 @@ struct AnniversaryCardView: View {
                             .background(
                                 reflectionText.isEmpty || isSaving
                                     ? Color.toskaDivider
-                                    : Color(hex: "c9a97a")
+                                    : Color.toskaGold
                             )
                             .cornerRadius(14)
                         }
@@ -142,19 +142,19 @@ struct AnniversaryCardView: View {
                         Text("how do you feel about this now?")
                             .font(.system(size: 10, weight: .medium))
                     }
-                    .foregroundColor(Color(hex: "c9a97a"))
+                    .foregroundColor(Color.toskaGold)
                     .padding(.top, 4)
                 }
             }
         }
         .padding(14)
-        .background(Color.white)
+        .background(LateNightTheme.cardBackground)
         .cornerRadius(14)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color(hex: "c9a97a").opacity(0.2), lineWidth: 0.5)
+                .stroke(Color.toskaGold.opacity(0.2), lineWidth: 0.5)
         )
-        .shadow(color: Color(hex: "c9a97a").opacity(0.06), radius: 8, y: 2)
+        .shadow(color: Color.toskaGold.opacity(0.06), radius: 8, y: 2)
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .onAppear {

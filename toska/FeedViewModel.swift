@@ -915,7 +915,7 @@ class FeedViewModel: ObservableObject {
 
                 Text("\(formatCount(mostUnsaidLikes)) felt this")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
+                    .foregroundColor(Color.toskaPink.opacity(0.7))
                     .padding(.bottom, 24)
 
                 VStack(spacing: 4) {

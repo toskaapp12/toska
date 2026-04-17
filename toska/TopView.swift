@@ -29,17 +29,17 @@ struct TopView: View {
                         Spacer()
                         HStack(spacing: 4) {
                             Circle()
-                                .fill(Color(hex: "6ba58e"))
+                                .fill(Color.toskaGreen)
                                 .frame(width: 5, height: 5)
                             Text("right now")
                                                             .font(.system(size: 10, weight: .semibold))
-                                                            .foregroundColor(Color(hex: "6ba58e"))
+                                                            .foregroundColor(Color.toskaGreen)
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     
-                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                    Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                     
                     if isLoading {
                         Spacer()
@@ -57,7 +57,7 @@ struct TopView: View {
                                                                                                                                                                                                     .foregroundColor(Color.toskaTextLight)
                                                                                                                                                                                                 Text("everyones being quiet right now.")
                                                                                                                                                                                                     .font(.system(size: 11))
-                                                                                                                                                                                                    .foregroundColor(Color(hex: "cccccc"))
+                                                                                                                                                                                                    .foregroundColor(Color.toskaGrayLight)
                                                             }
                                                             .frame(maxWidth: .infinity)
                                                             .padding(.vertical, 80)
@@ -73,7 +73,7 @@ struct TopView: View {
                                                                                             // Rank badge
                                                                                             Text("\(rank)")
                                                                                                 .font(.system(size: rank <= 3 ? 16 : 11, weight: .bold, design: .rounded))
-                                                                                                .foregroundColor(rank == 1 ? Color(hex: "c9a97a") : rank == 2 ? Color.toskaTextLight : rank == 3 ? Color(hex: "cd7f32") : Color.toskaDivider)
+                                                                                                .foregroundColor(rank == 1 ? Color.toskaGold : rank == 2 ? Color.toskaTextLight : rank == 3 ? Color(hex: "cd7f32") : Color.toskaDivider)
                                                                                                 .frame(width: 24, alignment: .center)
                                                                                                 .padding(.top, 2)
                                                                                             
@@ -107,7 +107,7 @@ struct TopView: View {
                                                                                                     Text("\(formatCount(post.likes)) felt this")
                                                                                                         .font(.system(size: 10))
                                                                                                 }
-                                                                                                .foregroundColor(Color(hex: "c47a8a").opacity(0.6))
+                                                                                                .foregroundColor(Color.toskaPink.opacity(0.6))
                                                                                             }
                                                                                         }
                                                                                     }
@@ -117,7 +117,7 @@ struct TopView: View {
                                                                                 .buttonStyle(.plain)
                                                                                 
                                                                                 Rectangle()
-                                                                                    .fill(Color(hex: "dfe1e5"))
+                                                                                    .fill(LateNightTheme.divider)
                                                                                     .frame(height: 0.5)
                                     }
                                     
@@ -256,7 +256,7 @@ struct TopView: View {
         switch rank {
         case 2: return Color.toskaTimestamp
         case 3: return Color(hex: "cd7f32")
-        default: return Color(hex: "cccccc")
+        default: return Color.toskaGrayLight
         }
     }
     

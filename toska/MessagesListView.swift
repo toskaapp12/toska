@@ -34,7 +34,7 @@ struct MessagesListView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                 
                 if isLoading {
                     Spacer()
@@ -51,7 +51,7 @@ struct MessagesListView: View {
                                                                             .foregroundColor(Color.toskaTextLight)
                         Text("sometimes the hardest part is saying the first thing.")
                                                     .font(.system(size: 12))
-                                                    .foregroundColor(Color(hex: "cccccc"))
+                                                    .foregroundColor(Color.toskaGrayLight)
                                                     .multilineTextAlignment(.center)
                     }
                     Spacer()
@@ -86,7 +86,7 @@ struct MessagesListView: View {
                                             HStack(spacing: 4) {
                                                 Text(convo.lastMessage)
                                                     .font(.system(size: 12))
-                                                    .foregroundColor(Color(hex: "999999"))
+                                                    .foregroundColor(Color.toskaGray)
                                                     .lineLimit(1)
                                                 
                                                 Spacer()
@@ -97,7 +97,7 @@ struct MessagesListView: View {
                                                         .foregroundColor(Color.toskaTimestamp)
                                                         .padding(.horizontal, 6)
                                                         .padding(.vertical, 2)
-                                                        .background(Color(hex: "dfe1e5").opacity(0.5))
+                                                        .background(LateNightTheme.divider.opacity(0.5))
                                                         .cornerRadius(4)
                                                 }
                                             }
@@ -109,7 +109,7 @@ struct MessagesListView: View {
                                 .buttonStyle(.plain)
                                 
                                 Rectangle()
-                                    .fill(Color(hex: "dfe1e5"))
+                                    .fill(LateNightTheme.divider)
                                     .frame(height: 0.5)
                                     .padding(.leading, 68)
                             }

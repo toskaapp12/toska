@@ -132,7 +132,7 @@ struct MainTabView: View {
                                     .foregroundColor(.white)
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 2)
-                                    .background(Color(hex: "c47a8a"))
+                                    .background(Color.toskaPink)
                                     .clipShape(Capsule())
                                     .offset(x: 4, y: 2)
                             }

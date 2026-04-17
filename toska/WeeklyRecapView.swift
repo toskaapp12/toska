@@ -87,7 +87,7 @@ struct WeeklyRecapView: View {
                                 
                                 Text("\(formatCount(topPostLikes)) felt this")
                                     .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
+                                    .foregroundColor(Color.toskaPink.opacity(0.7))
                             }
                             .opacity(isVisible ? 1 : 0)
                             .offset(y: isVisible ? 0 : 15)

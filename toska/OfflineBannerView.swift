@@ -14,7 +14,7 @@ struct OfflineBannerView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-            .background(network.isConnected ? Color(hex: "6ba58e") : Color(hex: "c45c5c"))
+            .background(network.isConnected ? Color.toskaGreen : Color.toskaError)
             .contentShape(Rectangle())
             .onTapGesture {
                 // Tap acts as a soft refresh hint — the offline-detection

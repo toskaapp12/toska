@@ -58,14 +58,14 @@ struct NotificationsView: View {
                 HStack {
                     Text("notifications")
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(Color(hex: "1a1a1a"))
+                        .foregroundColor(LateNightTheme.primaryText)
                     Spacer()
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
 
-                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
                 // MARK: - Content
                 if isLoading {
@@ -113,7 +113,7 @@ struct NotificationsView: View {
                             if notifications.count >= 50 {
                                 Text("showing your 50 most recent notifications")
                                     .font(.system(size: 9))
-                                    .foregroundColor(Color(hex: "cccccc"))
+                                    .foregroundColor(Color.toskaGrayLight)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
                             }
@@ -212,7 +212,7 @@ struct NotificationsView: View {
         HStack {
             Text(title)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(Color(hex: "1a1a1a"))
+                .foregroundColor(LateNightTheme.primaryText)
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -256,7 +256,7 @@ struct NotificationsView: View {
                 .background(notif.isUnread ? Color.toskaBlue.opacity(0.04) : Color.clear)
                 .overlay(
                     Rectangle()
-                        .fill(Color(hex: "dfe1e5").opacity(0.5))
+                        .fill(LateNightTheme.divider.opacity(0.5))
                         .frame(height: 0.5),
                     alignment: .bottom
                 )
@@ -373,14 +373,14 @@ struct NotificationsView: View {
 
     func iconColor(for type: String) -> Color {
         switch type {
-        case "like": return Color(hex: "c47a8a")
+        case "like": return Color.toskaPink
         case "reply": return Color.toskaBlue
-        case "follow": return Color(hex: "6ba58e")
-        case "repost": return Color(hex: "5a9e8f")
-        case "save": return Color(hex: "c49a6c")
-        case "milestone": return Color(hex: "c9a97a")
+        case "follow": return Color.toskaGreen
+        case "repost": return Color.toskaTeal
+        case "save": return Color.toskaWarm
+        case "milestone": return Color.toskaGold
         case "message": return Color.toskaBlue
-        default: return Color(hex: "cccccc")
+        default: return Color.toskaGrayLight
         }
     }
 

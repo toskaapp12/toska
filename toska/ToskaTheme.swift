@@ -451,11 +451,160 @@ extension Color {
     // Note: these MUST keep the explicit `Color(hex: ...)` initializer; do not
     // search-and-replace them in this file or they'll become self-referencing
     // and either fail to compile or recurse infinitely at runtime.
-    static let toskaBlue       = Color(hex: "9198a8")  // brand muted blue
-    static let toskaTextLight  = Color(hex: "b0b0b0")  // secondary light text
-    static let toskaTextDark   = Color(hex: "2a2a2a")  // primary dark text
-    static let toskaDivider    = Color(hex: "d0d0d0")  // light dividers
-    static let toskaTimestamp  = Color(hex: "c0c0c0")  // timestamp gray
+
+    // MARK: Brand
+    static let toskaBlue       = Color(hex: "9198a8")
+    static let toskaTextLight  = Color(hex: "b0b0b0")
+    static let toskaTextDark   = Color(hex: "2a2a2a")
+    static let toskaDivider    = Color(hex: "d0d0d0")
+    static let toskaTimestamp  = Color(hex: "c0c0c0")
+
+    // MARK: Semantic accents
+    static let toskaError      = Color(hex: "c45c5c")
+    static let toskaPink       = Color(hex: "c47a8a")
+    static let toskaPurple     = Color(hex: "8b7ec8")
+    static let toskaGold       = Color(hex: "c9a97a")
+    static let toskaWarm       = Color(hex: "c49a6c")
+    static let toskaGreen      = Color(hex: "6ba58e")
+    static let toskaTeal       = Color(hex: "5a9e8f")
+
+    // MARK: Grays (replace scattered hex literals)
+    static let toskaGray       = Color(hex: "999999")
+    static let toskaGrayLight  = Color(hex: "cccccc")
+    static let toskaGrayMid    = Color(hex: "c8c8c8")
+}
+
+// MARK: - Design Tokens
+//
+// Centralized spacing, corner radius, and typography constants so every
+// surface feels like the same app. Values chosen to match Apple HIG
+// density on compact devices while keeping the moody, minimal aesthetic.
+
+enum Toska {
+    // Horizontal padding for all full-width content rows.
+    static let horizontalPadding: CGFloat = 16
+    // Standard vertical padding for header bars.
+    static let headerVerticalPadding: CGFloat = 12
+    // Standard line spacing for Georgia display text.
+    static let bodyLineSpacing: CGFloat = 4
+    // Standard corner radius for cards, inputs, pills.
+    static let cornerRadius: CGFloat = 12
+    // Small corner radius for tag pills, badges.
+    static let cornerRadiusSmall: CGFloat = 10
+    // Disabled/inactive state opacity.
+    static let disabledOpacity: Double = 0.35
+}
+
+// MARK: - Shared Components
+
+struct ToskaDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(LateNightTheme.divider)
+            .frame(height: 0.5)
+    }
+}
+
+struct ToskaHeader: View {
+    let title: String
+    var dismiss: (() -> Void)? = nil
+    var dismissStyle: DismissStyle = .chevron
+    var trailing: AnyView? = nil
+
+    enum DismissStyle { case chevron, xmark, none }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                if let dismiss = dismiss {
+                    Button(action: dismiss) {
+                        Group {
+                            switch dismissStyle {
+                            case .chevron:
+                                Image(systemName: "chevron.left")
+                                    .font(.system(size: 14, weight: .light))
+                                    .foregroundColor(Color.toskaBlue)
+                            case .xmark:
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(Color.toskaGray)
+                            case .none:
+                                EmptyView()
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Close")
+                } else {
+                    Color.clear.frame(width: 14, height: 14)
+                }
+                Spacer()
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(LateNightTheme.handleText)
+                Spacer()
+                if let trailing = trailing {
+                    trailing
+                } else {
+                    Color.clear.frame(width: 14, height: 14)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, Toska.horizontalPadding)
+            .padding(.vertical, Toska.headerVerticalPadding)
+            ToskaDivider()
+        }
+    }
+}
+
+struct ToskaEmptyState: View {
+    let icon: String
+    let title: String
+    var subtitle: String? = nil
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 28, weight: .light))
+                .foregroundColor(LateNightTheme.tertiaryText)
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(LateNightTheme.secondaryText)
+            if let subtitle = subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundColor(LateNightTheme.tertiaryText)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+    }
+}
+
+struct ToskaErrorBanner: View {
+    let message: String
+    var onRetry: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 10))
+            Text(message)
+                .font(.system(size: 11))
+            Spacer()
+            if let onRetry = onRetry {
+                Button(action: onRetry) {
+                    Text("retry")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+            }
+        }
+        .foregroundColor(Color.toskaError)
+        .padding(.horizontal, Toska.horizontalPadding)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.toskaError.opacity(0.06))
+    }
 }
 
 // MARK: - Crisis Check-In

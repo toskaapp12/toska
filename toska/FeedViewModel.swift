@@ -229,7 +229,7 @@ class FeedViewModel: ObservableObject {
     func handleNewPostCreated() {
         fetchPosts()
         fetchRecentPosts()
-        fetchMostUnsaid()
+        fetchMostUnsaidAndDailyMoment()
     }
 
     func handleInteractionChanged(_ info: [AnyHashable: Any]) {

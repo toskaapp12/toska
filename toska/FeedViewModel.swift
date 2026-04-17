@@ -517,12 +517,16 @@ class FeedViewModel: ObservableObject {
                 if !newPosts.isEmpty {
                                                                                                                             self.lastDocument = topDocs.last?.doc ?? documents.last
                                                                                                                             self.hasMorePosts = documents.count >= 60
-                                                                                                                            // Set hasLoadedOnce BEFORE posts so the
-                                                                                                                            // view's condition branches correctly on
-                                                                                                                            // the same render pass that sees the new
-                                                                                                                            // posts array.
                                                                                                                             self.hasLoadedOnce = true
                                                                                                                             self.posts = newPosts
+                                                                                                                            // Belt-and-suspenders: schedule
+                                                                                                                            // a second objectWillChange on the
+                                                                                                                            // next run loop in case SwiftUI
+                                                                                                                            // missed the @Published mutation
+                                                                                                                            // during the initial layout pass.
+                                                                                                                            DispatchQueue.main.async {
+                                                                                                                                self.objectWillChange.send()
+                                                                                                                            }
                                                                                         } else if documents.count >= 60 {
                                                                                                                                                     self.hasLoadedOnce = true
                                                                                                                                                     self.posts = []

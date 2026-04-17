@@ -319,6 +319,12 @@ struct FeedView: View {
                     
                     Color.clear.frame(height: 80)
                 }
+                // Force the LazyVStack to rebuild when the post count
+                // transitions from 0 → N. Without this, SwiftUI's lazy
+                // container can fail to invalidate after the initial
+                // skeleton → real-posts state change, leaving the feed
+                // blank until a manual scroll forces layout.
+                .id("feed_\(vm.posts.count)_\(vm.selectedTab)")
             }
                 .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
                                                         proxy.scrollTo("feedTop", anchor: .top)

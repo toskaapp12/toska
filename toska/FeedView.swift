@@ -60,6 +60,7 @@ struct FeedView: View {
             let dragOffset = vm.dragOffset
             let posts = vm.posts
             let hasLoadedOnce = vm.hasLoadedOnce
+            let _ = vm.postVersion
         return VStack(spacing: 0) {
                     // MARK: - Header
             HStack {

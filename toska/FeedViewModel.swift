@@ -35,7 +35,16 @@ class FeedViewModel: ObservableObject {
         @Published var showPromptCompose = false
 
     // MARK: - Post Data
-    @Published var posts: [FeedPost] = []
+    @Published var posts: [FeedPost] = [] {
+        didSet {
+            postVersion += 1
+        }
+    }
+    // Monotonic counter bumped every time `posts` is assigned. FeedView
+    // reads this at the top of its body so SwiftUI can't miss the change —
+    // even if the @Published observation for the array itself gets lost in
+    // a lazy container or Task timing gap.
+    @Published var postVersion: Int = 0
         @Published var followingPosts: [FeedPost] = []
         @Published var recentPosts: [FeedPost] = []
         @Published var followingFetchIncomplete = false

@@ -30,10 +30,25 @@ import FirebaseAuth
  without it, repost checks will fail at runtime.
 */
 
+struct SelectedFeedPost: Identifiable, Hashable {
+    let id: String
+    let handle: String
+    let text: String
+    let tag: String?
+    let likes: Int
+    let reposts: Int
+    let replies: Int
+    let time: String
+    let authorId: String
+    let isLiked: Bool
+    let isSaved: Bool
+    let isReposted: Bool
+}
+
 @MainActor
 struct FeedView: View {
     @ObservedObject var vm: FeedViewModel
-
+    @State private var selectedFeedPost: SelectedFeedPost? = nil
 
     var body: some View {
             let isRefreshing = vm.isRefreshing
@@ -260,7 +275,17 @@ struct FeedView: View {
                                                                                                                                 isRepostPost: vm.repostPostIds.contains(post.id),
                                                                                                                                 isWhisperPost: vm.whisperPostIds.contains(post.id),
                                                                                                                                 isLetterExpanded: vm.expandedLetterIds.contains(post.id),
-                                                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) }
+                                                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
+                                                                                                                                onSelectPost: {
+                                                                                                                                    selectedFeedPost = SelectedFeedPost(
+                                                                                                                                        id: post.id, handle: post.handle, text: post.text,
+                                                                                                                                        tag: post.tag, likes: post.likes, reposts: post.reposts,
+                                                                                                                                        replies: post.replies, time: post.time, authorId: post.authorId,
+                                                                                                                                        isLiked: vm.likedPostIds.contains(post.id),
+                                                                                                                                        isSaved: vm.savedPostIds.contains(post.id),
+                                                                                                                                        isReposted: vm.repostedPostIds.contains(post.id)
+                                                                                                                                    )
+                                                                                                                                }
                                                                                                                                                                                                                                                                                 )
                                                                                                                                                                                                                                                                                 .id(post.id)
                                                                                                                                                                                                                                                              }
@@ -310,6 +335,23 @@ struct FeedView: View {
                 // already preserves scroll position when switching tabs, so
                 // an explicit save/restore round-trip isn't needed here.
                                             } // end ScrollViewReader
+                                                            .navigationDestination(item: $selectedFeedPost) { post in
+                                                                PostDetailView(
+                                                                    postId: post.id,
+                                                                    handle: post.handle,
+                                                                    text: post.text,
+                                                                    tag: post.tag,
+                                                                    likes: post.likes,
+                                                                    reposts: post.reposts,
+                                                                    replies: post.replies,
+                                                                    time: post.time,
+                                                                    authorId: post.authorId,
+                                                                    isAlreadyLiked: post.isLiked,
+                                                                    isAlreadySaved: post.isSaved,
+                                                                    isAlreadyReposted: post.isReposted
+                                                                )
+                                                                .navigationBarHidden(true)
+                                                            }
                                                             .simultaneousGesture(
                                                     DragGesture()
                                 .onChanged { value in
@@ -455,6 +497,7 @@ struct FeedPostRow: View {
             var isWhisperPost: Bool = false
         var isLetterExpanded: Bool = false
         var onLetterExpand: (() -> Void)? = nil
+        var onSelectPost: (() -> Void)? = nil
         
         @State private var isSaved = false
         @State private var isLiked = false
@@ -464,7 +507,6 @@ struct FeedPostRow: View {
     @State private var hasInitialized = false
         @State private var likePulse = false
             @State private var repostPulse = false
-            @State private var showPostDetail = false
             @State private var likePulseTask: Task<Void, Never>? = nil
             @State private var repostPulseTask: Task<Void, Never>? = nil
             @State private var showShareCard = false
@@ -630,7 +672,7 @@ struct FeedPostRow: View {
                     .padding(.bottom, 10)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if !postId.isEmpty { showPostDetail = true }
+                        if !postId.isEmpty { onSelectPost?() }
                     }
                 }
                 
@@ -644,7 +686,7 @@ struct FeedPostRow: View {
                                                     object: nil,
                                                     userInfo: ["postId": postId]
                                                 )
-                                                showPostDetail = true
+                                                onSelectPost?()
                                             } label: {
                                                 actionLabel(icon: "bubble.left", count: replies, isActive: false)
                                             }
@@ -712,7 +754,7 @@ struct FeedPostRow: View {
                                                                                     object: nil,
                                                                                     userInfo: ["postId": postId]
                                                                                 )
-                                    showPostDetail = true
+                                    onSelectPost?()
                                 }
                             }
                             .overlay(
@@ -754,7 +796,7 @@ struct FeedPostRow: View {
                     Divider()
 
                     Button {
-                        showPostDetail = true
+                        onSelectPost?()
                     } label: {
                         Label("open post", systemImage: "bubble.left")
                     }
@@ -782,24 +824,7 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
-                .navigationDestination(isPresented: $showPostDetail) {
-                                    PostDetailView(
-                                        postId: postId,
-                                        handle: handle,
-                                        text: text,
-                                        tag: tag,
-                                        likes: localLikeCount,
-                                        reposts: localRepostCount,
-                                        replies: replies,
-                                        time: time,
-                                        authorId: authorId,
-                                        isAlreadyLiked: isLiked,
-                                        isAlreadySaved: isSaved,
-                                        isAlreadyReposted: isReposted
-                                    )
-                                    .navigationBarHidden(true)
-                                }
-                                .sheet(isPresented: $showShareCard) {
+                .sheet(isPresented: $showShareCard) {
                                     ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
                                 }
                                 .sheet(isPresented: $showReportSheet) {

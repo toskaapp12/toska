@@ -38,7 +38,6 @@ struct MainTabView: View {
                         FeedView(vm: feedVM)
                             .navigationBarHidden(true)
                     }
-                    .toskaPadConstrained()
                     .opacity(selectedTab == .feed ? 1 : 0)
                     .allowsHitTesting(selectedTab == .feed)
 

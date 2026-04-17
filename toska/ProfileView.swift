@@ -775,9 +775,26 @@ struct ProfileView: View {
                         let replyDocId = doc.documentID
                         let parentPostId = parentRef.documentID
                         group.addTask {
-                            let parentSnap = try? await parentRef.getDocumentAsync()
-                            let parentData = parentSnap?.data()
-                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentData?["text"] as? String ?? "deleted post", parentHandle: parentData?["authorHandle"] as? String ?? "anonymous", parentPostId: parentPostId, createdAt: createdAt)
+                            // Distinguish "parent post genuinely deleted" from
+                            // "fetch failed (network/permission)." Previously
+                            // try? swallowed errors, treating every failure as
+                            // a deletion — confusing when offline.
+                            let parentText: String
+                            let parentHandle: String
+                            do {
+                                let parentSnap = try await parentRef.getDocumentAsync()
+                                if let parentData = parentSnap.data() {
+                                    parentText = parentData["text"] as? String ?? ""
+                                    parentHandle = parentData["authorHandle"] as? String ?? "anonymous"
+                                } else {
+                                    parentText = "deleted post"
+                                    parentHandle = "anonymous"
+                                }
+                            } catch {
+                                parentText = "couldnt load original post"
+                                parentHandle = ""
+                            }
+                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
                         }
                     }
                 }

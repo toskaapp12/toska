@@ -304,13 +304,17 @@ struct SettingsView: View {
                 Text(title)
                     .font(.system(size: 14))
                     .foregroundColor(Color.toskaTextDark)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let sub = subtitle {
                     Text(sub)
                         .font(.system(size: 11))
                         .foregroundColor(Color.toskaTimestamp)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Spacer()
+            Spacer(minLength: 8)
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(Color.toskaBlue)
@@ -532,30 +536,50 @@ struct SettingsView: View {
                 payload["account"] = sanitizeForJSON(account)
             }
 
-            // Posts authored
-            if let postsSnap = try? await db.collection("posts")
-                .whereField("authorId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true)
-                .getDocumentsAsync() {
-                payload["posts"] = postsSnap.documents.map { doc -> [String: Any] in
+            // Posts authored — capped at 500 per page to avoid memory
+            // spikes for prolific users. Multiple pages are fetched
+            // sequentially using the last doc as a cursor.
+            var allPostDocs: [[String: Any]] = []
+            var postCursor: DocumentSnapshot? = nil
+            let postPageSize = 500
+            while true {
+                var query = db.collection("posts")
+                    .whereField("authorId", isEqualTo: uid)
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: postPageSize)
+                if let cursor = postCursor { query = query.start(afterDocument: cursor) }
+                guard let postsSnap = try? await query.getDocumentsAsync() else { break }
+                for doc in postsSnap.documents {
                     var item = doc.data()
                     item["id"] = doc.documentID
-                    return sanitizeForJSON(item) as? [String: Any] ?? item
+                    allPostDocs.append(sanitizeForJSON(item) as? [String: Any] ?? item)
                 }
+                if postsSnap.documents.count < postPageSize { break }
+                postCursor = postsSnap.documents.last
             }
+            payload["posts"] = allPostDocs
 
-            // Replies authored (collection group across all posts)
-            if let repliesSnap = try? await db.collectionGroup("replies")
-                .whereField("authorId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true)
-                .getDocumentsAsync() {
-                payload["replies"] = repliesSnap.documents.map { doc -> [String: Any] in
+            // Replies authored — same paging strategy.
+            var allReplyDocs: [[String: Any]] = []
+            var replyCursor: DocumentSnapshot? = nil
+            let replyPageSize = 500
+            while true {
+                var query = db.collectionGroup("replies")
+                    .whereField("authorId", isEqualTo: uid)
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: replyPageSize)
+                if let cursor = replyCursor { query = query.start(afterDocument: cursor) }
+                guard let repliesSnap = try? await query.getDocumentsAsync() else { break }
+                for doc in repliesSnap.documents {
                     var item = doc.data()
                     item["id"] = doc.documentID
                     item["postId"] = doc.reference.parent.parent?.documentID ?? ""
-                    return sanitizeForJSON(item) as? [String: Any] ?? item
+                    allReplyDocs.append(sanitizeForJSON(item) as? [String: Any] ?? item)
                 }
+                if repliesSnap.documents.count < replyPageSize { break }
+                replyCursor = repliesSnap.documents.last
             }
+            payload["replies"] = allReplyDocs
 
             // Liked + saved post IDs (just IDs — full post content belongs
             // to the original author)

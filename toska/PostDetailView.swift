@@ -257,7 +257,7 @@ struct PostDetailView: View {
                                         replyingToId = item.reply.id
                                         replyingToHandle = item.reply.handle
                                         replyFocused = true
-                                    }, postId: postId)
+                                    }, postId: postId, postAuthorId: authorUserId)
                                     if index < flat.count - 1 {
                                         Rectangle()
                                             .fill(Color(hex: "e4e6ea").opacity(item.depth > 0 ? 0.3 : 0.5))
@@ -1168,10 +1168,17 @@ struct SwipeToReplyRow: View {
     /// Parent post ID — needed so the report payload knows which post this
     /// reply belongs to. Empty string disables the report/block menu.
     var postId: String = ""
+    /// The author of the parent post. When the logged-in user is the post
+    /// author, a "delete reply" option appears even for others' replies —
+    /// matching the server-side delete rule that allows the post author to
+    /// remove any reply on their post.
+    var postAuthorId: String = ""
     @State private var dragOffset: CGFloat = 0
     @State private var hasTriggered = false
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
     private let triggerThreshold: CGFloat = 60
 
     var body: some View {
@@ -1200,28 +1207,44 @@ struct SwipeToReplyRow: View {
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
                     // and when postId is unknown (empty string parent).
-                    if !postId.isEmpty,
-                       !item.reply.authorId.isEmpty,
-                       item.reply.authorId != Auth.auth().currentUser?.uid {
-                        Menu {
-                            Button {
-                                showReportSheet = true
+                    if !postId.isEmpty, !item.reply.authorId.isEmpty {
+                        let isOwnReply = item.reply.authorId == Auth.auth().currentUser?.uid
+                        let isPostAuthor = postAuthorId == Auth.auth().currentUser?.uid
+                        // Show menu when: not own reply (report/block/delete options)
+                        // OR own reply + post-author (delete own reply option, rare but consistent)
+                        if !isOwnReply || isPostAuthor {
+                            Menu {
+                                if !isOwnReply {
+                                    Button {
+                                        showReportSheet = true
+                                    } label: {
+                                        Label("report", systemImage: "flag")
+                                    }
+                                    Button(role: .destructive) {
+                                        showBlockConfirm = true
+                                    } label: {
+                                        Label("block \(item.reply.handle)", systemImage: "person.slash")
+                                    }
+                                }
+                                // Post author can delete any reply on their
+                                // post per firestore.rules; own replies can
+                                // also be deleted. Surface both here.
+                                if isPostAuthor || isOwnReply {
+                                    Button(role: .destructive) {
+                                        showDeleteConfirm = true
+                                    } label: {
+                                        Label("delete reply", systemImage: "trash")
+                                    }
+                                }
                             } label: {
-                                Label("report", systemImage: "flag")
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color.toskaTimestamp)
+                                    .padding(.horizontal, 4)
+                                    .contentShape(Rectangle())
                             }
-                            Button(role: .destructive) {
-                                showBlockConfirm = true
-                            } label: {
-                                Label("block \(item.reply.handle)", systemImage: "person.slash")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 10))
-                                .foregroundColor(Color.toskaTimestamp)
-                                .padding(.horizontal, 4)
-                                .contentShape(Rectangle())
+                            .accessibilityLabel("More options for \(item.reply.handle)'s reply")
                         }
-                        .accessibilityLabel("More options for \(item.reply.handle)'s reply")
                     }
                 }
                 Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
@@ -1295,6 +1318,37 @@ struct SwipeToReplyRow: View {
             Button("cancel", role: .cancel) {}
         } message: {
             Text("you wont see their posts or messages. they wont be notified.")
+        }
+        .confirmationDialog(
+            "delete this reply?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("delete", role: .destructive) { deleteReply() }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("this cant be undone.")
+        }
+    }
+
+    private func deleteReply() {
+        guard !postId.isEmpty, !isDeleting else { return }
+        isDeleting = true
+        let db = Firestore.firestore()
+        let postRef = db.collection("posts").document(postId)
+        let replyRef = postRef.collection("replies").document(item.reply.id)
+
+        let batch = db.batch()
+        batch.deleteDocument(replyRef)
+        batch.updateData(["replyCount": FieldValue.increment(Int64(-1))], forDocument: postRef)
+
+        batch.commit { error in
+            Task { @MainActor in
+                isDeleting = false
+                if let error = error {
+                    print("⚠️ SwipeToReplyRow deleteReply failed: \(error)")
+                }
+            }
         }
     }
 }

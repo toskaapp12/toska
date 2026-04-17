@@ -223,7 +223,12 @@ struct FeedView: View {
                                     .padding(.bottom, 40)
                                 } else {
                                                                                                                                     
-                                                                                                                                    ForEach(vm.posts) { post in
+                                                                                                                                    // Defensive client-side filter: server rules block new
+                                                                                                                                    // writes from blocked users, but posts already cached in
+                                                                                                                                    // vm.posts before the block action still sit in the array
+                                                                                                                                    // until the next fetch. Filter at render so they vanish
+                                                                                                                                    // immediately after the user taps "block".
+                                                                                                                                    ForEach(vm.posts.filter { !BlockedUsersCache.shared.isBlocked($0.authorId) }) { post in
                                                                 if post.id.hasPrefix("sample_") {
                                                 FeedPostRow(
                                                     handle: post.handle,

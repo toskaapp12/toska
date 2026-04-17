@@ -38,6 +38,7 @@ struct MainTabView: View {
                         FeedView(vm: feedVM)
                             .navigationBarHidden(true)
                     }
+                    .toskaPadConstrained()
                     .opacity(selectedTab == .feed ? 1 : 0)
                     .allowsHitTesting(selectedTab == .feed)
 
@@ -47,6 +48,7 @@ struct MainTabView: View {
                             TopView()
                                 .navigationBarHidden(true)
                         }
+                        .toskaPadConstrained()
                         .opacity(selectedTab == .top ? 1 : 0)
                         .allowsHitTesting(selectedTab == .top)
                     }
@@ -57,6 +59,7 @@ struct MainTabView: View {
                             NotificationsView()
                                 .navigationBarHidden(true)
                         }
+                        .toskaPadConstrained()
                         .opacity(selectedTab == .notifications ? 1 : 0)
                         .allowsHitTesting(selectedTab == .notifications)
                     }
@@ -67,6 +70,7 @@ struct MainTabView: View {
                             ProfileView()
                                 .navigationBarHidden(true)
                         }
+                        .toskaPadConstrained()
                         .opacity(selectedTab == .profile ? 1 : 0)
                         .allowsHitTesting(selectedTab == .profile)
                     }
@@ -335,5 +339,27 @@ struct MainTabView: View {
                     self.unreadCount = snapshot?.documents.count ?? 0
                 }
             }
+    }
+}
+
+// MARK: - iPad Readable-Width Constraint
+
+private struct ToskaPadConstrainedModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    func body(content: Content) -> some View {
+        if sizeClass == .regular {
+            content
+                .frame(maxWidth: 600)
+                .frame(maxWidth: .infinity)
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func toskaPadConstrained() -> some View {
+        modifier(ToskaPadConstrainedModifier())
     }
 }

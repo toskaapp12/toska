@@ -10,6 +10,12 @@ struct TopView: View {
     @State private var selectedPostData: PostDetailData? = nil
     @State private var showPost = false
             @State private var hasFetchedInitial = false
+    // How many ranked items to display. Starts at 10 and extends by 20
+    // when the user taps "show more." The underlying fetch always pulls up
+    // to 200 docs so the extra items are pre-computed in memory.
+    @State private var displayLimit: Int = 10
+    @State private var totalEngaged: Int = 0
+    @State private var lastForegroundFetch: Date? = nil
     
     var body: some View {
         ZStack {
@@ -115,6 +121,20 @@ struct TopView: View {
                                                                                     .frame(height: 0.5)
                                     }
                                     
+                                    if rankedPosts.count < totalEngaged {
+                                        Button {
+                                            displayLimit += 20
+                                            fetchTopPosts()
+                                        } label: {
+                                            Text("show more")
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundColor(Color.toskaBlue)
+                                                .padding(.vertical, 12)
+                                                .frame(maxWidth: .infinity)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+
                                     Color.clear.frame(height: 80)
                                 }
                             }
@@ -132,6 +152,12 @@ struct TopView: View {
                     hasFetchedInitial = true
             fetchTopPosts()
                 }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            guard hasFetchedInitial else { return }
+            if let last = lastForegroundFetch, Date().timeIntervalSince(last) < 60 { return }
+            lastForegroundFetch = Date()
+            fetchTopPosts()
+        }
         .navigationDestination(isPresented: $showPost) {
                                                     if let post = selectedPostData, let postId = selectedPostId {
                                                         PostDetailView(
@@ -156,7 +182,7 @@ struct TopView: View {
         Firestore.firestore().collection("posts")
                             .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                             .order(by: "createdAt", descending: true)
-                            .limit(to: 50)
+                            .limit(to: 200)
                     .getDocuments { snapshot, error in
                     Task { @MainActor in
                         if let error = error {
@@ -214,9 +240,10 @@ struct TopView: View {
                         // Only show posts with actual engagement — if nothing has
                                                 // any likes/replies/reposts yet, show the empty state rather
                                                 // than listing posts in an arbitrary order labeled "trending"
-                                                rankedPosts = engaged
+                                                self.totalEngaged = engaged.count
+                                rankedPosts = engaged
                                                     .sorted { $0.score > $1.score }
-                                                    .prefix(10)
+                                                    .prefix(self.displayLimit)
                                                     .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId) }
                         print("📊 TopView showing \(rankedPosts.count) ranked, engaged: \(engaged.count)")
                         isLoading = false

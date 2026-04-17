@@ -106,17 +106,22 @@ struct OnboardingView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 30)
                 
-                Spacer()
-                
-                switch currentStep {
-                case 0: welcomeStep
-                case 1: identityStep
-                case 2: moodStep
-                case 3: firstPostStep
-                default: EmptyView()
+                // ScrollView ensures the content stays reachable at extreme
+                // Dynamic Type sizes where the headline + body + buttons would
+                // otherwise push below the screen edge.
+                ScrollView(showsIndicators: false) {
+                    Spacer(minLength: 20)
+
+                    switch currentStep {
+                    case 0: welcomeStep
+                    case 1: identityStep
+                    case 2: moodStep
+                    case 3: firstPostStep
+                    default: EmptyView()
+                    }
+
+                    Spacer(minLength: 20)
                 }
-                
-                Spacer()
                 
                 VStack(spacing: 8) {
                     if let skipError = skipError {

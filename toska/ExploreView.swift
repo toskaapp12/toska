@@ -70,6 +70,7 @@ struct ExploreView: View {
         // pills to compare. The cache is dropped on view dismiss.
         @State private var tagCache: [String: (posts: [ExplorePost], fetchedAt: Date)] = [:]
         private static let tagCacheTTL: TimeInterval = 30
+        @State private var lastForegroundFetch: Date? = nil
 
         let tags = sharedTags
         
@@ -372,6 +373,15 @@ struct ExploreView: View {
                 .onDisappear {
                     searchTask?.cancel()
                     searchTask = nil
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    guard hasFetchedInitial else { return }
+                    if let last = lastForegroundFetch, Date().timeIntervalSince(last) < 60 { return }
+                    lastForegroundFetch = Date()
+                    tagCache.removeAll()
+                    fetchTrendingPosts()
+                    fetchTagCounts()
+                    if let tag = selectedTag { fetchPostsForTag(tag) }
                 }
         .fullScreenCover(isPresented: $showLastSaid) {
             LastThingSaidView()

@@ -418,51 +418,58 @@ struct PostDetailView: View {
             Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
             HStack(spacing: 0) {
-                           Button { replyFocused = true } label: {
-                               Image(systemName: "bubble.left")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(Color.toskaTextLight)
-                           }
-                           .accessibilityLabel("Reply")
-                           .frame(maxWidth: .infinity)
+                // Left group: reply + repost
+                Button { replyFocused = true } label: {
+                    Image(systemName: "bubble.left")
+                        .font(.system(size: 17, weight: .light))
+                        .foregroundColor(Color.toskaTextLight)
+                }
+                .accessibilityLabel("Reply")
 
-                           Button { toggleLike() } label: {
-                               Image(systemName: isLiked ? "heart.fill" : "heart")
-                                   .font(.system(size: 15, weight: isLiked ? .medium : .light))
-                                   .foregroundColor(isLiked ? Color.toskaPink : Color.toskaTextLight)
-                           }
-                           .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                           .accessibilityValue("\(formatFull(likeCount)) people felt this")
-                           .frame(maxWidth: .infinity)
+                Spacer().frame(width: 32)
 
-                           Button { repostPost() } label: {
-                               Image(systemName: "arrow.2.squarepath")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isReposted ? Color.toskaTeal : Color.toskaTextLight)
-                           }
-                           .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
-                           .frame(maxWidth: .infinity)
-                           .disabled(isReposted)
+                Button { repostPost() } label: {
+                    Image(systemName: "arrow.2.squarepath")
+                        .font(.system(size: 17, weight: .light))
+                        .foregroundColor(isReposted ? Color.toskaTeal : Color.toskaTextLight)
+                }
+                .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                .disabled(isReposted)
+                .opacity(isReposted ? Toska.disabledOpacity : 1.0)
 
-                           Button { toggleSave() } label: {
-                               Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
-                           }
-                           .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-                           .frame(maxWidth: .infinity)
+                if !isOwnPost && !isAuthorIdLoading && !authorUserId.isEmpty {
+                    Spacer().frame(width: 32)
 
-                           if !isOwnPost && !isAuthorIdLoading && !authorUserId.isEmpty {
-                               Button { startConversation() } label: {
-                                   Image(systemName: "envelope")
-                                       .font(.system(size: 15, weight: .light))
-                                       .foregroundColor(Color.toskaTextLight)
-                               }
-                               .accessibilityLabel("Send message")
-                               .frame(maxWidth: .infinity)
-                           }
-                       }
-                       .padding(.vertical, 8)
+                    Button { startConversation() } label: {
+                        Image(systemName: "envelope")
+                            .font(.system(size: 17, weight: .light))
+                            .foregroundColor(Color.toskaTextLight)
+                    }
+                    .accessibilityLabel("Send message")
+                }
+
+                Spacer()
+
+                // Right group: bookmark + heart (thumb zone)
+                Button { toggleSave() } label: {
+                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 17, weight: .light))
+                        .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
+                }
+                .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
+
+                Spacer().frame(width: 32)
+
+                Button { toggleLike() } label: {
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 17, weight: isLiked ? .medium : .light))
+                        .foregroundColor(isLiked ? Color.toskaPink : Color.toskaTextLight)
+                }
+                .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                .accessibilityValue("\(formatFull(likeCount)) people felt this")
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, Toska.horizontalPadding)
             Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
         }
     }

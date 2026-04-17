@@ -636,60 +636,68 @@ struct FeedPostRow: View {
                 
                     // Action bar
                                     if !postId.isEmpty {
-                                        HStack(spacing: 22) {
-                                                                                   Button {
-                                                                                       NotificationCenter.default.post(
-                                                                                           name: .saveFeedScrollPosition,
-                                                                                           object: nil,
-                                                                                           userInfo: ["postId": postId]
-                                                                                       )
-                                                                                       showPostDetail = true
-                                                                                   } label: {
-                                                                                       actionLabel(icon: "bubble.left", count: replies, isActive: false)
-                                                                                   }
-                                                                                   .accessibilityLabel("Reply")
-                                                                                   .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
-                                                                                   .buttonStyle(.plain)
+                                        HStack(spacing: 0) {
+                                            // Left group: reply + repost
+                                            Button {
+                                                NotificationCenter.default.post(
+                                                    name: .saveFeedScrollPosition,
+                                                    object: nil,
+                                                    userInfo: ["postId": postId]
+                                                )
+                                                showPostDetail = true
+                                            } label: {
+                                                actionLabel(icon: "bubble.left", count: replies, isActive: false)
+                                            }
+                                            .accessibilityLabel("Reply")
+                                            .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
+                                            .buttonStyle(.plain)
 
-                                                                                   Button { toggleLike() } label: {
-                                                                                       actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
-                                                                                   }
-                                                                                   .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                                                                                   .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                                                                   .buttonStyle(.plain)
-                                                                                   .scaleEffect(likePulse ? 1.15 : 1.0)
-                                                                                   .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                            Spacer().frame(width: 28)
 
-                                                                                   Button { repostPost() } label: {
-                                                                                       actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
-                                                                                   }
-                                                                                   .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
-                                                                                   .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                                                                   .buttonStyle(.plain)
-                                                                                   .disabled(isRepostPost)
-                                                                                   .opacity(isRepostPost ? 0.3 : 1.0)
+                                            Button { repostPost() } label: {
+                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
+                                            }
+                                            .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                                            .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                            .buttonStyle(.plain)
+                                            .disabled(isRepostPost)
+                                            .opacity(isRepostPost ? Toska.disabledOpacity : 1.0)
 
-                                                                                   Button { toggleSave() } label: {
-                                                                                       Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                                                           .font(.system(size: 16, weight: .light))
-                                                                                           .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
-                                                                                   }
-                                                                                   .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-                                                                                   .buttonStyle(.plain)
+                                            Spacer()
 
-                                                                                   if isShareable {
-                                                                                       Button { showShareCard = true } label: {
-                                                                                           Image(systemName: "square.and.arrow.up")
-                                                                                               .font(.system(size: 16, weight: .light))
-                                                                                               .foregroundColor(Color.toskaDivider)
-                                                                                       }
-                                                                                       .accessibilityLabel("Share post")
-                                                                                       .buttonStyle(.plain)
-                                                                                   }
+                                            // Right group: share + bookmark + heart (thumb zone)
+                                            if isShareable {
+                                                Button { showShareCard = true } label: {
+                                                    Image(systemName: "square.and.arrow.up")
+                                                        .font(.system(size: 16, weight: .light))
+                                                        .foregroundColor(Color.toskaDivider)
+                                                }
+                                                .accessibilityLabel("Share post")
+                                                .buttonStyle(.plain)
 
-                                                                                   Spacer()
-                                                                               }
-                                        .padding(.top, 10)
+                                                Spacer().frame(width: 28)
+                                            }
+
+                                            Button { toggleSave() } label: {
+                                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                                                    .font(.system(size: 16, weight: .light))
+                                                    .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
+                                            }
+                                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
+                                            .buttonStyle(.plain)
+
+                                            Spacer().frame(width: 28)
+
+                                            Button { toggleLike() } label: {
+                                                actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                            }
+                                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                                            .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                            .buttonStyle(.plain)
+                                            .scaleEffect(likePulse ? 1.15 : 1.0)
+                                            .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                        }
+                                        .padding(.top, 12)
                                     }
                                 }
                                             .padding(.horizontal, 16)

@@ -26,3 +26,6 @@ functions/node_modules/
 # Local environment
 *.local
 .env
+
+# Firebase config (client key — safe but triggers GitHub secret scanning)
+**/GoogleService-Info.plist

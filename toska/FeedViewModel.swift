@@ -374,6 +374,8 @@ class FeedViewModel: ObservableObject {
                BlockedUsersCache.shared.isBlocked(originalAuthorId) { return false }
             if let expiresAt = data["expiresAt"] as? Timestamp,
                expiresAt.dateValue() < Date() { return false }
+            // Hide posts flagged by server-side moderation (Cloud Functions)
+            if data["flagged"] as? Bool == true { return false }
             return true
         }
     }
@@ -713,6 +715,7 @@ class FeedViewModel: ObservableObject {
                         let authorId = data["authorId"] as? String ?? ""
                         if authorId == uid || BlockedUsersCache.shared.isBlocked(authorId) { return false }
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return false }
+                        if data["flagged"] as? Bool == true { return false }
                         return true
                     }) else { return }
                     let data = doc.data()
@@ -766,6 +769,7 @@ class FeedViewModel: ObservableObject {
                         let data = $0.data()
                         if BlockedUsersCache.shared.isBlocked(data["authorId"] as? String ?? "") { return false }
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return false }
+                        if data["flagged"] as? Bool == true { return false }
                         return true
                     }) else {
                         self.mostUnsaidText = ""

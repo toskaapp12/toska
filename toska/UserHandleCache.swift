@@ -12,6 +12,9 @@ class UserHandleCache {
     // hasn't seen Settings yet still gets the soft-tier check-in. The explicit
     // crisis tier ignores this flag — see CrisisCheckInView / crisisLevel(for:).
     private(set) var gentleCheckIn: Bool = true
+    // Set to true by Cloud Functions when a user accumulates >= 3 flagged posts.
+    // While restricted, the user cannot create new posts.
+    private(set) var isRestricted: Bool = false
     private var listener: ListenerRegistration? = nil
     private var currentUid: String? = nil
 
@@ -30,6 +33,7 @@ class UserHandleCache {
                             self?.handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
                             self?.allowSharing = snapshot?.data()?["allowSharing"] as? Bool ?? true
                             self?.gentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool ?? true
+                            self?.isRestricted = snapshot?.data()?["restricted"] as? Bool ?? false
                         }
                     }
     }
@@ -40,6 +44,7 @@ class UserHandleCache {
         handle = "anonymous"
         allowSharing = true
         gentleCheckIn = true
+        isRestricted = false
         currentUid = nil
     }
 }

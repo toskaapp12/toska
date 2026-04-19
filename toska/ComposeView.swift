@@ -22,6 +22,8 @@ struct ComposeView: View {
     // adapt its copy/behavior. Explicit tier shows even if gentleCheckIn is off.
     @State private var gentleCheckLevel: CrisisLevel = .soft
     @State private var showNameWarning = false
+    @State private var showContentWarning = false
+    @State private var contentWarningMessage = ""
     @State private var userHandle = "anonymous"
     @State private var showRateLimitWarning = false
     @State private var showOfflineWarning = false
@@ -61,6 +63,7 @@ struct ComposeView: View {
         (!trimmedText.isEmpty || selectedGifUrl != nil)
             && !isPosting
             && NetworkMonitor.shared.isConnected
+            && !UserHandleCache.shared.isRestricted
     }
 
     var composePlaceholder: String {
@@ -103,6 +106,9 @@ struct ComposeView: View {
                 .padding(.vertical, 10)
 
                 // MARK: - Warning banners
+                if UserHandleCache.shared.isRestricted {
+                    warningBanner(icon: "exclamationmark.octagon", text: "your account is under review. you cannot post right now.", color: "c45c5c")
+                }
                 if showRateLimitWarning {
                     warningBanner(icon: "clock", text: "slow down. the feelings will still be there in 30 seconds.", color: "c49a6c")
                 }
@@ -456,6 +462,46 @@ struct ComposeView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
 
+            // MARK: - Content warning dialog
+            if showContentWarning {
+                Color.black.opacity(0.4).ignoresSafeArea()
+                    .onTapGesture { showContentWarning = false }
+
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 32))
+                        .foregroundColor(Color(hex: "c45c5c"))
+
+                    Text("hold on")
+                        .font(.custom("Georgia-Italic", size: 18))
+                        .foregroundColor(LateNightTheme.handleText)
+
+                    Text(contentWarningMessage)
+                        .font(.system(size: 12))
+                        .foregroundColor(LateNightTheme.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(2)
+
+                    Button { showContentWarning = false } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pencil").font(.system(size: 13))
+                            Text("edit my post").font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.toskaBlue)
+                        .cornerRadius(12)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(28)
+                .background(LateNightTheme.cardBackground)
+                .cornerRadius(20)
+                .shadow(color: .black.opacity(0.12), radius: 24, y: 12)
+                .padding(.horizontal, 28)
+            }
+
             // MARK: - Name warning dialog
             if showNameWarning {
                 Color.black.opacity(0.4).ignoresSafeArea()
@@ -636,6 +682,11 @@ struct ComposeView: View {
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
                 showRateLimitWarning = false
             }
+            return
+        }
+        if !trimmedText.isEmpty, let violation = contentViolation(in: text) {
+            contentWarningMessage = contentViolationMessage(for: violation)
+            showContentWarning = true
             return
         }
         if !trimmedText.isEmpty && containsNameOrIdentifyingInfo(text) { showNameWarning = true; return }

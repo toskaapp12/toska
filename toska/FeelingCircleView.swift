@@ -14,6 +14,8 @@ struct FeelingCircleView: View {
     @State private var listener: ListenerRegistration? = nil
     @State private var hasJoined = false
     @State private var showNameWarning = false
+    @State private var showContentWarning = false
+    @State private var contentWarningMessage = ""
     @State private var showGentleCheck = false
     @State private var pendingMessageText = ""
     @State private var gentleCheckLevel: CrisisLevel = .soft
@@ -220,6 +222,9 @@ struct FeelingCircleView: View {
             listener?.remove()
             listener = nil
         }
+        .alert("hold on", isPresented: $showContentWarning) {
+            Button("edit") {}
+        } message: { Text(contentWarningMessage) }
         .alert("keep it anonymous", isPresented: $showNameWarning) {
             Button("edit") {}
             Button("send anyway", role: .destructive) {
@@ -372,6 +377,11 @@ struct FeelingCircleView: View {
         guard !trimmed.isEmpty else { return }
         guard myMessageCount < messageLimit else { return }
 
+        if let violation = contentViolation(in: trimmed) {
+            contentWarningMessage = contentViolationMessage(for: violation)
+            showContentWarning = true
+            return
+        }
         if containsNameOrIdentifyingInfo(trimmed) {
             pendingMessageText = trimmed
             showNameWarning = true

@@ -33,6 +33,8 @@ struct ConversationView: View {
     // or crisis-content validation; conversations were the only text input
     // surface lacking the safety chain.
     @State private var showMessageNameWarning = false
+    @State private var showMessageContentWarning = false
+    @State private var messageContentWarningMessage = ""
     @State private var showMessageGentleCheck = false
     @State private var pendingMessageText = ""
     @State private var messageGentleCheckLevel: CrisisLevel = .soft
@@ -383,6 +385,9 @@ struct ConversationView: View {
         } message: {
             Text("we hear you. well look into it.")
         }
+        .alert("hold on", isPresented: $showMessageContentWarning) {
+            Button("edit") {}
+        } message: { Text(messageContentWarningMessage) }
         .alert("keep it anonymous", isPresented: $showMessageNameWarning) {
             Button("edit") {}
             Button("send anyway", role: .destructive) {
@@ -587,10 +592,13 @@ struct ConversationView: View {
         guard Auth.auth().currentUser?.uid != nil else { return }
         guard !isBlockedEitherDirection else { dismiss(); return }
 
-        // Safety chain: name-check first (least disruptive), then crisis-
-        // check (more disruptive). Match the pattern used in ComposeView,
-        // PostDetailView reply, FeelingCircleView. Previously messages
-        // were the only text input surface that bypassed these gates.
+        // Safety chain: content violation first (hard block), then name-check
+        // (least disruptive), then crisis-check (more disruptive).
+        if let violation = contentViolation(in: trimmed) {
+            messageContentWarningMessage = contentViolationMessage(for: violation)
+            showMessageContentWarning = true
+            return
+        }
         if containsNameOrIdentifyingInfo(trimmed) {
             pendingMessageText = trimmed
             showMessageNameWarning = true

@@ -590,10 +590,55 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     /\b(buy|sell|discount|promo|click here|free money|crypto|bitcoin|investment)\b/i,
     /https?:\/\//i,
     /\b(www\.)\b/i,
+    /\b(buy now|act now|limited time|earn money|make money)\b/i,
+    /\b(ethereum|nft)\b/i,
+    /\b(follow my|check my bio|link in bio)\b/i,
+    /\b(discount code|promo code|use code)\b/i,
+    /\b(dm me for|dm for)\b/i,
+    /\b(cashapp|venmo me|paypal me)\b/i,
+    /\b(onlyfans|only fans)\b/i,
   ];
 
   const hatePatterns = [
-    /\b(n[i1]gg[ae]r|f[a@]gg[o0]t|ch[i1]nk|sp[i1]c|k[i1]ke|tr[a@]nny)\b/i,
+    /n[i1!]gg/i,
+    /f[a@]gg/i,
+    /r[e3]t[a@]rd/i,
+    /tr[a@]nny/i,
+    /d[yi1]ke/i,
+    /ch[i1]nk/i,
+    /sp[i1]ck?/i,
+    /k[i1]ke/i,
+    /w[e3]tb[a@]ck/i,
+    /g[o0][o0]k/i,
+    /c[o0][o0]n/i,
+    /towelhead/i,
+    /raghead/i,
+    /beaner/i,
+    /zipperhead/i,
+  ];
+
+  // Targeted threats — NOT crisis/self-harm content (handled separately)
+  const threatPhrases = [
+    "kill you", "kill him", "kill her", "kill them",
+    "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
+    "stab you", "stab him", "stab her", "stab them",
+    "shoot up the", "blow up", "burn down",
+    "rape you", "rape her", "rape him",
+    "find you and", "find where you live", "know where you live",
+    "hunt you down", "come for you",
+    "gonna hurt you", "going to hurt you",
+    "beat you", "beat the shit",
+  ];
+
+  // Sexual content
+  const sexualPatterns = [
+    /porn/i, /hentai/i, /\bxxx\b/i,
+    /\bnudes\b/i, /send nudes/i, /dick pic/i, /pussy pic/i,
+    /jerk off/i, /jack off/i, /masturbat/i,
+    /cum on/i, /cum in/i, /creampie/i,
+    /blowjob/i, /blow job/i, /handjob/i, /hand job/i,
+    /anal sex/i, /oral sex/i,
+    /sex tape/i, /sextape/i, /sext me/i, /sexting/i,
   ];
 
   const concerningPhrases = [
@@ -616,6 +661,10 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     flagReason = "spam_or_commercial";
   } else if (hatePatterns.some((p) => p.test(text))) {
     flagReason = "hate_speech";
+  } else if (threatPhrases.some((phrase) => text.includes(phrase))) {
+    flagReason = "targeted_threat";
+  } else if (sexualPatterns.some((p) => p.test(text))) {
+    flagReason = "sexual_content";
   }
 
   const isConcerning = concerningPhrases.some((phrase) => text.includes(phrase));
@@ -627,6 +676,28 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
       flagReason,
     });
     console.log(`Post ${postId} flagged: ${flagReason}`);
+
+    // Repeat offender tracking: if the author has >= 3 flagged posts,
+    // mark their user document as restricted.
+    const authorId = postData.authorId;
+    if (authorId) {
+      try {
+        const flaggedSnap = await db.collection("posts")
+          .where("authorId", "==", authorId)
+          .where("flagged", "==", true)
+          .limit(3)
+          .get();
+        if (flaggedSnap.size >= 3) {
+          await db.collection("users").doc(authorId).update({
+            restricted: true,
+            restrictedAt: FieldValue.serverTimestamp(),
+          });
+          console.log(`User ${authorId} restricted — ${flaggedSnap.size} flagged posts`);
+        }
+      } catch (err) {
+        console.warn("Repeat offender check failed:", err.message);
+      }
+    }
   } else if (isConcerning) {
     await db.collection("posts").doc(postId).update({
       concerningContent: true,

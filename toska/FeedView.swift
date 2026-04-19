@@ -1423,4 +1423,89 @@ func containsConcerningContent(_ text: String) -> Bool {
     return concerningPhrases.contains(where: { lowered.contains($0) })
 }
 
+// MARK: - Content Moderation
+
+enum ContentViolationType {
+    case slur
+    case threat
+    case sexual
+    case spam
+}
+
+func contentViolation(in text: String) -> ContentViolationType? {
+    let lowered = text.lowercased()
+
+    // Slurs and hate speech — common slurs with leet-speak variants
+    let slurPatterns = [
+        "n[i1!]gg", "f[a@]gg", "r[e3]t[a@]rd", "tr[a@]nny", "d[yi1]ke",
+        "ch[i1]nk", "sp[i1]ck?", "k[i1]ke", "w[e3]tb[a@]ck", "g[o0][o0]k",
+        "c[o0][o0]n", "towelhead", "raghead", "beaner", "zipperhead",
+    ]
+    for pattern in slurPatterns {
+        if lowered.range(of: pattern, options: .regularExpression) != nil { return .slur }
+    }
+
+    // Threats and violence — targeted threats, not emotional venting
+    // "i want to kill myself" is crisis content (handled separately), not a threat
+    // These target OTHER people specifically
+    let threatPhrases = [
+        "kill you", "kill him", "kill her", "kill them",
+        "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
+        "stab you", "stab him", "stab her", "stab them",
+        "bomb", "shoot up the", "blow up", "burn down",
+        "rape you", "rape her", "rape him",
+        "find you and", "find where you live", "know where you live",
+        "hunt you down", "come for you",
+        "gonna hurt you", "going to hurt you",
+        "beat you", "beat the shit",
+    ]
+    for phrase in threatPhrases {
+        if lowered.contains(phrase) { return .threat }
+    }
+
+    // Sexual content
+    let sexualPatterns = [
+        "porn", "hentai", "xxx", "onlyfans", "only fans",
+        "nudes", "send nudes", "dick pic", "pussy pic",
+        "jerk off", "jack off", "masturbat",
+        "cum on", "cum in", "creampie",
+        "blowjob", "blow job", "handjob", "hand job",
+        "anal sex", "oral sex",
+        "f[u\\*]ck me daddy", "choke me",
+        "sex tape", "sextape", "sext me", "sexting",
+    ]
+    for pattern in sexualPatterns {
+        if lowered.range(of: pattern, options: .regularExpression) != nil { return .sexual }
+    }
+
+    // Spam — commercial content, not emotional expression
+    let spamPhrases = [
+        "buy now", "click here", "limited time", "act now",
+        "free money", "make money", "earn money",
+        "crypto", "bitcoin", "ethereum", "nft",
+        "follow my", "check my bio", "link in bio",
+        "discount code", "promo code", "use code",
+        "dm me for", "dm for",
+        "cashapp", "venmo me", "paypal me",
+    ]
+    for phrase in spamPhrases {
+        if lowered.contains(phrase) { return .spam }
+    }
+
+    return nil
+}
+
+func contentViolationMessage(for type: ContentViolationType) -> String {
+    switch type {
+    case .slur:
+        return "this contains language that could hurt people. toska is a space for everyone."
+    case .threat:
+        return "this sounds like it could be threatening toward someone. toska is for expressing feelings, not directing harm."
+    case .sexual:
+        return "this contains sexual content that isn't appropriate for toska."
+    case .spam:
+        return "this looks like it might be spam or promotional content."
+    }
+}
+
 // MARK: - Shared Blocked Users Helper

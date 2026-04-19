@@ -73,6 +73,8 @@ struct PostDetailView: View {
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
     @State private var showReplyNameWarning = false
+    @State private var showReplyContentWarning = false
+    @State private var replyContentWarningMessage = ""
     @State private var showReplyGentleCheck = false
     @State private var pendingReplyText = ""
     @State private var replyGentleCheckLevel: CrisisLevel = .soft
@@ -156,6 +158,9 @@ struct PostDetailView: View {
             .alert("post reported", isPresented: $showReportedAlert) {
                 Button("ok") {}
             } message: { Text("thanks for letting us know. we'll review this post.") }
+            .alert("hold on", isPresented: $showReplyContentWarning) {
+                Button("edit") {}
+            } message: { Text(replyContentWarningMessage) }
             .alert("keep it anonymous", isPresented: $showReplyNameWarning) {
                 Button("edit") {}
                 Button("reply anyway", role: .destructive) {
@@ -850,6 +855,11 @@ struct PostDetailView: View {
         guard Auth.auth().currentUser?.uid != nil, !postId.isEmpty else { return }
         if BlockedUsersCache.shared.isBlocked(authorUserId) { return }
         if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
+        if let violation = contentViolation(in: trimmed) {
+            replyContentWarningMessage = contentViolationMessage(for: violation)
+            showReplyContentWarning = true
+            return
+        }
         if containsNameOrIdentifyingInfo(trimmed) { pendingReplyText = trimmed; showReplyNameWarning = true; return }
         if let level = crisisCheckLevelRespectingSetting(for: trimmed) {
             pendingReplyText = trimmed
@@ -974,6 +984,8 @@ struct EditPostView: View {
     @Binding var editText: String
     @Environment(\.dismiss) var dismiss
     @State private var showNameWarning = false
+    @State private var showContentWarning = false
+    @State private var editContentWarningMessage = ""
     @State private var showGentleCheck = false
     @State private var editGentleCheckLevel: CrisisLevel = .soft
     @State private var isSaving = false
@@ -1065,6 +1077,9 @@ struct EditPostView: View {
         .onTapGesture {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         }
+        .alert("hold on", isPresented: $showContentWarning) {
+            Button("edit") {}
+        } message: { Text(editContentWarningMessage) }
         .alert("keep it anonymous", isPresented: $showNameWarning) {
             Button("edit") {}
             Button("save anyway", role: .destructive) {
@@ -1092,6 +1107,11 @@ struct EditPostView: View {
 
     func attemptSave() {
         guard !postId.isEmpty, !editText.isEmpty else { return }
+        if let violation = contentViolation(in: editText) {
+            editContentWarningMessage = contentViolationMessage(for: violation)
+            showContentWarning = true
+            return
+        }
         if containsNameOrIdentifyingInfo(editText) { showNameWarning = true; return }
         if let level = crisisCheckLevelRespectingSetting(for: editText) {
             editGentleCheckLevel = level

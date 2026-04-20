@@ -399,6 +399,144 @@ exports.onPendingDeletionCreated = onDocumentCreated(
 );
 
 // ============================================================
+// Counter: like count + totalLikes (server-side only)
+// ============================================================
+
+exports.onLikeCreatedUpdateCounts = onDocumentCreated(
+  "posts/{postId}/likes/{userId}",
+  async (event) => {
+    const postId = event.params.postId;
+    const postRef = db.collection("posts").doc(postId);
+
+    try {
+      await postRef.update({ likeCount: FieldValue.increment(1) });
+    } catch (err) {
+      console.warn("onLikeCreatedUpdateCounts: likeCount increment failed:", err.message);
+    }
+
+    // Increment the post author's totalLikes
+    try {
+      const postSnap = await postRef.get();
+      if (!postSnap.exists) return;
+      const authorId = postSnap.data().authorId;
+      if (!authorId) return;
+      await db.collection("users").doc(authorId).update({
+        totalLikes: FieldValue.increment(1),
+      });
+    } catch (err) {
+      console.warn("onLikeCreatedUpdateCounts: totalLikes increment failed:", err.message);
+    }
+  }
+);
+
+exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
+  "posts/{postId}/likes/{userId}",
+  async (event) => {
+    const postId = event.params.postId;
+    const postRef = db.collection("posts").doc(postId);
+
+    await safeDecrement(postRef, "likeCount");
+
+    // Decrement the post author's totalLikes
+    try {
+      const postSnap = await postRef.get();
+      if (!postSnap.exists) return;
+      const authorId = postSnap.data().authorId;
+      if (!authorId) return;
+      await safeDecrement(db.collection("users").doc(authorId), "totalLikes");
+    } catch (err) {
+      console.warn("onLikeDeletedUpdateCounts: totalLikes decrement failed:", err.message);
+    }
+  }
+);
+
+// ============================================================
+// Counter: reply count (server-side only)
+// ============================================================
+
+exports.onReplyCreatedUpdateCount = onDocumentCreated(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const postId = event.params.postId;
+    const replyData = event.data.data();
+    if (!replyData) return;
+    // Basic validity check — only increment for replies with actual text
+    if (typeof replyData.text !== "string" || replyData.text.trim().length === 0) return;
+    if (!replyData.authorId) return;
+
+    try {
+      await db.collection("posts").doc(postId).update({
+        replyCount: FieldValue.increment(1),
+      });
+    } catch (err) {
+      console.warn("onReplyCreatedUpdateCount failed:", err.message);
+    }
+  }
+);
+
+// ============================================================
+// Counter: repost count (server-side only)
+// ============================================================
+
+exports.onRepostCreatedUpdateCount = onDocumentCreated(
+  "posts/{postId}",
+  async (event) => {
+    const postData = event.data.data();
+    if (!postData) return;
+    if (postData.isRepost !== true) return;
+    const originalPostId = postData.originalPostId;
+    if (!originalPostId || typeof originalPostId !== "string") return;
+
+    try {
+      await db.collection("posts").doc(originalPostId).update({
+        repostCount: FieldValue.increment(1),
+      });
+    } catch (err) {
+      console.warn("onRepostCreatedUpdateCount failed:", err.message);
+    }
+  }
+);
+
+// ============================================================
+// Counter: follow counts (server-side only)
+// ============================================================
+
+exports.onFollowCreatedUpdateCounts = onDocumentCreated(
+  "users/{userId}/following/{followedId}",
+  async (event) => {
+    const userId = event.params.userId;
+    const followedId = event.params.followedId;
+
+    try {
+      await db.collection("users").doc(userId).update({
+        followingCount: FieldValue.increment(1),
+      });
+    } catch (err) {
+      console.warn("onFollowCreatedUpdateCounts: followingCount increment failed:", err.message);
+    }
+
+    try {
+      await db.collection("users").doc(followedId).update({
+        followerCount: FieldValue.increment(1),
+      });
+    } catch (err) {
+      console.warn("onFollowCreatedUpdateCounts: followerCount increment failed:", err.message);
+    }
+  }
+);
+
+exports.onFollowDeletedUpdateCounts = onDocumentDeleted(
+  "users/{userId}/following/{followedId}",
+  async (event) => {
+    const userId = event.params.userId;
+    const followedId = event.params.followedId;
+
+    await safeDecrement(db.collection("users").doc(userId), "followingCount");
+    await safeDecrement(db.collection("users").doc(followedId), "followerCount");
+  }
+);
+
+// ============================================================
 // Milestone tracking — fires when a like doc is created
 // ============================================================
 

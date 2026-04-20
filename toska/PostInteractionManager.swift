@@ -43,9 +43,7 @@ class PostInteractionManager {
         let db = Firestore.firestore()
         let likeRef = db.collection("posts").document(postId).collection("likes").document(uid)
         let userLikedRef = db.collection("users").document(uid).collection("liked").document(postId)
-        let postRef = db.collection("posts").document(postId)
-
-        let newLiked = !currentlyLiked
+            let newLiked = !currentlyLiked
         let newCount = max(0, currentCount + (newLiked ? 1 : -1))
 
         // Optimistic update
@@ -58,58 +56,27 @@ class PostInteractionManager {
               )
 
         db.runTransaction({ transaction, errorPointer in
-            let postSnap: DocumentSnapshot
-            do {
-                postSnap = try transaction.getDocument(postRef)
-            } catch let error as NSError {
-                errorPointer?.pointee = error
-                return nil
-            }
-
-            guard postSnap.exists else {
-                errorPointer?.pointee = NSError(
-                    domain: "PostInteractionManager",
-                    code: 404,
-                    userInfo: [NSLocalizedDescriptionKey: "Post no longer exists"]
-                )
-                return nil
-            }
-
-            let currentServerCount = postSnap.data()?["likeCount"] as? Int ?? 0
+            // Read the like doc inside the transaction to prevent duplicate
+            // likes from two devices.
+            let existingLike: DocumentSnapshot
+            do { existingLike = try transaction.getDocument(likeRef) }
+            catch let e as NSError { errorPointer?.pointee = e; return nil }
 
             if newLiked {
-                // FIX #3 (like branch): Read likeRef inside transaction to prevent
-                // duplicate likes from two devices both in the "like" state.
-                let existingLike: DocumentSnapshot
-                do { existingLike = try transaction.getDocument(likeRef) }
-                catch let e as NSError { errorPointer?.pointee = e; return nil }
-
-                // Already liked (e.g. from another device) — no-op, don't double-count.
+                // Already liked (e.g. from another device) — no-op.
                 if existingLike.exists { return nil }
 
                 transaction.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: likeRef)
                 transaction.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: userLikedRef)
-                transaction.updateData(["likeCount": currentServerCount + 1], forDocument: postRef)
+                // Counter update handled by Cloud Function on like doc create.
             } else {
-                // FIX #3 (unlike branch): Read likeRef inside transaction before
-                // decrementing — if the like doc was already deleted (other device,
-                // admin, cleanup), skip the decrement so count never goes negative.
-                let existingLike: DocumentSnapshot
-                do { existingLike = try transaction.getDocument(likeRef) }
-                catch let e as NSError { errorPointer?.pointee = e; return nil }
-
                 // Always clean up the user-facing liked record.
                 transaction.deleteDocument(userLikedRef)
 
                 if existingLike.exists {
-                    // Like doc exists — safe to delete and decrement.
+                    // Like doc exists — delete it. Cloud Function handles counter.
                     transaction.deleteDocument(likeRef)
-                    if currentServerCount > 0 {
-                        transaction.updateData(["likeCount": currentServerCount - 1], forDocument: postRef)
-                    }
                 }
-                // If like doc is already gone: userLikedRef is cleaned up above,
-                // count is untouched — no negative drift.
             }
 
             return nil
@@ -129,42 +96,8 @@ class PostInteractionManager {
                     // the transaction. This allows immediate retry after a failure.
                     RateLimiter.shared.lastLikeTime = Date()
 
-                    // Main transaction succeeded — update author totalLikes (best-effort).
+                    // totalLikes counter update handled by Cloud Function.
                     if !authorId.isEmpty, authorId != uid {
-                        let authorRef = db.collection("users").document(authorId)
-
-                        // FIX #4: The totalLikes transaction previously used try? which
-                        // silently zeroed current on error, setting totalLikes to 1.
-                        // Now uses a proper do/catch so a read failure aborts the
-                        // transaction instead of writing a corrupted value.
-                        db.runTransaction({ transaction, errorPointer in
-                            let snap: DocumentSnapshot
-                            do {
-                                snap = try transaction.getDocument(authorRef)
-                            } catch let e as NSError {
-                                errorPointer?.pointee = e
-                                return nil  // Abort — do not write a zeroed count.
-                            }
-                            guard snap.exists else { return nil }
-                            let current = snap.data()?["totalLikes"] as? Int ?? 0
-                            if newLiked {
-                                transaction.updateData(["totalLikes": current + 1], forDocument: authorRef)
-                            } else if current > 0 {
-                                transaction.updateData(["totalLikes": current - 1], forDocument: authorRef)
-                            }
-                            return nil
-                        }, completion: { _, txError in
-                            // FIX #4: Log the error; swallowing it silently was hiding
-                            // legitimate failures (e.g. deleted author accounts).
-                            if let txError = txError {
-                                let nsErr = txError as NSError
-                                // Code 5 = NOT_FOUND (author deleted account) — expected, skip.
-                                if !(nsErr.domain == "FIRFirestoreErrorDomain" && nsErr.code == 5) {
-                                    print("⚠️ totalLikes update failed: \(txError)")
-                                }
-                            }
-                        })
-
                         if newLiked {
                             sendNotification(postId: postId, toUserId: authorId, type: "like", message: "")
                         }
@@ -361,8 +294,6 @@ class PostInteractionManager {
                             let postRef = db.collection("posts").document(postId)
 
                             db.runTransaction({ transaction, errorPointer in
-                                // FIX #8: Proper do/catch — read failure aborts cleanly
-                                // instead of zeroing the count.
                                 let postSnap: DocumentSnapshot
                                 do { postSnap = try transaction.getDocument(postRef) }
                                 catch let e as NSError {
@@ -392,11 +323,9 @@ class PostInteractionManager {
                                     return nil
                                 }
 
-                                let current = postSnap.data()?["repostCount"] as? Int ?? 0
-
-                                // Write both atomically — either both succeed or neither does.
+                                // Write the repost doc. Counter update handled by Cloud Function
+                                // on post create (isRepost == true triggers repostCount increment).
                                 transaction.setData(repostData, forDocument: newRepostRef)
-                                transaction.updateData(["repostCount": current + 1], forDocument: postRef)
                                 return nil
 
                             }, completion: { _, txError in

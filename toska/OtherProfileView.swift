@@ -392,20 +392,6 @@ struct OtherProfileView: View {
         }
     }
     
-    // MARK: - Safe Decrement
-    
-    func safeDecrement(db: Firestore, docRef: DocumentReference, field: String) {
-            guard NetworkMonitor.shared.isConnected else { return }
-            db.runTransaction({ transaction, _ in
-                let snap = try? transaction.getDocument(docRef)
-                let current = snap?.data()?[field] as? Int ?? 0
-                if current > 0 {
-                    transaction.updateData([field: current - 1], forDocument: docRef)
-                }
-                return nil
-            }, completion: { _, _ in })
-        }
-    
     // MARK: - Toggle Follow
     
     func toggleFollow() {
@@ -427,7 +413,8 @@ struct OtherProfileView: View {
             followerCount = max(0, followerCount + (wasFollowing ? -1 : 1))
 
             if wasFollowing {
-                // Unfollow: batch subcollection deletes + atomic count decrements
+                // Unfollow: delete subcollection docs. Counter decrements
+                // handled by Cloud Function on follow doc delete.
                 let batch = db.batch()
                 batch.deleteDocument(followingRef)
                 batch.deleteDocument(followerRef)
@@ -440,20 +427,6 @@ struct OtherProfileView: View {
                         }
                         return
                     }
-                    // Decrement both counts atomically in a single transaction
-                                        db.runTransaction({ transaction, errorPointer in
-                                            let mySnap: DocumentSnapshot
-                                            let theirSnap: DocumentSnapshot
-                                            do {
-                                                mySnap = try transaction.getDocument(myRef)
-                                                theirSnap = try transaction.getDocument(theirRef)
-                                            } catch let e as NSError { errorPointer?.pointee = e; return nil }
-                                            let myCount = mySnap.data()?["followingCount"] as? Int ?? 0
-                                            let theirCount = theirSnap.data()?["followerCount"] as? Int ?? 0
-                                            if myCount > 0 { transaction.updateData(["followingCount": myCount - 1], forDocument: myRef) }
-                                            if theirCount > 0 { transaction.updateData(["followerCount": theirCount - 1], forDocument: theirRef) }
-                                            return nil
-                                        }, completion: { _, _ in })
                 }
             } else {
                 // Follow: batch subcollection writes + atomic count increments
@@ -470,20 +443,7 @@ struct OtherProfileView: View {
                         }
                         return
                     }
-                    // Increment both counts atomically in a single transaction
-                                        db.runTransaction({ transaction, errorPointer in
-                                            let mySnap: DocumentSnapshot
-                                            let theirSnap: DocumentSnapshot
-                                            do {
-                                                mySnap = try transaction.getDocument(myRef)
-                                                theirSnap = try transaction.getDocument(theirRef)
-                                            } catch let e as NSError { errorPointer?.pointee = e; return nil }
-                                            let myCount = mySnap.data()?["followingCount"] as? Int ?? 0
-                                            let theirCount = theirSnap.data()?["followerCount"] as? Int ?? 0
-                                            transaction.updateData(["followingCount": myCount + 1], forDocument: myRef)
-                                            transaction.updateData(["followerCount": theirCount + 1], forDocument: theirRef)
-                                            return nil
-                                        }, completion: { _, _ in })
+                    // Counter increments handled by Cloud Function on follow doc create.
                     // Send follow notification
                     db.collection("users").document(self.userId).collection("notifications")
                         .document("follow_\(uid)")
@@ -530,18 +490,7 @@ struct OtherProfileView: View {
                 }
                 try? await batch.commit()
 
-                // Atomic count decrements — FieldValue.increment can drive counts
-                // below zero if the stored value is already 0. The proper fix
-                // requires transactions (as used in toggleFollow), but the block
-                // path is rare enough that negative counts are acceptable for now.
-                if iAmFollowing {
-                    try? await uidRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
-                    try? await theirRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])
-                }
-                if theyFollowMe {
-                    try? await uidRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])
-                    try? await theirRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
-                }
+                // Counter decrements handled by Cloud Function on follow doc delete.
 
                 // Clean up notifications from blocked user
                 let notifSnap = try? await uidRef.collection("notifications")

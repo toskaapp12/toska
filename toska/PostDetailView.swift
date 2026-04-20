@@ -636,19 +636,12 @@ struct PostDetailView: View {
             }
 
         Task { @MainActor in
-            let uidRef = db.collection("users").document(uid)
-            let authorRef = db.collection("users").document(blockedUserId)
-
             let followingSnap = try? await db.collection("users").document(uid)
                 .collection("following").document(blockedUserId).getDocumentAsync()
             if followingSnap?.exists == true {
                 try? await db.collection("users").document(uid).collection("following").document(blockedUserId).delete()
                 try? await db.collection("users").document(blockedUserId).collection("followers").document(uid).delete()
-                // WARNING: These count decrements use try? — if either fails silently,
-                // followingCount/followerCount will drift (be 1 too high). A periodic
-                // recount or Cloud Function is recommended to reconcile over time.
-                try? await uidRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
-                try? await authorRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])
+                // Counter decrements handled by Cloud Function on follow doc delete.
             }
 
             let followerSnap = try? await db.collection("users").document(uid)
@@ -656,10 +649,7 @@ struct PostDetailView: View {
             if followerSnap?.exists == true {
                 try? await db.collection("users").document(uid).collection("followers").document(blockedUserId).delete()
                 try? await db.collection("users").document(blockedUserId).collection("following").document(uid).delete()
-                // WARNING: Same count-drift risk as above — try? swallows errors on
-                // these decrements, so followerCount/followingCount may become stale.
-                try? await uidRef.updateData(["followerCount": FieldValue.increment(Int64(-1))])
-                try? await authorRef.updateData(["followingCount": FieldValue.increment(Int64(-1))])
+                // Counter decrements handled by Cloud Function on follow doc delete.
             }
         }
 
@@ -731,11 +721,7 @@ struct PostDetailView: View {
                     try await batch.commit()
                 }
 
-                if likeCount > 0 && !authorUserId.isEmpty {
-                    try? await db.collection("users").document(authorUserId).updateData([
-                        "totalLikes": FieldValue.increment(Int64(-likeCount))
-                    ])
-                }
+                // totalLikes decrements handled by Cloud Function on each like doc deletion above.
             } catch {
                 isDeleting = false
                 deleteError = "couldn't delete — failed to clean up replies/likes: \(error.localizedDescription)"
@@ -891,7 +877,7 @@ struct PostDetailView: View {
             let replyRef = postRef.collection("replies").document()
             let batch = db.batch()
             batch.setData(replyData, forDocument: replyRef)
-            batch.updateData(["replyCount": FieldValue.increment(Int64(1))], forDocument: postRef)
+            // replyCount increment handled by Cloud Function on reply doc create.
 
             batch.commit { error in
                 Task { @MainActor in

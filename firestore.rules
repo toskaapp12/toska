@@ -15,31 +15,6 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin";
     }
 
-    function onlyCountsChanged() {
-      let allowed = ['likeCount', 'repostCount', 'replyCount'];
-      let diff = request.resource.data.diff(resource.data).affectedKeys();
-      return diff.hasOnly(allowed)
-        && request.resource.data.likeCount >= 0
-        && request.resource.data.repostCount >= 0
-        && request.resource.data.replyCount >= 0
-        && (request.resource.data.likeCount - resource.data.likeCount).abs() <= 1
-        && (request.resource.data.repostCount - resource.data.repostCount).abs() <= 1
-        && (request.resource.data.replyCount - resource.data.replyCount).abs() <= 1;
-    }
-
-    function onlyUserCountsChanged() {
-      let allowed = ['followerCount', 'followingCount', 'totalLikes'];
-      let diff = request.resource.data.diff(resource.data).affectedKeys();
-      return diff.hasOnly(allowed)
-        && diff.size() <= 2
-        && request.resource.data.followerCount >= 0
-        && request.resource.data.followingCount >= 0
-        && request.resource.data.totalLikes >= 0
-        && (request.resource.data.followerCount - resource.data.followerCount).abs() <= 1
-        && (request.resource.data.followingCount - resource.data.followingCount).abs() <= 1
-        && (request.resource.data.totalLikes - resource.data.totalLikes).abs() <= 1;
-    }
-
     match /users/{userId} {
       // FIX: previously `allow read: if isAuth()` let any logged-in user read
       // the full user document, including email, selectedMood, fcmToken, and

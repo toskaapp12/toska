@@ -829,7 +829,8 @@ struct PostDetailView: View {
         for reply in flat where !resolved.contains(reply.id) { visit(reply.id) }
         for id in order {
             guard lookup[id] != nil else { continue }
-            lookup[id]?.children = (childIdsMap[id] ?? []).compactMap { lookup[$0] }
+            let kids = (childIdsMap[id] ?? []).compactMap { lookup[$0] }
+            lookup[id]?.children = kids
         }
         return rootIds.compactMap { lookup[$0] }
     }

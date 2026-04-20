@@ -1437,7 +1437,7 @@ func contentViolation(in text: String) -> ContentViolationType? {
 
     // Slurs and hate speech — common slurs with leet-speak variants
     let slurPatterns = [
-        "n[i1!]gg", "f[a@]gg", "r[e3]t[a@]rd", "tr[a@]nny", "d[yi1]ke",
+        "n[i1!*]gg", "f[a@*]gg", "r[e3]t[a@]rd", "tr[a@]nny", "d[yi1]ke",
         "ch[i1]nk", "sp[i1]ck?", "k[i1]ke", "w[e3]tb[a@]ck", "g[o0][o0]k",
         "c[o0][o0]n", "towelhead", "raghead", "beaner", "zipperhead",
     ]

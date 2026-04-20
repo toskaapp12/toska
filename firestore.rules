@@ -10,6 +10,11 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
+    function isAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin";
+    }
+
     function onlyCountsChanged() {
       let allowed = ['likeCount', 'repostCount', 'replyCount'];
       let diff = request.resource.data.diff(resource.data).affectedKeys();
@@ -80,14 +85,14 @@ service cloud.firestore {
         && (request.resource.data.keys().hasAll(['email'])
               ? request.resource.data.email is string
               : true);
-      allow update: if isOwner(userId)
+      allow update: if (isOwner(userId)
             && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['handle'])
                 || (request.resource.data.handle is string
                     && request.resource.data.handle.size() <= 30))
-            // Prevent any user — including the owner — from writing fcmToken
-            // directly from the client. FCM tokens are written by the Cloud
-            // Function triggered by push registration, not by the app.
-            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['fcmToken']);
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['fcmToken']))
+        || (isAdmin()
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['restricted', 'restrictedAt', 'restrictedBy']));
       allow delete: if isOwner(userId);
 
       match /following/{followedId} {
@@ -174,10 +179,10 @@ service cloud.firestore {
             && request.resource.data.originalAuthorId.size() > 0)
           || !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
         );
-      allow update: if isAuth()
-        && resource.data.authorId == request.auth.uid;
-      allow delete: if isAuth()
-        && resource.data.authorId == request.auth.uid;
+      allow update: if (isAuth() && resource.data.authorId == request.auth.uid)
+        || isAdmin();
+      allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
+        || isAdmin();
 
       match /replies/{replyId} {
         allow read: if isAuth();
@@ -308,7 +313,7 @@ service cloud.firestore {
     // creation. Rate-limiting spam reports is deferred to a Cloud Function
     // since Firestore rules can't count aggregate writes.
     match /reports/{reportId} {
-      allow read: if false;
+      allow read: if isAdmin();
       allow create: if isAuth()
         && request.resource.data.reportedBy == request.auth.uid
         && request.resource.data.reason is string
@@ -321,7 +326,15 @@ service cloud.firestore {
              'postId', 'replyId', 'conversationId',
              'reportedUserId', 'reportedHandle', 'text'
            ]);
-      allow update, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status', 'reviewedBy', 'reviewedAt', 'action']);
+      allow delete: if false;
+    }
+
+    match /admins/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
     }
 
     match /pendingDeletions/{uid} {

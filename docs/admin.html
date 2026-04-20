@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>toska admin</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0908; color: #e0e2e6; min-height: 100vh; }
+        .login { display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; gap: 16px; }
+        .login h1 { font-family: Georgia, serif; font-style: italic; font-size: 28px; color: #fff; margin-bottom: 8px; }
+        .login input { background: #1a1c22; border: 1px solid #2a2c32; color: #e0e2e6; padding: 10px 14px; border-radius: 8px; font-size: 14px; width: 280px; }
+        .login button { background: #4a6fa5; color: #fff; border: none; padding: 10px 28px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+        .login button:hover { background: #5a7fb5; }
+        .login .error { color: #c45c5c; font-size: 12px; }
+        .header { padding: 16px 24px; border-bottom: 1px solid #1c1e1f; display: flex; align-items: center; justify-content: space-between; }
+        .header h1 { font-family: Georgia, serif; font-style: italic; font-size: 18px; color: #fff; }
+        .header .right { display: flex; gap: 12px; align-items: center; }
+        .header .stat { font-size: 11px; color: #85898f; }
+        .header .stat strong { color: #e0e2e6; }
+        .header button { background: none; border: 1px solid #2a2c32; color: #85898f; padding: 6px 14px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+        .tabs { display: flex; gap: 4px; padding: 12px 24px; border-bottom: 1px solid #1c1e1f; }
+        .tabs button { background: none; border: none; color: #85898f; font-size: 12px; padding: 6px 14px; border-radius: 16px; cursor: pointer; }
+        .tabs button.active { background: #1c1e1f; color: #e0e2e6; font-weight: 600; }
+        .content { max-width: 800px; margin: 0 auto; padding: 16px 24px; }
+        .card { background: #121314; border: 1px solid #1c1e1f; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .card-type { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; }
+        .type-post { background: #4a6fa520; color: #4a6fa5; }
+        .type-reply { background: #8b7ec820; color: #8b7ec8; }
+        .type-user { background: #c49a6c20; color: #c49a6c; }
+        .type-conversation { background: #6ba58e20; color: #6ba58e; }
+        .card-time { font-size: 10px; color: #555960; }
+        .card-reason { font-size: 11px; color: #c45c5c; margin-bottom: 6px; }
+        .card-text { font-family: Georgia, serif; font-size: 14px; color: #b0b3b8; line-height: 1.6; margin-bottom: 10px; padding: 12px; background: #0a0908; border-radius: 6px; }
+        .card-meta { font-size: 10px; color: #555960; margin-bottom: 12px; }
+        .card-meta span { margin-right: 12px; }
+        .card-actions { display: flex; gap: 8px; }
+        .card-actions button { border: none; padding: 6px 14px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; }
+        .btn-dismiss { background: #1c1e1f; color: #85898f; }
+        .btn-dismiss:hover { background: #2a2c32; }
+        .btn-remove { background: #c45c5c20; color: #c45c5c; }
+        .btn-remove:hover { background: #c45c5c30; }
+        .btn-restrict { background: #c49a6c20; color: #c49a6c; }
+        .btn-restrict:hover { background: #c49a6c30; }
+        .empty { text-align: center; padding: 60px 20px; color: #555960; }
+        .empty h2 { font-family: Georgia, serif; font-style: italic; font-size: 18px; color: #85898f; margin-bottom: 8px; }
+        .flagged-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; background: #c45c5c15; color: #c45c5c; }
+        .status-resolved { opacity: 0.4; }
+        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1c1e1f; color: #6ba58e; padding: 10px 20px; border-radius: 8px; font-size: 12px; display: none; z-index: 100; border: 1px solid #6ba58e30; }
+        .loading { text-align: center; padding: 40px; color: #555960; }
+    </style>
+</head>
+<body>
+    <div id="loginView" class="login" style="display:none;">
+        <h1>toska admin</h1>
+        <input type="email" id="email" placeholder="email" autocomplete="email">
+        <input type="password" id="password" placeholder="password" autocomplete="current-password">
+        <button onclick="signIn()">sign in</button>
+        <div id="loginError" class="error"></div>
+    </div>
+
+    <div id="appView" style="display:none;">
+        <div class="header">
+            <h1>toska admin</h1>
+            <div class="right">
+                <span class="stat">pending: <strong id="pendingCount">0</strong></span>
+                <span class="stat">flagged: <strong id="flaggedCount">0</strong></span>
+                <button onclick="signOut()">sign out</button>
+            </div>
+        </div>
+        <div class="tabs">
+            <button class="active" onclick="switchTab('reports', this)">reports</button>
+            <button onclick="switchTab('flagged', this)">flagged posts</button>
+            <button onclick="switchTab('restricted', this)">restricted users</button>
+        </div>
+        <div class="content" id="content">
+            <div class="loading">loading...</div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+        const app = initializeApp({
+            apiKey: "AIzaSyCttNQOgw3r5TqON7v1kgUQs_dWilDO5oE",
+            authDomain: "toska-4ebf4.firebaseapp.com",
+            projectId: "toska-4ebf4",
+            storageBucket: "toska-4ebf4.firebasestorage.app",
+            messagingSenderId: "183467627187",
+            appId: "1:183467627187:ios:ce1217a856e980f70756c6"
+        });
+
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        let currentTab = "reports";
+
+        window.signIn = async function() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+            } catch (e) {
+                document.getElementById("loginError").textContent = e.message;
+            }
+        };
+
+        window.signOut = function() { fbSignOut(auth); };
+
+        window.switchTab = function(tab, btn) {
+            currentTab = tab;
+            document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            loadTab();
+        };
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                const adminDoc = await getDoc(doc(db, "admins", user.uid));
+                if (adminDoc.exists() && adminDoc.data().role === "admin") {
+                    document.getElementById("loginView").style.display = "none";
+                    document.getElementById("appView").style.display = "block";
+                    loadTab();
+                } else {
+                    document.getElementById("loginError").textContent = "not an admin account";
+                    await fbSignOut(auth);
+                    document.getElementById("loginView").style.display = "flex";
+                }
+            } else {
+                document.getElementById("loginView").style.display = "flex";
+                document.getElementById("appView").style.display = "none";
+            }
+        });
+
+        async function loadTab() {
+            const content = document.getElementById("content");
+            content.innerHTML = '<div class="loading">loading...</div>';
+
+            if (currentTab === "reports") await loadReports(content);
+            else if (currentTab === "flagged") await loadFlagged(content);
+            else if (currentTab === "restricted") await loadRestricted(content);
+        }
+
+        async function loadReports(container) {
+            try {
+                const q = query(collection(db, "reports"), where("status", "==", "pending"), orderBy("createdAt", "desc"), limit(50));
+                const snap = await getDocs(q);
+                document.getElementById("pendingCount").textContent = snap.size;
+
+                if (snap.empty) {
+                    container.innerHTML = '<div class="empty"><h2>nothing to review</h2><p>no pending reports right now</p></div>';
+                    return;
+                }
+
+                let html = "";
+                snap.forEach(d => {
+                    const r = d.data();
+                    const time = r.createdAt?.toDate?.() ? timeAgo(r.createdAt.toDate()) : "unknown";
+                    html += `
+                        <div class="card" id="report-${d.id}">
+                            <div class="card-header">
+                                <span class="card-type type-${r.type}">${r.type}</span>
+                                <span class="card-time">${time}</span>
+                            </div>
+                            <div class="card-reason">reason: ${r.reasonLabel || r.reason}</div>
+                            ${r.text ? `<div class="card-text">${escapeHtml(r.text)}</div>` : ""}
+                            <div class="card-meta">
+                                <span>reported: ${r.reportedHandle || "unknown"}</span>
+                                ${r.postId ? `<span>post: ${r.postId.slice(0,8)}...</span>` : ""}
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-dismiss" onclick="dismissReport('${d.id}')">dismiss</button>
+                                ${r.postId ? `<button class="btn-remove" onclick="removePost('${d.id}', '${r.postId}')">remove post</button>` : ""}
+                                ${r.reportedUserId ? `<button class="btn-restrict" onclick="restrictUser('${d.id}', '${r.reportedUserId}', '${r.reportedHandle}')">restrict user</button>` : ""}
+                            </div>
+                        </div>`;
+                });
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = `<div class="empty"><h2>error loading reports</h2><p>${e.message}</p></div>`;
+            }
+        }
+
+        async function loadFlagged(container) {
+            try {
+                const q = query(collection(db, "posts"), where("flagged", "==", true), orderBy("createdAt", "desc"), limit(50));
+                const snap = await getDocs(q);
+                document.getElementById("flaggedCount").textContent = snap.size;
+
+                if (snap.empty) {
+                    container.innerHTML = '<div class="empty"><h2>no flagged posts</h2><p>auto-moderation hasn\'t flagged anything</p></div>';
+                    return;
+                }
+
+                let html = "";
+                snap.forEach(d => {
+                    const p = d.data();
+                    const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
+                    html += `
+                        <div class="card" id="flagged-${d.id}">
+                            <div class="card-header">
+                                <span class="flagged-label">${p.flagReason || "flagged"}</span>
+                                <span class="card-time">${time}</span>
+                            </div>
+                            <div class="card-text">${escapeHtml(p.text || "")}</div>
+                            <div class="card-meta">
+                                <span>by: ${p.authorHandle || "unknown"}</span>
+                                <span>likes: ${p.likeCount || 0}</span>
+                                <span>replies: ${p.replyCount || 0}</span>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-dismiss" onclick="unflagPost('${d.id}')">unflag (false positive)</button>
+                                <button class="btn-remove" onclick="deletePost('${d.id}')">delete post</button>
+                                ${p.authorId ? `<button class="btn-restrict" onclick="restrictUserDirect('${p.authorId}', '${p.authorHandle || ""}')">restrict author</button>` : ""}
+                            </div>
+                        </div>`;
+                });
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = `<div class="empty"><h2>error loading flagged posts</h2><p>${e.message}</p></div>`;
+            }
+        }
+
+        async function loadRestricted(container) {
+            try {
+                const q = query(collection(db, "users"), where("restricted", "==", true), limit(50));
+                const snap = await getDocs(q);
+
+                if (snap.empty) {
+                    container.innerHTML = '<div class="empty"><h2>no restricted users</h2><p>nobody is currently restricted</p></div>';
+                    return;
+                }
+
+                let html = "";
+                snap.forEach(d => {
+                    const u = d.data();
+                    html += `
+                        <div class="card" id="user-${d.id}">
+                            <div class="card-header">
+                                <span class="card-type type-user">${u.handle || "unknown"}</span>
+                                <span class="card-time">${u.restrictedAt?.toDate?.() ? timeAgo(u.restrictedAt.toDate()) : ""}</span>
+                            </div>
+                            <div class="card-meta">
+                                <span>posts: ${u.postCount || 0}</span>
+                                <span>followers: ${u.followerCount || 0}</span>
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-dismiss" onclick="unrestrictUser('${d.id}')">unrestrict</button>
+                            </div>
+                        </div>`;
+                });
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = `<div class="empty"><h2>error loading users</h2><p>${e.message}</p></div>`;
+            }
+        }
+
+        // --- Actions ---
+
+        window.dismissReport = async function(reportId) {
+            const uid = auth.currentUser.uid;
+            await updateDoc(doc(db, "reports", reportId), { status: "dismissed", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "dismissed" });
+            document.getElementById(`report-${reportId}`)?.remove();
+            showToast("report dismissed");
+        };
+
+        window.removePost = async function(reportId, postId) {
+            if (!confirm("delete this post permanently?")) return;
+            const uid = auth.currentUser.uid;
+            try {
+                await deleteDoc(doc(db, "posts", postId));
+                await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "post_deleted" });
+                document.getElementById(`report-${reportId}`)?.remove();
+                showToast("post deleted, report resolved");
+            } catch (e) { showToast("error: " + e.message); }
+        };
+
+        window.restrictUser = async function(reportId, userId, handle) {
+            if (!confirm(`restrict ${handle || userId}? they won't be able to post.`)) return;
+            const uid = auth.currentUser.uid;
+            try {
+                await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
+                await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "user_restricted" });
+                document.getElementById(`report-${reportId}`)?.remove();
+                showToast(`${handle || "user"} restricted`);
+            } catch (e) { showToast("error: " + e.message); }
+        };
+
+        window.restrictUserDirect = async function(userId, handle) {
+            if (!confirm(`restrict ${handle || userId}?`)) return;
+            const uid = auth.currentUser.uid;
+            try {
+                await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
+                showToast(`${handle || "user"} restricted`);
+            } catch (e) { showToast("error: " + e.message); }
+        };
+
+        window.unflagPost = async function(postId) {
+            try {
+                await updateDoc(doc(db, "posts", postId), { flagged: false });
+                document.getElementById(`flagged-${postId}`)?.remove();
+                showToast("post unflagged — now visible in feeds");
+            } catch (e) { showToast("error: " + e.message); }
+        };
+
+        window.deletePost = async function(postId) {
+            if (!confirm("delete this post permanently?")) return;
+            try {
+                await deleteDoc(doc(db, "posts", postId));
+                document.getElementById(`flagged-${postId}`)?.remove();
+                showToast("post deleted");
+            } catch (e) { showToast("error: " + e.message); }
+        };
+
+        window.unrestrictUser = async function(userId) {
+            if (!confirm("unrestrict this user? they'll be able to post again.")) return;
+            try {
+                await updateDoc(doc(db, "users", userId), { restricted: false, restrictedAt: serverTimestamp(), restrictedBy: auth.currentUser.uid });
+                document.getElementById(`user-${userId}`)?.remove();
+                showToast("user unrestricted");
+            } catch (e) { showToast("error: " + e.message); }
+        };
+
+        // --- Helpers ---
+
+        function timeAgo(date) {
+            const s = Math.floor((Date.now() - date.getTime()) / 1000);
+            if (s < 60) return "just now";
+            if (s < 3600) return Math.floor(s / 60) + "m ago";
+            if (s < 86400) return Math.floor(s / 3600) + "h ago";
+            return Math.floor(s / 86400) + "d ago";
+        }
+
+        function escapeHtml(text) {
+            const d = document.createElement("div");
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById("toast");
+            t.textContent = msg;
+            t.style.display = "block";
+            setTimeout(() => { t.style.display = "none"; }, 2500);
+        }
+    </script>
+</body>
+</html>

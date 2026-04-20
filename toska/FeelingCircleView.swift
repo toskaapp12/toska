@@ -373,6 +373,7 @@ struct FeelingCircleView: View {
     }
 
     func sendMessage() {
+        if UserHandleCache.shared.isRestricted { return }
         let trimmed = newMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard myMessageCount < messageLimit else { return }

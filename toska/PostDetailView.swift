@@ -840,6 +840,7 @@ struct PostDetailView: View {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count >= 2 else { return }
         guard Auth.auth().currentUser?.uid != nil, !postId.isEmpty else { return }
+        if UserHandleCache.shared.isRestricted { return }
         if BlockedUsersCache.shared.isBlocked(authorUserId) { return }
         if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
         if let violation = contentViolation(in: trimmed) {

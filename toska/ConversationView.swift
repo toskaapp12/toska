@@ -587,6 +587,7 @@ struct ConversationView: View {
 
     func sendMessage() {
         guard !isSending else { return }
+        if UserHandleCache.shared.isRestricted { return }
         let trimmed = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, myMessageCount < messageLimit else { return }
         guard Auth.auth().currentUser?.uid != nil else { return }

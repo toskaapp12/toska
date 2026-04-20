@@ -12,9 +12,7 @@ struct GifPickerView: View {
     // so the empty grid doesn't get confused with a genuine zero-result query.
     @State private var fetchError: String? = nil
     
-    // TODO: Move API key to Secrets.plist or server-side proxy before shipping
-    // REPLACE with your Giphy API key from developers.giphy.com
-    private let apiKey = "YOUR_GIPHY_API_KEY"
+    private let apiKey = "5o5QxbcJv9B7sstZ79VUZg3JfgJ1vKMA"
     
     var body: some View {
                 VStack(spacing: 0) {

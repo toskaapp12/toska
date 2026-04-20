@@ -207,7 +207,7 @@ service cloud.firestore {
       allow update: if isAuth()
         && request.auth.uid in resource.data.participants
         && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['participants', 'createdAt', 'messageCount']);
+            .hasAny(['participants', 'createdAt']);
       allow delete: if false;
 
       match /messages/{messageId} {
@@ -221,6 +221,9 @@ service cloud.firestore {
         // and asserting no /users/{other}/blocked/{sender} doc exists.
         allow create: if isAuth()
           && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
           && get(/databases/$(database)/documents/conversations/$(convoId)).data.messageCount[request.auth.uid] < 5
           && (
@@ -251,6 +254,9 @@ service cloud.firestore {
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
         allow create: if isAuth()
           && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
         allow update, delete: if false;
       }

@@ -643,7 +643,7 @@ struct ConversationView: View {
             "createdAt": FieldValue.serverTimestamp()
         ], forDocument: messageRef)
         batch.setData([
-            "lastMessage": trimmed,
+            "lastMessage": String(trimmed.prefix(50)),
             "lastMessageAt": FieldValue.serverTimestamp(),
             "messageCount": [uid: FieldValue.increment(Int64(1))]
         ], forDocument: convoRef, merge: true)

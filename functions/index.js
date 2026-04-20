@@ -846,6 +846,69 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
 });
 
 // ============================================================
+// Content moderation — flag replies with prohibited content
+// ============================================================
+
+exports.onReplyCreatedModerate = onDocumentCreated(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const postId = event.params.postId;
+    const replyId = event.params.replyId;
+    const data = event.data.data();
+    if (!data) return;
+
+    const text = (data.text || "").toLowerCase();
+
+    const hatePatterns = [/n[i1!]gg/i, /f[a@]gg/i, /r[e3]t[a@]rd/i, /tr[a@]nny/i, /d[yi1]ke/i, /ch[i1]nk/i, /sp[i1]ck/i, /k[i1]ke/i, /w[e3]tb[a@]ck/i, /g[o0][o0]k/i, /c[o0][o0]n/i, /towelhead/i, /raghead/i, /beaner/i, /zipperhead/i];
+    const threatPhrases = ["kill you", "kill him", "kill her", "kill them", "shoot you", "shoot up", "stab you", "rape you", "rape her", "hunt you down", "know where you live", "find where you live", "slit your throat", "put a bullet"];
+    const sexualPatterns = [/porn/i, /hentai/i, /\bxxx\b/i, /onlyfans/i, /send nudes/i, /blowjob/i, /blow job/i, /sext/i, /nsfw/i];
+    const harassmentPhrases = ["kill yourself", "kys", "go die", "you should die", "hope you die", "drink bleach", "neck yourself", "nobody likes you", "youre worthless", "you deserve to die"];
+
+    let flagReason = null;
+    if (hatePatterns.some((p) => p.test(text))) flagReason = "hate_speech";
+    else if (harassmentPhrases.some((p) => text.includes(p))) flagReason = "harassment";
+    else if (threatPhrases.some((p) => text.includes(p))) flagReason = "targeted_threat";
+    else if (sexualPatterns.some((p) => p.test(text))) flagReason = "sexual_content";
+
+    if (flagReason) {
+      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
+      console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
+    }
+  }
+);
+
+// ============================================================
+// Content moderation — flag DM messages with prohibited content
+// ============================================================
+
+exports.onMessageCreatedModerate = onDocumentCreated(
+  "conversations/{convoId}/messages/{messageId}",
+  async (event) => {
+    const convoId = event.params.convoId;
+    const messageId = event.params.messageId;
+    const data = event.data.data();
+    if (!data) return;
+
+    const text = (data.text || "").toLowerCase();
+
+    const hatePatterns = [/n[i1!]gg/i, /f[a@]gg/i, /r[e3]t[a@]rd/i, /tr[a@]nny/i, /d[yi1]ke/i, /ch[i1]nk/i, /sp[i1]ck/i, /k[i1]ke/i, /w[e3]tb[a@]ck/i, /g[o0][o0]k/i, /c[o0][o0]n/i, /towelhead/i, /raghead/i];
+    const threatPhrases = ["kill you", "kill him", "kill her", "shoot you", "stab you", "rape you", "rape her", "hunt you down", "know where you live", "find where you live", "slit your throat"];
+    const harassmentPhrases = ["kill yourself", "kys", "go die", "you should die", "hope you die", "drink bleach", "neck yourself"];
+
+    let flagReason = null;
+    if (hatePatterns.some((p) => p.test(text))) flagReason = "hate_speech";
+    else if (harassmentPhrases.some((p) => text.includes(p))) flagReason = "harassment";
+    else if (threatPhrases.some((p) => text.includes(p))) flagReason = "targeted_threat";
+
+    if (flagReason) {
+      await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).delete();
+      console.log(`Message ${messageId} in convo ${convoId} deleted: ${flagReason}`);
+    }
+  }
+);
+
+// ============================================================
 // Server-side rate limiting — replies
 // ============================================================
 

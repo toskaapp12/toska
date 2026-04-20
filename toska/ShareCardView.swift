@@ -11,6 +11,8 @@ struct ShareCardView: View {
     @Environment(\.dismiss) var dismiss
     @State private var selectedStyle = 0
     @State private var selectedFont = 0
+    @State private var selectedSize = 1
+    @State private var selectedAlignment = 1
     @State private var selectedRatio = 0
     @State private var showCopied = false
     @State private var showSharedConfirmation = false
@@ -126,7 +128,52 @@ struct ShareCardView: View {
                             .padding(.horizontal, 24)
                         }
 
-                        // MARK: - Size Picker
+                        // MARK: - Font Size + Alignment
+                        HStack(spacing: 16) {
+                            HStack(spacing: 5) {
+                                ForEach(0..<3, id: \.self) { index in
+                                    let labels = ["Aa", "Aa", "Aa"]
+                                    let sizes: [CGFloat] = [9, 11, 14]
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            selectedSize = index
+                                        }
+                                    } label: {
+                                        Text(labels[index])
+                                            .font(.system(size: sizes[index], weight: selectedSize == index ? .bold : .regular))
+                                            .foregroundColor(selectedSize == index ? .white.opacity(0.6) : .white.opacity(0.15))
+                                            .frame(width: 32, height: 28)
+                                            .background(selectedSize == index ? Color.white.opacity(0.08) : Color.clear)
+                                            .cornerRadius(4)
+                                    }
+                                }
+                            }
+
+                            Rectangle().fill(Color.white.opacity(0.06)).frame(width: 0.5, height: 20)
+
+                            HStack(spacing: 5) {
+                                ForEach(0..<3, id: \.self) { index in
+                                    let icons = ["text.alignleft", "text.aligncenter", "text.alignright"]
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            selectedAlignment = index
+                                        }
+                                    } label: {
+                                        Image(systemName: icons[index])
+                                            .font(.system(size: 11, weight: .light))
+                                            .foregroundColor(selectedAlignment == index ? .white.opacity(0.6) : .white.opacity(0.15))
+                                            .frame(width: 32, height: 28)
+                                            .background(selectedAlignment == index ? Color.white.opacity(0.08) : Color.clear)
+                                            .cornerRadius(4)
+                                    }
+                                }
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.horizontal, 24)
+
+                        // MARK: - Ratio Picker
                         HStack(spacing: 6) {
                             ForEach(0..<ratios.count, id: \.self) { index in
                                 Button {
@@ -348,7 +395,7 @@ struct ShareCardView: View {
                     .font(quoteFont(size: fontSize))
                     .foregroundColor(textColor)
                     .lineSpacing(lineSpacing)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(textAlignment)
                     .padding(.horizontal, textPadding)
 
                 Spacer()
@@ -404,22 +451,44 @@ struct ShareCardView: View {
         }
     }
 
+    var sizeMultiplier: CGFloat {
+        switch selectedSize {
+        case 0: return 0.8
+        case 2: return 1.25
+        default: return 1.0
+        }
+    }
+
     var fontSize: CGFloat {
         let length = text.count
+        let base: CGFloat
         if selectedRatio == 2 {
-            return length > 200 ? 11 : 13
+            base = length > 200 ? 11 : 13
+        } else if length > 300 {
+            base = 14
+        } else if length > 150 {
+            base = 16
+        } else {
+            base = 18
         }
-        if length > 300 { return 14 }
-        if length > 150 { return 16 }
-        return 18
+        return base * sizeMultiplier
     }
 
     var lineSpacing: CGFloat {
-        selectedRatio == 2 ? 3 : (text.count > 200 ? 5 : 7)
+        let base: CGFloat = selectedRatio == 2 ? 3 : (text.count > 200 ? 5 : 7)
+        return base * sizeMultiplier
     }
 
     var textPadding: CGFloat {
         selectedRatio == 2 ? 20 : 30
+    }
+
+    var textAlignment: TextAlignment {
+        switch selectedAlignment {
+        case 0: return .leading
+        case 2: return .trailing
+        default: return .center
+        }
     }
 
     // MARK: - Card Backgrounds
@@ -575,7 +644,7 @@ struct ShareCardView: View {
                     .font(quoteFont(size: renderFontSize))
                     .foregroundColor(textColor)
                     .lineSpacing(lineSpacing + 1)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(textAlignment)
                     .padding(.horizontal, selectedRatio == 2 ? 26 : 38)
 
                 Spacer()
@@ -624,12 +693,17 @@ struct ShareCardView: View {
 
     var renderFontSize: CGFloat {
         let length = text.count
+        let base: CGFloat
         if selectedRatio == 2 {
-            return length > 200 ? 13 : 16
+            base = length > 200 ? 13 : 16
+        } else if length > 300 {
+            base = 16
+        } else if length > 150 {
+            base = 18
+        } else {
+            base = 22
         }
-        if length > 300 { return 16 }
-        if length > 150 { return 18 }
-        return 22
+        return base * sizeMultiplier
     }
 
     // MARK: - Share Functions

@@ -711,7 +711,7 @@ struct ShareCardView: View {
     func saveToPhotos() {
         guard let image = renderCardImage() else { return }
         UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        HapticManager.play(.success)
+        HapticManager.play(.milestone)
         savedToPhotos = true
         showPostShareConfirmation()
     }

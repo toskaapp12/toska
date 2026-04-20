@@ -1334,11 +1334,19 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "facebook", "linkedin", "phone number", "my number", "text me",
         "call me", "dm me", "follow me", "find me", "look me up",
         "last name", "full name", "school name", "works at", "goes to",
-        "lives in", "lives on", "address",
+        "lives in", "lives on", "lives at", "address",
+        "apartment", "apt ", "suite ",
+        "her name is", "his name is", "their name is", "named ",
+        "zip code", "zipcode",
+        "discord", "telegram", "whatsapp", "signal",
+        "threads", "bluesky", "reddit",
     ]
     let lowered = text.lowercased()
     for pattern in identifyingPatterns { if lowered.contains(pattern) { return true } }
     if text.range(of: "@[a-zA-Z]", options: .regularExpression) != nil { return true }
+    // Street address pattern: "123 Main St" / "456 Oak Avenue"
+    let streetSuffixes = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy"
+    if text.range(of: "\\d+\\s+[A-Za-z]+\\s+(\(streetSuffixes))\\b", options: .regularExpression) != nil { return true }
     let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
         .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     let sentenceStarters: Set<String> = Set(sentences.compactMap { sentence in
@@ -1430,24 +1438,94 @@ enum ContentViolationType {
     case threat
     case sexual
     case spam
+    case harassment
+    case link
+}
+
+private func normalizeForModeration(_ text: String) -> String {
+    var s = text.lowercased()
+    // Strip zero-width characters
+    let zeroWidth: [Character] = ["\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{00AD}"]
+    s.removeAll { zeroWidth.contains($0) }
+    // Replace common homoglyphs (Cyrillic/Greek lookalikes)
+    let homoglyphs: [(Character, Character)] = [
+        ("\u{0430}", "a"), ("\u{0435}", "e"), ("\u{043E}", "o"), ("\u{0440}", "p"),
+        ("\u{0441}", "c"), ("\u{0443}", "y"), ("\u{0445}", "x"), ("\u{0456}", "i"),
+        ("\u{0391}", "a"), ("\u{0392}", "b"), ("\u{0395}", "e"), ("\u{0397}", "h"),
+        ("\u{0399}", "i"), ("\u{039A}", "k"), ("\u{039C}", "m"), ("\u{039D}", "n"),
+        ("\u{039F}", "o"), ("\u{03A1}", "p"), ("\u{03A4}", "t"), ("\u{03A5}", "y"),
+    ]
+    for (from, to) in homoglyphs {
+        s = s.map { $0 == from ? to : $0 }.reduce("", { $0 + String($1) })
+    }
+    return s
+}
+
+private func collapseForModeration(_ text: String) -> String {
+    // Collapse runs of 3+ identical letters to 2: "niggggger" → "nigger", "faaag" → "faag"
+    // Keeping 2 preserves double-letter words (e.g. "pass", "well") while defeating evasion.
+    var result = ""
+    var count = 0
+    var last: Character = "\0"
+    for char in text {
+        if char == last && char.isLetter {
+            count += 1
+            if count <= 2 { result.append(char) }
+        } else {
+            count = 1
+            last = char
+            result.append(char)
+        }
+    }
+    return result
+}
+
+private func stripSpaces(_ text: String) -> String {
+    text.replacingOccurrences(of: " ", with: "")
 }
 
 func contentViolation(in text: String) -> ContentViolationType? {
-    let lowered = text.lowercased()
+    let normalized = normalizeForModeration(text)
+    let collapsed = collapseForModeration(normalized)
+    let noSpaces = stripSpaces(normalized)
+    let collapsedNoSpaces = stripSpaces(collapsed)
 
-    // Slurs and hate speech — common slurs with leet-speak variants
+    // Check all four forms for maximum evasion resistance
+    let forms = [normalized, collapsed, noSpaces, collapsedNoSpaces]
+
+    // --- Slurs and hate speech ---
     let slurPatterns = [
         "n[i1!*]gg", "f[a@*]gg", "r[e3]t[a@]rd", "tr[a@]nny", "d[yi1]ke",
         "ch[i1]nk", "sp[i1]ck?", "k[i1]ke", "w[e3]tb[a@]ck", "g[o0][o0]k",
         "c[o0][o0]n", "towelhead", "raghead", "beaner", "zipperhead",
     ]
-    for pattern in slurPatterns {
-        if lowered.range(of: pattern, options: .regularExpression) != nil { return .slur }
+    for form in forms {
+        for pattern in slurPatterns {
+            if form.range(of: pattern, options: .regularExpression) != nil { return .slur }
+        }
     }
 
-    // Threats and violence — targeted threats, not emotional venting
-    // "i want to kill myself" is crisis content (handled separately), not a threat
-    // These target OTHER people specifically
+    // --- Directed self-harm encouragement (not emotional venting) ---
+    let harassmentPhrases = [
+        "kill yourself", "kys", "go die", "you should die",
+        "hope you die", "go hang yourself", "neck yourself",
+        "drink bleach", "jump off a bridge",
+        "nobody likes you", "everyone hates you",
+        "the world is better without you",
+        "you're worthless", "youre worthless",
+        "you're pathetic", "youre pathetic",
+        "you deserve to suffer", "you deserve to die",
+        "go away and never come back",
+        "no one will miss you", "noone will miss you",
+    ]
+    for phrase in harassmentPhrases {
+        if normalized.contains(phrase) { return .harassment }
+    }
+    for phrase in harassmentPhrases {
+        if noSpaces.contains(phrase.replacingOccurrences(of: " ", with: "")) { return .harassment }
+    }
+
+    // --- Threats and violence (targeted at others) ---
     let threatPhrases = [
         "kill you", "kill him", "kill her", "kill them",
         "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
@@ -1458,12 +1536,14 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "hunt you down", "come for you",
         "gonna hurt you", "going to hurt you",
         "beat you", "beat the shit",
+        "curb stomp", "slit your throat", "bash your",
+        "put a bullet", "put you in the ground",
     ]
     for phrase in threatPhrases {
-        if lowered.contains(phrase) { return .threat }
+        if normalized.contains(phrase) { return .threat }
     }
 
-    // Sexual content
+    // --- Sexual content ---
     let sexualPatterns = [
         "porn", "hentai", "xxx", "onlyfans", "only fans",
         "nudes", "send nudes", "dick pic", "pussy pic",
@@ -1473,12 +1553,14 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "anal sex", "oral sex",
         "f[u\\*]ck me daddy", "choke me",
         "sex tape", "sextape", "sext me", "sexting",
+        "nsfw", "r34", "rule34", "rule 34",
+        "hook ?up", "booty ?call",
     ]
     for pattern in sexualPatterns {
-        if lowered.range(of: pattern, options: .regularExpression) != nil { return .sexual }
+        if normalized.range(of: pattern, options: .regularExpression) != nil { return .sexual }
     }
 
-    // Spam — commercial content, not emotional expression
+    // --- Spam ---
     let spamPhrases = [
         "buy now", "click here", "limited time", "act now",
         "free money", "make money", "earn money",
@@ -1487,9 +1569,27 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "discount code", "promo code", "use code",
         "dm me for", "dm for",
         "cashapp", "venmo me", "paypal me",
+        "subscribe to", "check out my",
+        "telegram", "whatsapp me",
     ]
     for phrase in spamPhrases {
-        if lowered.contains(phrase) { return .spam }
+        if normalized.contains(phrase) { return .spam }
+    }
+
+    // --- URL/link detection ---
+    let urlPatterns = [
+        "https?://", "www\\.", "\\.com/", "\\.net/", "\\.org/",
+        "\\.io/", "\\.co/", "\\.me/", "\\.ly/",
+        "bit\\.ly", "tinyurl", "linktr\\.ee",
+    ]
+    for pattern in urlPatterns {
+        if normalized.range(of: pattern, options: .regularExpression) != nil { return .link }
+    }
+    // Bare domain pattern: word.tld (but not common false positives)
+    let bareDomainExclusions = ["i.e", "e.g", "a.m", "p.m", "u.s", "mr.", "mrs.", "dr."]
+    if normalized.range(of: "[a-z0-9]+\\.(com|net|org|io|co|app|xyz|gg|tv|me)\\b", options: .regularExpression) != nil {
+        let hasFalsePositive = bareDomainExclusions.contains { normalized.contains($0) }
+        if !hasFalsePositive { return .link }
     }
 
     return nil
@@ -1505,6 +1605,10 @@ func contentViolationMessage(for type: ContentViolationType) -> String {
         return "this contains sexual content that isn't appropriate for toska."
     case .spam:
         return "this looks like it might be spam or promotional content."
+    case .harassment:
+        return "this looks like it's directed at hurting someone. toska is for expressing your own feelings, not tearing others down."
+    case .link:
+        return "toska doesn't allow links. this is an anonymous space — keep it about the words."
     }
 }
 

@@ -641,7 +641,7 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 /// their stored `acceptedPolicyVersion` matches this value.
 let currentPolicyVersion = 1
 
-let toskaSupportEmail = "support@toskaapp.com"
+let toskaSupportEmail = "salinarotess@gmail.com"
 
 /// Full Terms of Service + Content Policy body, rendered inside the
 /// acceptance screen. Written in the app's own (lowercase, first-person-ish)

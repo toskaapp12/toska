@@ -1344,6 +1344,17 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     let lowered = text.lowercased()
     for pattern in identifyingPatterns { if lowered.contains(pattern) { return true } }
     if text.range(of: "@[a-zA-Z]", options: .regularExpression) != nil { return true }
+    // "named X" or "called X" pattern — detects "a girl named Sofia", "he's called Marcus", etc.
+    let namedPatterns = ["named ", "called ", "name is ", "name was "]
+    for pattern in namedPatterns {
+        if let range = lowered.range(of: pattern) {
+            let afterPattern = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if let firstWord = afterPattern.components(separatedBy: CharacterSet.alphanumerics.inverted).first,
+               !firstWord.isEmpty, firstWord.first?.isUppercase == true {
+                return true
+            }
+        }
+    }
     // Street address pattern: "123 Main St" / "456 Oak Avenue"
     let streetSuffixes = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy"
     if text.range(of: "\\d+\\s+[A-Za-z]+\\s+(\(streetSuffixes))\\b", options: .regularExpression) != nil { return true }

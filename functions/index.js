@@ -712,6 +712,60 @@ exports.rateLimitPosts = onDocumentCreated("posts/{postId}", async (event) => {
 });
 
 // ============================================================
+// PII and URL detection helpers (shared across moderation triggers)
+// ============================================================
+
+const socialPatterns = [
+  /\b(instagram|insta|snapchat|tiktok|twitter|facebook|linkedin|discord|reddit|telegram|whatsapp|signal|bluesky|threads)\b/i,
+  /@[a-zA-Z][a-zA-Z0-9._]{2,}/,
+];
+
+function hasPhoneNumber(text) {
+  const stripped = text.replace(/[\s\-\(\)\.]/g, '');
+  const digits = stripped.replace(/[^\d]/g, '');
+  const crisisNumbers = ['988', '741741', '18002738255', '18007997233', '18006564673'];
+  let cleaned = digits;
+  for (const num of crisisNumbers) {
+    cleaned = cleaned.replace(num, '');
+  }
+  return cleaned.length >= 10;
+}
+
+const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+const addressPattern = /\d+\s+[A-Za-z]+\s+(street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy)\b/i;
+
+const identifyingPhrases = [
+  "her name is", "his name is", "their name is",
+  "lives at", "lives in", "lives on",
+  "works at", "goes to", "school name",
+  "phone number", "my number", "text me", "call me",
+  "dm me", "follow me", "find me", "look me up",
+  "last name", "full name", "address",
+  "apartment", "apt ", "suite ",
+];
+
+function containsPII(text) {
+  const lower = text.toLowerCase();
+  if (socialPatterns.some((p) => p.test(text))) return true;
+  if (hasPhoneNumber(text)) return true;
+  if (emailPattern.test(text)) return true;
+  if (addressPattern.test(text)) return true;
+  if (identifyingPhrases.some((phrase) => lower.includes(phrase))) return true;
+  return false;
+}
+
+const urlPatterns = [
+  /https?:\/\//i,
+  /www\./i,
+  /[a-z0-9]+\.(com|net|org|io|co|app|xyz|gg|tv|me)\b/i,
+  /bit\.ly|tinyurl|linktr\.ee/i,
+];
+
+function containsURL(text) {
+  return urlPatterns.some((p) => p.test(text));
+}
+
+// ============================================================
 // Content moderation — flag posts with prohibited content
 // ============================================================
 
@@ -803,6 +857,10 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     flagReason = "targeted_threat";
   } else if (sexualPatterns.some((p) => p.test(text))) {
     flagReason = "sexual_content";
+  } else if (containsPII(postData.text || "")) {
+    flagReason = "personal_information";
+  } else if (containsURL(postData.text || "")) {
+    flagReason = "contains_link";
   }
 
   const isConcerning = concerningPhrases.some((phrase) => text.includes(phrase));
@@ -869,11 +927,23 @@ exports.onReplyCreatedModerate = onDocumentCreated(
     else if (harassmentPhrases.some((p) => text.includes(p))) flagReason = "harassment";
     else if (threatPhrases.some((p) => text.includes(p))) flagReason = "targeted_threat";
     else if (sexualPatterns.some((p) => p.test(text))) flagReason = "sexual_content";
+    else if (containsPII(data.text || "")) flagReason = "personal_information";
+    else if (containsURL(data.text || "")) flagReason = "contains_link";
 
     if (flagReason) {
-      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
-      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
-      console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
+      if (flagReason === "personal_information" || flagReason === "contains_link") {
+        // PII and links: flag for review instead of deleting (higher false positive rate)
+        await db.collection("posts").doc(postId).collection("replies").doc(replyId).update({
+          flagged: true,
+          flaggedAt: FieldValue.serverTimestamp(),
+          flagReason,
+        });
+        console.log(`Reply ${replyId} on post ${postId} flagged: ${flagReason}`);
+      } else {
+        await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+        await safeDecrement(db.collection("posts").doc(postId), "replyCount");
+        console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
+      }
     }
   }
 );
@@ -900,10 +970,22 @@ exports.onMessageCreatedModerate = onDocumentCreated(
     if (hatePatterns.some((p) => p.test(text))) flagReason = "hate_speech";
     else if (harassmentPhrases.some((p) => text.includes(p))) flagReason = "harassment";
     else if (threatPhrases.some((p) => text.includes(p))) flagReason = "targeted_threat";
+    else if (containsPII(data.text || "")) flagReason = "personal_information";
+    else if (containsURL(data.text || "")) flagReason = "contains_link";
 
     if (flagReason) {
-      await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).delete();
-      console.log(`Message ${messageId} in convo ${convoId} deleted: ${flagReason}`);
+      if (flagReason === "personal_information" || flagReason === "contains_link") {
+        // PII and links: flag for review instead of deleting (higher false positive rate)
+        await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).update({
+          flagged: true,
+          flaggedAt: FieldValue.serverTimestamp(),
+          flagReason,
+        });
+        console.log(`Message ${messageId} in convo ${convoId} flagged: ${flagReason}`);
+      } else {
+        await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).delete();
+        console.log(`Message ${messageId} in convo ${convoId} deleted: ${flagReason}`);
+      }
     }
   }
 );

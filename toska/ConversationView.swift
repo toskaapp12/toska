@@ -644,8 +644,7 @@ struct ConversationView: View {
         ], forDocument: messageRef)
         batch.setData([
             "lastMessage": String(trimmed.prefix(50)),
-            "lastMessageAt": FieldValue.serverTimestamp(),
-            "messageCount": [uid: FieldValue.increment(Int64(1))]
+            "lastMessageAt": FieldValue.serverTimestamp()
         ], forDocument: convoRef, merge: true)
 
         batch.commit { error in

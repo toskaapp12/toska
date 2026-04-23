@@ -102,6 +102,7 @@ struct ContentView: View {
             )
         }
         .onAppear {
+            #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("UI_TESTING") {
                 if Auth.auth().currentUser?.uid != nil {
                     isLoggedIn = true
@@ -109,6 +110,7 @@ struct ContentView: View {
                 isLoading = false
                 return
             }
+            #endif
             if let uid = Auth.auth().currentUser?.uid {
                 verifyUserDocument(uid: uid)
             } else {
@@ -141,6 +143,7 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignIn)) { notification in
             guard let uid = notification.userInfo?["uid"] as? String else { return }
+            #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("UI_TESTING") {
                 isLoggedIn = true
                 isLoading = false
@@ -150,6 +153,7 @@ struct ContentView: View {
                 }
                 return
             }
+            #endif
             verifyUserDocument(uid: uid)
         }
         .onChange(of: scenePhase) { _, newPhase in

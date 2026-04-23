@@ -1005,6 +1005,61 @@ exports.cleanupExpiredCircles = onSchedule("every 60 minutes", async () => {
 });
 
 // ============================================================
+// Server-side rate limiting — notifications
+// ============================================================
+
+exports.rateLimitNotifications = onDocumentCreated(
+  "users/{userId}/notifications/{notifId}",
+  async (event) => {
+    const userId = event.params.userId;
+    const notifId = event.params.notifId;
+    const notifData = event.data.data();
+    if (!notifData) return;
+
+    const fromUserId = notifData.fromUserId;
+    if (!fromUserId) return;
+
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const recentSnap = await db.collectionGroup("notifications")
+      .where("fromUserId", "==", fromUserId)
+      .where("createdAt", ">", Timestamp.fromDate(fiveMinAgo))
+      .orderBy("createdAt", "desc")
+      .limit(25)
+      .get();
+
+    if (recentSnap.size > 20) {
+      console.log("Notification rate limit exceeded for sender:", fromUserId);
+      await db.collection("users").doc(userId).collection("notifications").doc(notifId).delete();
+      console.log("Spam notification deleted:", notifId);
+    }
+  }
+);
+
+// ============================================================
+// Counter: DM message count (server-side only)
+// ============================================================
+
+exports.onMessageCreatedUpdateCount = onDocumentCreated(
+  "conversations/{convoId}/messages/{messageId}",
+  async (event) => {
+    const convoId = event.params.convoId;
+    const messageData = event.data.data();
+    if (!messageData) return;
+
+    const senderId = messageData.senderId;
+    if (!senderId) return;
+
+    try {
+      await db.collection("conversations").doc(convoId).update({
+        [`messageCount.${senderId}`]: FieldValue.increment(1),
+      });
+    } catch (err) {
+      console.warn("onMessageCreatedUpdateCount failed:", err.message);
+    }
+  }
+);
+
+// ============================================================
 // Scheduled stale pendingDeletions monitor — runs every hour
 // ============================================================
 

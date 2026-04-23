@@ -794,7 +794,7 @@ struct ChangePasswordView: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(Color.toskaTextLight)
                     
-                    SecureField("at least 6 characters", text: $newPassword)
+                    SecureField("at least 8 characters", text: $newPassword)
                         .font(.system(size: 13))
                         .padding(11)
                         .background(Color.white)
@@ -831,8 +831,8 @@ struct ChangePasswordView: View {
     }
     
     func updatePassword() {
-        guard newPassword.count >= 6 else {
-            message = "password must be at least 6 characters"
+        guard newPassword.count >= 8 else {
+            message = "password must be at least 8 characters"
             isError = true
             return
         }

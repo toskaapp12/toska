@@ -240,8 +240,8 @@ struct CreateAccountView: View {
             errorMessage = "passwords don't match"
             return
         }
-        guard password.count >= 6 else {
-            errorMessage = "password must be at least 6 characters"
+        guard password.count >= 8 else {
+            errorMessage = "password must be at least 8 characters"
             return
         }
         errorMessage = ""

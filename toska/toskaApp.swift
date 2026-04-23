@@ -2,6 +2,7 @@ import SwiftUI
 import FirebaseCore
 import FirebaseMessaging
 import FirebaseAuth
+import FirebaseAppCheck
 import GoogleSignIn
 
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -11,6 +12,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                          didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
             print("🔥 AppDelegate — didFinishLaunching")
+            #if DEBUG
+            let providerFactory = AppCheckDebugProviderFactory()
+            #else
+            let providerFactory = AppAttestProviderFactory()
+            #endif
+            AppCheck.setAppCheckProviderFactory(providerFactory)
             FirebaseApp.configure()
 
             // Analytics + Crashlytics are wired through the Telemetry namespace

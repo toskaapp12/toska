@@ -1344,7 +1344,33 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     let lowered = text.lowercased()
     for pattern in identifyingPatterns { if lowered.contains(pattern) { return true } }
     if text.range(of: "@[a-zA-Z]", options: .regularExpression) != nil { return true }
-    // "named X" or "called X" pattern — detects "a girl named Sofia", "he's called Marcus", etc.
+
+    // Possessive name pattern: "Jessica's", "Mike's" — a capitalized word followed by 's
+    if text.range(of: "\\b[A-Z][a-z]{2,}'s\\b", options: .regularExpression) != nil {
+        let matches = text.matches(of: /\b([A-Z][a-z]{2,})'s\b/)
+        for match in matches {
+            let name = String(match.1).lowercased()
+            if !ambiguousWords.contains(name) { return true }
+        }
+    }
+
+    // "my ex [Name]", "my friend [Name]", "my sister [Name]" etc.
+    let relationshipPrefixes = ["my ex ", "my friend ", "my bf ", "my gf ",
+        "my boyfriend ", "my girlfriend ", "my sister ", "my brother ",
+        "my mom ", "my dad ", "my mother ", "my father ",
+        "my coworker ", "my boss ", "my roommate ", "my neighbor ",
+        "this girl ", "this guy ", "this boy ", "this man ", "this woman "]
+    for prefix in relationshipPrefixes {
+        if let range = lowered.range(of: prefix) {
+            let afterPrefix = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if let firstWord = afterPrefix.components(separatedBy: CharacterSet.alphanumerics.inverted).first,
+               !firstWord.isEmpty, firstWord.count >= 2, firstWord.first?.isUppercase == true {
+                return true
+            }
+        }
+    }
+
+    // "named X", "called X", "name is X", "name was X"
     let namedPatterns = ["named ", "called ", "name is ", "name was "]
     for pattern in namedPatterns {
         if let range = lowered.range(of: pattern) {
@@ -1355,6 +1381,19 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
             }
         }
     }
+
+    // Any capitalized word that looks like a proper noun mid-sentence
+    // (not a sentence starter, not an ambiguous word, not a known safe word)
+    let safeCapitalizedWords: Set<String> = [
+        "i", "im", "ive", "ill", "id",
+        "god", "christmas", "easter", "halloween", "valentines",
+        "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+        "january", "february", "march", "april", "june", "july", "august",
+        "september", "october", "november", "december",
+        "american", "english", "spanish", "french", "chinese", "japanese",
+        "toska", "giphy", "apple", "google", "firebase",
+    ]
+
     // Street address pattern: "123 Main St" / "456 Oak Avenue"
     let streetSuffixes = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy"
     if text.range(of: "\\d+\\s+[A-Za-z]+\\s+(\(streetSuffixes))\\b", options: .regularExpression) != nil { return true }
@@ -1366,8 +1405,10 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     let words = text.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
     for word in words {
         let lower = word.lowercased()
-        if lower.count < 3 { continue }
+        if lower.count < 2 { continue }
         if ambiguousWords.contains(lower) { continue }
+        if safeCapitalizedWords.contains(lower) { continue }
+        // Known name in database — flag it
         if commonNames.contains(lower) {
             if word.first?.isUppercase == true {
                 if sentenceStarters.contains(word) { continue }

@@ -243,6 +243,13 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 2000
+          // Schema lockdown: only the four expected fields can land on a
+          // message doc. Without this, a malicious or buggy client could
+          // write arbitrary extra fields and let a future Cloud Function
+          // trust them. The clientCountedV1 marker is required because
+          // ConversationView always sets it; legacy messages without it
+          // are already in Firestore but new writes must include it.
+          && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt', 'clientCountedV1'])
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
           && get(/databases/$(database)/documents/conversations/$(convoId)).data.messageCount[request.auth.uid] < 5
           && (
@@ -335,6 +342,15 @@ service cloud.firestore {
 
     match /admins/{uid} {
       allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    // Server-only audit log of admin actions. Cloud Functions write here
+    // via Admin SDK (which bypasses these rules); admins can read for
+    // accountability; nobody else has any access. See
+    // functions/index.js: auditUserRestriction / auditReportResolution.
+    match /adminAuditLog/{entryId} {
+      allow read: if isAdmin();
       allow write: if false;
     }
 

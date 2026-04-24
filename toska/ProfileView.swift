@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseAppCheck
 @preconcurrency import FirebaseFirestore
 
 
@@ -571,39 +572,48 @@ struct ProfileView: View {
     
     func reconcileCountsIfNeeded() {
             guard let uid = Auth.auth().currentUser?.uid else { return }
-        let lastKey = UserDefaultsKeys.lastReconcileDate(uid: uid)
-                   if let lastReconcile = UserDefaults.standard.object(forKey: lastKey) as? Date,
-                      Date().timeIntervalSince(lastReconcile) < 86400 { return }
-            let db = Firestore.firestore()
-            let userRef = db.collection("users").document(uid)
+            let lastKey = UserDefaultsKeys.lastReconcileDate(uid: uid)
+            if let lastReconcile = UserDefaults.standard.object(forKey: lastKey) as? Date,
+               Date().timeIntervalSince(lastReconcile) < 86400 { return }
 
+            // Reconciliation now runs server-side via the reconcileMyCounts
+            // Cloud Function. Previously the client did the count() and
+            // wrote followerCount/followingCount to its own user doc — the
+            // numbers shown to other users were essentially client-supplied.
+            // The endpoint requires both an App Check token and a Firebase
+            // ID token, then reads/writes via Admin SDK so it doesn't
+            // depend on the user-doc rule allowing self-writes.
             Task { @MainActor in
-                var updates: [String: Any] = [:]
+                guard let endpoint = URL(string: "https://us-central1-toska-4ebf4.cloudfunctions.net/reconcileMyCounts") else { return }
+                guard let idToken = try? await Auth.auth().currentUser?.getIDToken() else { return }
+                let appCheckToken: String?
+                do {
+                    appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false).token
+                } catch {
+                    print("⚠️ reconcileMyCounts: app check token fetch failed: \(error)")
+                    return
+                }
 
-                let followerSnap = try? await db.collection("users").document(uid)
-                    .collection("followers").count.getAggregation(source: .server)
-                if let count = followerSnap?.count {
-                    let actual = Int(truncating: count)
-                    if actual != self.followerCount {
-                        self.followerCount = actual
-                        updates["followerCount"] = actual
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 15
+                request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+                if let appCheckToken {
+                    request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+                }
+
+                do {
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                        return
                     }
+                    if let f = json["followerCount"] as? Int { self.followerCount = f }
+                    if let f = json["followingCount"] as? Int { self.followingCount = f }
+                    UserDefaults.standard.set(Date(), forKey: lastKey)
+                } catch {
+                    print("⚠️ reconcileMyCounts call failed: \(error)")
                 }
-
-                let followingSnap = try? await db.collection("users").document(uid)
-                    .collection("following").count.getAggregation(source: .server)
-                if let count = followingSnap?.count {
-                    let actual = Int(truncating: count)
-                    if actual != self.followingCount {
-                        self.followingCount = actual
-                        updates["followingCount"] = actual
-                    }
-                }
-
-                if !updates.isEmpty {
-                    try? await userRef.updateData(updates)
-                }
-                UserDefaults.standard.set(Date(), forKey: UserDefaultsKeys.lastReconcileDate(uid: uid))
             }
     }
     

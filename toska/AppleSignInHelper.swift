@@ -192,11 +192,31 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
               let authCodeString = String(data: authCodeData, encoding: .utf8) else {
             return
         }
-        do {
-            try await Auth.auth().revokeToken(withAuthorizationCode: authCodeString)
-            deleteAuthCode()
-        } catch {
-            print("⚠️ Apple token revocation failed: \(error.localizedDescription)")
+        // Retry with exponential backoff. The previous implementation was a
+        // single attempt — if a network blip dropped the request, the token
+        // stayed valid forever and a stolen device could keep using it. Three
+        // attempts at 2/4/8 seconds covers transient network failures without
+        // hammering Apple's revocation endpoint.
+        let delays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
+        var lastError: Error? = nil
+        for (attempt, delay) in delays.enumerated() {
+            do {
+                try await Auth.auth().revokeToken(withAuthorizationCode: authCodeString)
+                deleteAuthCode()
+                return
+            } catch {
+                lastError = error
+                print("⚠️ Apple token revocation attempt \(attempt + 1) failed: \(error.localizedDescription)")
+                if attempt < delays.count - 1 {
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+            }
+        }
+        // All attempts failed. Surface to Crashlytics so the failure is
+        // visible in production — the local auth code stays in keychain so
+        // the next sign-in attempt can retry from a known state.
+        if let error = lastError {
+            Telemetry.recordError(error, context: "AppleSignInHelper.revokeToken.allRetriesFailed")
         }
     }
 

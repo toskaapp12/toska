@@ -1,4 +1,4 @@
-const { onDocumentDeleted, onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -1285,10 +1285,31 @@ exports.giphyProxy = onRequest(
       const r = await fetch(upstream, { signal: controller.signal });
       clearTimeout(timeout);
       if (!r.ok) {
-        res.status(502).json({ error: `giphy upstream ${r.status}` });
+        // Normalised error so we don't leak that Giphy is the upstream
+        // (it's already obvious from CSP / network logs but no need to
+        // hand it to a casual probe).
+        console.warn(`giphyProxy upstream ${r.status}`);
+        res.status(502).json({ error: "upstream unavailable" });
         return;
       }
-      const json = await r.json();
+      // Defend against an upstream returning a runaway payload (compromised
+      // upstream, DNS hijack, mistaken API change). Real Giphy responses for
+      // limit=30 are < 100KB. 500KB cap is loose enough to avoid false
+      // positives but tight enough to bound the client memory we'd hand it.
+      const text = await r.text();
+      if (text.length > 500_000) {
+        console.warn(`giphyProxy oversized response: ${text.length} bytes`);
+        res.status(502).json({ error: "upstream response too large" });
+        return;
+      }
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (parseErr) {
+        console.warn("giphyProxy upstream returned non-JSON");
+        res.status(502).json({ error: "upstream malformed" });
+        return;
+      }
       // Cache the trending feed for a minute at the edge. Search results
       // are user-specific enough that caching them risks cross-user
       // pollution, so they go uncached.
@@ -1300,5 +1321,144 @@ exports.giphyProxy = onRequest(
       console.warn("giphyProxy failed:", err.message);
       res.status(502).json({ error: "upstream failure" });
     }
+  }
+);
+
+// ============================================================
+// Counter reconciliation — server-authoritative followerCount /
+// followingCount for the authenticated user.
+//
+// Replaces a previous client-side path in ProfileView where the iOS app
+// counted the followers/following subcollections itself and wrote the
+// numbers back to the main user doc. That worked but meant the client
+// was the source of truth on engagement counts — a tampered build could
+// inflate them even with no actual followers.
+//
+// Now: the client calls this endpoint, the function counts the
+// subcollections via the Admin SDK (which bypasses Firestore rules), and
+// writes the corrected counts. The client never touches the count fields
+// directly. We don't need to tighten the rules to forbid client counter
+// writes today (would require coordinated rollout), but this is the
+// foundation that makes that lockdown safe later.
+// ============================================================
+
+exports.reconcileMyCounts = onRequest(
+  { cors: false },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "method not allowed" });
+      return;
+    }
+
+    const appCheckToken = req.get("X-Firebase-AppCheck");
+    if (!appCheckToken) {
+      res.status(401).json({ error: "missing app check token" });
+      return;
+    }
+    try {
+      await getAppCheck().verifyToken(appCheckToken);
+    } catch (err) {
+      res.status(401).json({ error: "invalid app check token" });
+      return;
+    }
+
+    const authHeader = req.get("Authorization") || "";
+    const match = authHeader.match(/^Bearer\s+(.+)$/);
+    if (!match) {
+      res.status(401).json({ error: "missing bearer token" });
+      return;
+    }
+    let uid;
+    try {
+      const decoded = await getAuth().verifyIdToken(match[1]);
+      uid = decoded.uid;
+    } catch (err) {
+      res.status(401).json({ error: "invalid token" });
+      return;
+    }
+
+    try {
+      const userRef = db.collection("users").doc(uid);
+      const [followerSnap, followingSnap] = await Promise.all([
+        userRef.collection("followers").count().get(),
+        userRef.collection("following").count().get(),
+      ]);
+      const followerCount  = followerSnap.data().count;
+      const followingCount = followingSnap.data().count;
+      await userRef.update({ followerCount, followingCount });
+      res.json({ followerCount, followingCount });
+    } catch (err) {
+      console.warn("reconcileMyCounts failed:", err.message);
+      res.status(500).json({ error: "reconcile failed" });
+    }
+  }
+);
+
+// ============================================================
+// Admin audit log
+//
+// Mirrors admin-initiated writes to a write-once adminAuditLog collection
+// so we have a record of who did what when. Two surfaces today:
+//   - users/{uid} restricted / unrestricted (admin sets restricted=true)
+//   - reports/{reportId} status changes (resolve / dismiss)
+//
+// Firestore triggers don't carry request.auth context, so we infer the
+// acting admin from the data itself: user.restrictedBy and report.reviewedBy
+// are written by the admin's client and protected by the rules. If those
+// fields are ever spoofed by a bug, the audit log will show "unknown" but
+// the action itself still fires.
+//
+// adminAuditLog rules (firestore.rules):
+//   read:  admins only
+//   write: no one (server-side Admin SDK only)
+// ============================================================
+
+async function writeAuditEntry(entry) {
+  try {
+    await db.collection("adminAuditLog").add({
+      ...entry,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    console.error("adminAuditLog write failed:", err.message);
+  }
+}
+
+exports.auditUserRestriction = onDocumentUpdated(
+  "users/{userId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after  = event.data.after.data() || {};
+    if (before.restricted === after.restricted) return; // unrelated update
+
+    const action = after.restricted === true ? "user.restrict" : "user.unrestrict";
+    await writeAuditEntry({
+      action,
+      adminUid: after.restrictedBy || before.restrictedBy || "unknown",
+      targetType: "user",
+      targetId: event.params.userId,
+      targetHandle: after.handle || before.handle || null,
+      before: { restricted: before.restricted ?? false },
+      after:  { restricted: after.restricted ?? false },
+    });
+  }
+);
+
+exports.auditReportResolution = onDocumentUpdated(
+  "reports/{reportId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after  = event.data.after.data() || {};
+    if (before.status === after.status) return; // unrelated update
+
+    await writeAuditEntry({
+      action: `report.${after.status || "update"}`,
+      adminUid: after.reviewedBy || "unknown",
+      targetType: "report",
+      targetId: event.params.reportId,
+      reportType: after.type || before.type || null,
+      before: { status: before.status || null },
+      after:  { status: after.status  || null, action: after.action || null },
+    });
   }
 );

@@ -31,6 +31,7 @@ struct SettingsView: View {
     @State private var showChangeEmail = false
     @State private var showChangePassword = false
     @State private var showContentPolicy = false
+    @State private var showLinkBackup = false
     // Analytics opt-out. UserDefaults-backed because the Telemetry namespace
     // (which is non-View) reads the same key directly. Default true; flipping
     // off short-circuits all Telemetry.* calls everywhere in the app.
@@ -171,6 +172,56 @@ struct SettingsView: View {
                                                     .background(Color.white)
                                                     .cornerRadius(12)
                                                 }
+
+                        // MARK: - Sign-in methods (account recovery)
+                        // Listing the linked auth providers makes it explicit
+                        // what the user can use to sign back in. If they only
+                        // have Apple linked, losing access to their Apple ID
+                        // means losing access to Toska — the "add a backup"
+                        // CTA lets them set an email+password as a fallback.
+                                                settingsGroup {
+                                                    groupHeader("sign-in methods")
+                                                    VStack(spacing: 0) {
+                                                        let providers = Auth.auth().currentUser?.providerData ?? []
+                                                        ForEach(Array(providers.enumerated()), id: \.offset) { idx, provider in
+                                                            HStack {
+                                                                Image(systemName: providerIcon(provider.providerID))
+                                                                    .font(.system(size: 13, weight: .light))
+                                                                    .foregroundColor(Color.toskaTextLight)
+                                                                    .frame(width: 18)
+                                                                Text(providerLabel(provider.providerID))
+                                                                    .font(.system(size: 13))
+                                                                    .foregroundColor(Color.toskaTextDark)
+                                                                Spacer()
+                                                                if let email = provider.email, !email.isEmpty {
+                                                                    Text(email)
+                                                                        .font(.system(size: 11))
+                                                                        .foregroundColor(Color.toskaTextLight)
+                                                                        .lineLimit(1)
+                                                                }
+                                                            }
+                                                            .padding(.horizontal, 14)
+                                                            .padding(.vertical, 12)
+                                                            if idx < providers.count - 1 {
+                                                                Divider().padding(.leading, 14)
+                                                            }
+                                                        }
+                                                        if providers.count == 1 && !providers.contains(where: { $0.providerID == "password" }) {
+                                                            Divider().padding(.leading, 14)
+                                                            actionRow("add a backup sign-in") { showLinkBackup = true }
+                                                        }
+                                                    }
+                                                    .background(Color.white)
+                                                    .cornerRadius(12)
+                                                    if Auth.auth().currentUser?.providerData.count == 1 {
+                                                        Text("if you lose access to your only sign-in method, you can't get back in. add a backup so you always have a way home.")
+                                                            .font(.system(size: 10))
+                                                            .foregroundColor(Color.toskaTextLight)
+                                                            .padding(.horizontal, 18)
+                                                            .padding(.top, 6)
+                                                            .multilineTextAlignment(.leading)
+                                                    }
+                                                }
                         
                         // MARK: - Sign Out
                         Button {
@@ -274,6 +325,7 @@ struct SettingsView: View {
 
         .sheet(isPresented: $showChangeEmail) { ChangeEmailView() }
         .sheet(isPresented: $showChangePassword) { ChangePasswordView() }
+        .sheet(isPresented: $showLinkBackup) { LinkBackupAuthView() }
         .fullScreenCover(isPresented: $showContentPolicy) {
             // Read-only re-display of the policy the user accepted at signup.
             // Both buttons just dismiss — there's no acceptance flow here
@@ -1038,5 +1090,184 @@ struct BlockedUsersListView: View {
         // in the rare failure case the row will reappear on next load.
         blocked.removeAll { $0.id == row.id }
         BlockedUsersCache.shared.unblock(row.id)
+    }
+}
+
+// MARK: - Provider helpers
+
+private func providerLabel(_ id: String) -> String {
+    switch id {
+    case "apple.com":    return "apple"
+    case "google.com":   return "google"
+    case "password":     return "email + password"
+    default:             return id
+    }
+}
+
+private func providerIcon(_ id: String) -> String {
+    switch id {
+    case "apple.com":    return "apple.logo"
+    case "google.com":   return "g.circle"
+    case "password":     return "envelope"
+    default:             return "key"
+    }
+}
+
+// MARK: - Link backup auth view
+//
+// Shown when a user with a single sign-in provider (typically Apple) wants
+// to add an email + password as a fallback so losing access to their Apple
+// ID isn't terminal. Wraps Firebase Auth's `currentUser?.link(with:)` with
+// an EmailAuthProvider credential. After a successful link, the user can
+// sign in either way.
+
+@MainActor
+struct LinkBackupAuthView: View {
+    @Environment(\.dismiss) var dismiss
+    @State private var email = ""
+    @State private var password = ""
+    @State private var isLinking = false
+    @State private var errorMessage = ""
+    @State private var didLink = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(Color.toskaTextLight)
+                }
+                .accessibilityLabel("close")
+                Spacer()
+                Text("add a backup")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color.toskaTextDark)
+                Spacer()
+                Image(systemName: "xmark").font(.system(size: 13)).foregroundColor(.clear).accessibilityHidden(true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("set an email + password you can use to sign in if your other method ever stops working. you can use any email — it doesn't have to match the one we have on file.")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.toskaTextLight)
+                        .lineSpacing(3)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("EMAIL")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color.toskaTextLight)
+                            .tracking(1.2)
+                        TextField("your@email.com", text: $email)
+                            .font(.system(size: 13))
+                            .padding(11)
+                            .background(Color(hex: "f5f6f8"))
+                            .cornerRadius(10)
+                            .keyboardType(.emailAddress)
+                            .textContentType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityLabel("backup email")
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PASSWORD")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(Color.toskaTextLight)
+                            .tracking(1.2)
+                        SecureField("••••••••", text: $password)
+                            .font(.system(size: 13))
+                            .padding(11)
+                            .background(Color(hex: "f5f6f8"))
+                            .cornerRadius(10)
+                            .textContentType(.newPassword)
+                            .accessibilityLabel("backup password")
+                        Text("at least 8 characters")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color.toskaTextLight)
+                    }
+
+                    if !errorMessage.isEmpty {
+                        Text(errorMessage)
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(hex: "c45c5c"))
+                    }
+
+                    if didLink {
+                        Text("done. you can now sign in with this email + password too.")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(hex: "5a9e8f"))
+                    } else {
+                        Button { linkBackup() } label: {
+                            ZStack {
+                                if isLinking {
+                                    ProgressView().tint(.white)
+                                } else {
+                                    Text("save backup")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(canSubmit ? Color.toskaBlue : Color.toskaDivider)
+                            .cornerRadius(12)
+                        }
+                        .disabled(!canSubmit || isLinking)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .padding(.bottom, 24)
+            }
+        }
+        .background(Color.white.ignoresSafeArea())
+    }
+
+    private var canSubmit: Bool {
+        let trimmed = email.trimmingCharacters(in: .whitespaces)
+        return trimmed.contains("@") && password.count >= 8
+    }
+
+    private func linkBackup() {
+        guard let user = Auth.auth().currentUser, canSubmit else { return }
+        isLinking = true
+        errorMessage = ""
+        let credential = EmailAuthProvider.credential(
+            withEmail: email.trimmingCharacters(in: .whitespaces),
+            password: password
+        )
+        user.link(with: credential) { _, error in
+            Task { @MainActor in
+                isLinking = false
+                if let error = error {
+                    let nsError = error as NSError
+                    let code = AuthErrorCode(rawValue: nsError.code)
+                    switch code {
+                    case .emailAlreadyInUse:
+                        errorMessage = "this email is already on another toska account."
+                    case .credentialAlreadyInUse:
+                        errorMessage = "this email is already linked to another account."
+                    case .weakPassword:
+                        errorMessage = "password is too weak — try a longer one."
+                    case .invalidEmail:
+                        errorMessage = "that email doesn't look right."
+                    case .requiresRecentLogin:
+                        errorMessage = "sign out and back in first, then try again."
+                    default:
+                        errorMessage = "couldn't add backup — \(error.localizedDescription)"
+                    }
+                    Telemetry.recordError(error, context: "LinkBackupAuth.link")
+                    return
+                }
+                didLink = true
+                password = ""
+            }
+        }
     }
 }

@@ -305,6 +305,15 @@ struct ConversationView: View {
                                     if newValue.count > 500 {
                                         messageText = String(newValue.prefix(500))
                                     }
+                                    // Persist draft per conversation so a kill
+                                    // mid-typing doesn't lose the message. Cleared
+                                    // on successful send below.
+                                    if !conversationId.isEmpty {
+                                        UserDefaults.standard.set(
+                                            messageText,
+                                            forKey: UserDefaultsKeys.messageDraft(conversationId: conversationId)
+                                        )
+                                    }
                                     let isTyping = !newValue
                                         .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                     if isTyping && !isCurrentlyTyping {
@@ -347,6 +356,15 @@ struct ConversationView: View {
             appearTask = Task {
                 let result = await checkIfBlocked()
                 handleBlockCheckResult(result)
+            }
+            // Restore any draft persisted from a prior session that was
+            // killed mid-typing. Skip if there's already text (typing in
+            // progress) so we don't clobber the live input.
+            if messageText.isEmpty, !conversationId.isEmpty {
+                let key = UserDefaultsKeys.messageDraft(conversationId: conversationId)
+                if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty {
+                    messageText = saved
+                }
             }
         }
         .onDisappear {
@@ -637,6 +655,14 @@ struct ConversationView: View {
 
         let previousText = messageText
         messageText = ""
+        // Send started — wipe the persisted draft. If the transaction fails
+        // we restore both messageText and the draft below so the user
+        // doesn't lose their words.
+        if !conversationId.isEmpty {
+            UserDefaults.standard.removeObject(
+                forKey: UserDefaultsKeys.messageDraft(conversationId: conversationId)
+            )
+        }
         myMessageCount += 1
         isCurrentlyTyping = false
         updateTypingStatus(false)
@@ -697,7 +723,16 @@ struct ConversationView: View {
                         // restore their text since it was at the cap anyway.
                         self.myMessageCount = self.messageLimit
                     } else {
+                        // Send failed — restore both the on-screen text and
+                        // the persisted draft so the user doesn't lose their
+                        // words even if they kill the app before retrying.
                         self.messageText = previousText
+                        if !self.conversationId.isEmpty {
+                            UserDefaults.standard.set(
+                                previousText,
+                                forKey: UserDefaultsKeys.messageDraft(conversationId: self.conversationId)
+                            )
+                        }
                         self.myMessageCount = max(0, self.myMessageCount - 1)
                     }
                     return

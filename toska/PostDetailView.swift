@@ -105,6 +105,14 @@ struct PostDetailView: View {
                                         if snapshot?.data()?["isLetter"] as? Bool == true { isLetter = true }
                                     }
                                 }
+                                // Restore any reply draft persisted from a
+                                // prior session that was killed mid-typing.
+                                if replyText.isEmpty {
+                                    let key = UserDefaultsKeys.replyDraft(postId: postId)
+                                    if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty {
+                                        replyText = saved
+                                    }
+                                }
                             }
                             isLiked = initialIsLiked
                             isSaved = initialIsSaved
@@ -348,6 +356,14 @@ struct PostDetailView: View {
                     .cornerRadius(20)
                     .onChange(of: replyText) { _, newValue in
                         if newValue.count > 500 { replyText = String(newValue.prefix(500)) }
+                        // Persist reply draft per post so a kill mid-typing
+                        // doesn't lose words. Cleared on successful send.
+                        if !postId.isEmpty {
+                            UserDefaults.standard.set(
+                                replyText,
+                                forKey: UserDefaultsKeys.replyDraft(postId: postId)
+                            )
+                        }
                     }
                 Button { sendReply() } label: {
                     Image(systemName: "arrow.up.circle.fill")
@@ -917,6 +933,11 @@ struct PostDetailView: View {
                         self.replyList.append(newReply)
                     }
                     self.replyText = ""
+                    if !self.postId.isEmpty {
+                        UserDefaults.standard.removeObject(
+                            forKey: UserDefaultsKeys.replyDraft(postId: self.postId)
+                        )
+                    }
                     self.replyGifUrl = nil
                     self.replyFocused = false
                     self.replyingToId = nil

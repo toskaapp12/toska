@@ -93,6 +93,43 @@ struct toskaApp: App {
                     // a meaningful boost for users on larger Dynamic Type
                     // settings without distorting the design language.
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
+                    // Universal links: a tap on an https://toskaapp.com/p/{id}
+                    // link from anywhere in iOS arrives here. We translate it
+                    // into the same .openPostFromPush notification that push
+                    // notifications use, so MainTabView's existing handler
+                    // does the actual deep-link routing — no parallel code path.
+                    //
+                    // Three things must be true outside the app for this to
+                    // work end-to-end (none of which can be set from this code):
+                    //   1. apple-app-site-association file at
+                    //      https://toskaapp.com/.well-known/apple-app-site-association
+                    //      with `applinks` declaring this app's bundle ID +
+                    //      Team ID and the `/p/*` path pattern.
+                    //   2. Associated Domains entitlement in the Xcode project
+                    //      with `applinks:toskaapp.com`.
+                    //   3. App ID in Apple Developer with Associated Domains
+                    //      capability enabled.
+                    .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                        handleUniversalLink(activity)
+                    }
             }
         }
+
+    private func handleUniversalLink(_ activity: NSUserActivity) {
+        guard let url = activity.webpageURL else { return }
+        // Path shapes we route:
+        //   /p/{postId}          → open post
+        // Everything else falls through to opening the app at the feed,
+        // which is the safer default than crashing or 404-ing in-app.
+        let parts = url.path.split(separator: "/")
+        if parts.count >= 2, parts[0] == "p" {
+            let postId = String(parts[1])
+            guard !postId.isEmpty else { return }
+            NotificationCenter.default.post(
+                name: .openPostFromPush,
+                object: nil,
+                userInfo: ["postId": postId]
+            )
+        }
+    }
 }

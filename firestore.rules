@@ -42,15 +42,23 @@ service cloud.firestore {
       //
       // Migration progress (2026-04):
       //   - email and fcmToken now live in users/{uid}/private/data — done
-      //   - selectedMood and notify*/pushEnabled/gentleCheckIn still on the
-      //     main user doc; broader audit deferred to Phase 2 since it
-      //     requires UserHandleCache to listen to two docs and FeedViewModel
-      //     to fetch mood from the private subcollection. Tracking task to
-      //     migrate those + tighten the read rule below to isOwner-only,
-      //     using a public projection for OtherProfileView's needs.
-      // TODO: sensitive fields (selectedMood, notify*, pushEnabled, gentleCheckIn)
-      // should be migrated to the private subcollection so this rule can be
-      // tightened to isOwner-only. Left as isAuth() to avoid breaking clients.
+      //   - selectedMood and notify*/pushEnabled/gentleCheckIn now also live
+      //     in users/{uid}/private/data. SettingsView writes them there and
+      //     deletes the legacy main-doc copies on next save; OnboardingView
+      //     writes selectedMood to the private subcollection; UserHandleCache
+      //     listens to both docs and prefers the private value;
+      //     FeedViewModel.fetchUserPreferences reads private first, falls back
+      //     to the legacy main-doc field for accounts that haven't been
+      //     through SettingsView yet.
+      //   - The fields remaining on the main doc are public-projection only
+      //     (handle, *Count, allowSharing, showFollowerCount, restricted),
+      //     read by OtherProfileView. The isAuth() leg below stays so those
+      //     reads keep working; sensitive prefs are no longer here to leak.
+      //   - Long-tail cleanup: any pre-migration accounts still have legacy
+      //     copies on the main doc until they open settings or onboarding
+      //     fires a save. A one-time admin script can scrub them by reading
+      //     and deleting the legacy field set; not strictly required since
+      //     reads now prefer the private copy.
       allow read: if isOwner(userId) || isAuth();
       allow create: if isOwner(userId)
         && request.resource.data.handle is string

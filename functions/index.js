@@ -1,11 +1,19 @@
 const { onDocumentDeleted, onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { getAuth } = require("firebase-admin/auth");
 const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
 const db = getFirestore();
+
+// Giphy API key — bound at runtime via Firebase Secret Manager so the value
+// never lives in source control or function logs. Set with:
+//   firebase functions:secrets:set GIPHY_KEY
+const GIPHY_KEY = defineSecret("GIPHY_KEY");
 
 // ============================================================
 // Helper functions
@@ -1128,6 +1136,13 @@ exports.onMessageCreatedUpdateCount = onDocumentCreated(
     const messageData = event.data.data();
     if (!messageData) return;
 
+    // Messages from the new client carry clientCountedV1: true because they
+    // increment messageCount inside the same transaction as the message
+    // create. Skipping here prevents a double-count. Old-client messages
+    // (no marker) still get incremented server-side so legacy installs
+    // continue to enforce the per-user 5-message cap.
+    if (messageData.clientCountedV1 === true) return;
+
     const senderId = messageData.senderId;
     if (!senderId) return;
 
@@ -1182,3 +1197,79 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
     }
   }
 });
+
+// ============================================================
+// Giphy proxy — keeps the API key off the client.
+//
+// Replaces the previous pattern where the Giphy API key was hardcoded in
+// GifPickerView.swift, exposing it to anyone who unzipped the IPA. The
+// client now hits this endpoint with its Firebase ID token in the
+// Authorization header; we verify the token before forwarding to Giphy
+// so abandoned/anonymous attackers can't burn the quota.
+//
+// Returns the raw Giphy response shape (data: [...]) so the iOS picker's
+// existing JSON parsing keeps working without changes to its data model.
+// ============================================================
+
+exports.giphyProxy = onRequest(
+  { secrets: [GIPHY_KEY], cors: false },
+  async (req, res) => {
+    if (req.method !== "GET") {
+      res.status(405).json({ error: "method not allowed" });
+      return;
+    }
+
+    // Verify Firebase ID token. Without this, the endpoint is a free
+    // anonymous proxy that anyone with the URL can hammer.
+    const authHeader = req.get("Authorization") || "";
+    const match = authHeader.match(/^Bearer\s+(.+)$/);
+    if (!match) {
+      res.status(401).json({ error: "missing bearer token" });
+      return;
+    }
+    try {
+      await getAuth().verifyIdToken(match[1]);
+    } catch (err) {
+      res.status(401).json({ error: "invalid token" });
+      return;
+    }
+
+    const mode = req.query.mode === "search" ? "search" : "trending";
+    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 50);
+    const rating = "pg-13";
+
+    let upstream;
+    if (mode === "search") {
+      const q = (req.query.q || "").toString().slice(0, 100);
+      if (!q.trim()) {
+        res.status(400).json({ error: "missing q for search mode" });
+        return;
+      }
+      upstream = `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(GIPHY_KEY.value())}&q=${encodeURIComponent(q)}&limit=${limit}&rating=${rating}`;
+    } else {
+      upstream = `https://api.giphy.com/v1/gifs/trending?api_key=${encodeURIComponent(GIPHY_KEY.value())}&limit=${limit}&rating=${rating}`;
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      const r = await fetch(upstream, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!r.ok) {
+        res.status(502).json({ error: `giphy upstream ${r.status}` });
+        return;
+      }
+      const json = await r.json();
+      // Cache the trending feed for a minute at the edge. Search results
+      // are user-specific enough that caching them risks cross-user
+      // pollution, so they go uncached.
+      if (mode === "trending") {
+        res.set("Cache-Control", "public, max-age=60");
+      }
+      res.json(json);
+    } catch (err) {
+      console.warn("giphyProxy failed:", err.message);
+      res.status(502).json({ error: "upstream failure" });
+    }
+  }
+);

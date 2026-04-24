@@ -169,7 +169,7 @@ struct ProfileView: View {
                                         switch selectedTab {
                                                                 case 0:
                                                                     if myPosts.isEmpty {
-                                                                        emptyState(title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
+                                                                        emptyState(icon: "square.and.pencil", title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
                                                                     } else {
                                                                         LazyVStack(spacing: 0) {
                                                                             ForEach(myPosts) { post in
@@ -200,7 +200,7 @@ struct ProfileView: View {
                                                                     }
                                                                 case 1:
                                                                     if likedPosts.isEmpty {
-                                                                        emptyState(title: "nothing felt yet.", subtitle: "youll know it when you see it.")
+                                                                        emptyState(icon: "heart", title: "nothing felt yet.", subtitle: "youll know it when you see it.")
                                                                     } else {
                                                                         LazyVStack(spacing: 0) {
                                                                             ForEach(likedPosts) { post in
@@ -218,7 +218,7 @@ struct ProfileView: View {
                                                                     }
                                                                 case 2:
                                                                     if savedPosts.isEmpty {
-                                                                        emptyState(title: "nothing saved.", subtitle: "some things are worth keeping.")
+                                                                        emptyState(icon: "bookmark", title: "nothing saved.", subtitle: "some things are worth keeping.")
                                                                     } else {
                                                                         LazyVStack(spacing: 0) {
                                                                             ForEach(savedPosts) { post in
@@ -461,14 +461,20 @@ struct ProfileView: View {
                 }
         }
     
-    func emptyState(title: String, subtitle: String) -> some View {
-            VStack(spacing: 12) {
+    func emptyState(icon: String = "tray", title: String, subtitle: String) -> some View {
+            VStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .ultraLight))
+                    .foregroundColor(Color.toskaBlue.opacity(0.4))
+                    .padding(.bottom, 2)
                 Text(title)
                     .font(.custom("Georgia-Italic", size: 18))
                     .foregroundColor(Color.toskaTextLight)
                 Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundColor(Color.toskaDivider)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 60)

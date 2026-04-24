@@ -37,22 +37,23 @@ struct MessagesListView: View {
                 Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                 
                 if isLoading {
-                    Spacer()
-                    ProgressView().tint(Color.toskaBlue)
+                    SkeletonFeed(kind: .conversation, count: 4)
                     Spacer()
                 } else if conversations.isEmpty {
                     Spacer()
-                    VStack(spacing: 10) {
+                    VStack(spacing: 14) {
                         Image(systemName: "bubble.left.and.bubble.right")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundColor(Color.toskaDivider)
+                            .font(.system(size: 30, weight: .ultraLight))
+                            .foregroundColor(Color.toskaBlue.opacity(0.4))
+                            .padding(.bottom, 2)
                         Text("no messages yet")
                                                                             .font(.system(size: 14, weight: .medium))
                                                                             .foregroundColor(Color.toskaTextLight)
                         Text("sometimes the hardest part is saying the first thing.")
                                                     .font(.system(size: 12))
-                                                    .foregroundColor(Color(hex: "cccccc"))
+                                                    .foregroundColor(Color.toskaDivider)
                                                     .multilineTextAlignment(.center)
+                                                    .padding(.horizontal, 32)
                     }
                     Spacer()
                 } else {

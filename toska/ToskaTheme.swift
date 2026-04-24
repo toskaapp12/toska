@@ -1269,3 +1269,129 @@ struct ReportSheet: View {
         }
     }
 }
+
+// MARK: - Skeleton loaders
+//
+// Animated placeholder rows used while a feed is loading. Replace the
+// centered ProgressView spinner pattern, which on slow networks made the
+// app feel broken — perceived performance is much better when users see
+// the *shape* of what's coming next instead of staring at a spinner.
+//
+// Lives at file-scope here (rather than a new file) because adding a new
+// .swift file requires editing toska.xcodeproj/project.pbxproj which is
+// fragile to do by hand. Move to its own file once that's safe.
+
+struct ShimmerView: View {
+    let cornerRadius: CGFloat
+    @State private var phase: CGFloat = -1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(cornerRadius: CGFloat = 4) {
+        self.cornerRadius = cornerRadius
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            RoundedRectangle(cornerRadius: cornerRadius)
+                .fill(Color.toskaDivider.opacity(0.18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius)
+                        .fill(LinearGradient(
+                            colors: [.clear, Color.white.opacity(0.55), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: geo.size.width * 0.6)
+                        .offset(x: geo.size.width * phase)
+                )
+                .clipped()
+        }
+        .onAppear {
+            // Skip the shimmer for users with Reduce Motion. The block
+            // still shows as a flat placeholder — they get the visual
+            // hierarchy without the animation.
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                phase = 1.5
+            }
+        }
+    }
+}
+
+struct SkeletonPostRow: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                ShimmerView().frame(width: 90, height: 12)
+                Spacer()
+                ShimmerView().frame(width: 36, height: 10)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                ShimmerView().frame(height: 14)
+                ShimmerView().frame(height: 14).padding(.trailing, 24)
+                ShimmerView().frame(height: 14).padding(.trailing, 80)
+            }
+            ShimmerView(cornerRadius: 8).frame(width: 60, height: 18)
+            HStack(spacing: 18) {
+                ShimmerView().frame(width: 30, height: 14)
+                ShimmerView().frame(width: 30, height: 14)
+                ShimmerView().frame(width: 30, height: 14)
+                Spacer()
+            }
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+}
+
+struct SkeletonNotificationRow: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ShimmerView(cornerRadius: 14).frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 6) {
+                ShimmerView().frame(height: 12)
+                ShimmerView().frame(height: 10).padding(.trailing, 80)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+struct SkeletonConversationRow: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ShimmerView(cornerRadius: 18).frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 6) {
+                ShimmerView().frame(width: 110, height: 12)
+                ShimmerView().frame(height: 10).padding(.trailing, 50)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
+/// Drop-in replacement for `ProgressView()` at the center of a feed-style
+/// list. Renders 4 skeleton rows of the requested kind so the loading view
+/// has the same vertical rhythm as the loaded view.
+struct SkeletonFeed: View {
+    enum Kind { case post, notification, conversation }
+    let kind: Kind
+    var count: Int = 4
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<count, id: \.self) { _ in
+                switch kind {
+                case .post:         SkeletonPostRow()
+                case .notification: SkeletonNotificationRow()
+                case .conversation: SkeletonConversationRow()
+                }
+            }
+        }
+        .accessibilityHidden(true) // VoiceOver shouldn't read placeholder rows
+    }
+}

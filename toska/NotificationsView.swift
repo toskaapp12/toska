@@ -69,12 +69,15 @@ struct NotificationsView: View {
 
                 // MARK: - Content
                 if isLoading {
-                    Spacer()
-                    ProgressView().tint(Color.toskaBlue)
+                    SkeletonFeed(kind: .notification, count: 5)
                     Spacer()
                 } else if notifications.isEmpty {
                     Spacer()
-                                        VStack(spacing: 12) {
+                                        VStack(spacing: 14) {
+                                            Image(systemName: "heart.text.square")
+                                                .font(.system(size: 30, weight: .ultraLight))
+                                                .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                                .padding(.bottom, 4)
                                             Text("\"someone will feel\nwhat you wrote.\"")
                                                 .font(.custom("Georgia-Italic", size: 20))
                                                 .foregroundColor(Color.toskaTimestamp)

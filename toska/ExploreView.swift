@@ -286,10 +286,17 @@ struct ExploreView: View {
                                                                             
                                                                             
                                                                             if tagPosts.isEmpty {
-                                        VStack(spacing: 8) {
-                                            Image(systemName: "pencil.line").font(.system(size: 20, weight: .light)).foregroundColor(Color.toskaDivider)
-                                            Text("nobody's said it yet").font(.system(size: 12)).foregroundColor(Color.toskaTextLight)
-                                                                                                                                    Text("be the first.").font(.system(size: 10)).foregroundColor(Color(hex: "cccccc"))
+                                        VStack(spacing: 14) {
+                                            Image(systemName: "pencil.line")
+                                                .font(.system(size: 28, weight: .ultraLight))
+                                                .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                                .padding(.bottom, 2)
+                                            Text("nobody's said it yet")
+                                                .font(.custom("Georgia-Italic", size: 18))
+                                                .foregroundColor(Color.toskaTextLight)
+                                            Text("be the first.")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color.toskaDivider)
                                         }.frame(maxWidth: .infinity).padding(.vertical, 60)
                                     } else {
                                         ForEach(Array(tagPosts.enumerated()), id: \.element.id) { index, post in
@@ -306,7 +313,7 @@ struct ExploreView: View {
                                         VStack(alignment: .leading, spacing: 0) {
                             
                             if isLoadingTrending {
-                                HStack { Spacer(); ProgressView().tint(Color.toskaBlue); Spacer() }.padding(.vertical, 30)
+                                SkeletonFeed(kind: .post, count: 4)
                             } else {
                                 VStack(spacing: 0) {
                                     ForEach(Array(trendingPosts.enumerated()), id: \.element.id) { index, post in

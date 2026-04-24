@@ -557,7 +557,7 @@ struct FeedPostRow: View {
                             Text(text)
                                                             .font(.custom("Georgia", size: 15))
                                                             .foregroundColor(LateNightTheme.primaryText)
-                                                            .lineSpacing(4)
+                                                            .lineSpacing(6)
                                                             .lineLimit(3)
                             
                             Button {
@@ -587,10 +587,10 @@ struct FeedPostRow: View {
                             Text(text)
                                                             .font(.custom("Georgia", size: 15))
                                                             .foregroundColor(LateNightTheme.primaryText)
-                                                            .lineSpacing(4)
+                                                            .lineSpacing(6)
                                                             .multilineTextAlignment(.leading)
                         }
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 8)
                                             }
                                         }
                                         
@@ -603,7 +603,7 @@ struct FeedPostRow: View {
                                                 .padding(.vertical, 3)
                                                 .background(tagColor(for: tag).opacity(0.06))
                                                 .cornerRadius(10)
-                                                .padding(.bottom, 2)
+                                                .padding(.bottom, 8)
                                                                                         }
                                         
                                         // GIF
@@ -702,7 +702,7 @@ struct FeedPostRow: View {
                                                                                    .scaleEffect(likePulse ? 1.15 : 1.0)
                                                                                    .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                                                                }
-                                        .padding(.top, 6)
+                                        .padding(.top, 12)
                                     }
                                 }
                                             .padding(.horizontal, 16)
@@ -1132,59 +1132,10 @@ struct ToskaRefreshHeader: View {
     }
 }
 
-// MARK: - Skeleton Post Row
-
-struct SkeletonPostRow: View {
-    @State private var shimmer = false
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
-                    .frame(width: 100, height: 11)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
-                    .frame(width: 28, height: 11)
-                Spacer()
-            }
-            .padding(.bottom, 10)
-            VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 13)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 13)
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LateNightTheme.divider)
-                    .frame(width: 160, height: 13)
-            }
-            .padding(.bottom, 12)
-            HStack(spacing: 0) {
-                ForEach(0..<3, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(LateNightTheme.divider)
-                        .frame(width: 28, height: 11)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Spacer()
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .overlay(
-            Rectangle()
-                .fill(LateNightTheme.divider.opacity(0.4))
-                .frame(height: 0.5),
-            alignment: .bottom
-        )
-        .opacity(shimmer ? 0.5 : 1.0)
-        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: shimmer)
-        .onAppear { shimmer = true }
-            }
-        }
+// SkeletonPostRow + Skeleton* family now live in ToskaTheme.swift so the
+// notification + conversation variants share the same shimmer engine. The
+// previous opacity-pulse implementation here was replaced; existing call
+// sites (FeedView's own SKELETONS branch above) keep working unchanged.
 
 // MARK: - Shared Tag Data
 

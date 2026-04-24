@@ -151,9 +151,14 @@ struct OtherProfileView: View {
                         
                         if selectedTab == 0 {
                             if posts.isEmpty {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "pencil.line").font(.system(size: 20, weight: .light)).foregroundColor(Color.toskaDivider)
-                                    Text("nothing here yet").font(.system(size: 12)).foregroundColor(Color.toskaTextLight)
+                                VStack(spacing: 14) {
+                                    Image(systemName: "pencil.line")
+                                        .font(.system(size: 28, weight: .ultraLight))
+                                        .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                        .padding(.bottom, 2)
+                                    Text("nothing here yet")
+                                        .font(.custom("Georgia-Italic", size: 18))
+                                        .foregroundColor(Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 60)
@@ -166,9 +171,14 @@ struct OtherProfileView: View {
                             }
                         } else {
                             if userReplies.isEmpty {
-                                VStack(spacing: 8) {
-                                    Image(systemName: "bubble.left").font(.system(size: 20, weight: .light)).foregroundColor(Color.toskaDivider)
-                                    Text("quiet so far").font(.system(size: 12)).foregroundColor(Color.toskaTextLight)
+                                VStack(spacing: 14) {
+                                    Image(systemName: "bubble.left")
+                                        .font(.system(size: 28, weight: .ultraLight))
+                                        .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                        .padding(.bottom, 2)
+                                    Text("quiet so far")
+                                        .font(.custom("Georgia-Italic", size: 18))
+                                        .foregroundColor(Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 60)

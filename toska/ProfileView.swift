@@ -439,27 +439,24 @@ struct ProfileView: View {
     
     func deleteReply(replyId: String, postId: String) {
             guard !replyId.isEmpty, !postId.isEmpty else { return }
-            let db = Firestore.firestore()
-            let postRef = db.collection("posts").document(postId)
-
-            db.runTransaction({ transaction, errorPointer in
-                let postSnap: DocumentSnapshot
-                do { postSnap = try transaction.getDocument(postRef) }
-                catch let e as NSError { errorPointer?.pointee = e; return nil }
-
-                guard postSnap.exists else { return nil }
-
-                let currentCount = postSnap.data()?["replyCount"] as? Int ?? 0
-                transaction.deleteDocument(db.collection("posts").document(postId).collection("replies").document(replyId))
-                if currentCount > 0 {
-                    transaction.updateData(["replyCount": currentCount - 1], forDocument: postRef)
+            // Counter decrement is handled server-side by the
+            // onReplyDeletedUpdateCount Cloud Function (functions/index.js).
+            // The previous client transaction also tried to write replyCount
+            // on the parent post — but the post update rule only permits the
+            // post author, so it failed permission_denied for replies on
+            // other people's posts (silently aborting the whole transaction
+            // and leaving the reply in place). The new rule additionally
+            // blocks counter writes from any client; doing the delete as a
+            // plain document delete lets the server-side trigger keep the
+            // count consistent without a permission fight.
+            Firestore.firestore()
+                .collection("posts").document(postId)
+                .collection("replies").document(replyId)
+                .delete { error in
+                    Task { @MainActor in
+                        if error == nil { myReplies.removeAll { $0.id == replyId } }
+                    }
                 }
-                return nil
-            }, completion: { _, error in
-                Task { @MainActor in
-                    if error == nil { myReplies.removeAll { $0.id == replyId } }
-                }
-            })
         }
     
     func emptyState(title: String, subtitle: String) -> some View {

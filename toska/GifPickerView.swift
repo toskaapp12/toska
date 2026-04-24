@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseAppCheck
 
 @MainActor
 struct GifPickerView: View {
@@ -196,11 +197,21 @@ struct GifPickerView: View {
         Task { @MainActor in
             fetchError = nil
             do {
-                // The proxy verifies a Firebase ID token; without one it 401s.
-                // If the token call fails (e.g. unauth'd state), surface the
-                // same generic copy as a network error rather than leaking
-                // auth specifics to the user.
+                // The proxy now enforces both an App Check token (proves
+                // the call is coming from a signed/attested Toska binary)
+                // and a Firebase ID token (proves there is a logged-in
+                // user). Either failure is surfaced as the same generic
+                // copy so we don't leak auth state to the user.
                 guard let token = try? await Auth.auth().currentUser?.getIDToken() else {
+                    isLoading = false
+                    fetchError = "couldn't load GIFs — try again."
+                    return
+                }
+                let appCheckToken: String?
+                do {
+                    appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false).token
+                } catch {
+                    print("⚠️ giphyProxy app check token fetch failed: \(error)")
                     isLoading = false
                     fetchError = "couldn't load GIFs — try again."
                     return
@@ -208,6 +219,9 @@ struct GifPickerView: View {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 15
                 request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                if let appCheckToken {
+                    request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+                }
                 let (data, _) = try await URLSession.shared.data(for: request)
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let dataArray = json["data"] as? [[String: Any]] else {

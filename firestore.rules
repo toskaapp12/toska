@@ -164,7 +164,16 @@ service cloud.firestore {
             && request.resource.data.originalAuthorId.size() > 0)
           || !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
         );
-      allow update: if (isAuth() && resource.data.authorId == request.auth.uid)
+      // Post author can edit text/editedAt etc., but cannot directly write
+      // counter fields — those are owned by Cloud Functions (Admin SDK
+      // bypasses these rules). Without this guard, the author could
+      // arbitrarily inflate likeCount/replyCount/repostCount on their own
+      // posts; the next legitimate like/reply event would correct it via
+      // FieldValue.increment, but in the gap the inflated number is shown
+      // in the feed. authorId/createdAt are immutable post-create.
+      allow update: if ((isAuth() && resource.data.authorId == request.auth.uid)
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt']))
         || isAdmin();
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();

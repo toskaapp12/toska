@@ -5,6 +5,7 @@ const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
+const { getAppCheck } = require("firebase-admin/app-check");
 const { getMessaging } = require("firebase-admin/messaging");
 
 initializeApp();
@@ -1219,10 +1220,31 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
 // ============================================================
 
 exports.giphyProxy = onRequest(
+  // App Check enforcement is gated manually below because the
+  // `enforceAppCheck` option only takes effect on onCall callables —
+  // `HttpsOptions` (used by onRequest) explicitly omits it. Confirmed in
+  // node_modules/firebase-functions/lib/v2/providers/https.d.ts:14.
   { secrets: [GIPHY_KEY], cors: false },
   async (req, res) => {
     if (req.method !== "GET") {
       res.status(405).json({ error: "method not allowed" });
+      return;
+    }
+
+    // App Check: validate the X-Firebase-AppCheck header against the
+    // Admin SDK. Restricts callers to a Toska binary attested by App
+    // Attest (release) or the debug provider (dev). Without this, anyone
+    // with a Firebase ID token from any client app pointed at our
+    // project can hit the proxy and burn the Giphy quota.
+    const appCheckToken = req.get("X-Firebase-AppCheck");
+    if (!appCheckToken) {
+      res.status(401).json({ error: "missing app check token" });
+      return;
+    }
+    try {
+      await getAppCheck().verifyToken(appCheckToken);
+    } catch (err) {
+      res.status(401).json({ error: "invalid app check token" });
       return;
     }
 

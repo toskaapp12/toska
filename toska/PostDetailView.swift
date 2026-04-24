@@ -45,6 +45,7 @@ struct PostDetailView: View {
     }
 
     @Environment(\.dismiss) var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var replyFocused: Bool
     @State private var replyText = ""
     @State private var isLiked = false
@@ -185,6 +186,9 @@ struct PostDetailView: View {
             .animation(.easeOut(duration: 0.2), value: showReplyGentleCheck)
             .sheet(isPresented: $showEditSheet) {
                 EditPostView(postId: postId, isLetter: isLetter, currentText: $postText, editText: $editText)
+                    // Don't let an accidental swipe-down throw away an edit
+                    // mid-typing — the user has to tap Cancel/Save explicitly.
+                    .interactiveDismissDisabled(true)
             }
             .sheet(isPresented: $showShareCard) {
                 ShareCardView(text: postText, handle: handle, feltCount: likeCount, tag: tag)
@@ -407,7 +411,7 @@ struct PostDetailView: View {
                                     .font(.system(size: 12, weight: .bold))
                                     .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextDark)
                                     .scaleEffect(likePulse ? 1.15 : 1.0)
-                                    .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                    .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                 Text("felt this")
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextLight)

@@ -482,6 +482,7 @@ struct FeedPostRow: View {
             @State private var showShareCard = false
         @State private var showReportSheet = false
         @State private var showBlockConfirm = false
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
                 VStack(alignment: .leading, spacing: 0) {
@@ -699,7 +700,7 @@ struct FeedPostRow: View {
                                                                                    .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
                                                                                    .buttonStyle(.plain)
                                                                                    .scaleEffect(likePulse ? 1.15 : 1.0)
-                                                                                   .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                                                                   .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                                                                }
                                         .padding(.top, 6)
                                     }

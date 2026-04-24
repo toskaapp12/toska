@@ -111,10 +111,12 @@ struct CreateAccountView: View {
                             .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
                     )
                     .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(.bottom, 12)
                     .accessibilityIdentifier("createEmailField")
+                    .accessibilityLabel("email address")
                 
                 Text("PASSWORD")
                     .font(.system(size: 9, weight: .medium))
@@ -134,6 +136,7 @@ struct CreateAccountView: View {
                                     .padding(.bottom, 12)
                                     .textContentType(.oneTimeCode)
                                     .accessibilityIdentifier("createPasswordField")
+                                    .accessibilityLabel("new password")
                 
                 Text("CONFIRM PASSWORD")
                     .font(.system(size: 9, weight: .medium))
@@ -153,6 +156,7 @@ struct CreateAccountView: View {
                                     .padding(.bottom, 20)
                                     .textContentType(.oneTimeCode)
                                     .accessibilityIdentifier("createConfirmPasswordField")
+                                    .accessibilityLabel("confirm password")
                 
                 if !errorMessage.isEmpty {
                     Text(errorMessage)

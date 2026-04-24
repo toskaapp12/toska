@@ -26,16 +26,20 @@ struct GifPickerView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .light))
-                        .foregroundColor(Color(hex: "999999"))
+                        .foregroundColor(Color.toskaTextLight)
                 }
+                .accessibilityLabel("close GIF picker")
                 Spacer()
                 Text("GIFs")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Color.toskaTextDark)
                 Spacer()
+                // Spacer placeholder to keep "GIFs" centered. Hidden from
+                // VoiceOver so it doesn't get announced as a phantom button.
                 Image(systemName: "xmark")
                     .font(.system(size: 14))
                     .foregroundColor(.clear)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

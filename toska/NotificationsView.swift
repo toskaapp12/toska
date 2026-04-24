@@ -58,7 +58,7 @@ struct NotificationsView: View {
                 HStack {
                     Text("notifications")
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(Color(hex: "1a1a1a"))
+                        .foregroundColor(Color.toskaTextDark)
                     Spacer()
                 }
                 .padding(.horizontal, 16)

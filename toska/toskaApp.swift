@@ -85,6 +85,14 @@ struct toskaApp: App {
             WindowGroup {
                 ContentView()
                     .environment(LateNightThemeManager.shared)
+                    // Cap Dynamic Type at .accessibility3 globally. Most of the
+                    // app uses brand-tuned fixed sizes (Georgia italic at
+                    // specific sizes is the visual identity), so we don't honor
+                    // the full xxxLarge → accessibility5 range — those settings
+                    // would break the layout. Capping here at a3 still gives
+                    // a meaningful boost for users on larger Dynamic Type
+                    // settings without distorting the design language.
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility3)
             }
         }
 }

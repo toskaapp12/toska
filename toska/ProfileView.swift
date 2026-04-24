@@ -69,13 +69,15 @@ struct ProfileView: View {
                         Button { showMessagesList = true } label: {
                             Image(systemName: "envelope")
                                 .font(.system(size: 16, weight: .light))
-                                .foregroundColor(Color(hex: "999999"))
+                                .foregroundColor(Color.toskaTextLight)
                         }
+                        .accessibilityLabel("messages")
                         Button { showSettings = true } label: {
                             Image(systemName: "gearshape")
                                 .font(.system(size: 16, weight: .light))
-                                .foregroundColor(Color(hex: "999999"))
+                                .foregroundColor(Color.toskaTextLight)
                         }
+                        .accessibilityLabel("settings")
                     }
                 }
                 .padding(.horizontal, 16)

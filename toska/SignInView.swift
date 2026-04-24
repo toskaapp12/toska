@@ -37,7 +37,7 @@ struct SignInView: View {
                 
                 Text("sign in to continue to toska.")
                     .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "aaaaaa"))
+                    .foregroundColor(Color.toskaTextLight)
                     .padding(.bottom, 24)
                 
                 Text("EMAIL")
@@ -56,10 +56,12 @@ struct SignInView: View {
                             .stroke(Color(hex: "e8e2d9"), lineWidth: 0.5)
                     )
                     .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(.bottom, 12)
                     .accessibilityIdentifier("emailField")
+                    .accessibilityLabel("email address")
                 
                 Text("PASSWORD")
                     .font(.system(size: 9, weight: .medium))
@@ -76,8 +78,10 @@ struct SignInView: View {
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(Color(hex: "e8e2d9"), lineWidth: 0.5)
                     )
+                    .textContentType(.password)
                     .padding(.bottom, 8)
                     .accessibilityIdentifier("passwordField")
+                    .accessibilityLabel("password")
                 
                 HStack {
                     Spacer()

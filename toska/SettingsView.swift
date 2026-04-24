@@ -53,14 +53,18 @@ struct SettingsView: View {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color(hex: "999999"))
+                            .foregroundColor(Color.toskaTextLight)
                     }
+                    .accessibilityLabel("close settings")
                     Spacer()
                     Text("settings")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color.toskaTextDark)
                     Spacer()
-                    Image(systemName: "xmark").font(.system(size: 13)).foregroundColor(.clear)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13))
+                        .foregroundColor(.clear)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)

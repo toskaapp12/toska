@@ -5,6 +5,7 @@ import FirebaseAuth
 @MainActor
 struct DailyMomentView: View {
     @Environment(\.dismiss) var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var postText = ""
     @State private var postHandle = ""
     @State private var postTag: String? = nil
@@ -62,7 +63,7 @@ struct DailyMomentView: View {
                             .foregroundColor(.white.opacity(0.2))
                     }
                     .opacity(isVisible ? 1 : 0)
-                    .animation(.easeIn(duration: 0.8).delay(0.3), value: isVisible)
+                    .animation(reduceMotion ? .none : .easeIn(duration: 0.8).delay(0.3), value: isVisible)
 
                     Spacer()
 
@@ -73,8 +74,8 @@ struct DailyMomentView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 36)
                         .opacity(isVisible ? 1 : 0)
-                        .offset(y: isVisible ? 0 : 20)
-                        .animation(.easeOut(duration: 1.0).delay(0.6), value: isVisible)
+                        .offset(y: isVisible || reduceMotion ? 0 : 20)
+                        .animation(reduceMotion ? .none : .easeOut(duration: 1.0).delay(0.6), value: isVisible)
 
                     Spacer()
 
@@ -95,7 +96,7 @@ struct DailyMomentView: View {
                             .foregroundColor(.white.opacity(0.15))
                     }
                     .opacity(isVisible ? 1 : 0)
-                    .animation(.easeIn(duration: 0.8).delay(1.2), value: isVisible)
+                    .animation(reduceMotion ? .none : .easeIn(duration: 0.8).delay(1.2), value: isVisible)
 
                     Spacer()
 
@@ -108,7 +109,7 @@ struct DailyMomentView: View {
                         }
                         .foregroundColor(.white.opacity(0.2))
                         .opacity(isVisible ? 1 : 0)
-                        .animation(.easeIn(duration: 0.8).delay(1.8), value: isVisible)
+                        .animation(reduceMotion ? .none : .easeIn(duration: 0.8).delay(1.8), value: isVisible)
 
                         Button {
                             shareAsImage()
@@ -126,7 +127,7 @@ struct DailyMomentView: View {
                             .cornerRadius(20)
                         }
                         .opacity(isVisible ? 1 : 0)
-                        .animation(.easeIn(duration: 0.8).delay(2.0), value: isVisible)
+                        .animation(reduceMotion ? .none : .easeIn(duration: 0.8).delay(2.0), value: isVisible)
 
                         Text("toska")
                             .font(.custom("Georgia-Italic", size: 13))

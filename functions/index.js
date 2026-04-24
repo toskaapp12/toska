@@ -239,24 +239,31 @@ exports.sendPushNotification = onDocumentCreated(
 
     const userData = userDoc.data();
 
-    // FCM token now lives in the owner-only private subcollection so it
-    // isn't readable by other clients via the broader users-doc reads
-    // policy. Fall back to the legacy main-doc field for users created
-    // before the migration; their token will move on next refresh.
-    let fcmToken;
+    // FCM token + notification preferences now live in the owner-only
+    // private subcollection so they aren't readable by other clients via
+    // the broader users-doc reads policy. Fall back to the legacy main-doc
+    // field for users created before the migration; their data will move
+    // on next refresh.
     const privateSnap = await db
       .collection("users").doc(userId)
       .collection("private").doc("data")
       .get();
-    if (privateSnap.exists) {
-      fcmToken = privateSnap.data().fcmToken;
-    }
-    if (!fcmToken) {
-      fcmToken = userData.fcmToken;
-    }
+    const privateData = privateSnap.exists ? privateSnap.data() : {};
+
+    let fcmToken = privateData.fcmToken || userData.fcmToken;
     if (!fcmToken) return;
 
-    if (userData.pushEnabled === false) return;
+    // pref(key) returns the value from private/data first (post-migration
+    // state), falls back to the legacy main-doc field if private is silent.
+    // Without this fallthrough, SettingsView writes the new value to
+    // private and FieldValue.deletes the legacy field, leaving this
+    // function reading `undefined` and bypassing the user's preference.
+    const pref = (key) => {
+      if (privateData[key] !== undefined) return privateData[key];
+      return userData[key];
+    };
+
+    if (pref("pushEnabled") === false) return;
 
     const settingsMap = {
       like: "notifyLikes",
@@ -269,7 +276,7 @@ exports.sendPushNotification = onDocumentCreated(
     };
 
     const settingKey = settingsMap[type];
-    if (settingKey && userData[settingKey] === false) return;
+    if (settingKey && pref(settingKey) === false) return;
 
     // Block check: never push from a user the recipient has blocked. Without
     // this, blocked users can still trigger pushes by liking/replying/etc.

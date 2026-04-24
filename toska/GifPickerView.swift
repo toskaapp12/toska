@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseAuth
 
 @MainActor
 struct GifPickerView: View {
@@ -11,8 +12,11 @@ struct GifPickerView: View {
     // Surfaced when the Giphy fetch fails (timeout, JSON shape change, network)
     // so the empty grid doesn't get confused with a genuine zero-result query.
     @State private var fetchError: String? = nil
-    
-    private let apiKey = "5o5QxbcJv9B7sstZ79VUZg3JfgJ1vKMA"
+
+    // Giphy is proxied through our giphyProxy Cloud Function (functions/index.js).
+    // The previous build hardcoded the Giphy API key here; rotating it now
+    // requires updating only the GIPHY_KEY secret on the Functions side.
+    private let proxyBaseURL = "https://us-central1-toska-4ebf4.cloudfunctions.net/giphyProxy"
     
     var body: some View {
                 VStack(spacing: 0) {
@@ -169,28 +173,41 @@ struct GifPickerView: View {
     
     func fetchTrending() {
         isLoading = true
-        let urlString = "https://api.giphy.com/v1/gifs/trending?api_key=\(apiKey)&limit=30&rating=pg-13"
-        fetchGifs(from: urlString)
+        fetchGifs(mode: "trending", query: nil)
     }
-    
+
     func searchGifs(query: String) {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         isLoading = true
-        let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed
-        let urlString = "https://api.giphy.com/v1/gifs/search?api_key=\(apiKey)&q=\(encoded)&limit=30&rating=pg-13"
-        fetchGifs(from: urlString)
+        fetchGifs(mode: "search", query: trimmed)
     }
-    
-    func fetchGifs(from urlString: String) {
-        guard let url = URL(string: urlString) else { return }
+
+    func fetchGifs(mode: String, query: String?) {
+        var components = URLComponents(string: proxyBaseURL)
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "mode", value: mode),
+            URLQueryItem(name: "limit", value: "30")
+        ]
+        if let query = query { items.append(URLQueryItem(name: "q", value: query)) }
+        components?.queryItems = items
+        guard let url = components?.url else { return }
+
         Task { @MainActor in
             fetchError = nil
             do {
-                // 15s request timeout so a flaky Giphy call can't leave the
-                // picker stuck on a spinner indefinitely.
+                // The proxy verifies a Firebase ID token; without one it 401s.
+                // If the token call fails (e.g. unauth'd state), surface the
+                // same generic copy as a network error rather than leaking
+                // auth specifics to the user.
+                guard let token = try? await Auth.auth().currentUser?.getIDToken() else {
+                    isLoading = false
+                    fetchError = "couldn't load GIFs — try again."
+                    return
+                }
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 15
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 let (data, _) = try await URLSession.shared.data(for: request)
                 guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let dataArray = json["data"] as? [[String: Any]] else {

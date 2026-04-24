@@ -483,8 +483,17 @@ struct ConversationView: View {
         let capturedOtherUid = otherUserId
         let db = Firestore.firestore()
 
-        db.collection("conversations").document(conversationId).getDocument { snap, _ in
+        db.collection("conversations").document(conversationId).getDocument { snap, error in
             Task { @MainActor in
+                if let error = error {
+                    // Surface the failure so the spinner can drop. Without flipping
+                    // isCountsLoaded the input row stays disabled and the user is
+                    // stuck staring at a loader on permission-denied / offline.
+                    print("⚠️ ConversationView counts fetch failed: \(error)")
+                    Telemetry.recordError(error, context: "ConversationView.startListening.counts")
+                    self.isCountsLoaded = true
+                    return
+                }
                 if let counts = snap?.data()?["messageCount"] as? [String: Int] {
                     self.myMessageCount = counts[capturedUid] ?? 0
                     self.theirMessageCount = counts[capturedOtherUid] ?? 0
@@ -636,23 +645,61 @@ struct ConversationView: View {
         let convoRef = db.collection("conversations").document(conversationId)
         let messageRef = convoRef.collection("messages").document()
 
-        let batch = db.batch()
-        batch.setData([
-            "senderId": uid,
-            "text": trimmed,
-            "createdAt": FieldValue.serverTimestamp()
-        ], forDocument: messageRef)
-        batch.setData([
-            "lastMessage": String(trimmed.prefix(50)),
-            "lastMessageAt": FieldValue.serverTimestamp()
-        ], forDocument: convoRef, merge: true)
+        // Transactional send: read messageCount, enforce the per-user 5-message
+        // cap, write the message + increment count atomically. Replaces a batch
+        // write where the cap was only enforced by a Firestore rule + a
+        // post-write Cloud Function counter — two devices could both pass the
+        // rule before either function ran and burst past 5. The transaction
+        // serialises concurrent sends because contended writes retry against
+        // the latest convo snapshot. The `clientCountedV1: true` marker on
+        // the message tells the legacy onMessageCreatedUpdateCount function
+        // to skip its increment so we don't double-count during rollout.
+        db.runTransaction({ transaction, errorPointer in
+            let convoSnap: DocumentSnapshot
+            do { convoSnap = try transaction.getDocument(convoRef) }
+            catch let e as NSError {
+                errorPointer?.pointee = e
+                return nil
+            }
+            let counts = convoSnap.data()?["messageCount"] as? [String: Int] ?? [:]
+            let currentCount = counts[uid] ?? 0
+            if currentCount >= self.messageLimit {
+                errorPointer?.pointee = NSError(
+                    domain: "ConversationView",
+                    code: 429,
+                    userInfo: [NSLocalizedDescriptionKey: "Message limit reached"]
+                )
+                return nil
+            }
 
-        batch.commit { error in
+            transaction.setData([
+                "senderId": uid,
+                "text": trimmed,
+                "createdAt": FieldValue.serverTimestamp(),
+                "clientCountedV1": true
+            ], forDocument: messageRef)
+
+            transaction.updateData([
+                "lastMessage": String(trimmed.prefix(50)),
+                "lastMessageAt": FieldValue.serverTimestamp(),
+                "messageCount.\(uid)": currentCount + 1
+            ], forDocument: convoRef)
+
+            return nil
+        }, completion: { _, txError in
             Task { @MainActor in
                 self.isSending = false
-                if error != nil {
-                    self.messageText = previousText
-                    self.myMessageCount = max(0, self.myMessageCount - 1)
+                if let txError = txError {
+                    let nsError = txError as NSError
+                    if nsError.domain == "ConversationView" && nsError.code == 429 {
+                        // Rate limit hit — keep the cached count so the input
+                        // disables and the user sees the limit copy. Don't
+                        // restore their text since it was at the cap anyway.
+                        self.myMessageCount = self.messageLimit
+                    } else {
+                        self.messageText = previousText
+                        self.myMessageCount = max(0, self.myMessageCount - 1)
+                    }
                     return
                 }
                 guard !self.isBlockedEitherDirection else { return }
@@ -670,7 +717,7 @@ struct ConversationView: View {
                         "createdAt": FieldValue.serverTimestamp()
                     ], merge: false)
             }
-        }
+        })
     }
 
     // MARK: - Typing Indicator

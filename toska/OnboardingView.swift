@@ -143,12 +143,17 @@ struct OnboardingView: View {
                         
                         Button {
                                                     if let uid = Auth.auth().currentUser?.uid {
-                                                        var updateData: [String: Any] = ["hasCompletedOnboarding": true]
-                                                        if let mood = selectedMood { updateData["selectedMood"] = mood }
-                                                        Firestore.firestore().collection("users").document(uid).setData(updateData, merge: true) { error in
+                                                        let userRef = Firestore.firestore().collection("users").document(uid)
+                                                        userRef.setData(["hasCompletedOnboarding": true], merge: true) { error in
                                                             if let error = error {
                                                                 print("⚠️ Onboarding skip (mood) write failed: \(error)")
                                                             }
+                                                        }
+                                                        // Mood is sensitive — store in the owner-only private
+                                                        // subcollection rather than on the main user doc.
+                                                        if let mood = selectedMood {
+                                                            userRef.collection("private").document("data")
+                                                                .setData(["selectedMood": mood], merge: true)
                                                         }
                                                     }
                                                     Telemetry.onboardingCompleted(); isComplete = true
@@ -172,12 +177,15 @@ struct OnboardingView: View {
                         
                         Button {
                                                     if let uid = Auth.auth().currentUser?.uid {
-                                                        var updateData: [String: Any] = ["hasCompletedOnboarding": true]
-                                                        if let mood = selectedMood { updateData["selectedMood"] = mood }
-                                                        Firestore.firestore().collection("users").document(uid).setData(updateData, merge: true) { error in
+                                                        let userRef = Firestore.firestore().collection("users").document(uid)
+                                                        userRef.setData(["hasCompletedOnboarding": true], merge: true) { error in
                                                             if let error = error {
                                                                 print("⚠️ Onboarding skip-for-now write failed: \(error)")
                                                             }
+                                                        }
+                                                        if let mood = selectedMood {
+                                                            userRef.collection("private").document("data")
+                                                                .setData(["selectedMood": mood], merge: true)
                                                         }
                                                     }
                                                     Telemetry.onboardingCompleted(); isComplete = true
@@ -301,20 +309,18 @@ struct OnboardingView: View {
         }
     }
     func saveMoodAndAdvance() {
-            if let uid = Auth.auth().currentUser?.uid {
-                var updateData: [String: Any] = [:]
-                if let mood = selectedMood {
-                    updateData["selectedMood"] = mood
-                    // Mood is stored in Firestore only — not in UserDefaults,
-                    // which is unencrypted and inappropriate for sensitive emotional data.
-                }
-                if !updateData.isEmpty {
-                    Firestore.firestore().collection("users").document(uid).setData(updateData, merge: true) { error in
+            if let uid = Auth.auth().currentUser?.uid, let mood = selectedMood {
+                // Mood is sensitive — written to the owner-only private
+                // subcollection so other authenticated users can't read it
+                // off the main user doc. UserDefaults remains unused
+                // because it is unencrypted on disk.
+                Firestore.firestore().collection("users").document(uid)
+                    .collection("private").document("data")
+                    .setData(["selectedMood": mood], merge: true) { error in
                         if let error = error {
                             print("⚠️ Onboarding mood save failed: \(error)")
                         }
                     }
-                }
             }
             withAnimation(.easeInOut(duration: 0.3)) {
                 currentStep = 3

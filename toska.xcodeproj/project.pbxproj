@@ -14,6 +14,7 @@
 		3F33E71A2F69C17200E7F27D /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 3F33E7192F69C17200E7F27D /* GoogleSignInSwift */; };
 		3F7B32B72F91408B0014C0DA /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32B62F91408B0014C0DA /* FirebaseAnalytics */; };
 		3F7B32B92F91408B0014C0DA /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */; };
+		3F7B32BD2F9AC1670014C0DA /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32BC2F9AC1670014C0DA /* FirebaseAppCheck */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +63,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3F7B32BD2F9AC1670014C0DA /* FirebaseAppCheck in Frameworks */,
 				3F33E71A2F69C17200E7F27D /* GoogleSignInSwift in Frameworks */,
 				3F33E6DC2F69982500E7F27D /* FirebaseMessaging in Frameworks */,
 				3F7B32B72F91408B0014C0DA /* FirebaseAnalytics in Frameworks */,
@@ -135,6 +137,7 @@
 				3F33E7192F69C17200E7F27D /* GoogleSignInSwift */,
 				3F7B32B62F91408B0014C0DA /* FirebaseAnalytics */,
 				3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */,
+				3F7B32BC2F9AC1670014C0DA /* FirebaseAppCheck */,
 			);
 			productName = toska;
 			productReference = 3F33E6C62F69977700E7F27D /* toska.app */;
@@ -574,6 +577,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseCrashlytics;
+		};
+		3F7B32BC2F9AC1670014C0DA /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

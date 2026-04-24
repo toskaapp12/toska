@@ -213,6 +213,12 @@ class FeedViewModel: ObservableObject {
             supplementaryTask = nil
             followingTask?.cancel()
             followingTask = nil
+            likedFetchTask?.cancel()
+            likedFetchTask = nil
+            savedFetchTask?.cancel()
+            savedFetchTask = nil
+            repostedFetchTask?.cancel()
+            repostedFetchTask = nil
             hasFetchedInitial = false
         hasLoadedOnce = false
         posts = []
@@ -274,43 +280,57 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Fetch User Interaction States
 
+    // Stored Tasks so rapid refresh-all calls cancel any prior in-flight fetch
+    // before starting a new one. Without this, two overlapping queries can race
+    // and the slower response overwrites the fresher one — leaving the cache out
+    // of sync with what the user just did (e.g. a like reverting on screen).
+    private var likedFetchTask: Task<Void, Never>? = nil
+    private var savedFetchTask: Task<Void, Never>? = nil
+    private var repostedFetchTask: Task<Void, Never>? = nil
+
     func fetchLikedPostIds() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        Firestore.firestore().collection("users").document(uid).collection("liked")
-            .order(by: "createdAt", descending: true)
-            .limit(to: 500)
-            .getDocuments { [weak self] snapshot, _ in
-                Task { @MainActor [weak self] in
-                    self?.likedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
-                }
-            }
+        likedFetchTask?.cancel()
+        likedFetchTask = Task { @MainActor [weak self] in
+            let snapshot = try? await Firestore.firestore()
+                .collection("users").document(uid).collection("liked")
+                .order(by: "createdAt", descending: true)
+                .limit(to: 500)
+                .getDocumentsAsync()
+            guard !Task.isCancelled, let self else { return }
+            self.likedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
+        }
     }
 
     func fetchSavedPostIds() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        Firestore.firestore().collection("users").document(uid).collection("saved")
-            .order(by: "createdAt", descending: true)
-            .limit(to: 500)
-            .getDocuments { [weak self] snapshot, _ in
-                Task { @MainActor [weak self] in
-                    self?.savedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
-                }
-            }
+        savedFetchTask?.cancel()
+        savedFetchTask = Task { @MainActor [weak self] in
+            let snapshot = try? await Firestore.firestore()
+                .collection("users").document(uid).collection("saved")
+                .order(by: "createdAt", descending: true)
+                .limit(to: 500)
+                .getDocumentsAsync()
+            guard !Task.isCancelled, let self else { return }
+            self.savedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
+        }
     }
 
     func fetchRepostedPostIds() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        Firestore.firestore().collection("posts")
-            .whereField("authorId", isEqualTo: uid)
-            .whereField("isRepost", isEqualTo: true)
-            .order(by: "createdAt", descending: true)
-            .limit(to: 200)
-            .getDocuments { [weak self] snapshot, _ in
-                Task { @MainActor [weak self] in
-                    let ids = snapshot?.documents.compactMap { $0.data()["originalPostId"] as? String } ?? []
-                    self?.repostedPostIds = Set(ids)
-                }
-            }
+        repostedFetchTask?.cancel()
+        repostedFetchTask = Task { @MainActor [weak self] in
+            let snapshot = try? await Firestore.firestore()
+                .collection("posts")
+                .whereField("authorId", isEqualTo: uid)
+                .whereField("isRepost", isEqualTo: true)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 200)
+                .getDocumentsAsync()
+            guard !Task.isCancelled, let self else { return }
+            let ids = snapshot?.documents.compactMap { $0.data()["originalPostId"] as? String } ?? []
+            self.repostedPostIds = Set(ids)
+        }
     }
 
     // MARK: - Fetch User Preferences for For You
@@ -319,16 +339,19 @@ class FeedViewModel: ObservableObject {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
 
-        // Mood is read from Firestore only — UserDefaults removed.
-
-        db.collection("users").document(uid).getDocument { [weak self] snapshot, _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let serverMood = snapshot?.data()?["selectedMood"] as? String
-                self.userMood = serverMood
-                // No UserDefaults write — Firestore is the single source of truth.
-
-            }
+        // Mood lives in users/{uid}/private/data going forward (owner-only)
+        // so it isn't readable by other authenticated users via the public
+        // users-doc rule. Older accounts may still have it on the main doc;
+        // fall back there until OnboardingView/SettingsView writes the new
+        // location and the legacy field gets cleared.
+        Task { @MainActor [weak self] in
+            async let mainSnap = try? db.collection("users").document(uid).getDocumentAsync()
+            async let privateSnap = try? db.collection("users").document(uid)
+                .collection("private").document("data").getDocumentAsync()
+            let main = await mainSnap?.data() ?? [:]
+            let priv = await privateSnap?.data() ?? [:]
+            guard let self else { return }
+            self.userMood = (priv["selectedMood"] as? String) ?? (main["selectedMood"] as? String)
         }
 
         db.collection("users").document(uid).collection("liked")

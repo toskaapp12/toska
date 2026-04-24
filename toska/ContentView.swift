@@ -174,27 +174,33 @@ struct ContentView: View {
 
     // MARK: - Presence & Notifications
 
-    func pruneOldNotifications(uid: String) {
+    func pruneOldNotifications(uid: String) async {
+        // Run inside the verifyTask so a sign-out (which calls verifyTask?.cancel())
+        // also tears down a mid-flight prune. Without the cancellation hop, the
+        // batch.commit kept firing post-signout and burning reads/writes against
+        // the user's own subcollection.
         let db = Firestore.firestore()
         let ninetyDaysAgo = Date().addingTimeInterval(-90 * 24 * 60 * 60)
-        db.collection("users").document(uid).collection("notifications")
-            .whereField("createdAt", isLessThan: Timestamp(date: ninetyDaysAgo))
-            .order(by: "createdAt")
-            .limit(to: 100)
-            .getDocuments { snapshot, error in
-                if let error = error {
-                    print("⚠️ pruneOldNotifications failed — check composite index: \(error)")
-                    return
-                }
-                guard let docs = snapshot?.documents, !docs.isEmpty else { return }
-                let batch = db.batch()
-                for doc in docs { batch.deleteDocument(doc.reference) }
-                batch.commit { error in
-                    if let error = error {
-                        print("⚠️ pruneOldNotifications batch failed: \(error)")
-                    }
-                }
-            }
+        let snapshot: QuerySnapshot?
+        do {
+            snapshot = try await db.collection("users").document(uid).collection("notifications")
+                .whereField("createdAt", isLessThan: Timestamp(date: ninetyDaysAgo))
+                .order(by: "createdAt")
+                .limit(to: 100)
+                .getDocumentsAsync()
+        } catch {
+            print("⚠️ pruneOldNotifications failed — check composite index: \(error)")
+            return
+        }
+        guard !Task.isCancelled else { return }
+        guard let docs = snapshot?.documents, !docs.isEmpty else { return }
+        let batch = db.batch()
+        for doc in docs { batch.deleteDocument(doc.reference) }
+        do {
+            try await batch.commit()
+        } catch {
+            print("⚠️ pruneOldNotifications batch failed: \(error)")
+        }
     }
 
     func recordPresence(uid: String) {
@@ -263,7 +269,7 @@ struct ContentView: View {
                                     NotificationCenter.default.post(name: .authDidVerify, object: nil)
                                 }
                                 recordPresence(uid: uid)
-                pruneOldNotifications(uid: uid)
+                await pruneOldNotifications(uid: uid)
                 return
             }
 

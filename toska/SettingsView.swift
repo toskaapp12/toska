@@ -356,25 +356,40 @@ struct SettingsView: View {
     func loadSettings() {
            guard let uid = Auth.auth().currentUser?.uid else { return }
            Task { @MainActor in
-               let snapshot = try? await Firestore.firestore()
-                   .collection("users").document(uid).getDocumentAsync()
-               guard let data = snapshot?.data() else {
-                   isLoaded = true
-                   return
+               let db = Firestore.firestore()
+               // Sensitive prefs (notify*, pushEnabled, gentleCheckIn) live in
+               // users/{uid}/private/data so they aren't readable by other
+               // authenticated users via the public users-doc read rule. The
+               // main user doc still holds the public-projection fields
+               // (allowSharing, showFollowerCount). Reads check private first,
+               // fall back to the legacy field on the main doc for users who
+               // haven't been through saveSettings since the migration.
+               async let mainSnap = try? db.collection("users").document(uid).getDocumentAsync()
+               async let privateSnap = try? db.collection("users").document(uid)
+                   .collection("private").document("data").getDocumentAsync()
+
+               let main = await mainSnap?.data() ?? [:]
+               let priv = await privateSnap?.data() ?? [:]
+
+               func boolPref(_ key: String, default defaultValue: Bool) -> Bool {
+                   if let v = priv[key] as? Bool { return v }
+                   if let v = main[key] as? Bool { return v }
+                   return defaultValue
                }
+
                settings = UserSettings(
-                   allowSharing: data["allowSharing"] as? Bool ?? true,
-                   showFollowerCount: data["showFollowerCount"] as? Bool ?? false,
-                   notifyLikes: data["notifyLikes"] as? Bool ?? true,
-                   notifyReplies: data["notifyReplies"] as? Bool ?? true,
-                   notifyFollows: data["notifyFollows"] as? Bool ?? true,
-                   notifyReposts: data["notifyReposts"] as? Bool ?? true,
-                   notifySaves: data["notifySaves"] as? Bool ?? true,
-                   notifyMessages: data["notifyMessages"] as? Bool ?? true,
-                   notifyMilestones: data["notifyMilestones"] as? Bool ?? true,
-                   notifyWitness: data["notifyWitness"] as? Bool ?? true,
-                   pushEnabled: data["pushEnabled"] as? Bool ?? true,
-                   gentleCheckIn: data["gentleCheckIn"] as? Bool ?? true
+                   allowSharing: main["allowSharing"] as? Bool ?? true,
+                   showFollowerCount: main["showFollowerCount"] as? Bool ?? false,
+                   notifyLikes: boolPref("notifyLikes", default: true),
+                   notifyReplies: boolPref("notifyReplies", default: true),
+                   notifyFollows: boolPref("notifyFollows", default: true),
+                   notifyReposts: boolPref("notifyReposts", default: true),
+                   notifySaves: boolPref("notifySaves", default: true),
+                   notifyMessages: boolPref("notifyMessages", default: true),
+                   notifyMilestones: boolPref("notifyMilestones", default: true),
+                   notifyWitness: boolPref("notifyWitness", default: true),
+                   pushEnabled: boolPref("pushEnabled", default: true),
+                   gentleCheckIn: boolPref("gentleCheckIn", default: true)
                )
                isLoaded = true
            }
@@ -392,9 +407,32 @@ struct SettingsView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         Task { @MainActor in
                     do {
-                        try await Firestore.firestore().collection("users").document(uid).updateData([
+                        // Public-projection fields stay on the main user doc so
+                        // OtherProfileView can read them. Sensitive prefs go to
+                        // the private subcollection (owner-only). We also strip
+                        // the legacy fields off the main doc here so existing
+                        // accounts get cleaned up the next time the user opens
+                        // settings — no separate migration script required.
+                        let db = Firestore.firestore()
+                        let userRef = db.collection("users").document(uid)
+                        let privateRef = userRef.collection("private").document("data")
+
+                        let batch = db.batch()
+                        batch.updateData([
                             "allowSharing": settings.allowSharing,
                             "showFollowerCount": settings.showFollowerCount,
+                            "notifyLikes": FieldValue.delete(),
+                            "notifyReplies": FieldValue.delete(),
+                            "notifyFollows": FieldValue.delete(),
+                            "notifyReposts": FieldValue.delete(),
+                            "notifySaves": FieldValue.delete(),
+                            "notifyMessages": FieldValue.delete(),
+                            "notifyMilestones": FieldValue.delete(),
+                            "notifyWitness": FieldValue.delete(),
+                            "pushEnabled": FieldValue.delete(),
+                            "gentleCheckIn": FieldValue.delete(),
+                        ], forDocument: userRef)
+                        batch.setData([
                             "notifyLikes": settings.notifyLikes,
                             "notifyReplies": settings.notifyReplies,
                             "notifyFollows": settings.notifyFollows,
@@ -405,7 +443,8 @@ struct SettingsView: View {
                             "notifyWitness": settings.notifyWitness,
                             "pushEnabled": settings.pushEnabled,
                             "gentleCheckIn": settings.gentleCheckIn,
-                        ])
+                        ], forDocument: privateRef, merge: true)
+                        try await batch.commit()
                     } catch {
                         print("⚠️ saveSettings failed: \(error)")
                         // Tell the user their change didn't persist before

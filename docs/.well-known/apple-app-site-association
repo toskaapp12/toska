@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["4V9EFWWZ4Q.com.toskaapp.toska"],
+        "components": [
+          {
+            "/": "/p/*",
+            "comment": "Match any post deep link, e.g. /p/abc123"
+          }
+        ]
+      }
+    ]
+  }
+}

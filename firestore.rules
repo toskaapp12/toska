@@ -15,6 +15,64 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin";
     }
 
+    // Server-side enforcement of the auto-restrict / admin-restrict gate.
+    // Previously every write rule trusted UserHandleCache.isRestricted on the
+    // iOS client, which a tampered build can ignore — letting a flagged
+    // repeat-offender keep posting/replying/messaging despite the auto-set
+    // `restricted: true` flag from functions/index.js:onPostCreated.
+    //
+    // Auto-restrictions ("system") set restrictedUntil to now+48h so they
+    // expire on their own; admin restrictions leave restrictedUntil unset so
+    // they persist until cleared. Brand-new accounts (no user doc yet) fall
+    // through the !exists() leg so the very first onboarding write isn't
+    // blocked by a missing-doc lookup.
+    //
+    // Costs one get() on the caller's user doc per gated write. Add it only
+    // to write rules that actually need to honor the restriction
+    // (posts/replies/messages create — not reads, not block/unblock,
+    // not unfollow, not delete-own-content).
+    function notRestricted() {
+      return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        || !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restricted', false)
+        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restrictedUntil', request.time) < request.time;
+    }
+
+    // Legacy PII fields that lived on the main user doc before the migration
+    // to users/{uid}/private/data (firestore.rules:43-61 documents the move).
+    // Post-migration, no client write path touches these on the main doc
+    // EXCEPT SettingsView.saveSettings which deletes them via FieldValue.delete
+    // as opportunistic cleanup. This predicate permits deletes (allowing the
+    // cleanup) and unchanged values (allowing other field updates on
+    // pre-migration accounts) but blocks any add or modify — closing the
+    // door on a tampered client re-introducing leaked PII onto the public-
+    // readable user doc. The fcmToken / restricted family stay denied
+    // entirely via the existing `affectedKeys().hasAny([...])` clause; those
+    // fields should never be touched by clients at all.
+    function legacyPIIFieldsImmutable() {
+      return (!('email' in request.resource.data.keys())
+              || request.resource.data.email == resource.data.get('email', null))
+        && (!('selectedMood' in request.resource.data.keys())
+              || request.resource.data.selectedMood == resource.data.get('selectedMood', null))
+        && (!('notifyLikes' in request.resource.data.keys())
+              || request.resource.data.notifyLikes == resource.data.get('notifyLikes', null))
+        && (!('notifyReplies' in request.resource.data.keys())
+              || request.resource.data.notifyReplies == resource.data.get('notifyReplies', null))
+        && (!('notifyFollows' in request.resource.data.keys())
+              || request.resource.data.notifyFollows == resource.data.get('notifyFollows', null))
+        && (!('notifyReposts' in request.resource.data.keys())
+              || request.resource.data.notifyReposts == resource.data.get('notifyReposts', null))
+        && (!('notifySaves' in request.resource.data.keys())
+              || request.resource.data.notifySaves == resource.data.get('notifySaves', null))
+        && (!('notifyMessages' in request.resource.data.keys())
+              || request.resource.data.notifyMessages == resource.data.get('notifyMessages', null))
+        && (!('notifyMilestones' in request.resource.data.keys())
+              || request.resource.data.notifyMilestones == resource.data.get('notifyMilestones', null))
+        && (!('pushEnabled' in request.resource.data.keys())
+              || request.resource.data.pushEnabled == resource.data.get('pushEnabled', null))
+        && (!('gentleCheckIn' in request.resource.data.keys())
+              || request.resource.data.gentleCheckIn == resource.data.get('gentleCheckIn', null));
+    }
+
     match /users/{userId} {
       // FIX: previously `allow read: if isAuth()` let any logged-in user read
       // the full user document, including email, selectedMood, fcmToken, and
@@ -63,6 +121,13 @@ service cloud.firestore {
       allow create: if isOwner(userId)
         && request.resource.data.handle is string
         && request.resource.data.handle.size() <= 30
+        // Restrict handles to alphanumeric + underscore + hyphen so a tampered
+        // client can't write a handle like `<svg onload=alert(1)>` that would
+        // execute as JavaScript when an admin views it in the moderation
+        // dashboard (docs/admin.html). The legitimate handle generator
+        // (generateUniqueHandle) only produces strings in this character class
+        // so existing accounts are unaffected.
+        && request.resource.data.handle.matches('^[a-zA-Z0-9_-]+$')
         // Prevent storing email on documents belonging to anonymous users.
         // Apple/Google/email auth all have a non-empty email; anonymous sign-in does not.
         && (request.resource.data.keys().hasAll(['email'])
@@ -79,9 +144,18 @@ service cloud.firestore {
       allow update: if (isOwner(userId)
             && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['handle'])
                 || (request.resource.data.handle is string
-                    && request.resource.data.handle.size() <= 30))
+                    && request.resource.data.handle.size() <= 30
+                    && request.resource.data.handle.matches('^[a-zA-Z0-9_-]+$')))
             && !request.resource.data.diff(resource.data).affectedKeys()
-                .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']))
+                .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil'])
+            // Legacy PII fields (email/selectedMood/notify*/pushEnabled/
+            // gentleCheckIn) must not be re-introduced or modified once the
+            // migration to users/{uid}/private/data is complete. Deletes are
+            // permitted so SettingsView.saveSettings can keep scrubbing
+            // legacy main-doc copies opportunistically; pre-migration accounts
+            // updating other fields pass because the unchanged-value branch
+            // matches. See legacyPIIFieldsImmutable() and functions/scrubLegacyPII.js.
+            && legacyPIIFieldsImmutable())
         || (isAdmin()
             && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']));
@@ -168,18 +242,37 @@ service cloud.firestore {
               && exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId))
               && request.auth.uid in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants
               && userId in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants)
-            // reply: post exists, recipient is post author, actor isn't blocked by them
+            // reply: post exists, recipient is post author, actor isn't blocked,
+            // AND notifId is the deterministic shape PostInteractionManager.
+            // sendNotification writes ("reply_{postId}_{actorUid}"). Without the
+            // notifId pin a tampered client can write arbitrary notifIds for
+            // the same (post, target, actor) triple — each new doc fires
+            // sendPushNotification before rateLimitNotifications gets a chance
+            // to clean up, opening a fake-reply-push-spam vector. The reply
+            // branch can't `exists()`-check a real reply doc cheaply because
+            // reply docs use auto-IDs, but the deterministic notifId reduces
+            // the spam blast to one (already-rate-limited) push per post-target
+            // pair — same shape the legitimate client writes anyway, so this
+            // doesn't break any current call site.
             || (request.resource.data.type == 'reply'
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
-              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid)))
-            // repost: same constraints as reply — post exists, recipient is author
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+              && notifId == 'reply_' + request.resource.data.postId + '_' + request.auth.uid)
+            // repost: post exists, recipient is author, actor isn't blocked,
+            // notifId matches the deterministic client shape, AND a real
+            // repost post exists at the deterministic id PostInteractionManager.
+            // repost writes ("{actorUid}_repost_{postId}"). Repost-doc IDs ARE
+            // deterministic so we get to confirm the actor actually performed
+            // the action, not just that they could.
             || (request.resource.data.type == 'repost'
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
-              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid)))
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+              && exists(/databases/$(database)/documents/posts/$(request.auth.uid + '_repost_' + request.resource.data.postId))
+              && notifId == 'repost_' + request.resource.data.postId + '_' + request.auth.uid)
           );
         allow update, delete: if isOwner(userId);
       }
@@ -214,6 +307,7 @@ service cloud.firestore {
     match /posts/{postId} {
       allow read: if isAuth();
       allow create: if isAuth()
+        && notRestricted()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
@@ -265,7 +359,17 @@ service cloud.firestore {
       // and re-show their own moderated content. Admin SDK (Cloud Functions
       // and admin.html actions) bypass these rules and can still toggle these
       // fields legitimately.
+      // Text-size cap mirrored from create. Without it, an author could edit
+      // their post to multiple-hundred-KB text — both a feed-bandwidth DoS
+      // for anyone scrolling and a moderation-bypass amplifier (the post-
+      // moderation rerun handler in functions/index.js:onPostUpdated still
+      // scans, but a 999KB text serving from the feed wastes the read either
+      // way). text.size() > 0 also matches the create-side guard so a
+      // tampered client can't blank out a post via update.
       allow update: if ((isAuth() && resource.data.authorId == request.auth.uid)
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 2000
             && !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt',
                          'flagged', 'flagReason', 'flaggedAt', 'concerningContent']))
@@ -280,13 +384,22 @@ service cloud.firestore {
         // engaging server-side; the client filter (BlockedUsersCache) only
         // hides their content from the blocker, not vice versa.
         allow create: if isAuth()
+          && notRestricted()
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 500
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
+        // Text-size cap mirrored from create. Without it, an author could
+        // edit a 500-char reply into multi-KB content and bypass both the
+        // length cap and (combined with onReplyUpdated re-running moderation
+        // in functions/index.js) the original-text moderation pass that ran
+        // at create time.
         allow update: if isAuth()
-          && resource.data.authorId == request.auth.uid;
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
         allow delete: if isAuth()
           && (resource.data.authorId == request.auth.uid
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
@@ -368,6 +481,7 @@ service cloud.firestore {
         // the "other participant" by scanning the convo doc's participants
         // and asserting no /users/{other}/blocked/{sender} doc exists.
         allow create: if isAuth()
+          && notRestricted()
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
@@ -412,6 +526,7 @@ service cloud.firestore {
         allow read: if isAuth()
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
         allow create: if isAuth()
+          && notRestricted()
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0

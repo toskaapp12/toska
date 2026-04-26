@@ -1106,7 +1106,99 @@ const MOD_CONCERNING = [
 
 // ============================================================
 // Content moderation — flag posts with prohibited content
+//
+// Helpers shared by onPostCreated + onPostUpdated. Edits to a post used to
+// completely bypass moderation because the original moderation triggers
+// fired on `onDocumentCreated` only — a user could publish clean text,
+// watch it pass moderation, then edit in slurs/threats/PII/links and
+// nothing would re-flag it. Refactoring the pattern lookup into a helper
+// (and adding an onPostUpdated trigger below) closes that gap without
+// duplicating the pattern lists.
 // ============================================================
+
+const SPAM_PATTERNS = [
+  /\b(buy|sell|discount|promo|click here|free money|crypto|bitcoin|investment)\b/i,
+  /https?:\/\//i,
+  /\b(www\.)\b/i,
+  /\b(buy now|act now|limited time|earn money|make money)\b/i,
+  /\b(ethereum|nft)\b/i,
+  /\b(follow my|check my bio|link in bio)\b/i,
+  /\b(discount code|promo code|use code)\b/i,
+  /\b(dm me for|dm for)\b/i,
+  /\b(cashapp|venmo me|paypal me)\b/i,
+  /\b(onlyfans|only fans)\b/i,
+];
+
+function computePostFlagReason(rawText) {
+  const text = (rawText || "").toLowerCase();
+  if (SPAM_PATTERNS.some((p) => p.test(text))) return "spam_or_commercial";
+  if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
+  if (MOD_THREAT.some((phrase) => text.includes(phrase))) return "targeted_threat";
+  if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
+  if (containsPII(rawText || "")) return "personal_information";
+  if (containsURL(rawText || "")) return "contains_link";
+  return null;
+}
+
+function isPostConcerning(rawText) {
+  const text = (rawText || "").toLowerCase();
+  return MOD_CONCERNING.some((phrase) => text.includes(phrase));
+}
+
+// Repeat-offender tracking. Previously 3 flagged posts all-time → permanent
+// restriction with no user-facing recovery path (admin unrestrict only),
+// which trapped users whose content tripped the (high false-positive-rate)
+// PII / link detectors months earlier. The new shape:
+//   - count only recent flags (7 days) so stale incidents don't haunt a user
+//   - raise threshold to 5 so a single bad afternoon doesn't lock the account
+//   - set restrictedUntil = now + 48h so the restriction auto-expires
+//     without admin intervention (UserHandleCache consults this timestamp)
+// Admin-set restrictions (restrictedBy != "system" and no restrictedUntil)
+// still persist until an admin clears them — this only softens the auto path.
+//
+// Idempotent under repeated invocation: re-restricting an already-restricted
+// user just rewrites the same fields; auditUserRestriction skips when the
+// `restricted` flag didn't actually flip, so no audit-log noise.
+async function checkRepeatOffenderPosts(authorId) {
+  if (!authorId) return;
+  try {
+    const flaggedSnap = await db.collection("posts")
+      .where("authorId", "==", authorId)
+      .where("flagged", "==", true)
+      .limit(20)
+      .get();
+    const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentFlagged = flaggedSnap.docs.filter((doc) => {
+      const data = doc.data();
+      // Rate-limit flags are already their own throttle punishment
+      // (post hidden from feed). Letting them count toward the 5-flag
+      // auto-restrict threshold is double-jeopardy and would lock a
+      // user out just for posting too fast — not a policy violation.
+      // Count only content-violation flags (hate, threat, sexual, PII,
+      // spam, etc.).
+      if (data.flagReason === "rate_limit_exceeded") return false;
+      const flaggedAt = data.flaggedAt;
+      if (!flaggedAt || typeof flaggedAt.toDate !== "function") return false;
+      return flaggedAt.toDate().getTime() > sevenDaysAgoMs;
+    });
+    if (recentFlagged.length >= 5) {
+      const restrictedUntil = Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
+      await db.collection("users").doc(authorId).update({
+        restricted: true,
+        restrictedAt: FieldValue.serverTimestamp(),
+        restrictedUntil,
+        // Distinguish auto-restrictions from admin actions in adminAuditLog —
+        // without this, auditUserRestriction falls back to "unknown". Admin
+        // restrictions set restrictedBy to the admin's uid and omit
+        // restrictedUntil (no auto-expiry).
+        restrictedBy: "system",
+      });
+      console.log(`User ${authorId} auto-restricted (${recentFlagged.length} recent flags) until ${restrictedUntil.toDate()}`);
+    }
+  } catch (err) {
+    console.warn("Repeat offender check failed:", err.message);
+  }
+}
 
 exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
   const postId = event.params.postId;
@@ -1115,38 +1207,8 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
 
   if (postData.flagged === true) return;
 
-  const text = (postData.text || "").toLowerCase();
-
-  const spamPatterns = [
-    /\b(buy|sell|discount|promo|click here|free money|crypto|bitcoin|investment)\b/i,
-    /https?:\/\//i,
-    /\b(www\.)\b/i,
-    /\b(buy now|act now|limited time|earn money|make money)\b/i,
-    /\b(ethereum|nft)\b/i,
-    /\b(follow my|check my bio|link in bio)\b/i,
-    /\b(discount code|promo code|use code)\b/i,
-    /\b(dm me for|dm for)\b/i,
-    /\b(cashapp|venmo me|paypal me)\b/i,
-    /\b(onlyfans|only fans)\b/i,
-  ];
-
-  let flagReason = null;
-
-  if (spamPatterns.some((p) => p.test(text))) {
-    flagReason = "spam_or_commercial";
-  } else if (MOD_HATE.some((p) => p.test(text))) {
-    flagReason = "hate_speech";
-  } else if (MOD_THREAT.some((phrase) => text.includes(phrase))) {
-    flagReason = "targeted_threat";
-  } else if (MOD_SEXUAL.some((p) => p.test(text))) {
-    flagReason = "sexual_content";
-  } else if (containsPII(postData.text || "")) {
-    flagReason = "personal_information";
-  } else if (containsURL(postData.text || "")) {
-    flagReason = "contains_link";
-  }
-
-  const isConcerning = MOD_CONCERNING.some((phrase) => text.includes(phrase));
+  const flagReason = computePostFlagReason(postData.text);
+  const concerning = isPostConcerning(postData.text);
 
   if (flagReason) {
     await db.collection("posts").doc(postId).update({
@@ -1155,58 +1217,8 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
       flagReason,
     });
     console.log(`Post ${postId} flagged: ${flagReason}`);
-
-    // Repeat-offender tracking. Previously 3 flagged posts all-time → permanent
-    // restriction with no user-facing recovery path (admin unrestrict only),
-    // which trapped users whose content tripped the (high false-positive-rate)
-    // PII / link detectors months earlier. The new shape:
-    //   - count only recent flags (7 days) so stale incidents don't haunt a user
-    //   - raise threshold to 5 so a single bad afternoon doesn't lock the account
-    //   - set restrictedUntil = now + 48h so the restriction auto-expires
-    //     without admin intervention (UserHandleCache consults this timestamp)
-    // Admin-set restrictions (restrictedBy != "system" and no restrictedUntil)
-    // still persist until an admin clears them — this only softens the auto path.
-    const authorId = postData.authorId;
-    if (authorId) {
-      try {
-        const flaggedSnap = await db.collection("posts")
-          .where("authorId", "==", authorId)
-          .where("flagged", "==", true)
-          .limit(20)
-          .get();
-        const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const recentFlagged = flaggedSnap.docs.filter((doc) => {
-          const data = doc.data();
-          // Rate-limit flags are already their own throttle punishment
-          // (post hidden from feed). Letting them count toward the 5-flag
-          // auto-restrict threshold is double-jeopardy and would lock a
-          // user out just for posting too fast — not a policy violation.
-          // Count only content-violation flags (hate, threat, sexual, PII,
-          // spam, etc.).
-          if (data.flagReason === "rate_limit_exceeded") return false;
-          const flaggedAt = data.flaggedAt;
-          if (!flaggedAt || typeof flaggedAt.toDate !== "function") return false;
-          return flaggedAt.toDate().getTime() > sevenDaysAgoMs;
-        });
-        if (recentFlagged.length >= 5) {
-          const restrictedUntil = Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
-          await db.collection("users").doc(authorId).update({
-            restricted: true,
-            restrictedAt: FieldValue.serverTimestamp(),
-            restrictedUntil,
-            // Distinguish auto-restrictions from admin actions in adminAuditLog —
-            // without this, auditUserRestriction falls back to "unknown". Admin
-            // restrictions set restrictedBy to the admin's uid and omit
-            // restrictedUntil (no auto-expiry).
-            restrictedBy: "system",
-          });
-          console.log(`User ${authorId} auto-restricted (${recentFlagged.length} recent flags) until ${restrictedUntil.toDate()}`);
-        }
-      } catch (err) {
-        console.warn("Repeat offender check failed:", err.message);
-      }
-    }
-  } else if (isConcerning) {
+    await checkRepeatOffenderPosts(postData.authorId);
+  } else if (concerning) {
     await db.collection("posts").doc(postId).update({
       concerningContent: true,
       flaggedAt: FieldValue.serverTimestamp(),
@@ -1215,44 +1227,128 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
   }
 });
 
+// Re-runs moderation when an existing post's text changes. Without this,
+// EditPostView (PostDetailView.swift) lets an author publish clean text,
+// pass the create-time moderation pass, then edit slurs/threats/PII into
+// the body — the post stays unflagged and visible. The trigger fires on
+// every update, but bails fast unless `text` actually changed (this also
+// breaks the recursion loop with the trigger's own flagged/flagReason
+// writes, which don't touch text).
+exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
+  const postId = event.params.postId;
+  const before = (event.data && event.data.before && event.data.before.data()) || {};
+  const after = (event.data && event.data.after && event.data.after.data()) || {};
+
+  // Skip when text didn't change. This covers two cases:
+  //   - The trigger's own writes (flagged, flaggedAt, flagReason,
+  //     concerningContent) keep `text` constant — without this guard the
+  //     update we issue below re-fires this handler in an infinite loop.
+  //   - Any other unrelated field update (editedAt without text, future
+  //     metadata fields, etc.) doesn't need a moderation pass.
+  if (before.text === after.text) return;
+
+  const flagReason = computePostFlagReason(after.text);
+  const concerning = isPostConcerning(after.text);
+
+  if (flagReason) {
+    // Don't rewrite the doc if it's already flagged with the same reason —
+    // saves a Firestore write per no-change re-flag and keeps flaggedAt
+    // pinned to the original detection time.
+    if (after.flagged === true && after.flagReason === flagReason) return;
+    await db.collection("posts").doc(postId).update({
+      flagged: true,
+      flaggedAt: FieldValue.serverTimestamp(),
+      flagReason,
+    });
+    console.log(`Post ${postId} re-flagged after edit: ${flagReason}`);
+    await checkRepeatOffenderPosts(after.authorId);
+  } else if (concerning && after.concerningContent !== true) {
+    await db.collection("posts").doc(postId).update({
+      concerningContent: true,
+      flaggedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`Post ${postId} marked as concerning content after edit`);
+  }
+});
+
 // ============================================================
 // Content moderation — flag replies with prohibited content
+//
+// Reply moderation policy mirrors post moderation but with a different
+// remediation matrix: hate/harassment/threat/sexual content gets the reply
+// deleted outright; PII and link flags get a soft "flagged" marker (the
+// false-positive rate on these patterns is high, so we leave the doc and
+// let admins review). Edit-after-publish bypassed both routes until the
+// onReplyUpdated trigger below — same gap that existed for posts.
 // ============================================================
+
+function computeReplyFlagReason(rawText) {
+  const text = (rawText || "").toLowerCase();
+  if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
+  if (MOD_HARASSMENT.some((p) => text.includes(p))) return "harassment";
+  if (MOD_THREAT.some((p) => text.includes(p))) return "targeted_threat";
+  if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
+  if (containsPII(rawText || "")) return "personal_information";
+  if (containsURL(rawText || "")) return "contains_link";
+  return null;
+}
+
+async function applyReplyModeration(postId, replyId, flagReason) {
+  if (!flagReason) return;
+  if (flagReason === "personal_information" || flagReason === "contains_link") {
+    // PII and links: flag for review instead of deleting (higher false positive rate)
+    await db.collection("posts").doc(postId).collection("replies").doc(replyId).update({
+      flagged: true,
+      flaggedAt: FieldValue.serverTimestamp(),
+      flagReason,
+    });
+    console.log(`Reply ${replyId} on post ${postId} flagged: ${flagReason}`);
+  } else {
+    // Counter decrement is handled by onReplyDeletedUpdateCount on the
+    // subsequent delete trigger.
+    await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+    console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
+  }
+}
 
 exports.onReplyCreatedModerate = onDocumentCreated(
   "posts/{postId}/replies/{replyId}",
   async (event) => {
-    const postId = event.params.postId;
-    const replyId = event.params.replyId;
     const data = event.data.data();
     if (!data) return;
-
-    const text = (data.text || "").toLowerCase();
-
-    let flagReason = null;
-    if (MOD_HATE.some((p) => p.test(text))) flagReason = "hate_speech";
-    else if (MOD_HARASSMENT.some((p) => text.includes(p))) flagReason = "harassment";
-    else if (MOD_THREAT.some((p) => text.includes(p))) flagReason = "targeted_threat";
-    else if (MOD_SEXUAL.some((p) => p.test(text))) flagReason = "sexual_content";
-    else if (containsPII(data.text || "")) flagReason = "personal_information";
-    else if (containsURL(data.text || "")) flagReason = "contains_link";
-
+    const flagReason = computeReplyFlagReason(data.text);
     if (flagReason) {
-      if (flagReason === "personal_information" || flagReason === "contains_link") {
-        // PII and links: flag for review instead of deleting (higher false positive rate)
-        await db.collection("posts").doc(postId).collection("replies").doc(replyId).update({
-          flagged: true,
-          flaggedAt: FieldValue.serverTimestamp(),
-          flagReason,
-        });
-        console.log(`Reply ${replyId} on post ${postId} flagged: ${flagReason}`);
-      } else {
-        // Counter decrement is handled by onReplyDeletedUpdateCount on the
-        // subsequent delete trigger.
-        await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
-        console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
-      }
+      await applyReplyModeration(event.params.postId, event.params.replyId, flagReason);
     }
+  }
+);
+
+// Re-runs reply moderation when text changes. Reply update is allowed by
+// firestore.rules (the reply author can edit their own reply); without this
+// trigger, an author could post a clean reply, pass create-time moderation,
+// then edit in slurs/threats/PII and the reply would never be re-flagged
+// or deleted. iOS doesn't currently expose reply edit, but a tampered
+// client can issue the update directly so the server-side gap is real.
+//
+// Same anti-recursion guard as onPostUpdated — bail unless `text` actually
+// changed, so the trigger's own flagged-field updates don't re-fire it.
+// (Severe-content path issues a delete, which fires onDocumentDeleted —
+// not this handler — so no loop concern there either.)
+exports.onReplyUpdated = onDocumentUpdated(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const before = (event.data && event.data.before && event.data.before.data()) || {};
+    const after = (event.data && event.data.after && event.data.after.data()) || {};
+    if (before.text === after.text) return;
+
+    const flagReason = computeReplyFlagReason(after.text);
+    if (!flagReason) return;
+    // Skip the soft-flag rewrite if it's already flagged with the same reason.
+    if (after.flagged === true && after.flagReason === flagReason
+        && (flagReason === "personal_information" || flagReason === "contains_link")) {
+      return;
+    }
+    await applyReplyModeration(event.params.postId, event.params.replyId, flagReason);
   }
 );
 

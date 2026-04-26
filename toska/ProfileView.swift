@@ -802,10 +802,9 @@ struct ProfileView: View {
                         for missingId in missingIds {
                             cleanupBatch.deleteDocument(db.collection("users").document(uid).collection("saved").document(missingId))
                         }
-                        cleanupBatch.commit { error in
-                            if let error = error {
-                                print("⚠️ saved posts cleanup batch failed: \(error)")
-                            }
+                        Task {
+                            do { try await cleanupBatch.commit() }
+                            catch { print("⚠️ saved posts cleanup batch failed: \(error)") }
                         }
                     }
                 }
@@ -851,10 +850,9 @@ struct ProfileView: View {
                         for missingId in missingIds {
                             cleanupBatch.deleteDocument(db.collection("users").document(uid).collection("liked").document(missingId))
                         }
-                        cleanupBatch.commit { error in
-                            if let error = error {
-                                print("⚠️ liked posts cleanup batch failed: \(error)")
-                            }
+                        Task {
+                            do { try await cleanupBatch.commit() }
+                            catch { print("⚠️ liked posts cleanup batch failed: \(error)") }
                         }
                     }
                 }

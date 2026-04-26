@@ -15,8 +15,12 @@ class NetworkMonitor {
         private var bannerDismissTask: Task<Void, Never>? = nil
 
         private init() {
+            // pathUpdateHandler is a @Sendable closure invoked off the main
+            // queue. The inner Task re-captures self weakly so Swift 6 strict
+            // concurrency doesn't flag the cross-closure self capture as a
+            // shared-mutable-state hazard.
             monitor.pathUpdateHandler = { [weak self] path in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     guard let self else { return }
                     let wasConnected = self.isConnected
                     self.isConnected = path.status == .satisfied
@@ -28,9 +32,9 @@ class NetworkMonitor {
                     } else if !wasConnected {
                         // Reconnected — wait 2s then hide banner, cancelling any prior task
                         self.bannerDismissTask?.cancel()
-                        self.bannerDismissTask = Task { @MainActor in
+                        self.bannerDismissTask = Task { @MainActor [weak self] in
                             try? await Task.sleep(nanoseconds: 2_000_000_000)
-                            guard !Task.isCancelled else { return }
+                            guard !Task.isCancelled, let self else { return }
                             self.showOfflineBanner = false
                         }
                     }

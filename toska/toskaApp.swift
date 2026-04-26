@@ -70,8 +70,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         HapticManager.prepareAll()
 
         authStateListener = Auth.auth().addStateDidChangeListener { _, user in
+            let isSignedIn = user != nil
             Task { @MainActor in
-                if let user = user {
+                if isSignedIn {
                     BlockedUsersCache.shared.startListening()
                     UserHandleCache.shared.startListening()
                 } else {

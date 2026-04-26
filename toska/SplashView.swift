@@ -7,7 +7,13 @@ import FirebaseFirestore
 struct SplashView: View {
     @State private var showCreateAccount = false
     @State private var showSignIn = false
-    @State private var appleHelper = AppleSignInHelper()
+    // AppleSignInHelper is an ObservableObject (class) that holds the pending
+    // continuation across the Apple Authorization delegate callbacks.
+    // @StateObject is the canonical storage for view-owned ObservableObjects —
+    // @State works for reference types in modern SwiftUI but doesn't guarantee
+    // the same singleton-per-view semantics, and an accidental re-init in the
+    // middle of a sign-in would drop the pending continuation on the floor.
+    @StateObject private var appleHelper = AppleSignInHelper()
     @State private var errorMessage = ""
     @State private var isSigningIn = false
     @Environment(\.scenePhase) private var scenePhase
@@ -176,8 +182,16 @@ struct SplashView: View {
             return
         }
 
-        let handle: String = await withCheckedContinuation { c in
-            generateUniqueHandle { c.resume(returning: $0) }
+        // Bounded handle assignment — see AppleSignInHelper for the full
+        // rationale. A hung Firestore would previously leave Google sign-up
+        // spinning forever because the inner continuation never resumed.
+        let handle: String
+        do {
+            handle = try await withTimeout(seconds: 5) {
+                await generateUniqueHandleAsync()
+            }
+        } catch {
+            handle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
         }
 
         try await db.collection("users").document(uid).setData([

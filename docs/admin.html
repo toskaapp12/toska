@@ -82,6 +82,36 @@
     <div class="toast" id="toast"></div>
 
     <script type="module">
+        // ============================================================
+        // SECURITY NOTE — admin.html
+        //
+        // This page is not deployed via firebase.json (no `hosting`
+        // entry), so it is not publicly served by Firebase Hosting.
+        // It is intended to be opened locally by an authorised
+        // operator (file:// or a private host) to triage reports
+        // and moderate flagged content.
+        //
+        // The actual security perimeter is the Firestore rules:
+        //   - admins/{uid} read: if isOwner(uid)  → admin status check
+        //   - reports update: isAdmin()           → resolve / dismiss
+        //   - users update {restricted, ...}: isAdmin() → restrict / unrestrict
+        //   - posts update {flagged}: isAdmin()   → unflag / delete
+        // Even if a non-admin bypassed the client-side gate below, the
+        // server-side rules deny every write. The Firebase config /
+        // apiKey here is a public identifier (intentionally so for
+        // browser SDK use); it does not grant any privileges by itself.
+        //
+        // Hardening still recommended before exposing this page on a
+        // public URL:
+        //   1. Enable Firebase App Check (reCAPTCHA Enterprise provider)
+        //      and call initializeAppCheck(...) below — App Check
+        //      gates SDK-level reads/writes from non-attested origins.
+        //   2. Move write actions behind a Cloud Function (callable)
+        //      that re-verifies admin status server-side, so the
+        //      auth-then-write window can't be exploited mid-session.
+        //   3. Serve the page from a private host (Cloud Run + IAP, or
+        //      a static host requiring SSO).
+        // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
@@ -94,6 +124,19 @@
             messagingSenderId: "183467627187",
             appId: "1:183467627187:ios:ce1217a856e980f70756c6"
         });
+
+        // To enable App Check, uncomment below and supply a reCAPTCHA
+        // Enterprise site key from the Google Cloud console (it is a
+        // public site key, safe to commit). Once enabled, the iOS
+        // client's existing App Attest enforcement plus this web App
+        // Check token together restrict all Firestore reads/writes to
+        // attested toska clients only.
+        //
+        // import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js";
+        // initializeAppCheck(app, {
+        //   provider: new ReCaptchaEnterpriseProvider("YOUR_RECAPTCHA_SITE_KEY"),
+        //   isTokenAutoRefreshEnabled: true,
+        // });
 
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -301,7 +344,19 @@
 
         window.unflagPost = async function(postId) {
             try {
-                await updateDoc(doc(db, "posts", postId), { flagged: false });
+                // Clearing flagged alone wasn't enough — DailyMomentView,
+                // WeeklyRecapView, TopView, FeedViewModel, OtherProfileView,
+                // and ProfileView all also filter on `concerningContent`,
+                // so a post that was flagged AND marked concerning would
+                // stay hidden from feeds even after the appeal succeeded.
+                // Same for flagReason — leaving it set keeps the audit
+                // trail honest but contradicts the "unflagged" state.
+                // Clear all three so the post is fully restored to feeds.
+                await updateDoc(doc(db, "posts", postId), {
+                    flagged: false,
+                    concerningContent: false,
+                    flagReason: null
+                });
                 document.getElementById(`flagged-${postId}`)?.remove();
                 showToast("post unflagged — now visible in feeds");
             } catch (e) { showToast("error: " + e.message); }

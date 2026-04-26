@@ -222,7 +222,13 @@ enum CrisisLines {
             return [
                 CrisisResource(label: "call 988", sublabel: "suicide & crisis lifeline", url: "tel://988", icon: "phone.fill"),
                 CrisisResource(label: "text 988", sublabel: "same lifeline, by text", url: "sms:988", icon: "message.fill"),
-                CrisisResource(label: "text HOME to 741741", sublabel: "crisis text line", url: "sms:741741&body=HOME", icon: "text.bubble.fill"),
+                // `sms:NUMBER?body=TEXT` is the documented iOS form. The previous
+                // `sms:NUMBER&body=TEXT` form (no `?`) made iOS parse the entire
+                // string after `sms:` as the recipient number, so Messages
+                // opened with "741741&body=HOME" as the phone number and the
+                // prefilled text never landed — a crisis-support UX that
+                // silently failed for users in the moment they needed it.
+                CrisisResource(label: "text HOME to 741741", sublabel: "crisis text line", url: "sms:741741?body=HOME", icon: "text.bubble.fill"),
             ]
         case "CA":
             return [
@@ -232,7 +238,7 @@ enum CrisisLines {
         case "GB":
             return [
                 CrisisResource(label: "call 116 123", sublabel: "samaritans (free, 24/7)", url: "tel://116123", icon: "phone.fill"),
-                CrisisResource(label: "text SHOUT to 85258", sublabel: "shout crisis text line", url: "sms:85258&body=SHOUT", icon: "text.bubble.fill"),
+                CrisisResource(label: "text SHOUT to 85258", sublabel: "shout crisis text line", url: "sms:85258?body=SHOUT", icon: "text.bubble.fill"),
             ]
         case "AU":
             return [
@@ -242,12 +248,12 @@ enum CrisisLines {
         case "IE":
             return [
                 CrisisResource(label: "call 116 123", sublabel: "samaritans ireland", url: "tel://116123", icon: "phone.fill"),
-                CrisisResource(label: "text HELLO to 50808", sublabel: "text crisis line", url: "sms:50808&body=HELLO", icon: "text.bubble.fill"),
+                CrisisResource(label: "text HELLO to 50808", sublabel: "text crisis line", url: "sms:50808?body=HELLO", icon: "text.bubble.fill"),
             ]
         case "NZ":
             return [
                 CrisisResource(label: "call 0800 543 354", sublabel: "lifeline aotearoa", url: "tel://0800543354", icon: "phone.fill"),
-                CrisisResource(label: "text HELP to 4357", sublabel: "lifeline text", url: "sms:4357&body=HELP", icon: "text.bubble.fill"),
+                CrisisResource(label: "text HELP to 4357", sublabel: "lifeline text", url: "sms:4357?body=HELP", icon: "text.bubble.fill"),
             ]
         default:
             // Outside of the regions we have curated lines for, link to the
@@ -297,7 +303,7 @@ enum Telemetry {
     /// Read from UserDefaults directly (no @AppStorage) since this namespace
     /// is callable from non-View contexts.
     static var isOptedIn: Bool {
-        UserDefaults.standard.object(forKey: "toska_shareAnonymousUsage") as? Bool ?? true
+        UserDefaults.standard.object(forKey: UserDefaultsKeys.shareAnonymousUsage) as? Bool ?? true
     }
 
     /// Generic event firer. Prefer the named helpers below for type-safety.
@@ -682,6 +688,8 @@ you keep ownership of anything you post. by posting, you grant toska a limited l
 
 7. anonymity and data
 toska keeps your real identity separate from your posts. we store the minimum needed to run the service: an anonymous handle, the content you post, and basic account metadata. we never share your identity publicly. we may share account information with law enforcement when legally required (for example, in response to a valid warrant).
+
+we use firebase (a service by google) as the backend that stores your posts, handles sign-in, and delivers push notifications. firebase also collects anonymous crash reports and app-usage stats (which screens get opened, how often) so we can fix bugs and understand where the app is rough. firebase never receives your real name or any identifying info because we don't collect those either. you can turn off the anonymous usage stats in settings → privacy.
 
 8. account termination
 you can delete your account at any time from settings. we may suspend or terminate accounts that repeatedly violate these rules, that put other users at risk, or that we believe to be operated by someone under 17.

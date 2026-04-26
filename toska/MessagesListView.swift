@@ -124,6 +124,17 @@ struct MessagesListView: View {
                         listener?.remove()
                         listener = nil
                     }
+                    // Belt-and-suspenders: sign-out can happen while this view is on
+                    // screen (session expiry, force-revoke, account-switch race).
+                    // onDisappear isn't guaranteed to fire before the SplashView
+                    // swap, so explicitly drop the listener and clear local state
+                    // on sign-out — matches the pattern in NotificationsView,
+                    // ConversationView, FeelingCircleView, and PostDetailView.
+                    .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+                        listener?.remove()
+                        listener = nil
+                        conversations = []
+                    }
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                         startListening()
                     }
@@ -151,12 +162,14 @@ struct MessagesListView: View {
     
     func startConversationListener(uid: String) {
         listener?.remove()
+        let capturedUid = uid
         listener = Firestore.firestore().collection("conversations")
             .whereField("participants", arrayContains: uid)
             .order(by: "lastMessageAt", descending: true)
             .limit(to: 30)
             .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
                         // Without surfacing this, a permission-denied or
                         // network drop leaves the user staring at the

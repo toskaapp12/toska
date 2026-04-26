@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
+import UserNotifications
 
 struct UserSettings: Equatable {
     var allowSharing = true
@@ -12,7 +13,6 @@ struct UserSettings: Equatable {
     var notifySaves = true
     var notifyMessages = true
     var notifyMilestones = true
-    var notifyWitness = true
     var pushEnabled = true
     var gentleCheckIn = true
 }
@@ -35,7 +35,7 @@ struct SettingsView: View {
     // Analytics opt-out. UserDefaults-backed because the Telemetry namespace
     // (which is non-View) reads the same key directly. Default true; flipping
     // off short-circuits all Telemetry.* calls everywhere in the app.
-    @AppStorage("toska_shareAnonymousUsage") private var shareAnonymousUsage: Bool = true
+    @AppStorage(UserDefaultsKeys.shareAnonymousUsage) private var shareAnonymousUsage: Bool = true
     // Surfaced when a settings save fails so the user knows their toggle
     // didn't actually persist (otherwise the toggle silently snaps back).
     @State private var saveErrorBanner: String? = nil
@@ -293,8 +293,30 @@ struct SettingsView: View {
         .onAppear {
                     loadSettings()
                 }
+        .onDisappear {
+            // Cancel any in-flight debounced save when the settings sheet
+            // is dismissed. The 500ms wait inside debounceSave can otherwise
+            // outlive the view and fire saveSettings() on a torn-down state
+            // container — wasted Firestore write at best, stale-state race
+            // at worst (if the user toggled, then dismissed before the
+            // debounce elapsed, then opened again before the Task resolved).
+            saveTask?.cancel()
+            saveTask = nil
+        }
         .onChange(of: settings) { oldValue, newValue in
-            if isLoaded && oldValue != newValue { debounceSave() }
+            if isLoaded && oldValue != newValue {
+                debounceSave()
+                // Flipping pushEnabled on is only meaningful if iOS has
+                // actually granted permission. Previously this toggle just
+                // wrote a Firestore pref — if the user had never been
+                // prompted (or was prompted but said no), the server kept
+                // sending push payloads and iOS silently dropped them.
+                // Now we request the system permission when they turn push
+                // on for the first time.
+                if !oldValue.pushEnabled && newValue.pushEnabled {
+                    requestPushPermissionIfNeeded()
+                }
+            }
         }
         .alert("delete account?", isPresented: $showDeleteAlert) {
             Button("cancel", role: .cancel) {}
@@ -443,7 +465,6 @@ struct SettingsView: View {
                    notifySaves: boolPref("notifySaves", default: true),
                    notifyMessages: boolPref("notifyMessages", default: true),
                    notifyMilestones: boolPref("notifyMilestones", default: true),
-                   notifyWitness: boolPref("notifyWitness", default: true),
                    pushEnabled: boolPref("pushEnabled", default: true),
                    gentleCheckIn: boolPref("gentleCheckIn", default: true)
                )
@@ -456,6 +477,36 @@ struct SettingsView: View {
             try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
             saveSettings()
+        }
+    }
+
+    /// Ensures iOS push authorization matches the app-level pushEnabled pref.
+    /// Called when the user flips pushEnabled on — without this, the Firestore
+    /// pref can say "push on" while iOS has never been asked or has been
+    /// denied, leaving the toggle cosmetic.
+    private func requestPushPermissionIfNeeded() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            Task { @MainActor in
+                switch settings.authorizationStatus {
+                case .notDetermined:
+                    // First-time ask via the system prompt. PushNotificationManager
+                    // registers for remote notifications on grant.
+                    PushNotificationManager.shared.requestPermission()
+                case .denied:
+                    // Previously denied at the OS level — iOS doesn't let us
+                    // re-prompt from code. The user has to go to Settings.app
+                    // to change it. The Firestore pref is still updated; if
+                    // they later flip the OS-level switch the existing
+                    // FCM/push pipeline picks back up.
+                    print("⚠️ Push enabled in app but denied at OS level — user must change it in Settings.app")
+                case .authorized, .provisional, .ephemeral:
+                    // Already granted — the pushEnabled=true Firestore pref is
+                    // all that was needed.
+                    break
+                @unknown default:
+                    break
+                }
+            }
         }
     }
     
@@ -484,7 +535,6 @@ struct SettingsView: View {
                             "notifySaves": FieldValue.delete(),
                             "notifyMessages": FieldValue.delete(),
                             "notifyMilestones": FieldValue.delete(),
-                            "notifyWitness": FieldValue.delete(),
                             "pushEnabled": FieldValue.delete(),
                             "gentleCheckIn": FieldValue.delete(),
                         ], forDocument: userRef)
@@ -496,7 +546,6 @@ struct SettingsView: View {
                             "notifySaves": settings.notifySaves,
                             "notifyMessages": settings.notifyMessages,
                             "notifyMilestones": settings.notifyMilestones,
-                            "notifyWitness": settings.notifyWitness,
                             "pushEnabled": settings.pushEnabled,
                             "gentleCheckIn": settings.gentleCheckIn,
                         ], forDocument: privateRef, merge: true)
@@ -520,58 +569,85 @@ struct SettingsView: View {
                 }    }
     
 
-    // NOTE: This writes a document to `pendingDeletions` and then deletes the
-       // Firebase Auth account. A Cloud Function is expected to watch that collection
-       // and clean up the user's posts, notifications, followers, etc.
-       // If the function fails, the user's data is orphaned. Monitor `pendingDeletions`
-       // for documents older than ~5 minutes that have no `completedAt` field,
-       // and add retry logic to the Cloud Function.
-       func deleteAccount() {
-           guard let uid = Auth.auth().currentUser?.uid else { return }
-           isDeleting = true
-           deleteError = ""
+    // Deletion is a three-phase handoff between the client and the Cloud
+    // Function (functions/index.js: onPendingDeletionCreated):
+    //   1. Client writes pendingDeletions/{uid} as a "cascade intent" marker.
+    //   2. Client immediately calls auth.delete() so it lands inside the Cloud
+    //      Function's 10-second grace window. If it fails (requiresRecentLogin),
+    //      the client writes cancelled=true on the same doc before the grace
+    //      window expires — the Cloud Function re-reads the doc and bails.
+    //   3. On success, the Cloud Function verifies the auth user is gone via
+    //      Admin SDK and then cascades Firestore cleanup (posts, notifications,
+    //      followers, private/data, etc. — see onUserDocDeleted).
+    //
+    // monitorPendingDeletions (scheduled hourly) is the backstop for requests
+    // where the immediate trigger bailed because auth.delete() was still in
+    // flight at the grace-window boundary.
+    func deleteAccount() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isDeleting = true
+        deleteError = ""
 
-           // Clear FCM token before triggering deletion. Without this, the
-           // server can keep pushing to the now-orphaned device until the
-           // token rotates or the OS reaps it on next app uninstall.
-           PushNotificationManager.shared.clearFCMToken()
+        // Clear FCM token before triggering deletion. Without this, the
+        // server can keep pushing to the now-orphaned device until the
+        // token rotates or the OS reaps it on next app uninstall.
+        PushNotificationManager.shared.clearFCMToken()
 
-           Firestore.firestore().collection("pendingDeletions").document(uid).setData([
-            "uid": uid,
-            "requestedAt": FieldValue.serverTimestamp()
-        ]) { writeError in
-            Task { @MainActor in
-                if let writeError = writeError {
-                    isDeleting = false
-                    deleteError = "couldn't reach the server — please try again: \(writeError.localizedDescription)"
-                    return
-                }
+        Task { @MainActor in
+            // Apple token revocation can take up to ~30 seconds with retries.
+            // Run it in the background so it doesn't push the auth.delete()
+            // call past the Cloud Function's 10-second grace window. If the
+            // revoke fails, Apple's refresh-token TTL bounds the exposure on
+            // its own.
+            Task.detached { await AppleSignInHelper.revokeTokenIfNeeded() }
 
-                await AppleSignInHelper.revokeTokenIfNeeded()
-                
-                Auth.auth().currentUser?.delete { error in
-                    Task { @MainActor in
-                        if let error = error {
-                            isDeleting = false
-                            Firestore.firestore().collection("pendingDeletions").document(uid).setData([
-                                "cancelled": true,
-                                "cancelledAt": FieldValue.serverTimestamp()
-                            ], merge: true)
-                            let nsError = error as NSError
-                            if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                                showReauthAlert = true
-                            } else {
-                                deleteError = "failed to delete account: \(error.localizedDescription)"
-                            }
-                            return
-                        }
-
-                        isDeleting = false
-                                             NotificationCenter.default.post(name: .userDidSignOut, object: nil)
-                                             dismiss()
-                    }
-                }
+            // 1. Write the cascade-intent marker. First clear any stale
+            //    pendingDeletion from a previous cancelled attempt — Firestore
+            //    differentiates create vs update on existing docs, and the rule
+            //    only permits create. Without this pre-delete, a user who
+            //    cancelled a prior deletion can never re-initiate one because
+            //    the cancelled doc lingers until the hourly monitor reaps it.
+            //    Delete is permissive (owner-only) so a no-op or a live-doc
+            //    delete both succeed; try? absorbs not-found.
+            try? await Firestore.firestore().collection("pendingDeletions").document(uid).delete()
+            do {
+                try await Firestore.firestore().collection("pendingDeletions").document(uid).setData([
+                    "uid": uid,
+                    "requestedAt": FieldValue.serverTimestamp()
+                ])
+            } catch {
+                isDeleting = false
+                deleteError = "couldn't reach the server — please try again: \(error.localizedDescription)"
+                return
             }
+
+            // 2. Immediately attempt auth deletion — this must land inside the
+            //    Cloud Function's 10-second grace window so the cascade sees
+            //    auth/user-not-found and proceeds. If it fails, cancel the
+            //    intent marker before the grace window expires.
+            do {
+                try await Auth.auth().currentUser?.delete()
+            } catch {
+                isDeleting = false
+                try? await Firestore.firestore().collection("pendingDeletions").document(uid).setData([
+                    "cancelled": true,
+                    "cancelledAt": FieldValue.serverTimestamp()
+                ], merge: true)
+                let nsError = error as NSError
+                if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                    showReauthAlert = true
+                } else {
+                    deleteError = "failed to delete account: \(error.localizedDescription)"
+                }
+                return
+            }
+
+            // 3. Auth is gone. The Cloud Function will cascade cleanup within
+            //    ~10 seconds; if anything fails mid-cascade, monitorPendingDeletions
+            //    (scheduled hourly) retries.
+            isDeleting = false
+            NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+            dismiss()
         }
     }
 
@@ -895,17 +971,23 @@ struct ChangePasswordView: View {
                         .background(Color.white)
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
-                    
+                        // `.newPassword` enables Keychain strong-password suggestions and
+                        // routes 3rd-party password managers through the correct autofill
+                        // surface. Omitting textContentType (previous state) left iOS
+                        // guessing and got the user no autofill help.
+                        .textContentType(.newPassword)
+
                     Text("confirm password")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundColor(Color.toskaTextLight)
-                    
+
                     SecureField("type it again", text: $confirmPassword)
                         .font(.system(size: 13))
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
+                        .textContentType(.newPassword)
                     
                     if !message.isEmpty {
                         Text(message)

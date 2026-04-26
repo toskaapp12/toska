@@ -11,8 +11,8 @@ struct ComposeView: View {
     // Draft persistence keys. AppStorage survives force-quit so a user mid-
     // compose doesn't lose their words if iOS terminates the app or they
     // accidentally swipe it away. Cleared on successful post.
-    @AppStorage("toska_composeDraftText") private var draftText: String = ""
-    @AppStorage("toska_composeDraftTag") private var draftTag: String = ""
+    @AppStorage(UserDefaultsKeys.composeDraftText) private var draftText: String = ""
+    @AppStorage(UserDefaultsKeys.composeDraftTag) private var draftTag: String = ""
     @State private var text = ""
     @State private var selectedTag: String? = nil
     @State private var showTagPicker = false
@@ -150,18 +150,31 @@ struct ComposeView: View {
                                                             .frame(minHeight: 200)
                                                             .focused($textFocused)
                                 .onChange(of: text) { _, newValue in
-                                    // Truncate using the same metric the
-                                    // Firestore rule uses (UTF-16 length)
-                                    // so heavy-emoji posts don't silently
-                                    // fail the server-side check.
-                                    if max(newValue.count, newValue.utf16.count) > activeCharLimit {
-                                        var truncated = ""
+                                    // Truncate using the same metric the Firestore rule uses
+                                    // (UTF-16 length) so heavy-emoji posts don't silently fail
+                                    // the server-side check.
+                                    //
+                                    // Single-pass: walk the grapheme clusters, accumulate
+                                    // UTF-16 units, stop at the first cluster that would push
+                                    // past the cap. Previous implementation built `truncated`
+                                    // via string concatenation inside a per-character loop —
+                                    // O(n²) in string length, which introduced visible typing
+                                    // lag on long posts (up to ~2M ops for a 2000-char letter
+                                    // at the boundary).
+                                    //
+                                    // utf16.count is always >= count for Unicode content, so
+                                    // checking utf16.count alone is equivalent to the previous
+                                    // max(count, utf16.count) check.
+                                    if newValue.utf16.count > activeCharLimit {
+                                        var utf16Count = 0
+                                        var endIdx = newValue.startIndex
                                         for ch in newValue {
-                                            let next = truncated + String(ch)
-                                            if max(next.count, next.utf16.count) > activeCharLimit { break }
-                                            truncated = next
+                                            let chUtf16 = String(ch).utf16.count
+                                            if utf16Count + chUtf16 > activeCharLimit { break }
+                                            utf16Count += chUtf16
+                                            endIdx = newValue.index(after: endIdx)
                                         }
-                                        text = truncated
+                                        text = String(newValue[..<endIdx])
                                     }
                                     if showRateLimitWarning { showRateLimitWarning = false }
                                     if showOfflineWarning { showOfflineWarning = false }
@@ -701,6 +714,13 @@ struct ComposeView: View {
     func postNow() {
         guard !isPosting else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Start the 30s rate-limit window at attempt time, not after success.
+        // Previously lastPostTime was only set on the success branch below,
+        // so a failed post (network hiccup, server error) left the window
+        // open and the user could hammer retry — piling up duplicate posts
+        // if the previous writes were actually queued and eventually landed.
+        // Matches the pattern used in PostDetailView.postReplyNow.
+        RateLimiter.shared.lastPostTime = Date()
         HapticManager.play(.send)
         isPosting = true
         postError = ""
@@ -764,7 +784,6 @@ struct ComposeView: View {
                         // next compose opens clean.
                         self.draftText = ""
                         self.draftTag = ""
-                        RateLimiter.shared.lastPostTime = Date()
                         NotificationCenter.default.post(name: .newPostCreated, object: nil)
                         if let onPostSuccess = self.onPostSuccess {
                             onPostSuccess()

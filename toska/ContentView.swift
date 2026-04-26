@@ -131,9 +131,9 @@ struct ContentView: View {
             // shown flag IS cleared so the next user gets a fresh primer
             // on their first Notifications visit instead of inheriting
             // User A's "already seen" state.
-            UserDefaults.standard.removeObject(forKey: "toska_composeDraftText")
-            UserDefaults.standard.removeObject(forKey: "toska_composeDraftTag")
-            UserDefaults.standard.removeObject(forKey: "toska_pushPrimerShown")
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftText)
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftTag)
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.pushPrimerShown)
         }
         .onReceive(NotificationCenter.default.publisher(for: .authSessionExpired)) { _ in
             verifyTask?.cancel()
@@ -226,14 +226,43 @@ struct ContentView: View {
     }
 
     func verifyUserDocumentAsync(uid: String) async {
+        // Belt-and-suspenders: any early return path (cancellation, transient
+        // error, etc.) should leave isLoading=false so the splash screen never
+        // hangs on a spinner. The success and permanent-error branches set
+        // this explicitly; defer catches anything we miss. Idempotent — if
+        // isLoading is already false, this is a no-op.
+        defer {
+            if isLoading { isLoading = false }
+        }
         for attempt in 1...8 {
             guard !isLoggedIn, !Task.isCancelled else { return }
 
-            // NOTE: try? swallows all errors including permanent ones like
-            // permission-denied, which will retry uselessly for all 8 attempts.
-            // Not changing this now given the fragile auth flow.
-            let snapshot = try? await Firestore.firestore()
-                .collection("users").document(uid).getDocumentAsync()
+            // Classify the error on each attempt. Retrying for 28 seconds on
+            // a permission-denied / unauthenticated failure (which is deterministic,
+            // not transient) wasted the user's time and left them staring at a
+            // loading spinner for nothing. Transient errors (network unavailable,
+            // deadline exceeded, unknown) continue to retry with the existing backoff.
+            let snapshot: DocumentSnapshot?
+            do {
+                snapshot = try await Firestore.firestore()
+                    .collection("users").document(uid).getDocumentAsync()
+            } catch {
+                let nsError = error as NSError
+                if nsError.domain == "FIRFirestoreErrorDomain" {
+                    switch nsError.code {
+                    case 7,   // permission-denied
+                         16:  // unauthenticated
+                        print("⚠️ verifyUserDocument: permanent error, aborting retry loop: \(error)")
+                        Telemetry.recordError(error, context: "ContentView.verifyUserDocumentAsync.permanent")
+                        isLoading = false
+                        showVerifyError = true
+                        return
+                    default:
+                        break // transient — fall through to retry
+                    }
+                }
+                snapshot = nil
+            }
 
             guard !Task.isCancelled else { return }
 
@@ -254,21 +283,21 @@ struct ContentView: View {
                 }
 
                 showVerifyError = false
-                                isLoggedIn = true
-                                isLoading = false
-                                // Defer the notification by one run-loop tick so MainTabView
-                                // and FeedView have time to mount and attach their
-                                // .onReceive(.authDidVerify) subscribers before it fires.
-                                // Without this delay, the notification is posted in the same
-                                // tick that isLoggedIn = true triggers the SplashView ->
-                                // MainTabView swap, so the subscribers don't exist yet and
-                                // the feed stays blank until pull-to-refresh.
-                                Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 300_000_000)
-                                    guard self.isLoggedIn, !Task.isCancelled else { return }
-                                    NotificationCenter.default.post(name: .authDidVerify, object: nil)
-                                }
-                                recordPresence(uid: uid)
+                isLoggedIn = true
+                isLoading = false
+                recordPresence(uid: uid)
+                // Inline the deferred notification post (was previously a
+                // detached Task that escaped verifyTask's cancellation).
+                // Sign-out cancels verifyTask, which cancels this Task.sleep
+                // and the post never fires for a stale auth state. The 300ms
+                // delay still gives MainTabView and FeedView time to mount
+                // and attach their .onReceive(.authDidVerify) subscribers
+                // before the notification arrives — without it the feed
+                // stays blank until pull-to-refresh.
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled,
+                      Auth.auth().currentUser?.uid == uid else { return }
+                NotificationCenter.default.post(name: .authDidVerify, object: nil)
                 await pruneOldNotifications(uid: uid)
                 return
             }

@@ -23,6 +23,7 @@ struct OtherProfileView: View {
     @State private var showMessages = false
     @State private var activeConversationId = ""
     @State private var showFollowerCount = true
+    @State private var showStartConversationError = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -274,6 +275,11 @@ struct OtherProfileView: View {
         } message: {
             Text("we hear you. well look into it.")
         }
+        .alert("couldnt open conversation", isPresented: $showStartConversationError) {
+            Button("ok") {}
+        } message: {
+            Text("something went wrong on our end. try again in a moment.")
+        }
         .sheet(isPresented: $showMessages) {
             if !activeConversationId.isEmpty {
                 ConversationView(
@@ -330,6 +336,10 @@ struct OtherProfileView: View {
                                         posts = documents.compactMap { doc in
                                                                 let data = doc.data()
                                                                 if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return nil }
+                                                                // Hide server-flagged posts — keeps this view consistent with the main
+                                                                // feed's filterBlocked behavior so a moderated post doesn't appear on
+                                                                // someone's profile after it was hidden from the feed.
+                                                                if data["flagged"] as? Bool == true { return nil }
                                                                 let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                                                                 return OtherProfilePost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt))
                                                             }
@@ -430,8 +440,13 @@ struct OtherProfileView: View {
                 batch.deleteDocument(followerRef)
                 batch.commit { error in
                     if error != nil {
-                        // Roll back optimistic update
+                        // Roll back optimistic update — but only if the active
+                        // user is still the one who issued this action. Without
+                        // the recheck, a sign-out (or account switch) between
+                        // the tap and the rollback callback would mutate the
+                        // new user's state with the previous user's revert.
                         Task { @MainActor in
+                            guard Auth.auth().currentUser?.uid == uid else { return }
                             self.isFollowing = true
                             self.followerCount += 1
                         }
@@ -446,8 +461,10 @@ struct OtherProfileView: View {
                 batch.setData(["handle": myHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followerRef)
                 batch.commit { error in
                     if error != nil {
-                        // Roll back optimistic update
+                        // Roll back optimistic update — same uid recheck as
+                        // the unfollow path above.
                         Task { @MainActor in
+                            guard Auth.auth().currentUser?.uid == uid else { return }
                             self.isFollowing = false
                             self.followerCount = max(0, self.followerCount - 1)
                         }
@@ -475,10 +492,14 @@ struct OtherProfileView: View {
                 let uidRef = db.collection("users").document(uid)
                 let theirRef = db.collection("users").document(userId)
 
-            // Write block document first
-            uidRef.collection("blocked").document(userId).setData([
-                "handle": handle, "blockedAt": FieldValue.serverTimestamp()
-            ])
+            // Route the block through BlockedUsersCache so the local set is
+            // updated optimistically (content from this user hides immediately
+            // across the app instead of waiting for the Firestore snapshot
+            // listener to echo the write back). The cache also handles revert
+            // on write failure. Previously this view wrote the blocked doc
+            // directly, which left a visible lag where the target's posts
+            // still appeared until the listener caught up.
+            BlockedUsersCache.shared.block(userId, handle: handle)
 
             Task { @MainActor in
                 // Check both follow directions before touching counts
@@ -535,44 +556,55 @@ struct OtherProfileView: View {
     }
 
     // MARK: - Start Conversation (DM)
-    
+    //
+    // Previously this was three nested completion handlers with every error
+    // silently swallowed — if any step failed (permission check, conversation
+    // lookup, creation write) the "Message" button just did nothing and the
+    // user had no feedback. Rewritten as async/await with a single catch so
+    // a real failure surfaces via showStartConversationError.
     func startConversation() {
-            guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
-            let db = Firestore.firestore()
-            
-            db.collection("users").document(userId).collection("blocked").document(uid).getDocument { blockedSnap, _ in
-                Task { @MainActor in
-                    if blockedSnap?.exists == true { return }
-                    
-                    let convoId = [uid, userId].sorted().joined(separator: "_")
-                    let convoRef = db.collection("conversations").document(convoId)
-                    
-                    let myHandle = UserHandleCache.shared.handle
-                                        convoRef.getDocument { snap, _ in
-                                            Task { @MainActor in
-                                                if snap?.exists == true {
-                                                    convoRef.updateData(["participantHandles.\(uid)": myHandle])
-                                                    activeConversationId = convoId
-                                                    showMessages = true
-                                                } else {
-                                                    convoRef.setData([
-                                                        "participants": [uid, userId],
-                                                        "participantHandles": [uid: myHandle, userId: handle],
-                                                        "lastMessage": "",
-                                                        "lastMessageAt": FieldValue.serverTimestamp(),
-                                                        "messageCount": [uid: 0, userId: 0],
-                                                        "createdAt": FieldValue.serverTimestamp()
-                                                    ]) { error in
-                                                        Task { @MainActor in
-                                                            guard error == nil else { return }
-                                                            activeConversationId = convoId
-                                                            showMessages = true
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
+        guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
+        let db = Firestore.firestore()
+
+        Task { @MainActor in
+            do {
+                let blockedSnap = try await db.collection("users")
+                    .document(userId).collection("blocked").document(uid)
+                    .getDocumentAsync()
+                // Silent return is intentional here: the target has blocked
+                // the actor. Surfacing a "you are blocked" error would leak
+                // the block state.
+                if blockedSnap.exists { return }
+
+                let convoId = [uid, userId].sorted().joined(separator: "_")
+                let convoRef = db.collection("conversations").document(convoId)
+                let myHandle = UserHandleCache.shared.handle
+
+                let convoSnap = try await convoRef.getDocumentAsync()
+                if convoSnap.exists {
+                    // Keep participantHandles fresh in case the actor's
+                    // handle changed since the conversation was created.
+                    // Non-fatal if it fails — we still open the thread.
+                    try? await convoRef.updateData([
+                        "participantHandles.\(uid)": myHandle
+                    ])
+                } else {
+                    try await convoRef.setData([
+                        "participants": [uid, userId],
+                        "participantHandles": [uid: myHandle, userId: handle],
+                        "lastMessage": "",
+                        "lastMessageAt": FieldValue.serverTimestamp(),
+                        "messageCount": [uid: 0, userId: 0],
+                        "createdAt": FieldValue.serverTimestamp()
+                    ])
                 }
+
+                activeConversationId = convoId
+                showMessages = true
+            } catch {
+                Telemetry.recordError(error, context: "OtherProfile.startConversation")
+                showStartConversationError = true
             }
         }
+    }
 }

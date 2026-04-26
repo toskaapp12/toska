@@ -179,7 +179,19 @@ struct TopView: View {
                             let authorId = data["authorId"] as? String ?? ""
                             if BlockedUsersCache.shared.isBlocked(authorId) { continue }
                             if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { continue }
-                            
+                            // Don't surface auto-flagged or admin-flagged posts on the
+                            // trending screen. Without this, a post that hit a velocity
+                            // spike before moderation triggered (or a flag that fired
+                            // mid-rank-window) would still show up in the leaderboard
+                            // — defeating the moderation system's hide-from-feeds
+                            // intent. Mirrors the filter in FeedViewModel.filterBlocked.
+                            if data["flagged"] as? Bool == true { continue }
+                            if data["concerningContent"] as? Bool == true { continue }
+                            // Reposts shouldn't trend (the original is what's "trending")
+                            // and reposts of trending posts double-count engagement
+                            // toward the same content. Original posts only.
+                            if data["isRepost"] as? Bool == true { continue }
+
                             let likeCount = data["likeCount"] as? Int ?? 0
                             let replyCount = data["replyCount"] as? Int ?? 0
                             let repostCount = data["repostCount"] as? Int ?? 0

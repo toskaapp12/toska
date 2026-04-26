@@ -381,6 +381,23 @@ struct ConversationView: View {
             typingDotTask?.cancel()
             typingDotTask = nil
         }
+        // Belt-and-suspenders: the in-listener auth-recheck dismisses on the
+        // first stale snapshot, but we don't want to wait for a snapshot —
+        // explicit sign-out should tear listeners down immediately. Skips
+        // the typing-status update because the auth context for that write
+        // is gone by the time we land here.
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+            appearTask?.cancel()
+            appearTask = nil
+            listener?.remove()
+            listener = nil
+            metadataListener?.remove()
+            metadataListener = nil
+            typingTimer?.cancel()
+            typingDotTask?.cancel()
+            typingDotTask = nil
+            dismiss()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             // Defensive re-attach. Firestore's snapshot listeners normally
             // recover on their own when the network comes back, but on long
@@ -524,12 +541,21 @@ struct ConversationView: View {
             .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else {
+                        // Auth changed out from under us (sign-out, account
+                        // switch). Tear down both listeners explicitly —
+                        // onDisappear isn't guaranteed to run before SwiftUI
+                        // releases the @State container when we dismiss, so
+                        // the listener refs would leak and keep firing.
+                        self.listener?.remove(); self.listener = nil
+                        self.metadataListener?.remove(); self.metadataListener = nil
                         self.dismiss()
                         return
                     }
                     if let error = error {
                         let nsError = error as NSError
                         if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
+                            self.listener?.remove(); self.listener = nil
+                            self.metadataListener?.remove(); self.metadataListener = nil
                             self.dismiss()
                         }
                         return
@@ -574,12 +600,16 @@ struct ConversationView: View {
             .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else {
+                        self.listener?.remove(); self.listener = nil
+                        self.metadataListener?.remove(); self.metadataListener = nil
                         self.dismiss()
                         return
                     }
                     if let error = error {
                         let nsError = error as NSError
                         if nsError.domain == "FIRFirestoreErrorDomain" && nsError.code == 7 {
+                            self.listener?.remove(); self.listener = nil
+                            self.metadataListener?.remove(); self.metadataListener = nil
                             self.dismiss()
                         }
                         self.isLoading = false
@@ -760,19 +790,28 @@ struct ConversationView: View {
     func updateTypingStatus(_ isTyping: Bool) {
         guard let uid = Auth.auth().currentUser?.uid, !conversationId.isEmpty else { return }
         guard listener != nil else { return }
+        // Dot-path updates so only the caller's uid key is touched within the
+        // `typing` / `typingAt` maps. Using setData(..., merge: true) with a
+        // map-valued field replaces the WHOLE map field (Firestore does not
+        // deep-merge map values), so each keystroke would wipe the other
+        // participant's typing indicator — making the feature silently
+        // non-functional for two-party DMs.
         Firestore.firestore().collection("conversations").document(conversationId)
-            .setData([
-                "typing": [uid: isTyping],
-                "typingAt": [uid: isTyping ? FieldValue.serverTimestamp() : FieldValue.delete()]
-            ], merge: true)
+            .updateData([
+                "typing.\(uid)": isTyping,
+                "typingAt.\(uid)": isTyping ? FieldValue.serverTimestamp() : FieldValue.delete()
+            ])
     }
 
     // MARK: - Read Receipts
 
     func markAsRead() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Same map-merge gotcha as updateTypingStatus — setData(..., merge: true)
+        // with a map-valued field replaces the whole `lastRead` map, wiping the
+        // other participant's read timestamp every time we mark our own.
         Firestore.firestore().collection("conversations").document(conversationId)
-            .setData(["lastRead": [uid: FieldValue.serverTimestamp()]], merge: true) { error in
+            .updateData(["lastRead.\(uid)": FieldValue.serverTimestamp()]) { error in
                 if let error = error {
                     print("⚠️ markAsRead failed: \(error)")
                 }

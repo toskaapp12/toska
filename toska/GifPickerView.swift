@@ -205,8 +205,22 @@ struct GifPickerView: View {
                 // the call is coming from a signed/attested Toska binary)
                 // and a Firebase ID token (proves there is a logged-in
                 // user). Either failure is surfaced as the same generic
-                // copy so we don't leak auth state to the user.
-                guard let token = try? await Auth.auth().currentUser?.getIDToken() else {
+                // copy so we don't leak auth state to the user — but we
+                // do log the root cause (offline vs auth expired vs
+                // malformed token) to Crashlytics so fixes don't need to
+                // chase blind reports of "GIFs don't work".
+                let token: String
+                do {
+                    guard let t = try await Auth.auth().currentUser?.getIDToken() else {
+                        print("⚠️ giphy: no currentUser for getIDToken")
+                        isLoading = false
+                        fetchError = "couldn't load GIFs — try again."
+                        return
+                    }
+                    token = t
+                } catch {
+                    print("⚠️ giphy: getIDToken failed: \(error)")
+                    Telemetry.recordError(error, context: "Giphy.getIDToken")
                     isLoading = false
                     fetchError = "couldn't load GIFs — try again."
                     return

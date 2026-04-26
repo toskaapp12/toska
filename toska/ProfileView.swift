@@ -31,13 +31,29 @@ struct ProfileView: View {
     @State private var showDeleteReplyAlert = false
     @State private var deleteReplyId = ""
     @State private var deleteReplyPostId = ""
+    // Surfaced when deleteReply fails. Was previously a silent no-op — the
+    // row stayed on screen with no indication the delete failed.
+    @State private var deleteReplyError: String? = nil
     @State private var hasFetchedInitial = false
     @State private var showMessagesList = false
     @State private var showWeeklyRecap = false
     @State private var presenceStreak = 0
     @State private var totalNights = 0
+    // Gates the streak-share button while ImageRenderer rasterizes. Mirrors
+    // the isRendering pattern in ShareCardView — ImageRenderer is @MainActor
+    // and blocks the main thread during render, so without feedback the user
+    // taps share and the app appears frozen.
+    @State private var isStreakRendering = false
     
-    let tabIcons = [("note.text", "note.text"), ("heart", "heart.fill"), ("bookmark", "bookmark.fill")]
+    // Each tuple is (inactive icon, active icon) for the profile tab bar.
+    // SF Symbols `note.text` has no filled pair, so we substitute
+    // `text.document` (outlined) → `text.document.fill` (filled) to match the
+    // heart/bookmark pattern and give the first tab a visible active state.
+    let tabIcons = [
+        ("text.document", "text.document.fill"),
+        ("heart", "heart.fill"),
+        ("bookmark", "bookmark.fill"),
+    ]
     var avatarInitial: String {
         let cleaned = userHandle.replacingOccurrences(of: "anonymous_", with: "")
         return String(cleaned.prefix(1)).uppercased()
@@ -133,11 +149,18 @@ struct ProfileView: View {
                                                     Button {
                                                         shareStreak()
                                                     } label: {
-                                                        Image(systemName: "square.and.arrow.up")
-                                                            .font(.system(size: 9, weight: .light))
-                                                            .foregroundColor(Color.toskaDivider)
+                                                        ZStack {
+                                                            if isStreakRendering {
+                                                                ProgressView().scaleEffect(0.5).tint(Color.toskaDivider)
+                                                            } else {
+                                                                Image(systemName: "square.and.arrow.up")
+                                                                    .font(.system(size: 9, weight: .light))
+                                                                    .foregroundColor(Color.toskaDivider)
+                                                            }
+                                                        }
                                                     }
                                                     .buttonStyle(.plain)
+                                                    .disabled(isStreakRendering)
                                                 }
                                             }
                                         }
@@ -280,6 +303,21 @@ struct ProfileView: View {
         } message: {
             Text("this is permanent.")
         }
+        // Failure feedback for deleteReply. Bound to a Bool projection of
+        // the optional error string so SwiftUI dismisses the alert when
+        // the user taps OK (which sets the underlying string back to nil).
+        .alert(
+            "couldn't delete",
+            isPresented: Binding(
+                get: { deleteReplyError != nil },
+                set: { if !$0 { deleteReplyError = nil } }
+            ),
+            presenting: deleteReplyError
+        ) { _ in
+            Button("ok", role: .cancel) { deleteReplyError = nil }
+        } message: { error in
+            Text(error)
+        }
         .onAppear {
                     if !hasFetchedInitial {
                         hasFetchedInitial = true
@@ -294,6 +332,22 @@ struct ProfileView: View {
                     }
                     loadProfile()
                 }
+        // Reset on sign-out so any in-flight ProfileView state from the
+        // previous account doesn't blend into the next user's UI when
+        // MainTabView remounts. hasFetchedInitial=false re-arms the
+        // onAppear fetches; clearing the local arrays avoids a flash of
+        // the previous account's posts before the fresh fetches land.
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+            hasFetchedInitial = false
+            myPosts = []
+            likedPosts = []
+            savedPosts = []
+            myReplies = []
+            postCount = 0
+            followerCount = 0
+            followingCount = 0
+            totalLikes = 0
+        }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showSettings = false
                     showMessagesList = false
@@ -457,7 +511,18 @@ struct ProfileView: View {
                 .collection("replies").document(replyId)
                 .delete { error in
                     Task { @MainActor in
-                        if error == nil { myReplies.removeAll { $0.id == replyId } }
+                        if let error = error {
+                            // Surface the failure so the row doesn't silently
+                            // stay on screen as if nothing happened. Previously
+                            // a delete failure (network drop, permission edge
+                            // case) was logged nowhere and the user had no
+                            // signal that their delete didn't take effect.
+                            print("⚠️ deleteReply failed: \(error)")
+                            Telemetry.recordError(error, context: "ProfileView.deleteReply")
+                            deleteReplyError = "couldn't delete — try again"
+                        } else {
+                            myReplies.removeAll { $0.id == replyId }
+                        }
                     }
                 }
         }
@@ -482,8 +547,21 @@ struct ProfileView: View {
         }
     
     func shareStreak() {
+        guard !isStreakRendering else { return }
+        isStreakRendering = true
+        // Yield one frame so SwiftUI can paint the disabled/spinner state
+        // before ImageRenderer blocks main for the rasterize. Mirrors the
+        // withRenderIndicator helper in ShareCardView.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 16_000_000)
+            shareStreakRender()
+            isStreakRendering = false
+        }
+    }
+
+    private func shareStreakRender() {
         let streakLabel = presenceStreak > 1 ? "\(presenceStreak) nights in a row" : ""
-        
+
         let cardView = ZStack {
             Color(hex: "0a0908")
             
@@ -552,6 +630,14 @@ struct ProfileView: View {
            Task { @MainActor in
                do {
                    let snapshot = try await db.collection("users").document(uid).getDocumentAsync()
+                   // Re-check auth between the captured uid and the live one before
+                   // writing to @State. If the user signed out and a different user
+                   // signed in while this fetch was in flight (Tab A sign-out, Tab B
+                   // sign-in within a single SwiftUI body update), the previous
+                   // user's profile data would otherwise briefly land in the new
+                   // user's UI before their own fetch caught up. Mirrors the
+                   // listener-callback pattern applied across the app.
+                   guard Auth.auth().currentUser?.uid == uid else { return }
                    guard let data = snapshot.data() else { return }
                    userHandle = data["handle"] as? String ?? "anonymous"
                    followerCount = data["followerCount"] as? Int ?? 0
@@ -563,6 +649,7 @@ struct ProfileView: View {
                    let postSnap = try? await db.collection("posts")
                        .whereField("authorId", isEqualTo: uid)
                        .count.getAggregation(source: .server)
+                   guard Auth.auth().currentUser?.uid == uid else { return }
                    postCount = Int(truncating: postSnap?.count ?? 0)
                } catch {
                    print("⚠️ loadProfile failed: \(error)")
@@ -573,8 +660,15 @@ struct ProfileView: View {
     func reconcileCountsIfNeeded() {
             guard let uid = Auth.auth().currentUser?.uid else { return }
             let lastKey = UserDefaultsKeys.lastReconcileDate(uid: uid)
+            // 24h gate. abs() guards against clock skew — if the user's
+            // device clock jumped backwards (manual change, NTP correction,
+            // timezone fiddling), `Date().timeIntervalSince(lastReconcile)`
+            // could be negative and pass the < 86400 check forever, leaving
+            // the user permanently unable to reconcile. abs() makes the gate
+            // equivalent to "more than 24h have *elapsed* in either direction
+            // since last reconcile" which is the actual intent.
             if let lastReconcile = UserDefaults.standard.object(forKey: lastKey) as? Date,
-               Date().timeIntervalSince(lastReconcile) < 86400 { return }
+               abs(Date().timeIntervalSince(lastReconcile)) < 86400 { return }
 
             // Reconciliation now runs server-side via the reconcileMyCounts
             // Cloud Function. Previously the client did the count() and
@@ -604,6 +698,11 @@ struct ProfileView: View {
 
                 do {
                     let (data, response) = try await URLSession.shared.data(for: request)
+                    // Same uid-recheck as loadProfile — the request can take
+                    // seconds, and a sign-out/sign-in race during that window
+                    // would otherwise let the previous user's reconciled
+                    // counts overwrite the new user's UI.
+                    guard Auth.auth().currentUser?.uid == uid else { return }
                     guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                         return
@@ -624,6 +723,10 @@ struct ProfileView: View {
 
         postsQuery.count.getAggregation(source: .server) { snapshot, error in
             Task { @MainActor in
+                // Auth recheck — see loadProfile for rationale. Without this,
+                // the previous user's count can land in the new user's UI
+                // during a fast sign-out/sign-in transition.
+                guard Auth.auth().currentUser?.uid == uid else { return }
                 if let error = error {
                     print("⚠️ loadMyPosts count aggregation failed: \(error)")
                     return
@@ -637,6 +740,7 @@ struct ProfileView: View {
         postsQuery.order(by: "createdAt", descending: true).limit(to: 50)
             .getDocuments { snapshot, error in
                 Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == uid else { return }
                     if let error = error {
                         print("⚠️ loadMyPosts list fetch failed: \(error)")
                         return
@@ -645,6 +749,13 @@ struct ProfileView: View {
                     myPosts = documents.compactMap { doc in
                         let data = doc.data()
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return nil }
+                        // Also hide flagged posts from their own author —
+                        // previously the feed filtered flagged but the profile
+                        // didn't, so an author saw posts that no one else
+                        // could (silent shadowban from their perspective).
+                        // Matching filterBlocked's behavior keeps the author
+                        // view consistent with what the rest of the app sees.
+                        if data["flagged"] as? Bool == true { return nil }
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                         let isRepost = data["isRepost"] as? Bool ?? false
                         let originalHandle = data["originalHandle"] as? String
@@ -661,6 +772,8 @@ struct ProfileView: View {
             guard let savedSnap = try? await db.collection("users").document(uid).collection("saved")
                 .order(by: "createdAt", descending: true).limit(to: 50)
                 .getDocumentsAsync() else { return }
+            // Auth recheck after the await — sign-out/sign-in race protection.
+            guard Auth.auth().currentUser?.uid == uid else { return }
             let postIds = savedSnap.documents.map { $0.documentID }
             guard !postIds.isEmpty else { return }
             let chunks = stride(from: 0, to: postIds.count, by: 30).map { Array(postIds[$0..<min($0 + 30, postIds.count)]) }
@@ -708,6 +821,8 @@ struct ProfileView: View {
             guard let likedSnap = try? await db.collection("users").document(uid).collection("liked")
                 .order(by: "createdAt", descending: true).limit(to: 50)
                 .getDocumentsAsync() else { likedPosts = []; return }
+            // Auth recheck after the await — sign-out/sign-in race protection.
+            guard Auth.auth().currentUser?.uid == uid else { return }
             let postIds = likedSnap.documents.map { $0.documentID }
             guard !postIds.isEmpty else { likedPosts = []; return }
             let chunks = stride(from: 0, to: postIds.count, by: 30).map { Array(postIds[$0..<min($0 + 30, postIds.count)]) }
@@ -748,47 +863,11 @@ struct ProfileView: View {
         }
     }
     
-    func loadMyReplies() {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        let db = Firestore.firestore()
-        Task {
-            guard let replySnap = try? await db.collectionGroup("replies")
-                .whereField("authorId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true).limit(to: 30)
-                .getDocumentsAsync() else { return }
-            var results: [MyReply] = []
-            await withTaskGroup(of: MyReply?.self) { group in
-                for doc in replySnap.documents {
-                    let data = doc.data()
-                    let replyText = data["text"] as? String ?? ""
-                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                    let replyTime = ToskaFormatters.timeAgo(from: createdAt)
-                    
-                    if let parentText = data["parentPostText"] as? String {
-                        let parentHandle = data["parentPostHandle"] as? String ?? "anonymous"
-                        let replyDocId = doc.documentID
-                        let parentPostId = doc.reference.parent.parent?.documentID ?? ""
-                        group.addTask {
-                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
-                        }
-                    } else {
-                        guard let parentRef = doc.reference.parent.parent else { continue }
-                        let replyDocId = doc.documentID
-                        let parentPostId = parentRef.documentID
-                        group.addTask {
-                            let parentSnap = try? await parentRef.getDocumentAsync()
-                            let parentData = parentSnap?.data()
-                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentData?["text"] as? String ?? "deleted post", parentHandle: parentData?["authorHandle"] as? String ?? "anonymous", parentPostId: parentPostId, createdAt: createdAt)
-                        }
-                    }
-                }
-                for await result in group {
-                    if let result = result { results.append(result) }
-                }
-            }
-            myReplies = results.sorted { $0.createdAt > $1.createdAt }
-        }
-    }
+    // loadMyReplies was removed — no UI surface in ProfileView renders the
+    // user's replies list (the replies tab was intentionally dropped, see the
+    // toskaUITests assertion in testProfileElements). OtherProfileView still
+    // owns its own reply-loading path. If a replies tab is ever reintroduced
+    // here, restore this function and the populated myReplies state.
 }
 
 // MARK: - Follow User (for sheet navigation)
@@ -907,7 +986,18 @@ struct FollowListView: View {
                     for await result in group { fetched.append(result) }
                 }
             }
-            users = fetched
+            // Dedup by id. With both the per-doc handle path and the
+            // collateral fetch path appending to the same array, a corrupt
+            // double-follow doc (or a future race that creates one) would
+            // render the same user twice. Walking by id keeps the first
+            // occurrence's handle (which is what the doc itself stored —
+            // truthier than a fallback fetch).
+            var seen = Set<String>()
+            users = fetched.compactMap { entry in
+                guard !seen.contains(entry.id) else { return nil }
+                seen.insert(entry.id)
+                return entry
+            }
             isLoading = false
         }
     }
@@ -929,6 +1019,9 @@ struct EditReplyView: View {
     @State private var showNameWarning = false
     @State private var showGentleCheck = false
     @State private var gentleCheckLevel: CrisisLevel = .soft
+    // Surfaced inline below the edit field when saveReply fails. Cleared
+    // on the next attempt or on successful save (success dismisses the view).
+    @State private var saveError: String? = nil
 
     var body: some View {
         ZStack {
@@ -952,6 +1045,14 @@ struct EditReplyView: View {
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
                 Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+
+                if let saveError {
+                    Text(saveError)
+                        .font(.system(size: 11))
+                        .foregroundColor(Color(hex: "c45c5c"))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                }
 
                 ZStack(alignment: .topLeading) {
                     if replyText.isEmpty {
@@ -1017,15 +1118,25 @@ struct EditReplyView: View {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !postId.isEmpty, !replyId.isEmpty else { return }
         isSaving = true
+        saveError = nil
         Firestore.firestore().collection("posts").document(postId).collection("replies").document(replyId)
             .updateData(["text": trimmed, "editedAt": FieldValue.serverTimestamp()]) { error in
                 Task { @MainActor in
                     isSaving = false
-                    if error == nil {
-                        replyText = trimmed
-                        onSave()
-                        dismiss()
+                    if let error = error {
+                        // Previously a save failure left isSaving=false but
+                        // showed nothing to the user — the save button just
+                        // became tappable again with no error context. Now
+                        // we surface a banner so the user knows to retry
+                        // and Crashlytics gets the failure for diagnosis.
+                        print("⚠️ EditReply.saveReply failed: \(error)")
+                        Telemetry.recordError(error, context: "EditReplyView.saveReply")
+                        saveError = "couldn't save — try again"
+                        return
                     }
+                    replyText = trimmed
+                    onSave()
+                    dismiss()
                 }
             }
     }

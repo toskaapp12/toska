@@ -68,14 +68,23 @@ service cloud.firestore {
         && (request.resource.data.keys().hasAll(['email'])
               ? request.resource.data.email is string
               : true);
+      // Owners can update their user doc except for:
+      //   - fcmToken (lives in the private subcollection; main-doc writes of
+      //     it are blocked to keep the field surface narrow)
+      //   - restriction fields (restricted/restrictedAt/restrictedBy/restrictedUntil):
+      //     only Cloud Functions (Admin SDK, bypasses rules) and admins (via the
+      //     branch below) can write these. Without this guard, a tampered client
+      //     could flip `restricted: false` to self-unrestrict after hitting the
+      //     repeat-offender threshold.
       allow update: if (isOwner(userId)
             && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['handle'])
                 || (request.resource.data.handle is string
                     && request.resource.data.handle.size() <= 30))
-            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['fcmToken']))
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']))
         || (isAdmin()
             && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['restricted', 'restrictedAt', 'restrictedBy']));
+               .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']));
       allow delete: if isOwner(userId);
 
       match /following/{followedId} {
@@ -86,7 +95,14 @@ service cloud.firestore {
         // PostDetailView blockUser cleanup) so this restriction doesn't
         // break any current call site.
         allow read: if isOwner(userId);
-        allow create, delete: if isOwner(userId);
+        // Self-follow guard: a user can't follow themselves. Without this,
+        // a tampered client could insert /users/{uid}/following/{uid},
+        // tripping onFollowCreatedUpdateCounts and inflating the user's
+        // own followingCount/followerCount with no real follow relationship.
+        // Delete intentionally has no self-guard so any pre-existing
+        // self-follow doc can still be cleaned up.
+        allow create: if isOwner(userId) && followedId != userId;
+        allow delete: if isOwner(userId);
       }
 
       match /followers/{followerId} {
@@ -98,7 +114,12 @@ service cloud.firestore {
         // Block enforcement on follow: a user the target has blocked can't
         // add themselves as a follower. Without this, blocked users could
         // still bump someone's followerCount and appear in their notifications.
+        // Also blocks self-follows (request.auth.uid != userId) for the same
+        // reason as the /following/ subcollection above — prevents counter
+        // inflation via a tampered client posting itself into its own
+        // followers list.
         allow create: if isAuth() && request.auth.uid == followerId
+          && request.auth.uid != userId
           && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid));
         allow update: if isAuth() && request.auth.uid == followerId;
         allow delete: if isAuth() && (request.auth.uid == followerId || isOwner(userId));
@@ -106,10 +127,60 @@ service cloud.firestore {
 
       match /notifications/{notifId} {
         allow read: if isOwner(userId);
+        // Each notification type must be backed by a real event the actor
+        // actually performed. Previously the only check was
+        // fromUserId == auth.uid, which let any authenticated user write
+        // arbitrary notification docs into any other user's subcollection —
+        // sendPushNotification (Cloud Function) fires on create and sends a
+        // real APNs push, so that's an open push-spam vector.
+        //
+        // milestones are server-written (Admin SDK bypasses rules) so the
+        // client branch explicitly excludes that type.
+        //
+        // reply/repost rely on the post existing AND userId being its author,
+        // because we can't cheaply verify a specific reply/repost subdoc by
+        // ID from within rules. The docId pattern ("reply_{postId}_{uid}")
+        // is still deterministic so an attacker can only write one of each
+        // type per (post, victim, actor) triple — plus they must not be
+        // blocked by the author.
         allow create: if isAuth()
           && request.resource.data.fromUserId == request.auth.uid
           && request.resource.data.type is string
-          && request.resource.data.type in ['like', 'reply', 'follow', 'repost', 'save', 'message', 'milestone'];
+          && (
+            // like: actor has a like doc on the post AND the post author is the recipient
+            (request.resource.data.type == 'like'
+              && request.resource.data.postId is string
+              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
+              && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId)/likes/$(request.auth.uid)))
+            // save: actor has a save doc AND the post author is the recipient
+            || (request.resource.data.type == 'save'
+              && request.resource.data.postId is string
+              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
+              && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved/$(request.resource.data.postId)))
+            // follow: actor is in the recipient's followers subcollection
+            || (request.resource.data.type == 'follow'
+              && exists(/databases/$(database)/documents/users/$(userId)/followers/$(request.auth.uid)))
+            // message: actor is a participant in the named conversation AND recipient is too
+            || (request.resource.data.type == 'message'
+              && request.resource.data.conversationId is string
+              && exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId))
+              && request.auth.uid in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants
+              && userId in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants)
+            // reply: post exists, recipient is post author, actor isn't blocked by them
+            || (request.resource.data.type == 'reply'
+              && request.resource.data.postId is string
+              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
+              && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid)))
+            // repost: same constraints as reply — post exists, recipient is author
+            || (request.resource.data.type == 'repost'
+              && request.resource.data.postId is string
+              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
+              && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid)))
+          );
         allow update, delete: if isOwner(userId);
       }
 
@@ -150,6 +221,22 @@ service cloud.firestore {
         // FIX: added text.size() > 0 to match the server-side validatePost
         // Cloud Function guard. A blank post cannot be created from the client.
         && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt', 'likeCount', 'repostCount', 'replyCount'])
+        // Schema lockdown — only the documented post fields can land on a post
+        // doc. Without hasOnly, a malicious or buggy client could attach
+        // arbitrary extra fields (e.g. a forged `flagged: false` to re-enable
+        // a moderated post, or `flagReason: "ok"` to mask a hit, or scratch
+        // fields that other triggers later trust). The allow-list covers
+        // every field currently written by ComposeView.postNow and
+        // PostInteractionManager.repost. If a new field gets added to those
+        // write paths, extend this list too.
+        && request.resource.data.keys().hasOnly([
+             'authorId', 'authorHandle', 'text', 'createdAt',
+             'likeCount', 'repostCount', 'replyCount',
+             'tag', 'gifUrl',
+             'isRepost', 'isLetter', 'isWhisper', 'isMidnightPost', 'isShareable',
+             'expiresAt',
+             'originalPostId', 'originalHandle', 'originalAuthorId'
+           ])
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
         && request.resource.data.replyCount == 0
@@ -171,9 +258,17 @@ service cloud.firestore {
       // posts; the next legitimate like/reply event would correct it via
       // FieldValue.increment, but in the gap the inflated number is shown
       // in the feed. authorId/createdAt are immutable post-create.
+      //
+      // Moderation fields (flagged/flagReason/flaggedAt/concerningContent)
+      // are also denied to clients: without this guard, a post author whose
+      // post got auto-flagged by onPostCreated could just update flagged=false
+      // and re-show their own moderated content. Admin SDK (Cloud Functions
+      // and admin.html actions) bypass these rules and can still toggle these
+      // fields legitimately.
       allow update: if ((isAuth() && resource.data.authorId == request.auth.uid)
             && !request.resource.data.diff(resource.data).affectedKeys()
-                .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt']))
+                .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt',
+                         'flagged', 'flagReason', 'flaggedAt', 'concerningContent']))
         || isAdmin();
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();
@@ -221,12 +316,46 @@ service cloud.firestore {
     match /conversations/{convoId} {
       allow read: if isAuth()
         && request.auth.uid in resource.data.participants;
+      // messageCount is the per-user 5-message rate-limit ledger and feeds
+      // the cap check in the messages create rule below. Without locking
+      // it, a malicious peer could pre-set messageCount.{victim_uid} = 5
+      // on the conversation doc to seal the victim's DM slot before they
+      // ever sent a message. On create we require either:
+      //   - messageCount absent or empty (the most defensive shape), or
+      //   - every value in the map equal to 0 (matches what the iOS clients
+      //     currently write: ["uidA": 0, "uidB": 0]).
+      // Either way no slot can land >0 at create time.
       allow create: if isAuth()
-        && request.auth.uid in request.resource.data.participants;
+        && request.auth.uid in request.resource.data.participants
+        && (
+          !request.resource.data.keys().hasAny(['messageCount'])
+          || request.resource.data.messageCount.size() == 0
+          || request.resource.data.messageCount.values().hasOnly([0])
+        );
+      // On update messageCount can only change in two ways: not at all, or
+      // by exactly +1 to the calling user's own slot. Other participants'
+      // slots are immutable from the client side; this preserves the cap
+      // (a peer can't reset themselves) and prevents the same pre-seal
+      // attack via update. ConversationView.sendMessage's transaction
+      // increments messageCount.{auth.uid} by 1 inside the same write that
+      // creates the message, which matches this constraint exactly.
+      // The legacy onMessageCreatedUpdateCount Cloud Function and the
+      // post-moderation decrement in onMessageCreatedModerate use the
+      // Admin SDK and bypass these rules.
       allow update: if isAuth()
         && request.auth.uid in resource.data.participants
         && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['participants', 'createdAt']);
+            .hasAny(['participants', 'createdAt'])
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['messageCount'])
+          || (
+            request.resource.data.messageCount is map
+            && request.resource.data.messageCount.diff(resource.data.get('messageCount', {}))
+                 .affectedKeys().hasOnly([request.auth.uid])
+            && request.resource.data.messageCount.get(request.auth.uid, 0)
+                 == resource.data.get('messageCount', {}).get(request.auth.uid, 0) + 1
+          )
+        );
       allow delete: if false;
 
       match /messages/{messageId} {
@@ -246,12 +375,15 @@ service cloud.firestore {
           // Schema lockdown: only the four expected fields can land on a
           // message doc. Without this, a malicious or buggy client could
           // write arbitrary extra fields and let a future Cloud Function
-          // trust them. The clientCountedV1 marker is required because
-          // ConversationView always sets it; legacy messages without it
-          // are already in Firestore but new writes must include it.
+          // trust them. The clientCountedV1 marker is required (not just
+          // permitted) because every legitimate write from the current
+          // client sets it, and the rate-cap guarantee depends on the
+          // matching transactional increment in ConversationView.sendMessage.
           && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt', 'clientCountedV1'])
+          && request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt', 'clientCountedV1'])
+          && request.resource.data.clientCountedV1 == true
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
-          && get(/databases/$(database)/documents/conversations/$(convoId)).data.messageCount[request.auth.uid] < 5
+          && get(/databases/$(database)/documents/conversations/$(convoId)).data.get('messageCount', {}).get(request.auth.uid, 0) < 5
           && (
             // Two-participant DM (the only shape the app currently creates):
             // get the other participant and check their blocked subcollection.
@@ -359,7 +491,16 @@ service cloud.firestore {
       allow create: if isOwner(uid);
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled', 'cancelledAt']);
-      allow delete: if false;
+      // Owners can delete their own pendingDeletion. Without this, a user
+      // whose previous deletion was cancelled (doc exists with cancelled=true)
+      // could never start a new deletion: create fails because the doc exists,
+      // update is restricted to just cancelled/cancelledAt, and previously
+      // delete was forbidden entirely. Clients now delete any stale doc before
+      // creating a fresh one — see SettingsView.deleteAccount. Deleting a
+      // non-cancelled pending doc effectively "cancels" it (the grace-window
+      // re-read in onPendingDeletionCreated sees the missing doc and bails),
+      // which is the same user-facing outcome as the existing cancelled flag.
+      allow delete: if isOwner(uid);
     }
 
     match /{path=**}/replies/{replyId} {

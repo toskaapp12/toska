@@ -58,12 +58,11 @@ class PushNotificationManager: NSObject {
             .updateData([
                 "fcmToken": FieldValue.delete()
             ])
-        // Also clear any legacy field on the main user doc so re-reads on
-        // older accounts don't pick up a stale value the server might
-        // still try to push to.
-        Firestore.firestore().collection("users").document(uid).updateData([
-            "fcmToken": FieldValue.delete()
-        ])
+        // Stale legacy fcmToken on the main user doc is cleaned up server-side:
+        // sendPushNotification deletes it from both locations the first time
+        // it sees an invalid-token error from FCM. We can't delete it from the
+        // client because firestore.rules blocks owners from any update that
+        // touches fcmToken on the main doc.
     }
 }
 // MARK: - MessagingDelegate
@@ -92,9 +91,18 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
         let type = userInfo["type"] as? String ?? ""
-        let postId = userInfo["postId"] as? String ?? ""
-        let fromUserId = userInfo["fromUserId"] as? String ?? ""
-        let conversationId = userInfo["conversationId"] as? String ?? ""
+        // Validate every ID pulled from the push payload before routing.
+        // A push sender (or anyone who can plant a notification doc in our
+        // subcollection — see firestore.rules) controls this userInfo; an
+        // unvalidated postId/conversationId/userId can send the app to
+        // arbitrary screens or crash views downstream that assume a Firestore
+        // doc ID pattern. `isValidFirestoreDocId` lives in FirestoreExtensions.
+        let rawPostId = userInfo["postId"] as? String ?? ""
+        let rawFromUserId = userInfo["fromUserId"] as? String ?? ""
+        let rawConversationId = userInfo["conversationId"] as? String ?? ""
+        let postId = isValidFirestoreDocId(rawPostId) ? rawPostId : ""
+        let fromUserId = isValidFirestoreDocId(rawFromUserId) ? rawFromUserId : ""
+        let conversationId = isValidFirestoreDocId(rawConversationId) ? rawConversationId : ""
 
         // Route based on notification type. The Cloud Function forwards
         // postId, fromUserId, and conversationId in the data payload so we
@@ -105,6 +113,16 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         // case where AppDelegate fires didReceive before MainTabView's
         // NotificationCenter observers are even attached — the post would
         // otherwise vanish into the void.
+        //
+        // Call completionHandler() FIRST and synchronously, before kicking off
+        // the routing Task. iOS expects this delegate to call back promptly
+        // to confirm the notification was processed; if the runtime suspends
+        // the app or kills the extension before the @MainActor Task runs,
+        // the system may flag the notification as undelivered and retry.
+        // The routing work (state mutations, NotificationCenter posts) is
+        // independent of when iOS gets its acknowledgement, so detaching
+        // completion from the Task is purely a robustness improvement.
+        completionHandler()
         Task { @MainActor in
             switch type {
             case "message" where !conversationId.isEmpty:
@@ -115,7 +133,7 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                     userId: fromUserId
                 )
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("OpenConversationFromPush"),
+                    name: .openConversationFromPush,
                     object: nil,
                     userInfo: ["conversationId": conversationId, "otherUserId": fromUserId]
                 )
@@ -127,7 +145,7 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                     userId: fromUserId
                 )
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("OpenProfileFromPush"),
+                    name: .openProfileFromPush,
                     object: nil,
                     userInfo: ["userId": fromUserId]
                 )
@@ -141,13 +159,12 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                         userId: ""
                     )
                     NotificationCenter.default.post(
-                        name: NSNotification.Name("OpenPostFromPush"),
+                        name: .openPostFromPush,
                         object: nil,
                         userInfo: ["postId": postId]
                     )
                 }
             }
-            completionHandler()
         }
     }
 }

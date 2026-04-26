@@ -64,7 +64,18 @@ struct CreateAccountView: View {
                                             withAnimation(.easeInOut(duration: 0.15)) {
                                                 assignedHandle = "..."
                                             }
-                                            generateUniqueHandle { handle in
+                                            // Same timeout shape as loadUniqueHandle so a flaky
+                                            // network never strands the shuffle on "..." with no
+                                            // recovery. Caps the user-visible spinner at 5s.
+                                            Task { @MainActor in
+                                                let handle: String
+                                                do {
+                                                    handle = try await withTimeout(seconds: 5) {
+                                                        await generateUniqueHandleAsync()
+                                                    }
+                                                } catch {
+                                                    handle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+                                                }
                                                 withAnimation(.easeInOut(duration: 0.15)) {
                                                     assignedHandle = handle
                                                 }
@@ -134,7 +145,13 @@ struct CreateAccountView: View {
                                             .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
                                     )
                                     .padding(.bottom, 12)
-                                    .textContentType(.oneTimeCode)
+                                    // `.newPassword` signals iOS to offer the Keychain-backed
+                                    // strong-password suggestion and routes 3rd-party password
+                                    // managers through the right autofill path. `.oneTimeCode`
+                                    // (the previous value) is for SMS/email verification codes
+                                    // and breaks both — new accounts would get no autofill
+                                    // assistance at all.
+                                    .textContentType(.newPassword)
                                     .accessibilityIdentifier("createPasswordField")
                                     .accessibilityLabel("new password")
                 
@@ -154,7 +171,7 @@ struct CreateAccountView: View {
                                             .stroke(Color(hex: "e4e6ea"), lineWidth: 0.5)
                                     )
                                     .padding(.bottom, 20)
-                                    .textContentType(.oneTimeCode)
+                                    .textContentType(.newPassword)
                                     .accessibilityIdentifier("createConfirmPasswordField")
                                     .accessibilityLabel("confirm password")
                 
@@ -253,7 +270,19 @@ struct CreateAccountView: View {
     }
     
     func loadUniqueHandle() {
-        generateUniqueHandle { handle in
+        // 5s timeout matches Apple/Google sign-up paths. Without this,
+        // a hung Firestore call leaves the handle field showing "" or
+        // "..." indefinitely on the create-account screen and the user
+        // sees no way forward. Falls back to a UUID handle on timeout.
+        Task { @MainActor in
+            let handle: String
+            do {
+                handle = try await withTimeout(seconds: 5) {
+                    await generateUniqueHandleAsync()
+                }
+            } catch {
+                handle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+            }
             assignedHandle = handle
         }
     }
@@ -272,16 +301,35 @@ struct CreateAccountView: View {
                     errorMessage = friendlyAuthErrorMessage(error)
                     return
                 }
-                
+
                 guard let uid = result?.user.uid else {
+                    // createUser returned no error but also no user — this
+                    // shouldn't happen per Firebase's contract, but without
+                    // an error message the button just becomes usable again
+                    // with no explanation and the user is stuck.
                     isLoading = false
+                    errorMessage = "account creation failed — please try again"
                     return
                 }
-                
+
+                // If the assigned handle never resolved (loadUniqueHandle ran
+                // but Firestore was unreachable, leaving "..." or empty), fall
+                // back to a UUID handle here so we never write a malformed
+                // handle to the user doc. The shuffle button uses the callback
+                // version which can also leave "..." on screen if the user
+                // taps create-account immediately after shuffling. This guard
+                // catches both cases without making the user wait.
+                let resolvedHandle: String
+                if assignedHandle.isEmpty || assignedHandle == "..." {
+                    resolvedHandle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+                } else {
+                    resolvedHandle = assignedHandle
+                }
+
                 let db = Firestore.firestore()
                 do {
                     try await db.collection("users").document(uid).setData([
-                                            "handle": assignedHandle,
+                                            "handle": resolvedHandle,
                                             "followerCount": 0,
                         "followingCount": 0,
                         "totalLikes": 0,
@@ -303,9 +351,9 @@ struct CreateAccountView: View {
                     isLoading = false
                                         UserHandleCache.shared.startListening()
                                         Telemetry.signupCompleted(method: .email)
-                                        NotificationCenter.default.post(name: NSNotification.Name("ShowOnboarding"), object: nil)
+                                        NotificationCenter.default.post(name: .showOnboarding, object: nil)
                                         NotificationCenter.default.post(
-                                            name: NSNotification.Name("UserDidSignIn"),
+                                            name: .userDidSignIn,
                                             object: nil,
                                             userInfo: ["uid": uid]
                                         )
@@ -321,6 +369,19 @@ struct CreateAccountView: View {
                         print("⚠️ CreateAccount: auth rollback delete failed: \(deleteError); falling back to signOut")
                         Telemetry.recordError(deleteError, context: "CreateAccount.rollbackDelete")
                         try? Auth.auth().signOut()
+                    }
+                    // If both delete() and signOut() failed we'd have a
+                    // Firebase-authenticated user with no Firestore user doc;
+                    // downstream screens assume the doc exists and wedge the
+                    // app. Force a sign-out notification so BlockedUsersCache,
+                    // UserHandleCache, and any listeners tear down, and log
+                    // a critical error so this surfaces in Crashlytics.
+                    if Auth.auth().currentUser != nil {
+                        Telemetry.recordError(
+                            error,
+                            context: "CreateAccount.rollbackFailed.stillAuthenticated"
+                        )
+                        NotificationCenter.default.post(name: .userDidSignOut, object: nil)
                     }
                 }
             }

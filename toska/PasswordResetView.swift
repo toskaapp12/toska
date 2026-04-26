@@ -112,22 +112,30 @@ struct PasswordResetView: View {
     }
     
     func sendReset() {
-                let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                guard trimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {
-                    errorMessage = "please enter a valid email"
-                    return
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard trimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {
+            errorMessage = "please enter a valid email"
+            return
+        }
+        isLoading = true
+        errorMessage = ""
+        // 30s timeout — same rationale as SignInView. Without it, a stalled
+        // Firebase callback leaves "send reset link" spinning indefinitely
+        // and the user has no recourse but to force-quit.
+        Task { @MainActor in
+            do {
+                try await withTimeout(seconds: 30) {
+                    try await Auth.auth().sendPasswordReset(withEmail: trimmed)
                 }
-                isLoading = true
-                errorMessage = ""
-                Auth.auth().sendPasswordReset(withEmail: trimmed) { error in
-                Task { @MainActor in
-                    isLoading = false
-                    if let error = error {
-                        errorMessage = friendlyAuthErrorMessage(error)
-                    } else {
-                        isSent = true
-                    }
-                }
+                isLoading = false
+                isSent = true
+            } catch is TimeoutError {
+                isLoading = false
+                errorMessage = "request timed out — please try again"
+            } catch {
+                isLoading = false
+                errorMessage = friendlyAuthErrorMessage(error)
             }
         }
+    }
 }

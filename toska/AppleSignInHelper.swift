@@ -87,22 +87,23 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
 
             if !snapshot.exists {
                 let userEmail = result.user.email ?? ""
-                // Wrap generateUniqueHandle in a 20s timeout so a hung Firestore
-                // call can never leave Apple sign-in spinning forever. On timeout
-                // we fall back to a UUID-based handle, which is always unique.
-                let handle: String = await withTaskGroup(of: String.self) { group in
-                    group.addTask {
-                        await withCheckedContinuation { c in
-                            generateUniqueHandle { c.resume(returning: $0) }
-                        }
+                // Bounded handle assignment. The previous shape wrapped the
+                // callback-based generateUniqueHandle in a withCheckedContinuation
+                // and raced it against a 20s sleep via TaskGroup — that worked
+                // for the timeout but the inner continuation Task could leak
+                // forever if Firestore never fired the callback. Native async
+                // generateUniqueHandleAsync participates in cancellation, so
+                // withTimeout actually aborts the in-flight Firestore call on
+                // timeout instead of orphaning it. 5s is plenty for a single
+                // candidate-existence check; on timeout we fall back to a UUID
+                // handle (statistically unique, no further round-trip).
+                let handle: String
+                do {
+                    handle = try await withTimeout(seconds: 5) {
+                        await generateUniqueHandleAsync()
                     }
-                    group.addTask {
-                        try? await Task.sleep(nanoseconds: 20 * 1_000_000_000)
-                        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
-                    }
-                    let first = await group.next() ?? "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
-                    group.cancelAll()
-                    return first
+                } catch {
+                    handle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
                 }
                 isNewUser = true
                 try await db.collection("users").document(uid).setData([
@@ -123,7 +124,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                 UserHandleCache.shared.startListening()
                 Telemetry.signupCompleted(method: .apple)
                 NotificationCenter.default.post(
-                    name: NSNotification.Name("ShowOnboarding"),
+                    name: .showOnboarding,
                     object: nil
                 )
             } else {
@@ -132,7 +133,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             }
 
             NotificationCenter.default.post(
-                name: NSNotification.Name("UserDidSignIn"),
+                name: .userDidSignIn,
                 object: nil,
                 userInfo: ["uid": uid]
             )
@@ -154,6 +155,19 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                 }
             } else {
                 try? Auth.auth().signOut()
+            }
+            // If both delete() and signOut() failed for any reason, we'd leave
+            // the user authenticated locally with no Firestore user doc.
+            // Downstream screens assume the doc exists and wedge. Force a
+            // hard sign-out notification so observers can tear their state
+            // down, and record a critical error so this surfaces in
+            // Crashlytics instead of failing silently.
+            if Auth.auth().currentUser != nil {
+                Telemetry.recordError(
+                    error,
+                    context: "AppleSignIn.rollbackFailed.stillAuthenticated"
+                )
+                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
             }
             Telemetry.recordError(error, context: "AppleSignIn.userDocCreate")
             continuation?.resume(throwing: error)
@@ -194,12 +208,13 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
         }
         // Retry with exponential backoff. The previous implementation was a
         // single attempt — if a network blip dropped the request, the token
-        // stayed valid forever and a stolen device could keep using it. Three
-        // attempts at 2/4/8 seconds covers transient network failures without
-        // hammering Apple's revocation endpoint.
+        // stayed valid forever and a stolen device could keep using it. Four
+        // attempts with 2s/4s/8s waits between them covers transient network
+        // failures without hammering Apple's revocation endpoint.
         let delays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
+        let totalAttempts = delays.count + 1
         var lastError: Error? = nil
-        for (attempt, delay) in delays.enumerated() {
+        for attempt in 0..<totalAttempts {
             do {
                 try await Auth.auth().revokeToken(withAuthorizationCode: authCodeString)
                 deleteAuthCode()
@@ -207,8 +222,8 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             } catch {
                 lastError = error
                 print("⚠️ Apple token revocation attempt \(attempt + 1) failed: \(error.localizedDescription)")
-                if attempt < delays.count - 1 {
-                    try? await Task.sleep(nanoseconds: delay)
+                if attempt < delays.count {
+                    try? await Task.sleep(nanoseconds: delays[attempt])
                 }
             }
         }

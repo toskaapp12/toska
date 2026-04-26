@@ -20,6 +20,7 @@ struct OnboardingView: View {
     @State private var showAgeGate = false
     @State private var showPolicyAcceptance = false
     @State private var acceptanceChecked = false
+    @State private var moodSaveError = false
     
     let tags = sharedTags
     
@@ -259,6 +260,11 @@ struct OnboardingView: View {
                 }
             )
         }
+        .alert("couldnt save that", isPresented: $moodSaveError) {
+            Button("try again") {}
+        } message: {
+            Text("we couldnt save your mood. check your connection and try again.")
+        }
     }
     
     func loadHandle() {
@@ -278,14 +284,25 @@ struct OnboardingView: View {
         guard !acceptanceChecked else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         Task { @MainActor in
-            let snapshot = try? await Firestore.firestore()
-                .collection("users").document(uid).getDocumentAsync()
-            let data = snapshot?.data() ?? [:]
-            let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
-            let acceptedVersion = data["acceptedPolicyVersion"] as? Int ?? 0
-            acceptanceChecked = true
-            if !confirmedAdult || acceptedVersion < currentPolicyVersion {
-                showAgeGate = true
+            do {
+                let snapshot = try await Firestore.firestore()
+                    .collection("users").document(uid).getDocumentAsync()
+                let data = snapshot.data() ?? [:]
+                let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                let acceptedVersion = data["acceptedPolicyVersion"] as? Int ?? 0
+                // Only lock acceptanceChecked to true on a successful read.
+                // If the read fails transiently, the next onAppear will
+                // retry instead of silently skipping the gate. Previously
+                // a network blip flipped the flag true and a user who had
+                // already accepted was shown the age gate a second time
+                // (confirmedAdult defaults to false on fetch failure).
+                acceptanceChecked = true
+                if !confirmedAdult || acceptedVersion < currentPolicyVersion {
+                    showAgeGate = true
+                }
+            } catch {
+                print("⚠️ checkAcceptanceStatus failed: \(error)")
+                // Leave acceptanceChecked false so a subsequent onAppear retries.
             }
         }
     }
@@ -309,23 +326,35 @@ struct OnboardingView: View {
         }
     }
     func saveMoodAndAdvance() {
+        // Previously this fired the Firestore write and advanced the UI
+        // without awaiting. On a network/permission failure the user saw
+        // the next step and their mood was never persisted — no feedback,
+        // and Settings would later show "no mood selected". Now we await
+        // the write and only advance on success.
+        Task { @MainActor in
             if let uid = Auth.auth().currentUser?.uid, let mood = selectedMood {
                 // Mood is sensitive — written to the owner-only private
                 // subcollection so other authenticated users can't read it
                 // off the main user doc. UserDefaults remains unused
                 // because it is unencrypted on disk.
-                Firestore.firestore().collection("users").document(uid)
-                    .collection("private").document("data")
-                    .setData(["selectedMood": mood], merge: true) { error in
-                        if let error = error {
-                            print("⚠️ Onboarding mood save failed: \(error)")
-                        }
-                    }
+                do {
+                    try await Firestore.firestore().collection("users").document(uid)
+                        .collection("private").document("data")
+                        .setData(["selectedMood": mood], merge: true)
+                } catch {
+                    print("⚠️ Onboarding mood save failed: \(error)")
+                    Telemetry.recordError(error, context: "Onboarding.saveMood")
+                    // Surface the error to the user rather than silently
+                    // advancing — the mood drives personalization downstream.
+                    moodSaveError = true
+                    return
+                }
             }
             withAnimation(.easeInOut(duration: 0.3)) {
                 currentStep = 3
             }
         }
+    }
     
     var welcomeStep: some View {
             VStack(spacing: 12) {

@@ -51,19 +51,75 @@ async function safeDecrement(docRef, field) {
   }
 }
 
-// ============================================================
-// Rate limiting helper
-// ============================================================
+// Paginated deletion of a user's posts (and their replies/likes/reflections
+// subcollections). Shared by the onUserDocDeleted cascade and the
+// resumePostDeletion scheduler so a heavy author whose cleanup exceeds a
+// single invocation's cap can be drained across multiple runs.
+// Returns { totalDeleted, capHit } — capHit=true means there are probably
+// more posts to delete and the caller should re-queue.
+async function cleanupPostsForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const batch = await db.collection("posts")
+      .where("authorId", "==", uid)
+      .limit(100)
+      .get();
+    if (batch.empty) break;
+    for (const postDoc of batch.docs) {
+      await deleteCollection(postDoc.ref.collection("replies"));
+      await deleteCollection(postDoc.ref.collection("likes"));
+      await deleteCollection(postDoc.ref.collection("reflections"));
+      await postDoc.ref.delete();
+    }
+    batchCount++;
+    totalDeleted += batch.size;
+    if (batch.size < 100) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
 
-async function isRateLimited(authorId, collection, cooldownSeconds) {
-  const cutoff = new Date(Date.now() - cooldownSeconds * 1000);
-  const recentSnap = await db.collection(collection)
-    .where("authorId", "==", authorId)
-    .where("createdAt", ">", Timestamp.fromDate(cutoff))
-    .orderBy("createdAt", "desc")
-    .limit(5)
-    .get();
-  return recentSnap.size >= 5;
+// ============================================================
+// HTTP endpoint rate limiting (per-uid sliding window)
+//
+// Each (uid, endpoint) gets a doc at rateLimits/{uid}_{endpoint} with
+// `count` and `windowStart` (epoch millis). Each call increments count;
+// if the window has elapsed we reset. If count exceeds maxRequests, the
+// caller is rejected with 429.
+//
+// Backs the giphyProxy and reconcileMyCounts endpoints — neither has a
+// natural Firestore-rule throttle, so without this a single tampered
+// client could exhaust the Giphy quota or storm the Admin SDK.
+//
+// Writes to a collection no client can touch (the catch-all fallthrough
+// rule denies everything not explicitly allowed).
+// ============================================================
+async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds) {
+  const docRef = db.collection("rateLimits").doc(`${uid}_${endpoint}`);
+  const now = Date.now();
+  const windowMs = windowSeconds * 1000;
+  try {
+    const allowed = await db.runTransaction(async (transaction) => {
+      const snap = await transaction.get(docRef);
+      const data = snap.exists ? snap.data() : null;
+      const windowStart = data?.windowStart || 0;
+      const count = data?.count || 0;
+      if (now - windowStart > windowMs) {
+        transaction.set(docRef, { windowStart: now, count: 1 });
+        return true;
+      }
+      if (count >= maxRequests) return false;
+      transaction.set(docRef, { windowStart, count: count + 1 }, { merge: true });
+      return true;
+    });
+    return allowed;
+  } catch (err) {
+    // Failing open on a transaction error is the right call here — a Firestore
+    // hiccup shouldn't lock legitimate users out of features. Log so it shows
+    // up if it ever becomes a pattern.
+    console.warn(`checkRateLimit ${endpoint} for ${uid} errored, failing open:`, err.message);
+    return true;
+  }
 }
 
 // ============================================================
@@ -83,7 +139,14 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       .get();
     if (!postsSnap.empty) {
       const postData = postsSnap.docs[0].data();
-      await db.collection("finalPosts").add({
+      // Deterministic doc ID (= uid) so a retry of this trigger overwrites
+      // the same finalPosts document instead of creating a second copy.
+      // Previously addDocument auto-generated an ID, so any retry after a
+      // post-write cleanup failure would archive the same user's last post
+      // twice. uid is unique per user and the trigger fires exactly once
+      // per user lifecycle (on user-doc delete), so collisions are
+      // impossible by construction.
+      await db.collection("finalPosts").doc(uid).set({
         authorHandle: postData.authorHandle || data.handle || "anonymous",
         text: postData.text || "",
         tag: postData.tag || null,
@@ -93,12 +156,32 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       });
     }
 
-    const allPosts = await db.collection("posts").where("authorId", "==", uid).get();
-    for (const postDoc of allPosts.docs) {
-      await deleteCollection(postDoc.ref.collection("replies"));
-      await deleteCollection(postDoc.ref.collection("likes"));
-      await deleteCollection(postDoc.ref.collection("reflections"));
-      await postDoc.ref.delete();
+    // Delete the user's posts via the shared helper. Cap at 500 iterations =
+    // 50,000 posts per invocation so the function doesn't run past its
+    // timeout. If we hit the cap there are still posts to clean up — write
+    // a continuation marker to postDeletionQueue; the scheduled
+    // resumePostDeletion sweep picks it up on the next run and continues
+    // draining until empty.
+    const POST_CLEANUP_MAX_ITERATIONS = 500;
+    const postCleanup = await cleanupPostsForUid(uid, POST_CLEANUP_MAX_ITERATIONS);
+    if (postCleanup.capHit) {
+      console.warn(
+        `Post cleanup cap hit for user ${uid}: deleted ${postCleanup.totalDeleted} posts this pass. ` +
+        "Queued for scheduled resumption."
+      );
+      try {
+        await db.collection("postDeletionQueue").doc(uid).set({
+          uid,
+          queuedAt: FieldValue.serverTimestamp(),
+          cumulativeDeleted: postCleanup.totalDeleted,
+        });
+      } catch (err) {
+        // If the queue write fails we still want the remaining cascade to
+        // run. Log and continue — ops can manually re-queue if needed.
+        console.error(`postDeletionQueue write failed for ${uid}:`, err.message);
+      }
+    } else {
+      console.log(`Deleted ${postCleanup.totalDeleted} posts for user ${uid}`);
     }
 
     const followersSnap = await db.collection("users").doc(uid).collection("followers").get();
@@ -117,16 +200,32 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       await deleteCollection(db.collection("users").doc(uid).collection(sub));
     }
 
-    await db.collection("pendingDeletions").doc(uid).delete().catch(() => {});
+    // Best-effort: pendingDeletions may already be gone if the cascade was
+    // triggered through the normal SettingsView path. NotFound is fine,
+    // anything else worth logging so a real misconfiguration shows up.
+    try {
+      await db.collection("pendingDeletions").doc(uid).delete();
+    } catch (err) {
+      if (err.code !== 5 /* NOT_FOUND */) {
+        console.warn(`pendingDeletions delete for ${uid} failed:`, err.message);
+      }
+    }
 
     const convoSnap = await db.collection("conversations")
       .where("participants", "array-contains", uid)
       .get();
     for (const convoDoc of convoSnap.docs) {
       await deleteCollection(convoDoc.ref.collection("messages"));
-      await convoDoc.ref.update({
-        [`participantHandles.${uid}`]: FieldValue.delete(),
-      }).catch(() => {});
+      try {
+        await convoDoc.ref.update({
+          [`participantHandles.${uid}`]: FieldValue.delete(),
+        });
+      } catch (err) {
+        // Don't abort the cascade for a single convo update miss, but log
+        // so persistent rule/quota issues surface in logs instead of
+        // silently leaving orphaned participant handles.
+        console.warn(`participantHandle scrub for convo ${convoDoc.id} failed:`, err.message);
+      }
     }
 
     // Cross-user notifications authored by the deleted user — likes,
@@ -136,8 +235,12 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // they used to linger forever showing a deleted user's old handle.
     // collectionGroup walks every user's notifications in one query.
     try {
+      // Hard-cap the loop so a user with millions of orphaned notifications
+      // can't stall this function past its timeout. 50 iterations × 500 = 25K
+      // notifications cleaned per invocation; any leftovers get swept the next
+      // time the trigger replays.
       let totalDeletedNotifs = 0;
-      while (true) {
+      for (let i = 0; i < 50; i++) {
         const orphanedNotifs = await db.collectionGroup("notifications")
           .where("fromUserId", "==", uid)
           .limit(500)
@@ -197,8 +300,15 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
 
     console.log("Cleanup complete for user:", uid);
   } catch (error) {
+    // Don't re-throw. The user document is already deleted by the time
+    // this trigger fires, so re-throwing only marks the invocation as
+    // failed in Cloud Functions logs and triggers a retry on a state
+    // that no longer exists (the trigger is fire-once on document delete;
+    // retries can't undo the cascade work that already succeeded). The
+    // error is logged above with full context — that's the actionable
+    // signal. Subcollection cleanup leftovers are cleaned up by the
+    // scheduled monitorPendingDeletions / resumePostDeletion sweeps.
     console.error("Cleanup failed for user:", uid, error);
-    throw error;
   }
 });
 
@@ -212,12 +322,30 @@ exports.sendPushNotification = onDocumentCreated(
     const userId = event.params.userId;
 
     const notifRef = event.data.ref;
-    const notifSnap = await notifRef.get();
-    if (!notifSnap.exists) return;
-    if (notifSnap.data()?.processed === true) return;
-    await notifRef.update({ processed: true });
 
-    const notifData = notifSnap.data();
+    // Atomically claim this notification. The previous shape was a
+    // read-then-write that wasn't transactional — Pub/Sub redelivery
+    // (Cloud Functions v2 retries on transient errors) could fire two
+    // invocations whose `processed === true` reads both passed before
+    // either ran the update, so both got past the gate and both sent
+    // an APNs push. The user got duplicate notifications. Wrapping in
+    // runTransaction gives a true compare-and-set: only the first
+    // invocation to read processed=false claims the doc and proceeds;
+    // any concurrent retry sees processed=true and bails.
+    let notifData;
+    try {
+      notifData = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(notifRef);
+        if (!snap.exists) return null;
+        const d = snap.data();
+        if (d?.processed === true) return null;
+        tx.update(notifRef, { processed: true });
+        return d;
+      });
+    } catch (err) {
+      console.warn("sendPushNotification claim transaction failed:", err.message);
+      return;
+    }
     if (!notifData) return;
 
     const type = notifData.type || "";
@@ -341,6 +469,26 @@ exports.sendPushNotification = onDocumentCreated(
         body = "you have a new notification";
     }
 
+    // Badge reflects the recipient's actual unread-notification count so the
+    // app-icon badge is meaningful instead of always "1". The new notification
+    // was just created with isRead=false so it's already counted here. The
+    // query is bounded (the in-app UI caps display at "99+"), and count()
+    // aggregations are billed as a single read. Falls back to 1 if the query
+    // fails — wrong but non-zero, matching the old behavior rather than
+    // dropping the push entirely.
+    let badge = 1;
+    try {
+      const countSnap = await db.collection("users").doc(userId)
+        .collection("notifications")
+        .where("isRead", "==", false)
+        .count()
+        .get();
+      const unread = Number(countSnap.data().count);
+      if (unread > 0) badge = unread;
+    } catch (err) {
+      console.warn("Badge count query failed, falling back to 1:", err.message);
+    }
+
     const payload = {
       token: fcmToken,
       notification: { title, body },
@@ -358,7 +506,7 @@ exports.sendPushNotification = onDocumentCreated(
         payload: {
           aps: {
             sound: "default",
-            badge: 1,
+            badge,
           },
         },
       },
@@ -371,15 +519,40 @@ exports.sendPushNotification = onDocumentCreated(
         error.code === "messaging/invalid-registration-token" ||
         error.code === "messaging/registration-token-not-registered"
       ) {
-        // Delete from both the new private location and the legacy main
-        // doc so we don't keep retrying an already-dead token.
-        await db.collection("users").doc(userId)
-          .collection("private").doc("data")
-          .update({ fcmToken: FieldValue.delete() })
-          .catch(() => {});
-        await db.collection("users").doc(userId)
-          .update({ fcmToken: FieldValue.delete() })
-          .catch(() => {});
+        // Compare-before-delete: between when we read fcmToken at the top
+        // of this function and now, the user could have refreshed their
+        // token (FCM rotates them on app reinstall, OS reset, etc.).
+        // Naively deleting fcmToken in that window wipes a fresh, valid
+        // token because *the previous token* failed. Use a transaction
+        // and only delete if the stored value still equals the token
+        // that actually failed.
+        const failedToken = fcmToken;
+        const privateRef = db.collection("users").doc(userId)
+          .collection("private").doc("data");
+        const userRef = db.collection("users").doc(userId);
+        try {
+          // Firestore transactions require all reads to complete before any
+          // writes. The previous shape interleaved them (read pSnap → write
+          // privateRef → read uSnap → write userRef), which throws "Firestore
+          // transactions require all reads to be executed before all writes."
+          // at runtime — landing in the catch below and silently never
+          // cleaning up the dead token. Fixed: both reads first, then both
+          // writes.
+          await db.runTransaction(async (tx) => {
+            const [pSnap, uSnap] = await Promise.all([
+              tx.get(privateRef),
+              tx.get(userRef),
+            ]);
+            if (pSnap.exists && pSnap.data()?.fcmToken === failedToken) {
+              tx.update(privateRef, { fcmToken: FieldValue.delete() });
+            }
+            if (uSnap.exists && uSnap.data()?.fcmToken === failedToken) {
+              tx.update(userRef, { fcmToken: FieldValue.delete() });
+            }
+          });
+        } catch (delErr) {
+          console.warn("FCM token cleanup transaction failed:", delErr.message);
+        }
       }
       console.error("Push send failed:", error.code);
     }
@@ -395,6 +568,22 @@ exports.onPendingDeletionCreated = onDocumentCreated(
   async (event) => {
     const uid = event.params.userId;
 
+    // Grace window + auth-existence check. The client flow is:
+    //   1. write pendingDeletions
+    //   2. call Auth.auth().currentUser.delete() on the device
+    //   3. if the auth delete fails (requiresRecentLogin, etc.), write cancelled=true
+    //
+    // If this trigger cascaded immediately on create, step 2's failure window
+    // could land AFTER the user doc had already been deleted — destroying the
+    // user's data even though their deletion was effectively cancelled.
+    //
+    // Waiting 10 seconds gives the client room to either (a) complete the auth
+    // delete, or (b) write cancelled=true. Then we re-read the pendingDeletion
+    // doc and verify the auth user is actually gone. If auth.delete() hasn't
+    // landed, we defer to monitorPendingDeletions (scheduled every 60 minutes)
+    // for eventual cascade.
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+
     const fresh = await db.collection("pendingDeletions").doc(uid).get();
     if (!fresh.exists) return;
     if (fresh.data()?.cancelled === true) {
@@ -402,7 +591,23 @@ exports.onPendingDeletionCreated = onDocumentCreated(
       return;
     }
 
-    console.log("Pending deletion detected for user:", uid);
+    // Verify the auth user is actually gone before cascading. If the client's
+    // auth.delete() hasn't landed yet, bail — the scheduled monitor will pick
+    // this up on the next sweep once the doc is older than its 10-minute
+    // grace threshold.
+    try {
+      await getAuth().getUser(uid);
+      console.log("Auth user still exists, deferring cascade to monitor:", uid);
+      return;
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") {
+        console.warn("Unexpected getUser error for", uid, err.message);
+        return;
+      }
+      // auth/user-not-found — client auth.delete() landed successfully.
+    }
+
+    console.log("Pending deletion authorized, cascading cleanup for user:", uid);
 
     try {
       await db.collection("users").doc(uid).delete();
@@ -490,6 +695,33 @@ exports.onReplyCreatedUpdateCount = onDocumentCreated(
   }
 );
 
+// Any delete path (user deleting their own reply, moderation, rate-limit,
+// post cascade) fires this trigger. Uses atomic FieldValue.increment(-1)
+// rather than safeDecrement so concurrent create+delete races commute to
+// the correct final value: if the delete trigger runs before the create
+// trigger's increment has landed, count briefly dips negative and then
+// converges to the right number after the increment. safeDecrement's
+// `current > 0` guard is asymmetric with atomic increment and caused
+// permanent upward drift when moderation raced the create trigger.
+//
+// Previously, only onReplyCreatedModerate and rateLimitReplies attempted
+// to decrement — both via safeDecrement — and user-deleted replies had no
+// decrement path at all. The comment in ProfileView.deleteReply references
+// this function by name; now it actually exists.
+exports.onReplyDeletedUpdateCount = onDocumentDeleted(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const postId = event.params.postId;
+    try {
+      await db.collection("posts").doc(postId).update({
+        replyCount: FieldValue.increment(-1),
+      });
+    } catch (err) {
+      console.warn("onReplyDeletedUpdateCount failed:", err.message);
+    }
+  }
+);
+
 // ============================================================
 // Counter: repost count (server-side only)
 // ============================================================
@@ -510,6 +742,24 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
     } catch (err) {
       console.warn("onRepostCreatedUpdateCount failed:", err.message);
     }
+  }
+);
+
+// Mirror of onRepostCreatedUpdateCount. Without this, deleting a repost
+// (by its author, by validatePost for blank/too-long text, by moderation,
+// or by any other path) leaves the original post's repostCount inflated
+// forever — counts permanently drift upward. safeDecrement is transactional
+// and guards against going negative.
+exports.onRepostDeletedUpdateCount = onDocumentDeleted(
+  "posts/{postId}",
+  async (event) => {
+    const postData = event.data.data();
+    if (!postData) return;
+    if (postData.isRepost !== true) return;
+    const originalPostId = postData.originalPostId;
+    if (!originalPostId || typeof originalPostId !== "string") return;
+
+    await safeDecrement(db.collection("posts").doc(originalPostId), "repostCount");
   }
 );
 
@@ -681,17 +931,18 @@ exports.validateReply = onDocumentCreated(
     if (!replyData) return;
 
     const text = replyData.text;
+    // Counter decrements are handled by onReplyDeletedUpdateCount on the
+    // subsequent delete trigger; no safeDecrement needed here (would race
+    // with the create-trigger's increment and corrupt the count).
     if (typeof text !== "string" || text.trim().length === 0) {
       console.warn(`Deleting reply ${replyId} — missing or blank text`);
       await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
-      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
       return;
     }
 
     if (text.length > 500) {
       console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
       await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
-      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
       return;
     }
   }
@@ -750,13 +1001,21 @@ function hasPhoneNumber(text) {
 const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 const addressPattern = /\d+\s+[A-Za-z]+\s+(street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy)\b/i;
 
+// Phrases that strongly indicate someone is sharing identifying info.
+// We deliberately removed the looser entries that produced false positives
+// on benign sentences:
+//   "her/his/their name is" → matches "his name is mud", "her name is karen"
+//   "lives in/on" → matches "lives in fear", "lives on hope"
+//   "works at" → matches "works at the heart of it"
+//   "find me" → matches "find me a reason to..."
+//   "goes to" → matches "goes to show that..."
+// What remains is wording that is much harder to use innocently in a post.
 const identifyingPhrases = [
-  "her name is", "his name is", "their name is",
-  "lives at", "lives in", "lives on",
-  "works at", "goes to", "school name",
+  "lives at",
+  "school name",
   "phone number", "my number", "text me", "call me",
-  "dm me", "follow me", "find me", "look me up",
-  "last name", "full name", "address",
+  "dm me", "follow me", "look me up",
+  "last name", "full name",
   "apartment", "apt ", "suite ",
 ];
 
@@ -780,6 +1039,70 @@ const urlPatterns = [
 function containsURL(text) {
   return urlPatterns.some((p) => p.test(text));
 }
+
+// ============================================================
+// Shared moderation patterns
+//
+// Previously duplicated inside onPostCreated, onReplyCreatedModerate,
+// and onMessageCreatedModerate — three near-identical copies meant any
+// new slur, threat phrase, or harassment pattern had to be edited in
+// three places. Drift was a real risk. These constants are the single
+// source; the three triggers compose them (with surface-specific
+// extras like spamPatterns for posts only).
+//
+// Adding a new pattern: extend the relevant array here. To make it
+// surface-specific, keep it inline in the trigger that needs it.
+// ============================================================
+
+const MOD_HATE = [
+  /n[i1!]gg/i, /f[a@]gg/i, /r[e3]t[a@]rd/i, /tr[a@]nny/i, /d[yi1]ke/i,
+  /ch[i1]nk/i, /sp[i1]ck?/i, /k[i1]ke/i, /w[e3]tb[a@]ck/i, /g[o0][o0]k/i,
+  /c[o0][o0]n/i, /towelhead/i, /raghead/i, /beaner/i, /zipperhead/i,
+];
+
+const MOD_THREAT = [
+  "kill you", "kill him", "kill her", "kill them",
+  "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
+  "stab you", "stab him", "stab her", "stab them",
+  "shoot up the", "blow up", "burn down",
+  "rape you", "rape her", "rape him",
+  "find you and", "find where you live", "know where you live",
+  "hunt you down", "come for you",
+  "gonna hurt you", "going to hurt you",
+  "beat you", "beat the shit",
+  "slit your throat", "put a bullet",
+];
+
+const MOD_SEXUAL = [
+  /porn/i, /hentai/i, /\bxxx\b/i,
+  /\bnudes\b/i, /send nudes/i, /dick pic/i, /pussy pic/i,
+  /jerk off/i, /jack off/i, /masturbat/i,
+  /cum on/i, /cum in/i, /creampie/i,
+  /blowjob/i, /blow job/i, /handjob/i, /hand job/i,
+  /anal sex/i, /oral sex/i,
+  /sex tape/i, /sextape/i, /sext me/i, /sexting/i,
+  /onlyfans/i, /nsfw/i,
+];
+
+const MOD_HARASSMENT = [
+  "kill yourself", "kys", "go die", "you should die",
+  "hope you die", "drink bleach", "neck yourself",
+  "nobody likes you", "youre worthless", "you deserve to die",
+];
+
+const MOD_CONCERNING = [
+  "end it all", "can't go on", "no reason to live",
+  "want to die", "kill myself", "better off without me",
+  "no point anymore", "nobody cares", "disappear forever",
+  "not worth it", "give up on everything",
+  "want to hurt myself", "hurt myself", "self harm", "self-harm",
+  "end my life", "don't want to wake up", "don't want to be here",
+  "want to disappear", "better off dead", "no one would care",
+  "no one would notice", "can't do this anymore", "done with life",
+  "want it to stop", "want it all to end", "nothing left",
+  "not worth living", "why am i still here", "wish i wasn't here",
+  "wish i was dead", "take my own life", "don't want to exist",
+];
 
 // ============================================================
 // Content moderation — flag posts with prohibited content
@@ -807,71 +1130,15 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     /\b(onlyfans|only fans)\b/i,
   ];
 
-  const hatePatterns = [
-    /n[i1!]gg/i,
-    /f[a@]gg/i,
-    /r[e3]t[a@]rd/i,
-    /tr[a@]nny/i,
-    /d[yi1]ke/i,
-    /ch[i1]nk/i,
-    /sp[i1]ck?/i,
-    /k[i1]ke/i,
-    /w[e3]tb[a@]ck/i,
-    /g[o0][o0]k/i,
-    /c[o0][o0]n/i,
-    /towelhead/i,
-    /raghead/i,
-    /beaner/i,
-    /zipperhead/i,
-  ];
-
-  // Targeted threats — NOT crisis/self-harm content (handled separately)
-  const threatPhrases = [
-    "kill you", "kill him", "kill her", "kill them",
-    "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
-    "stab you", "stab him", "stab her", "stab them",
-    "shoot up the", "blow up", "burn down",
-    "rape you", "rape her", "rape him",
-    "find you and", "find where you live", "know where you live",
-    "hunt you down", "come for you",
-    "gonna hurt you", "going to hurt you",
-    "beat you", "beat the shit",
-  ];
-
-  // Sexual content
-  const sexualPatterns = [
-    /porn/i, /hentai/i, /\bxxx\b/i,
-    /\bnudes\b/i, /send nudes/i, /dick pic/i, /pussy pic/i,
-    /jerk off/i, /jack off/i, /masturbat/i,
-    /cum on/i, /cum in/i, /creampie/i,
-    /blowjob/i, /blow job/i, /handjob/i, /hand job/i,
-    /anal sex/i, /oral sex/i,
-    /sex tape/i, /sextape/i, /sext me/i, /sexting/i,
-  ];
-
-  const concerningPhrases = [
-    "end it all", "can't go on", "no reason to live",
-    "want to die", "kill myself", "better off without me",
-    "no point anymore", "nobody cares", "disappear forever",
-    "not worth it", "give up on everything",
-    "want to hurt myself", "hurt myself", "self harm", "self-harm",
-    "end my life", "don't want to wake up", "don't want to be here",
-    "want to disappear", "better off dead", "no one would care",
-    "no one would notice", "can't do this anymore", "done with life",
-    "want it to stop", "want it all to end", "nothing left",
-    "not worth living", "why am i still here", "wish i wasn't here",
-    "wish i was dead", "take my own life", "don't want to exist",
-  ];
-
   let flagReason = null;
 
   if (spamPatterns.some((p) => p.test(text))) {
     flagReason = "spam_or_commercial";
-  } else if (hatePatterns.some((p) => p.test(text))) {
+  } else if (MOD_HATE.some((p) => p.test(text))) {
     flagReason = "hate_speech";
-  } else if (threatPhrases.some((phrase) => text.includes(phrase))) {
+  } else if (MOD_THREAT.some((phrase) => text.includes(phrase))) {
     flagReason = "targeted_threat";
-  } else if (sexualPatterns.some((p) => p.test(text))) {
+  } else if (MOD_SEXUAL.some((p) => p.test(text))) {
     flagReason = "sexual_content";
   } else if (containsPII(postData.text || "")) {
     flagReason = "personal_information";
@@ -879,7 +1146,7 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     flagReason = "contains_link";
   }
 
-  const isConcerning = concerningPhrases.some((phrase) => text.includes(phrase));
+  const isConcerning = MOD_CONCERNING.some((phrase) => text.includes(phrase));
 
   if (flagReason) {
     await db.collection("posts").doc(postId).update({
@@ -889,22 +1156,51 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     });
     console.log(`Post ${postId} flagged: ${flagReason}`);
 
-    // Repeat offender tracking: if the author has >= 3 flagged posts,
-    // mark their user document as restricted.
+    // Repeat-offender tracking. Previously 3 flagged posts all-time → permanent
+    // restriction with no user-facing recovery path (admin unrestrict only),
+    // which trapped users whose content tripped the (high false-positive-rate)
+    // PII / link detectors months earlier. The new shape:
+    //   - count only recent flags (7 days) so stale incidents don't haunt a user
+    //   - raise threshold to 5 so a single bad afternoon doesn't lock the account
+    //   - set restrictedUntil = now + 48h so the restriction auto-expires
+    //     without admin intervention (UserHandleCache consults this timestamp)
+    // Admin-set restrictions (restrictedBy != "system" and no restrictedUntil)
+    // still persist until an admin clears them — this only softens the auto path.
     const authorId = postData.authorId;
     if (authorId) {
       try {
         const flaggedSnap = await db.collection("posts")
           .where("authorId", "==", authorId)
           .where("flagged", "==", true)
-          .limit(3)
+          .limit(20)
           .get();
-        if (flaggedSnap.size >= 3) {
+        const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const recentFlagged = flaggedSnap.docs.filter((doc) => {
+          const data = doc.data();
+          // Rate-limit flags are already their own throttle punishment
+          // (post hidden from feed). Letting them count toward the 5-flag
+          // auto-restrict threshold is double-jeopardy and would lock a
+          // user out just for posting too fast — not a policy violation.
+          // Count only content-violation flags (hate, threat, sexual, PII,
+          // spam, etc.).
+          if (data.flagReason === "rate_limit_exceeded") return false;
+          const flaggedAt = data.flaggedAt;
+          if (!flaggedAt || typeof flaggedAt.toDate !== "function") return false;
+          return flaggedAt.toDate().getTime() > sevenDaysAgoMs;
+        });
+        if (recentFlagged.length >= 5) {
+          const restrictedUntil = Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
           await db.collection("users").doc(authorId).update({
             restricted: true,
             restrictedAt: FieldValue.serverTimestamp(),
+            restrictedUntil,
+            // Distinguish auto-restrictions from admin actions in adminAuditLog —
+            // without this, auditUserRestriction falls back to "unknown". Admin
+            // restrictions set restrictedBy to the admin's uid and omit
+            // restrictedUntil (no auto-expiry).
+            restrictedBy: "system",
           });
-          console.log(`User ${authorId} restricted — ${flaggedSnap.size} flagged posts`);
+          console.log(`User ${authorId} auto-restricted (${recentFlagged.length} recent flags) until ${restrictedUntil.toDate()}`);
         }
       } catch (err) {
         console.warn("Repeat offender check failed:", err.message);
@@ -933,16 +1229,11 @@ exports.onReplyCreatedModerate = onDocumentCreated(
 
     const text = (data.text || "").toLowerCase();
 
-    const hatePatterns = [/n[i1!]gg/i, /f[a@]gg/i, /r[e3]t[a@]rd/i, /tr[a@]nny/i, /d[yi1]ke/i, /ch[i1]nk/i, /sp[i1]ck/i, /k[i1]ke/i, /w[e3]tb[a@]ck/i, /g[o0][o0]k/i, /c[o0][o0]n/i, /towelhead/i, /raghead/i, /beaner/i, /zipperhead/i];
-    const threatPhrases = ["kill you", "kill him", "kill her", "kill them", "shoot you", "shoot up", "stab you", "rape you", "rape her", "hunt you down", "know where you live", "find where you live", "slit your throat", "put a bullet"];
-    const sexualPatterns = [/porn/i, /hentai/i, /\bxxx\b/i, /onlyfans/i, /send nudes/i, /blowjob/i, /blow job/i, /sext/i, /nsfw/i];
-    const harassmentPhrases = ["kill yourself", "kys", "go die", "you should die", "hope you die", "drink bleach", "neck yourself", "nobody likes you", "youre worthless", "you deserve to die"];
-
     let flagReason = null;
-    if (hatePatterns.some((p) => p.test(text))) flagReason = "hate_speech";
-    else if (harassmentPhrases.some((p) => text.includes(p))) flagReason = "harassment";
-    else if (threatPhrases.some((p) => text.includes(p))) flagReason = "targeted_threat";
-    else if (sexualPatterns.some((p) => p.test(text))) flagReason = "sexual_content";
+    if (MOD_HATE.some((p) => p.test(text))) flagReason = "hate_speech";
+    else if (MOD_HARASSMENT.some((p) => text.includes(p))) flagReason = "harassment";
+    else if (MOD_THREAT.some((p) => text.includes(p))) flagReason = "targeted_threat";
+    else if (MOD_SEXUAL.some((p) => p.test(text))) flagReason = "sexual_content";
     else if (containsPII(data.text || "")) flagReason = "personal_information";
     else if (containsURL(data.text || "")) flagReason = "contains_link";
 
@@ -956,8 +1247,9 @@ exports.onReplyCreatedModerate = onDocumentCreated(
         });
         console.log(`Reply ${replyId} on post ${postId} flagged: ${flagReason}`);
       } else {
+        // Counter decrement is handled by onReplyDeletedUpdateCount on the
+        // subsequent delete trigger.
         await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
-        await safeDecrement(db.collection("posts").doc(postId), "replyCount");
         console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
       }
     }
@@ -978,14 +1270,10 @@ exports.onMessageCreatedModerate = onDocumentCreated(
 
     const text = (data.text || "").toLowerCase();
 
-    const hatePatterns = [/n[i1!]gg/i, /f[a@]gg/i, /r[e3]t[a@]rd/i, /tr[a@]nny/i, /d[yi1]ke/i, /ch[i1]nk/i, /sp[i1]ck/i, /k[i1]ke/i, /w[e3]tb[a@]ck/i, /g[o0][o0]k/i, /c[o0][o0]n/i, /towelhead/i, /raghead/i];
-    const threatPhrases = ["kill you", "kill him", "kill her", "shoot you", "stab you", "rape you", "rape her", "hunt you down", "know where you live", "find where you live", "slit your throat"];
-    const harassmentPhrases = ["kill yourself", "kys", "go die", "you should die", "hope you die", "drink bleach", "neck yourself"];
-
     let flagReason = null;
-    if (hatePatterns.some((p) => p.test(text))) flagReason = "hate_speech";
-    else if (harassmentPhrases.some((p) => text.includes(p))) flagReason = "harassment";
-    else if (threatPhrases.some((p) => text.includes(p))) flagReason = "targeted_threat";
+    if (MOD_HATE.some((p) => p.test(text))) flagReason = "hate_speech";
+    else if (MOD_HARASSMENT.some((p) => text.includes(p))) flagReason = "harassment";
+    else if (MOD_THREAT.some((p) => text.includes(p))) flagReason = "targeted_threat";
     else if (containsPII(data.text || "")) flagReason = "personal_information";
     else if (containsURL(data.text || "")) flagReason = "contains_link";
 
@@ -1000,6 +1288,22 @@ exports.onMessageCreatedModerate = onDocumentCreated(
         console.log(`Message ${messageId} in convo ${convoId} flagged: ${flagReason}`);
       } else {
         await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).delete();
+        // The client transaction in ConversationView.sendMessage already
+        // incremented messageCount.{senderId} and tagged the message with
+        // clientCountedV1: true, which makes onMessageCreatedUpdateCount
+        // skip its server-side increment. If we delete the message without
+        // also decrementing here, the sender's per-conversation count is
+        // permanently inflated by one for every moderated message — they
+        // hit the 5-message cap with fewer real messages than they sent.
+        if (data.senderId) {
+          try {
+            await db.collection("conversations").doc(convoId).update({
+              [`messageCount.${data.senderId}`]: FieldValue.increment(-1),
+            });
+          } catch (err) {
+            console.warn(`messageCount decrement after moderation delete failed:`, err.message);
+          }
+        }
         console.log(`Message ${messageId} in convo ${convoId} deleted: ${flagReason}`);
       }
     }
@@ -1031,8 +1335,8 @@ exports.rateLimitReplies = onDocumentCreated(
 
     if (recentSnap.size > 10) {
       console.log("Reply rate limit exceeded for user:", authorId);
+      // Counter decrement handled by onReplyDeletedUpdateCount.
       await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
-      await safeDecrement(db.collection("posts").doc(postId), "replyCount");
       console.log("Spam reply deleted:", replyId);
     }
   }
@@ -1165,6 +1469,53 @@ exports.onMessageCreatedUpdateCount = onDocumentCreated(
 );
 
 // ============================================================
+// Scheduled post-deletion continuation — drains postDeletionQueue
+//
+// When onUserDocDeleted's post-cleanup pass hits its per-invocation cap
+// (50K posts), it writes a postDeletionQueue/{uid} marker instead of
+// leaving the remaining posts orphaned. This scheduler resumes cleanup
+// across invocations until the user has no remaining posts.
+//
+// Processes up to 10 queued users per invocation. Each user gets up to
+// 500 iterations × 100 posts = 50K more deleted this pass; if still more
+// remain, the queue entry stays in place for the next sweep. Hourly
+// cadence means a truly heavy author (>50K extra posts) takes O(hours)
+// to drain — acceptable tradeoff vs a bigger-cap run that could time out
+// mid-cascade and strand data at an unknown point.
+// ============================================================
+
+exports.resumePostDeletion = onSchedule("every 60 minutes", async () => {
+  const queueSnap = await db.collection("postDeletionQueue").limit(10).get();
+  if (queueSnap.empty) {
+    console.log("postDeletionQueue is empty.");
+    return;
+  }
+
+  for (const queueDoc of queueSnap.docs) {
+    const uid = queueDoc.id;
+    console.log(`Resuming post deletion for user ${uid}`);
+    try {
+      const result = await cleanupPostsForUid(uid, 500);
+      if (result.capHit) {
+        // Still more posts remain. Update marker with incremental progress
+        // and leave the entry in the queue for the next sweep.
+        await queueDoc.ref.update({
+          lastResumedAt: FieldValue.serverTimestamp(),
+          cumulativeDeleted: FieldValue.increment(result.totalDeleted),
+        });
+        console.log(`Partial cleanup for ${uid}: +${result.totalDeleted} posts, staying in queue.`);
+      } else {
+        console.log(`Completed post deletion for ${uid}: +${result.totalDeleted} posts this pass.`);
+        await queueDoc.ref.delete();
+      }
+    } catch (err) {
+      console.error(`resumePostDeletion failed for ${uid}:`, err.message);
+      // Leave in queue; next invocation will retry.
+    }
+  }
+});
+
+// ============================================================
 // Scheduled stale pendingDeletions monitor — runs every hour
 // ============================================================
 
@@ -1256,10 +1607,21 @@ exports.giphyProxy = onRequest(
       res.status(401).json({ error: "missing bearer token" });
       return;
     }
+    let giphyUid;
     try {
-      await getAuth().verifyIdToken(match[1]);
+      const decoded = await getAuth().verifyIdToken(match[1]);
+      giphyUid = decoded.uid;
     } catch (err) {
       res.status(401).json({ error: "invalid token" });
+      return;
+    }
+
+    // 60 GIF picker calls per minute per uid is comfortably above legitimate
+    // browsing (one search + a few page loads) but well below what a tampered
+    // client would need to exhaust the Giphy free-tier quota in a day.
+    const allowed = await checkRateLimit(giphyUid, "giphyProxy", 60, 60);
+    if (!allowed) {
+      res.status(429).json({ error: "rate limit exceeded" });
       return;
     }
 
@@ -1318,7 +1680,13 @@ exports.giphyProxy = onRequest(
       }
       res.json(json);
     } catch (err) {
-      console.warn("giphyProxy failed:", err.message);
+      // Defense in depth: Node fetch can include the request URL in error
+      // messages (DNS failures, abort traces, etc.) which would log the
+      // GIPHY_KEY query parameter to Cloud Logging. Strip api_key=...
+      // before any error message reaches console. Also strips it from
+      // the .stack field for the same reason.
+      const sanitize = (s) => (s || "").replace(/api_key=[^&\s"]*/g, "api_key=***");
+      console.warn("giphyProxy failed:", sanitize(err.message));
       res.status(502).json({ error: "upstream failure" });
     }
   }
@@ -1374,6 +1742,16 @@ exports.reconcileMyCounts = onRequest(
       uid = decoded.uid;
     } catch (err) {
       res.status(401).json({ error: "invalid token" });
+      return;
+    }
+
+    // ProfileView gates this client-side to once per 24h via UserDefaults,
+    // but UserDefaults is wipeable by reinstall and the value is not
+    // server-trusted. 6 reconciles per day per uid is generous for legitimate
+    // multi-device use while still bounding a tampered build's blast radius.
+    const allowed = await checkRateLimit(uid, "reconcileMyCounts", 6, 86400);
+    if (!allowed) {
+      res.status(429).json({ error: "rate limit exceeded" });
       return;
     }
 

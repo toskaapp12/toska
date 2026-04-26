@@ -182,8 +182,13 @@ struct LastThingSaidView: View {
                             
                             finalPosts = documents.compactMap { doc in
                                                 let data = doc.data()
-                                                let authorId = data["authorId"] as? String ?? ""
-                                                if BlockedUsersCache.shared.isBlocked(authorId) { return nil }
+                                                // Note: finalPosts docs do NOT store authorId (intentional —
+                                                // see the `onUserDocDeleted` cleanup function: the user's
+                                                // last words are preserved as an anonymized tombstone with
+                                                // only authorHandle, text, tag, likeCount). The previous
+                                                // BlockedUsersCache.isBlocked(authorId) filter here was
+                                                // always a no-op because authorId was always "". Removed
+                                                // to make the dead check explicit.
                                                 let leftAt = (data["leftAt"] as? Timestamp)?.dateValue() ?? Date()
                                                 
                                 return FinalPost(

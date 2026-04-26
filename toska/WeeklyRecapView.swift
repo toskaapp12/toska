@@ -211,13 +211,41 @@ struct WeeklyRecapView: View {
                                 }()
                 
                 async let topPostResult: (String, Int) = {
+                    // Fetch this week's posts ordered by createdAt (the range
+                    // filter field — Firestore requires the first orderBy to
+                    // match the inequality field, so we can't .order(by:
+                    // "likeCount") here without an INVALID_ARGUMENT that the
+                    // outer try? would silently swallow into ("", 0)). Sort
+                    // by likeCount client-side, then pick the first that's
+                    // not expired/flagged/concerning. Mirrors the same
+                    // workaround in DailyMomentView.
                     let snap = try? await userWeekQuery
-                        .order(by: "likeCount", descending: true)
-                        .limit(to: 1)
+                        .order(by: "createdAt", descending: true)
+                        .limit(to: 50)
                         .getDocuments()
-                    if let doc = snap?.documents.first {
-                        let data = doc.data()
-                        return (data["text"] as? String ?? "", data["likeCount"] as? Int ?? 0)
+                    let sortedByLikes = (snap?.documents ?? []).sorted {
+                        ($0.data()["likeCount"] as? Int ?? 0)
+                            > ($1.data()["likeCount"] as? Int ?? 0)
+                    }
+                    if !sortedByLikes.isEmpty {
+                        let docs = sortedByLikes
+                        let now = Date()
+                        for doc in docs {
+                            let data = doc.data()
+                            if data["flagged"] as? Bool == true { continue }
+                            if data["concerningContent"] as? Bool == true { continue }
+                            if let expiresAt = data["expiresAt"] as? Timestamp,
+                               expiresAt.dateValue() < now { continue }
+                            // Skip reposts. The user's "top post of the week"
+                            // is meant to celebrate their original words —
+                            // showing a repost (whose text is the original
+                            // author's, just shared by this user) under
+                            // "your top post" reads as if they wrote it.
+                            // Falls through to the next candidate from the
+                            // top-5 widening above.
+                            if data["isRepost"] as? Bool == true { continue }
+                            return (data["text"] as? String ?? "", data["likeCount"] as? Int ?? 0)
+                        }
                     }
                     return ("", 0)
                 }()

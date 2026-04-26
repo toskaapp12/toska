@@ -365,11 +365,15 @@ struct NotificationsView: View {
                 }
                 guard let data = snapshot?.data() else {
                     if let uid = Auth.auth().currentUser?.uid {
-                        Firestore.firestore().collection("users").document(uid).collection("notifications")
-                            .whereField("postId", isEqualTo: postId)
-                            .getDocuments { notifSnap, _ in
-                                for doc in notifSnap?.documents ?? [] { doc.reference.delete() }
+                        Task {
+                            let notifSnap = try? await Firestore.firestore()
+                                .collection("users").document(uid).collection("notifications")
+                                .whereField("postId", isEqualTo: postId)
+                                .getDocumentsAsync()
+                            for doc in notifSnap?.documents ?? [] {
+                                try? await doc.reference.delete()
                             }
+                        }
                     }
                     showDeletedPostAlert = true
                     return

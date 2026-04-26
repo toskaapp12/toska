@@ -273,13 +273,15 @@ class PostInteractionManager {
                     // and the function returned silently — but the optimistic update at line
                     // below had already been issued. Now the optimistic update only fires
                     // AFTER we confirm the post exists and is not itself a repost.
-                    db.collection("posts").document(postId).getDocument { snapshot, fetchError in
-                        Task { @MainActor in
-                            if let fetchError = fetchError {
-                                print("⚠️ repost post fetch failed: \(fetchError)")
-                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
-                                return
-                            }
+                    Task { @MainActor in
+                        let snapshot: DocumentSnapshot?
+                        do {
+                            snapshot = try await db.collection("posts").document(postId).getDocumentAsync()
+                        } catch {
+                            print("⚠️ repost post fetch failed: \(error)")
+                            onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                            return
+                        }
                             guard let data = snapshot?.data() else {
                                 // Post was deleted.
                                 onUpdate(RepostResult(isReposted: false, newCount: currentCount))
@@ -413,7 +415,6 @@ class PostInteractionManager {
                                                                         )
                                 }
                             })
-                        }
                     }
                 }
             }

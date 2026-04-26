@@ -4,11 +4,17 @@ import FirebaseAuth
 
 @MainActor
 class BlockedUsersCache {
-    static let shared = BlockedUsersCache()
+    // nonisolated singleton accessor so the nonisolated isBlocked(_:)
+    // reader (called from Firestore callback queues and
+    // FeedViewModel.filterBlocked) can reach `shared` without a main-actor
+    // hop. Safe because `shared` is set once at static init and never
+    // reassigned; the underlying mutable state is guarded by the NSLock.
+    // Pairs with the nonisolated init() below.
+    nonisolated static let shared = BlockedUsersCache()
 
     // Protects _blockedUserIds across the @MainActor writers and the nonisolated
     // isBlocked(_:) reader, which is called from Firestore callback queues.
-    private nonisolated(unsafe) let lock = NSLock()
+    private nonisolated let lock = NSLock()
     private nonisolated(unsafe) var _blockedUserIds: Set<String> = []
 
     var blockedUserIds: Set<String> {
@@ -34,7 +40,7 @@ class BlockedUsersCache {
     private var listener: ListenerRegistration? = nil
     private var currentUid: String? = nil
 
-    private init() {}
+    private nonisolated init() {}
 
     // MARK: - Listening
 

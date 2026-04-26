@@ -1055,7 +1055,7 @@ struct FeedHeaderCard: View {
                         }
                         
                         // Witness post
-                        if let witness = vm.witnessPost {
+                        if vm.witnessPost != nil {
                             Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
                             Button { vm.showWitnessPost = true } label: {
                                 HStack(spacing: 8) {

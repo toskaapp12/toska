@@ -942,49 +942,46 @@ struct PostDetailView: View {
             batch.setData(replyData, forDocument: replyRef)
             // replyCount increment handled by Cloud Function on reply doc create.
 
-            batch.commit { error in
-                Task { @MainActor in
-                    if let error = error {
-                        Telemetry.recordError(error, context: "PostDetailView.postReply")
-                        self.replyText = currentReplyText
-                        return
-                    }
-                    Telemetry.replyCreated(
-                        parentIsOwn: self.authorUserId == uid,
-                        hasGif: self.replyGifUrl != nil
-                    )
-                    if !self.authorUserId.isEmpty, self.authorUserId != uid {
-                        self.sendNotification(toUserId: self.authorUserId, type: "reply", message: currentReplyText)
-                    }
-                    let newReply = ThreadedReply(
-                        id: replyRef.documentID, handle: replyHandle, text: currentReplyText,
-                        likes: 0, time: "now", authorId: uid,
-                        parentReplyId: self.replyingToId, children: []
-                    )
-                    if let parentId = self.replyingToId {
-                        func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
-                            guard depth < 64 else { return false }
-                            for i in nodes.indices {
-                                if nodes[i].id == parentId { nodes[i].children.append(newReply); return true }
-                                if appendToParent(&nodes[i].children, depth: depth + 1) { return true }
-                            }
-                            return false
-                        }
-                        if !appendToParent(&self.replyList) { self.replyList.append(newReply) }
-                    } else {
-                        self.replyList.append(newReply)
-                    }
-                    self.replyText = ""
-                    if !self.postId.isEmpty {
-                        UserDefaults.standard.removeObject(
-                            forKey: UserDefaultsKeys.replyDraft(postId: self.postId)
-                        )
-                    }
-                    self.replyGifUrl = nil
-                    self.replyFocused = false
-                    self.replyingToId = nil
-                    self.replyingToHandle = nil
+            do {
+                try await batch.commit()
+                Telemetry.replyCreated(
+                    parentIsOwn: self.authorUserId == uid,
+                    hasGif: self.replyGifUrl != nil
+                )
+                if !self.authorUserId.isEmpty, self.authorUserId != uid {
+                    self.sendNotification(toUserId: self.authorUserId, type: "reply", message: currentReplyText)
                 }
+                let newReply = ThreadedReply(
+                    id: replyRef.documentID, handle: replyHandle, text: currentReplyText,
+                    likes: 0, time: "now", authorId: uid,
+                    parentReplyId: self.replyingToId, children: []
+                )
+                if let parentId = self.replyingToId {
+                    func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
+                        guard depth < 64 else { return false }
+                        for i in nodes.indices {
+                            if nodes[i].id == parentId { nodes[i].children.append(newReply); return true }
+                            if appendToParent(&nodes[i].children, depth: depth + 1) { return true }
+                        }
+                        return false
+                    }
+                    if !appendToParent(&self.replyList) { self.replyList.append(newReply) }
+                } else {
+                    self.replyList.append(newReply)
+                }
+                self.replyText = ""
+                if !self.postId.isEmpty {
+                    UserDefaults.standard.removeObject(
+                        forKey: UserDefaultsKeys.replyDraft(postId: self.postId)
+                    )
+                }
+                self.replyGifUrl = nil
+                self.replyFocused = false
+                self.replyingToId = nil
+                self.replyingToHandle = nil
+            } catch {
+                Telemetry.recordError(error, context: "PostDetailView.postReply")
+                self.replyText = currentReplyText
             }
         }
     }

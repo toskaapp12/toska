@@ -14,20 +14,29 @@ class LateNightThemeManager {
         isLateNight = hour < 5
         startTimer()
 
+        // queue: .main guarantees the callback runs on the main thread, so
+        // MainActor.assumeIsolated is sound here — it asserts main-thread
+        // execution at runtime and lets us touch @MainActor state directly
+        // without spawning a Task hop. Same rationale for the foreground
+        // observer below and the Timer block in startTimer().
         backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.timer?.invalidate()
-            self?.timer = nil
+            MainActor.assumeIsolated {
+                self?.timer?.invalidate()
+                self?.timer = nil
+            }
         }
 
         foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            self?.refresh()
-            self?.startTimer()
+            MainActor.assumeIsolated {
+                self?.refresh()
+                self?.startTimer()
+            }
         }
     }
 
@@ -42,7 +51,12 @@ class LateNightThemeManager {
         // of the hour changing. The previous 300s interval meant a 5-minute
         // lag at midnight before the dark theme activated.
         let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
-            self?.refresh()
+            // Timer is added to RunLoop.main so the block fires on the main
+            // thread; assumeIsolated lets us call the @MainActor refresh()
+            // directly instead of paying for a Task hop every 60 seconds.
+            MainActor.assumeIsolated {
+                self?.refresh()
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t

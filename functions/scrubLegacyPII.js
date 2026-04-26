@@ -43,6 +43,7 @@ const LEGACY_FIELDS = [
   "notifyReposts",
   "notifySaves",
   "notifyMessages",
+  "notifyMilestones",
   "pushEnabled",
   "gentleCheckIn",
 ];

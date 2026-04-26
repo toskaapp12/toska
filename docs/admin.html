@@ -32,7 +32,7 @@
         .type-conversation { background: #6ba58e20; color: #6ba58e; }
         .card-time { font-size: 10px; color: #555960; }
         .card-reason { font-size: 11px; color: #c45c5c; margin-bottom: 6px; }
-        .card-text { font-family: Georgia, serif; font-size: 14px; color: #b0b3b8; line-height: 1.6; margin-bottom: 10px; padding: 12px; background: #0a0908; border-radius: 6px; }
+        .card-text { font-family: Georgia, serif; font-size: 14px; color: #b0b3b8; line-height: 1.6; margin-bottom: 10px; padding: 12px; background: #0a0908; border-radius: 6px; white-space: pre-wrap; word-break: break-word; }
         .card-meta { font-size: 10px; color: #555960; margin-bottom: 12px; }
         .card-meta span { margin-right: 12px; }
         .card-actions { display: flex; gap: 8px; }
@@ -56,7 +56,7 @@
         <h1>toska admin</h1>
         <input type="email" id="email" placeholder="email" autocomplete="email">
         <input type="password" id="password" placeholder="password" autocomplete="current-password">
-        <button onclick="signIn()">sign in</button>
+        <button id="signInBtn">sign in</button>
         <div id="loginError" class="error"></div>
     </div>
 
@@ -66,13 +66,13 @@
             <div class="right">
                 <span class="stat">pending: <strong id="pendingCount">0</strong></span>
                 <span class="stat">flagged: <strong id="flaggedCount">0</strong></span>
-                <button onclick="signOut()">sign out</button>
+                <button id="signOutBtn">sign out</button>
             </div>
         </div>
         <div class="tabs">
-            <button class="active" onclick="switchTab('reports', this)">reports</button>
-            <button onclick="switchTab('flagged', this)">flagged posts</button>
-            <button onclick="switchTab('restricted', this)">restricted users</button>
+            <button class="active" data-tab="reports">reports</button>
+            <button data-tab="flagged">flagged posts</button>
+            <button data-tab="restricted">restricted users</button>
         </div>
         <div class="content" id="content">
             <div class="loading">loading...</div>
@@ -85,32 +85,35 @@
         // ============================================================
         // SECURITY NOTE — admin.html
         //
-        // This page is not deployed via firebase.json (no `hosting`
-        // entry), so it is not publicly served by Firebase Hosting.
-        // It is intended to be opened locally by an authorised
-        // operator (file:// or a private host) to triage reports
-        // and moderate flagged content.
+        // This page IS publicly accessible: docs/CNAME points at
+        // www.toskaapp.com and the /docs directory is served via GitHub
+        // Pages. (The previous comment claiming "not publicly served" was
+        // outdated — only the firebase.json hosting block was missing.)
         //
-        // The actual security perimeter is the Firestore rules:
+        // The security perimeter is therefore the Firestore rules:
         //   - admins/{uid} read: if isOwner(uid)  → admin status check
         //   - reports update: isAdmin()           → resolve / dismiss
         //   - users update {restricted, ...}: isAdmin() → restrict / unrestrict
         //   - posts update {flagged}: isAdmin()   → unflag / delete
-        // Even if a non-admin bypassed the client-side gate below, the
-        // server-side rules deny every write. The Firebase config /
-        // apiKey here is a public identifier (intentionally so for
-        // browser SDK use); it does not grant any privileges by itself.
+        // A non-admin who signs in here passes the auth gate but every
+        // privileged write is denied server-side.
         //
-        // Hardening still recommended before exposing this page on a
-        // public URL:
-        //   1. Enable Firebase App Check (reCAPTCHA Enterprise provider)
-        //      and call initializeAppCheck(...) below — App Check
-        //      gates SDK-level reads/writes from non-attested origins.
-        //   2. Move write actions behind a Cloud Function (callable)
-        //      that re-verifies admin status server-side, so the
-        //      auth-then-write window can't be exploited mid-session.
-        //   3. Serve the page from a private host (Cloud Run + IAP, or
-        //      a static host requiring SSO).
+        // Defense-in-depth applied below:
+        //   1. All user-controlled strings (handles, reason labels, text,
+        //      post IDs) are rendered via .textContent or DOM API helpers
+        //      that auto-escape — no innerHTML interpolation. This blocks
+        //      stored-XSS via crafted handles that would otherwise run JS
+        //      in the admin's authenticated session and hijack moderation
+        //      privileges (the realistic attack class).
+        //   2. firestore.rules also constrains handles to
+        //      ^[a-zA-Z0-9_-]+$ at create + update, so the dangerous
+        //      payload can't even land in Firestore in the first place.
+        //
+        // Recommended next step: enable Firebase App Check with a
+        // reCAPTCHA Enterprise provider (the initializeAppCheck call
+        // below) so non-attested origins can't hit Firestore even with
+        // a stolen ID token. The site key is a public identifier — safe
+        // to commit once you have one.
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
@@ -142,26 +145,82 @@
         const db = getFirestore(app);
         let currentTab = "reports";
 
-        window.signIn = async function() {
+        // --- DOM helpers ---
+        // setText / setTextChild / appendSpan all route user-controlled
+        // strings through textContent or document.createTextNode, which
+        // auto-escape into a text node — no chance of HTML/JS injection
+        // even if the string contains <, >, ', ", & or other markup.
+
+        function el(tag, className) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            return node;
+        }
+
+        function span(className, text) {
+            const s = el("span", className);
+            s.textContent = text ?? "";
+            return s;
+        }
+
+        function emptyState(container, title, body) {
+            container.replaceChildren();
+            const wrap = el("div", "empty");
+            const h2 = el("h2");
+            h2.textContent = title;
+            const p = el("p");
+            p.textContent = body;
+            wrap.append(h2, p);
+            container.appendChild(wrap);
+        }
+
+        function loadingState(container, message = "loading...") {
+            container.replaceChildren();
+            const wrap = el("div", "loading");
+            wrap.textContent = message;
+            container.appendChild(wrap);
+        }
+
+        // Type tag — bounded by firestore.rules to one of four enum
+        // values, but we still treat it carefully: only attach the
+        // class suffix if the value matches the allowlist.
+        const ALLOWED_TYPES = new Set(["post", "reply", "user", "conversation"]);
+        function typeBadge(type) {
+            const safeType = ALLOWED_TYPES.has(type) ? type : "post";
+            const s = span(`card-type type-${safeType}`);
+            s.textContent = safeType;
+            return s;
+        }
+
+        // --- Auth wiring ---
+
+        document.getElementById("signInBtn").addEventListener("click", signIn);
+        document.getElementById("signOutBtn").addEventListener("click", () => fbSignOut(auth));
+        document.querySelectorAll(".tabs button[data-tab]").forEach(btn => {
+            btn.addEventListener("click", () => switchTab(btn.dataset.tab, btn));
+        });
+
+        async function signIn() {
             const email = document.getElementById("email").value;
             const password = document.getElementById("password").value;
+            const errEl = document.getElementById("loginError");
+            errEl.textContent = "";
             try {
                 await signInWithEmailAndPassword(auth, email, password);
             } catch (e) {
-                document.getElementById("loginError").textContent = e.message;
+                errEl.textContent = e.message;
             }
-        };
+        }
 
-        window.signOut = function() { fbSignOut(auth); };
-
-        window.switchTab = function(tab, btn) {
+        function switchTab(tab, btn) {
             currentTab = tab;
             document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
             loadTab();
-        };
+        }
 
         onAuthStateChanged(auth, async (user) => {
+            const errEl = document.getElementById("loginError");
             if (user) {
                 const adminDoc = await getDoc(doc(db, "admins", user.uid));
                 if (adminDoc.exists() && adminDoc.data().role === "admin") {
@@ -169,7 +228,7 @@
                     document.getElementById("appView").style.display = "block";
                     loadTab();
                 } else {
-                    document.getElementById("loginError").textContent = "not an admin account";
+                    errEl.textContent = "not an admin account";
                     await fbSignOut(auth);
                     document.getElementById("loginView").style.display = "flex";
                 }
@@ -181,12 +240,13 @@
 
         async function loadTab() {
             const content = document.getElementById("content");
-            content.innerHTML = '<div class="loading">loading...</div>';
-
+            loadingState(content);
             if (currentTab === "reports") await loadReports(content);
             else if (currentTab === "flagged") await loadFlagged(content);
             else if (currentTab === "restricted") await loadRestricted(content);
         }
+
+        // --- Reports ---
 
         async function loadReports(container) {
             try {
@@ -195,38 +255,77 @@
                 document.getElementById("pendingCount").textContent = snap.size;
 
                 if (snap.empty) {
-                    container.innerHTML = '<div class="empty"><h2>nothing to review</h2><p>no pending reports right now</p></div>';
+                    emptyState(container, "nothing to review", "no pending reports right now");
                     return;
                 }
 
-                let html = "";
+                container.replaceChildren();
                 snap.forEach(d => {
                     const r = d.data();
                     const time = r.createdAt?.toDate?.() ? timeAgo(r.createdAt.toDate()) : "unknown";
-                    html += `
-                        <div class="card" id="report-${d.id}">
-                            <div class="card-header">
-                                <span class="card-type type-${r.type}">${r.type}</span>
-                                <span class="card-time">${time}</span>
-                            </div>
-                            <div class="card-reason">reason: ${r.reasonLabel || r.reason}</div>
-                            ${r.text ? `<div class="card-text">${escapeHtml(r.text)}</div>` : ""}
-                            <div class="card-meta">
-                                <span>reported: ${r.reportedHandle || "unknown"}</span>
-                                ${r.postId ? `<span>post: ${r.postId.slice(0,8)}...</span>` : ""}
-                            </div>
-                            <div class="card-actions">
-                                <button class="btn-dismiss" onclick="dismissReport('${d.id}')">dismiss</button>
-                                ${r.postId ? `<button class="btn-remove" onclick="removePost('${d.id}', '${r.postId}')">remove post</button>` : ""}
-                                ${r.reportedUserId ? `<button class="btn-restrict" onclick="restrictUser('${d.id}', '${r.reportedUserId}', '${r.reportedHandle}')">restrict user</button>` : ""}
-                            </div>
-                        </div>`;
+
+                    const card = el("div", "card");
+                    card.id = `report-${d.id}`;
+
+                    const header = el("div", "card-header");
+                    header.append(typeBadge(r.type), span("card-time", time));
+                    card.appendChild(header);
+
+                    const reasonText = r.reasonLabel || r.reason || "";
+                    const reasonDiv = el("div", "card-reason");
+                    reasonDiv.textContent = `reason: ${reasonText}`;
+                    card.appendChild(reasonDiv);
+
+                    if (r.text) {
+                        const textDiv = el("div", "card-text");
+                        textDiv.textContent = r.text;
+                        card.appendChild(textDiv);
+                    }
+
+                    const meta = el("div", "card-meta");
+                    const reportedSpan = el("span");
+                    reportedSpan.textContent = `reported: ${r.reportedHandle || "unknown"}`;
+                    meta.appendChild(reportedSpan);
+                    if (r.postId) {
+                        const postSpan = el("span");
+                        // .slice(0,8) is a display nicety; the full id stays in
+                        // the click closure below so the action handler hits the
+                        // correct doc. Both go through textContent.
+                        postSpan.textContent = `post: ${String(r.postId).slice(0, 8)}...`;
+                        meta.appendChild(postSpan);
+                    }
+                    card.appendChild(meta);
+
+                    const actions = el("div", "card-actions");
+
+                    const dismissBtn = el("button", "btn-dismiss");
+                    dismissBtn.textContent = "dismiss";
+                    dismissBtn.addEventListener("click", () => dismissReport(d.id));
+                    actions.appendChild(dismissBtn);
+
+                    if (r.postId) {
+                        const removeBtn = el("button", "btn-remove");
+                        removeBtn.textContent = "remove post";
+                        removeBtn.addEventListener("click", () => removePost(d.id, r.postId));
+                        actions.appendChild(removeBtn);
+                    }
+
+                    if (r.reportedUserId) {
+                        const restrictBtn = el("button", "btn-restrict");
+                        restrictBtn.textContent = "restrict user";
+                        restrictBtn.addEventListener("click", () => restrictUser(d.id, r.reportedUserId, r.reportedHandle));
+                        actions.appendChild(restrictBtn);
+                    }
+
+                    card.appendChild(actions);
+                    container.appendChild(card);
                 });
-                container.innerHTML = html;
             } catch (e) {
-                container.innerHTML = `<div class="empty"><h2>error loading reports</h2><p>${e.message}</p></div>`;
+                emptyState(container, "error loading reports", e.message);
             }
         }
+
+        // --- Flagged posts ---
 
         async function loadFlagged(container) {
             try {
@@ -235,38 +334,64 @@
                 document.getElementById("flaggedCount").textContent = snap.size;
 
                 if (snap.empty) {
-                    container.innerHTML = '<div class="empty"><h2>no flagged posts</h2><p>auto-moderation hasn\'t flagged anything</p></div>';
+                    emptyState(container, "no flagged posts", "auto-moderation hasn't flagged anything");
                     return;
                 }
 
-                let html = "";
+                container.replaceChildren();
                 snap.forEach(d => {
                     const p = d.data();
                     const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
-                    html += `
-                        <div class="card" id="flagged-${d.id}">
-                            <div class="card-header">
-                                <span class="flagged-label">${p.flagReason || "flagged"}</span>
-                                <span class="card-time">${time}</span>
-                            </div>
-                            <div class="card-text">${escapeHtml(p.text || "")}</div>
-                            <div class="card-meta">
-                                <span>by: ${p.authorHandle || "unknown"}</span>
-                                <span>likes: ${p.likeCount || 0}</span>
-                                <span>replies: ${p.replyCount || 0}</span>
-                            </div>
-                            <div class="card-actions">
-                                <button class="btn-dismiss" onclick="unflagPost('${d.id}')">unflag (false positive)</button>
-                                <button class="btn-remove" onclick="deletePost('${d.id}')">delete post</button>
-                                ${p.authorId ? `<button class="btn-restrict" onclick="restrictUserDirect('${p.authorId}', '${p.authorHandle || ""}')">restrict author</button>` : ""}
-                            </div>
-                        </div>`;
+
+                    const card = el("div", "card");
+                    card.id = `flagged-${d.id}`;
+
+                    const header = el("div", "card-header");
+                    header.append(span("flagged-label", p.flagReason || "flagged"), span("card-time", time));
+                    card.appendChild(header);
+
+                    const textDiv = el("div", "card-text");
+                    textDiv.textContent = p.text || "";
+                    card.appendChild(textDiv);
+
+                    const meta = el("div", "card-meta");
+                    const bySpan = el("span");
+                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
+                    const likesSpan = el("span");
+                    likesSpan.textContent = `likes: ${p.likeCount || 0}`;
+                    const repliesSpan = el("span");
+                    repliesSpan.textContent = `replies: ${p.replyCount || 0}`;
+                    meta.append(bySpan, likesSpan, repliesSpan);
+                    card.appendChild(meta);
+
+                    const actions = el("div", "card-actions");
+
+                    const unflagBtn = el("button", "btn-dismiss");
+                    unflagBtn.textContent = "unflag (false positive)";
+                    unflagBtn.addEventListener("click", () => unflagPost(d.id));
+                    actions.appendChild(unflagBtn);
+
+                    const deleteBtn = el("button", "btn-remove");
+                    deleteBtn.textContent = "delete post";
+                    deleteBtn.addEventListener("click", () => deletePost(d.id));
+                    actions.appendChild(deleteBtn);
+
+                    if (p.authorId) {
+                        const restrictBtn = el("button", "btn-restrict");
+                        restrictBtn.textContent = "restrict author";
+                        restrictBtn.addEventListener("click", () => restrictUserDirect(p.authorId, p.authorHandle || ""));
+                        actions.appendChild(restrictBtn);
+                    }
+
+                    card.appendChild(actions);
+                    container.appendChild(card);
                 });
-                container.innerHTML = html;
             } catch (e) {
-                container.innerHTML = `<div class="empty"><h2>error loading flagged posts</h2><p>${e.message}</p></div>`;
+                emptyState(container, "error loading flagged posts", e.message);
             }
         }
+
+        // --- Restricted users ---
 
         async function loadRestricted(container) {
             try {
@@ -274,44 +399,59 @@
                 const snap = await getDocs(q);
 
                 if (snap.empty) {
-                    container.innerHTML = '<div class="empty"><h2>no restricted users</h2><p>nobody is currently restricted</p></div>';
+                    emptyState(container, "no restricted users", "nobody is currently restricted");
                     return;
                 }
 
-                let html = "";
+                container.replaceChildren();
                 snap.forEach(d => {
                     const u = d.data();
-                    html += `
-                        <div class="card" id="user-${d.id}">
-                            <div class="card-header">
-                                <span class="card-type type-user">${u.handle || "unknown"}</span>
-                                <span class="card-time">${u.restrictedAt?.toDate?.() ? timeAgo(u.restrictedAt.toDate()) : ""}</span>
-                            </div>
-                            <div class="card-meta">
-                                <span>posts: ${u.postCount || 0}</span>
-                                <span>followers: ${u.followerCount || 0}</span>
-                            </div>
-                            <div class="card-actions">
-                                <button class="btn-dismiss" onclick="unrestrictUser('${d.id}')">unrestrict</button>
-                            </div>
-                        </div>`;
+                    const restrictedAtStr = u.restrictedAt?.toDate?.() ? timeAgo(u.restrictedAt.toDate()) : "";
+
+                    const card = el("div", "card");
+                    card.id = `user-${d.id}`;
+
+                    const header = el("div", "card-header");
+                    const handleSpan = span("card-type type-user", u.handle || "unknown");
+                    header.append(handleSpan, span("card-time", restrictedAtStr));
+                    card.appendChild(header);
+
+                    const meta = el("div", "card-meta");
+                    const postsSpan = el("span");
+                    postsSpan.textContent = `posts: ${u.postCount || 0}`;
+                    const followersSpan = el("span");
+                    followersSpan.textContent = `followers: ${u.followerCount || 0}`;
+                    meta.append(postsSpan, followersSpan);
+                    card.appendChild(meta);
+
+                    const actions = el("div", "card-actions");
+                    const unrestrictBtn = el("button", "btn-dismiss");
+                    unrestrictBtn.textContent = "unrestrict";
+                    unrestrictBtn.addEventListener("click", () => unrestrictUser(d.id));
+                    actions.appendChild(unrestrictBtn);
+                    card.appendChild(actions);
+
+                    container.appendChild(card);
                 });
-                container.innerHTML = html;
             } catch (e) {
-                container.innerHTML = `<div class="empty"><h2>error loading users</h2><p>${e.message}</p></div>`;
+                emptyState(container, "error loading users", e.message);
             }
         }
 
         // --- Actions ---
+        // No `window.X = ...` exports because we no longer use inline onclick.
+        // All buttons are wired via addEventListener inside the render loops.
 
-        window.dismissReport = async function(reportId) {
+        async function dismissReport(reportId) {
             const uid = auth.currentUser.uid;
-            await updateDoc(doc(db, "reports", reportId), { status: "dismissed", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "dismissed" });
-            document.getElementById(`report-${reportId}`)?.remove();
-            showToast("report dismissed");
-        };
+            try {
+                await updateDoc(doc(db, "reports", reportId), { status: "dismissed", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "dismissed" });
+                document.getElementById(`report-${reportId}`)?.remove();
+                showToast("report dismissed");
+            } catch (e) { showToast("error: " + e.message); }
+        }
 
-        window.removePost = async function(reportId, postId) {
+        async function removePost(reportId, postId) {
             if (!confirm("delete this post permanently?")) return;
             const uid = auth.currentUser.uid;
             try {
@@ -320,9 +460,11 @@
                 document.getElementById(`report-${reportId}`)?.remove();
                 showToast("post deleted, report resolved");
             } catch (e) { showToast("error: " + e.message); }
-        };
+        }
 
-        window.restrictUser = async function(reportId, userId, handle) {
+        async function restrictUser(reportId, userId, handle) {
+            // confirm() renders the message as plain text — no XSS risk
+            // even if `handle` contains markup. Same for showToast below.
             if (!confirm(`restrict ${handle || userId}? they won't be able to post.`)) return;
             const uid = auth.currentUser.uid;
             try {
@@ -331,18 +473,18 @@
                 document.getElementById(`report-${reportId}`)?.remove();
                 showToast(`${handle || "user"} restricted`);
             } catch (e) { showToast("error: " + e.message); }
-        };
+        }
 
-        window.restrictUserDirect = async function(userId, handle) {
+        async function restrictUserDirect(userId, handle) {
             if (!confirm(`restrict ${handle || userId}?`)) return;
             const uid = auth.currentUser.uid;
             try {
                 await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
                 showToast(`${handle || "user"} restricted`);
             } catch (e) { showToast("error: " + e.message); }
-        };
+        }
 
-        window.unflagPost = async function(postId) {
+        async function unflagPost(postId) {
             try {
                 // Clearing flagged alone wasn't enough — DailyMomentView,
                 // WeeklyRecapView, TopView, FeedViewModel, OtherProfileView,
@@ -360,25 +502,25 @@
                 document.getElementById(`flagged-${postId}`)?.remove();
                 showToast("post unflagged — now visible in feeds");
             } catch (e) { showToast("error: " + e.message); }
-        };
+        }
 
-        window.deletePost = async function(postId) {
+        async function deletePost(postId) {
             if (!confirm("delete this post permanently?")) return;
             try {
                 await deleteDoc(doc(db, "posts", postId));
                 document.getElementById(`flagged-${postId}`)?.remove();
                 showToast("post deleted");
             } catch (e) { showToast("error: " + e.message); }
-        };
+        }
 
-        window.unrestrictUser = async function(userId) {
+        async function unrestrictUser(userId) {
             if (!confirm("unrestrict this user? they'll be able to post again.")) return;
             try {
                 await updateDoc(doc(db, "users", userId), { restricted: false, restrictedAt: serverTimestamp(), restrictedBy: auth.currentUser.uid });
                 document.getElementById(`user-${userId}`)?.remove();
                 showToast("user unrestricted");
             } catch (e) { showToast("error: " + e.message); }
-        };
+        }
 
         // --- Helpers ---
 
@@ -388,12 +530,6 @@
             if (s < 3600) return Math.floor(s / 60) + "m ago";
             if (s < 86400) return Math.floor(s / 3600) + "h ago";
             return Math.floor(s / 86400) + "d ago";
-        }
-
-        function escapeHtml(text) {
-            const d = document.createElement("div");
-            d.textContent = text;
-            return d.innerHTML;
         }
 
         function showToast(msg) {

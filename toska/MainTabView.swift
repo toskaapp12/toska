@@ -182,7 +182,7 @@ struct MainTabView: View {
             selectedTab = .feed
             pushPostId = postId
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenConversationFromPush"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .openConversationFromPush)) { notification in
             guard let convoId = notification.userInfo?["conversationId"] as? String, !convoId.isEmpty else { return }
             let otherUserId = notification.userInfo?["otherUserId"] as? String ?? ""
             PushNotificationManager.shared.pendingIntent = nil
@@ -194,7 +194,7 @@ struct MainTabView: View {
             // so an empty handle is acceptable here.
             pushConversation = ConversationSelection(id: convoId, handle: "", userId: otherUserId)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenProfileFromPush"))) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .openProfileFromPush)) { notification in
             guard let userId = notification.userInfo?["userId"] as? String, !userId.isEmpty else { return }
             PushNotificationManager.shared.pendingIntent = nil
             showCompose = false
@@ -256,6 +256,16 @@ struct MainTabView: View {
             unreadListener = nil
             unreadPollTask?.cancel()
             unreadPollTask = nil
+            // Tear down the feed view-model's listeners and in-flight tasks
+            // on sign-out. MainTabView is held by SwiftUI for a tick after
+            // the SplashView swap, and feedVM is a @StateObject that
+            // outlives a quick sign-out/sign-in for a different account
+            // unless we explicitly cancel here. Without this, likedListener
+            // / savedListener / repostedListener would keep firing against
+            // the previous uid until the next loadInitialData call (which
+            // also resets state) — a race window where the new user briefly
+            // sees the old user's liked/saved/repost markers.
+            feedVM.cancelAllTasks()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             pendingUnreadTask?.cancel()

@@ -159,22 +159,38 @@ struct SignInView: View {
         }
         isLoading = true
         errorMessage = ""
-        Auth.auth().signIn(withEmail: trimmedEmail, password: password) { result, error in
-            Task { @MainActor in
-                isLoading = false
-                if let error = error {
-                    Telemetry.recordError(error, context: "SignInView.emailSignIn")
-                    errorMessage = friendlyAuthErrorMessage(error)
-                } else if let uid = result?.user.uid {
-                    Telemetry.signInCompleted(method: .email)
-                    UserHandleCache.shared.startListening()
-                    NotificationCenter.default.post(
-                        name: NSNotification.Name("UserDidSignIn"),
-                        object: nil,
-                        userInfo: ["uid": uid]
-                    )
-                    dismiss()
+        // 30s timeout. The previous shape used the bare callback API with no
+        // ceiling — if Firebase Auth never called back (network blip, server
+        // outage, abandoned cellular handoff), the spinner stayed forever and
+        // the user couldn't even tap the back button without force-closing the
+        // sheet. withTimeout cancels the wrapping Task on overrun and surfaces
+        // a friendly retry message instead.
+        Task { @MainActor in
+            do {
+                // Extract uid inside the timeout closure — AuthDataResult is
+                // not Sendable so it can't cross the @Sendable boundary that
+                // withTimeout's closure imposes. String is Sendable, which
+                // is all we actually need from the result.
+                let uid = try await withTimeout(seconds: 30) {
+                    let result = try await Auth.auth().signIn(withEmail: trimmedEmail, password: password)
+                    return result.user.uid
                 }
+                isLoading = false
+                Telemetry.signInCompleted(method: .email)
+                UserHandleCache.shared.startListening()
+                NotificationCenter.default.post(
+                    name: .userDidSignIn,
+                    object: nil,
+                    userInfo: ["uid": uid]
+                )
+                dismiss()
+            } catch is TimeoutError {
+                isLoading = false
+                errorMessage = "request timed out — please try again"
+            } catch {
+                isLoading = false
+                Telemetry.recordError(error, context: "SignInView.emailSignIn")
+                errorMessage = friendlyAuthErrorMessage(error)
             }
         }
     }

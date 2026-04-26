@@ -18,6 +18,14 @@ struct ShareCardView: View {
     @State private var showSharedConfirmation = false
     @State private var sharedPlatform = ""
     @State private var savedToPhotos = false
+    // Gates the share-button row while ImageRenderer does its work. The
+    // renderer is @MainActor, so it blocks the UI for ~200-500ms on a full-
+    // size card rasterize — without this flag, the user tapping a button saw
+    // a frozen app until the share sheet finally appeared. We can't move the
+    // render off main (the SwiftUI renderer requires main-actor context), so
+    // the fix is purely perceived-latency: set the flag, yield one frame so
+    // SwiftUI paints the disabled state, then render.
+    @State private var isRendering = false
 
     let styles = ["2am", "numb", "bruise", "ashes", "unsent", "alone", "hollow", "dawn", "paper", "blush", "sage", "frost"]
     let fonts = ["serif", "sans", "mono", "hand"]
@@ -214,11 +222,18 @@ struct ShareCardView: View {
                                 shareImage()
                             }
                         }
+                        .disabled(isRendering)
+                        .opacity(isRendering ? 0.5 : 1)
+                        .overlay(alignment: .center) {
+                            if isRendering {
+                                ProgressView().tint(.white.opacity(0.6))
+                            }
+                        }
                         .padding(.horizontal, 16)
 
                         // MARK: - Copy Text
                         Button {
-                            UIPasteboard.general.string = "\"\(text)\"\n\n— someone on toska\ntoskaapp.com"
+                            UIPasteboard.general.string = "\"\(text)\"\n\n— someone on toska\nwww.toskaapp.com"
                             showCopied = true
                             HapticManager.play(.feltThis)
                             Task {
@@ -426,7 +441,7 @@ struct ShareCardView: View {
                             .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                     }
 
-                    Text("toskaapp.com")
+                    Text("www.toskaapp.com")
                         .font(.system(size: 7, weight: .medium))
                         .tracking(1)
                         .foregroundColor(isDarkStyle ? .white.opacity(0.1) : brandTextColor.opacity(0.15))
@@ -675,7 +690,7 @@ struct ShareCardView: View {
                             .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                     }
 
-                    Text("toskaapp.com")
+                    Text("www.toskaapp.com")
                         .font(.system(size: 8, weight: .medium))
                         .tracking(1.2)
                         .foregroundColor(isDarkStyle ? .white.opacity(0.12) : brandTextColor.opacity(0.18))
@@ -708,52 +723,80 @@ struct ShareCardView: View {
 
     // MARK: - Share Functions
 
+    /// Sets isRendering, yields one frame so SwiftUI can paint the disabled/
+    /// spinner state on the share row, then runs the render+share body, then
+    /// clears the flag. ImageRenderer is @MainActor so it still blocks main
+    /// during the actual rasterize — this doesn't speed that up, it just
+    /// guarantees the user sees feedback before the UI freezes.
+    @MainActor
+    private func withRenderIndicator(_ body: @escaping @MainActor () -> Void) {
+        guard !isRendering else { return }
+        isRendering = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 16_000_000) // ~1 frame
+            body()
+            isRendering = false
+        }
+    }
+
     func saveToPhotos() {
-        guard let image = renderCardImage() else { return }
-        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-        HapticManager.play(.milestone)
-        savedToPhotos = true
-        showPostShareConfirmation()
+        withRenderIndicator {
+            guard let image = renderCardImage() else { return }
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+            HapticManager.play(.milestone)
+            savedToPhotos = true
+            showPostShareConfirmation()
+        }
     }
 
     func shareImage() {
-        guard let image = renderCardImage() else { return }
-        presentShareSheet(with: [image])
-        showPostShareConfirmation()
+        withRenderIndicator {
+            guard let image = renderCardImage() else { return }
+            presentShareSheet(with: [image])
+            showPostShareConfirmation()
+        }
     }
 
     func shareToInstagramStories() {
-        guard let image = renderCardImage() else { return }
-        guard let imageData = image.pngData() else { return }
+        withRenderIndicator {
+            guard let image = renderCardImage() else { return }
+            guard let imageData = image.pngData() else { return }
 
-        let bgColor = isDarkStyle ? "#0a0908" : "#f0f0ec"
-        let pasteboardItems: [String: Any] = [
-            "com.instagram.sharedSticker.backgroundImage": imageData,
-            "com.instagram.sharedSticker.backgroundTopColor": bgColor,
-            "com.instagram.sharedSticker.backgroundBottomColor": bgColor
-        ]
+            let bgColor = isDarkStyle ? "#0a0908" : "#f0f0ec"
+            let pasteboardItems: [String: Any] = [
+                "com.instagram.sharedSticker.backgroundImage": imageData,
+                "com.instagram.sharedSticker.backgroundTopColor": bgColor,
+                "com.instagram.sharedSticker.backgroundBottomColor": bgColor
+            ]
 
-        let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
-            .expirationDate: Date().addingTimeInterval(300)
-        ]
+            let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
+                .expirationDate: Date().addingTimeInterval(300)
+            ]
 
-        UIPasteboard.general.setItems([pasteboardItems], options: pasteboardOptions)
+            UIPasteboard.general.setItems([pasteboardItems], options: pasteboardOptions)
 
-        if let url = URL(string: "instagram-stories://share"), UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-            sharedPlatform = "Instagram"
-            showPostShareConfirmation()
-        } else {
-            shareImage()
+            if let url = URL(string: "instagram-stories://share"), UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url)
+                sharedPlatform = "Instagram"
+                showPostShareConfirmation()
+            } else {
+                // Nested withRenderIndicator is a no-op because isRendering is
+                // still true; inline the fallback so we actually present.
+                guard let fallbackImage = renderCardImage() else { return }
+                presentShareSheet(with: [fallbackImage])
+                showPostShareConfirmation()
+            }
         }
     }
 
     func shareToTwitter() {
-        let tweetText = "\"\(text)\"\n\n— someone on toska\ntoskaapp.com"
-        guard let image = renderCardImage() else { return }
-        presentShareSheet(with: [tweetText, image])
-        sharedPlatform = "X"
-        showPostShareConfirmation()
+        withRenderIndicator {
+            let tweetText = "\"\(text)\"\n\n— someone on toska\nwww.toskaapp.com"
+            guard let image = renderCardImage() else { return }
+            presentShareSheet(with: [tweetText, image])
+            sharedPlatform = "X"
+            showPostShareConfirmation()
+        }
     }
 
     func showPostShareConfirmation() {

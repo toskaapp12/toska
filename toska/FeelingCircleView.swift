@@ -22,6 +22,17 @@ struct FeelingCircleView: View {
 
     private let messageLimit = 5
 
+    // circleId is keyed off the device's *local* date by design — the
+    // "expires at your local midnight" copy elsewhere in this view, and
+    // the per-client expiresAt computed in joinCircle, both follow the
+    // same local-time model. Two users in the same timezone share a
+    // circle for the same `tag` on the same calendar day; users far
+    // enough apart to be on different calendar dates at the same UTC
+    // moment intentionally end up in separate circles. If we ever want
+    // a globally-unified circle, this needs to switch to a UTC-anchored
+    // dateKey AND the expiresAt logic in joinCircle needs to follow.
+    // ToskaFormatters.dateKey uses the device's current calendar/timezone
+    // implicitly because no .timeZone is set on the formatter.
     var circleId: String {
         let dateKey = ToskaFormatters.dateKey.string(from: Date())
         return "\(dateKey)_\(tag)"
@@ -222,6 +233,15 @@ struct FeelingCircleView: View {
             listener?.remove()
             listener = nil
         }
+        // Sign-out can happen while this view is on screen (e.g. session
+        // expiry). onDisappear isn't guaranteed to fire if the view stays
+        // visible during a SplashView swap, so explicitly tear the listener
+        // down on sign-out and dismiss back to the safe-state UI.
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+            listener?.remove()
+            listener = nil
+            dismiss()
+        }
         .alert("hold on", isPresented: $showContentWarning) {
             Button("edit") {}
         } message: { Text(contentWarningMessage) }
@@ -330,8 +350,19 @@ struct FeelingCircleView: View {
             "participants": FieldValue.arrayUnion([uid]),
             "createdAt": FieldValue.serverTimestamp(),
             "expiresAt": Timestamp(date: midnight)
-        ], merge: true) { _ in
+        ], merge: true) { error in
             Task { @MainActor in
+                if let error = error {
+                    // Don't flip hasJoined or bump participantCount on failure
+                    // — previous shape did both unconditionally, leaving the
+                    // user in a fake "joined" state with a participant count
+                    // off-by-one until the next refresh. Surface the failure
+                    // to telemetry so persistent denials (rules, quota) show
+                    // up in production logs.
+                    print("⚠️ FeelingCircleView.joinCircle failed: \(error.localizedDescription)")
+                    Telemetry.recordError(error, context: "FeelingCircleView.joinCircle")
+                    return
+                }
                 hasJoined = true
                 participantCount += 1
                 startListening()
@@ -343,6 +374,12 @@ struct FeelingCircleView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         listener?.remove()
 
+        // Capture uid so the callback can verify it's still serving the same
+        // account before writing to @State. Without this, a sign-out (or
+        // account switch on another device propagating) lets the in-flight
+        // snapshot land messages.isMe values keyed off the previous uid into
+        // the now-stale view state.
+        let capturedUid = uid
         listener = Firestore.firestore()
             .collection("feelingCircles").document(circleId)
             .collection("messages")
@@ -350,12 +387,13 @@ struct FeelingCircleView: View {
             .limit(to: 200)
             .addSnapshotListener { snapshot, _ in
                 Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     guard let docs = snapshot?.documents else { return }
                     var myCount = 0
                     messages = docs.compactMap { doc in
                         let data = doc.data()
                         let authorId = data["authorId"] as? String ?? ""
-                        let isMe = authorId == uid
+                        let isMe = authorId == capturedUid
                         if isMe { myCount += 1 }
                         if !isMe && BlockedUsersCache.shared.isBlocked(authorId) { return nil }
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()

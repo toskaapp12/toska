@@ -188,6 +188,29 @@ struct AnniversaryCardView: View {
            guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
            Task { @MainActor in
                do {
+                   // Defensive: verify the current user is the post's author
+                   // before showing the reflection UI. The card is reached via
+                   // FeedViewModel.fetchAnniversaryPost which queries
+                   // `whereField("authorId", isEqualTo: uid)`, so legitimate
+                   // call sites are scoped to the user's own posts. But a
+                   // future deeplink, share-sheet target, or test rig could
+                   // instantiate AnniversaryCardView with an arbitrary postId,
+                   // and writing a reflection there would create a doc under
+                   // someone else's post. The Firestore rules permit this
+                   // (a reflection author writes to their own slot in any
+                   // post's reflections subcollection), but the *anniversary*
+                   // surface specifically is meant for self-reflection on
+                   // your own past words. Guarding here keeps the UX
+                   // consistent with that intent and dismisses if the post
+                   // turns out not to belong to the current user.
+                   let postSnap = try await Firestore.firestore()
+                       .collection("posts").document(postId)
+                       .getDocumentAsync()
+                   let postAuthorId = postSnap.data()?["authorId"] as? String ?? ""
+                   guard postAuthorId == uid else {
+                       print("⚠️ AnniversaryCardView: post \(postId) authorId does not match current user; skipping reflection load")
+                       return
+                   }
                    let snapshot = try await Firestore.firestore()
                        .collection("posts").document(postId)
                        .collection("reflections").document(uid)

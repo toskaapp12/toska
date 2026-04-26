@@ -21,9 +21,31 @@ final class ToskaUITests: XCTestCase {
     }
     
     // MARK: - Helper: Wait for element
-    
+
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
         return element.waitForExistence(timeout: timeout)
+    }
+
+    // Precondition helpers — throw XCTSkip when the preconditions for a test
+    // aren't met, so the test reports as "skipped" instead of silently passing.
+    // Previously every test used `guard waitFor(element) else { return }`, which
+    // made precondition failures (e.g. the UI seed account not being logged in)
+    // indistinguishable from test successes in CI.
+
+    /// Assert the feed (and therefore a logged-in session) is visible. Throws
+    /// XCTSkip otherwise — used by tests that require the authenticated surface.
+    func requireFeed() throws {
+        let feedView = app.otherElements["feedView"]
+        try XCTSkipUnless(waitFor(feedView, timeout: 15),
+                          "Feed didn't load — UI test is likely running against a signed-out session")
+    }
+
+    /// Assert the splash screen is visible (user is signed out). Throws XCTSkip
+    /// otherwise — used by tests that exercise the auth flows.
+    func requireSignedOut() throws {
+        let newHereButton = app.buttons["im new here"]
+        try XCTSkipUnless(waitFor(newHereButton, timeout: 5),
+                          "Splash not shown — UI test is likely running against a signed-in session")
     }
     
     // MARK: - 1. Splash Screen
@@ -40,13 +62,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 2. Create Account Flow
     
-    func testCreateAccountFlowExists() {
+    func testCreateAccountFlowExists() throws {
+        try requireSignedOut()
         let newHereButton = app.buttons["im new here"]
-        guard waitFor(newHereButton, timeout: 5) else {
-            // Already logged in, skip
-            return
-        }
-        
         newHereButton.tap()
         
         // Verify create account view elements
@@ -65,14 +83,12 @@ final class ToskaUITests: XCTestCase {
         XCTAssertTrue(shuffleButton.exists, "Handle shuffle button not found")
     }
     
-    func testCreateAccountValidation() {
-        let newHereButton = app.buttons["im new here"]
-        guard waitFor(newHereButton, timeout: 5) else { return }
-        
-        newHereButton.tap()
-        
+    func testCreateAccountValidation() throws {
+        try requireSignedOut()
+        app.buttons["im new here"].tap()
+
         let emailField = app.textFields["createEmailField"]
-        guard waitFor(emailField) else { return }
+        try XCTSkipUnless(waitFor(emailField), "Create-account email field not found after tapping into the flow")
         
         let createButton = app.buttons["createAccountButton"]
         
@@ -97,10 +113,10 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 3. Sign In Flow
     
-    func testSignInFlowExists() {
+    func testSignInFlowExists() throws {
+        try requireSignedOut()
         let signInButton = app.buttons["sign in"]
-        guard waitFor(signInButton, timeout: 5) else { return }
-        
+        try XCTSkipUnless(waitFor(signInButton, timeout: 5), "Sign-in button not shown on splash — unexpected splash variant")
         signInButton.tap()
         
         let emailField = app.textFields["emailField"]
@@ -124,9 +140,9 @@ final class ToskaUITests: XCTestCase {
             XCTAssertTrue(header.exists, "Feed header 'toska' not found")
         }
     
-    func testFeedTabsExist() {
+    func testFeedTabsExist() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let forYouTab = app.buttons["for you"]
         let followingTab = app.buttons["following"]
@@ -139,9 +155,9 @@ final class ToskaUITests: XCTestCase {
         XCTAssertFalse(recentTab.exists, "'recent' tab should not exist")
     }
     
-    func testFeedSearchButton() {
+    func testFeedSearchButton() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let searchButton = app.buttons["Search"]
         XCTAssertTrue(searchButton.exists, "Search button not found")
@@ -155,9 +171,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 5. Tab Bar Navigation
     
-    func testTabBarExists() {
+    func testTabBarExists() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let homeTab = app.buttons["Home"]
         let trendingTab = app.buttons["Trending"]
@@ -172,9 +188,9 @@ final class ToskaUITests: XCTestCase {
         XCTAssertTrue(profileTab.exists, "Profile tab not found")
     }
     
-    func testTabSwitching() {
+    func testTabSwitching() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         // Switch to trending
         let trendingTab = app.buttons["Trending"]
@@ -206,9 +222,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 6. Compose
     
-    func testComposeOpens() {
+    func testComposeOpens() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let composeButton = app.buttons["New post"]
         composeButton.tap()
@@ -224,15 +240,15 @@ final class ToskaUITests: XCTestCase {
         cancelButton.tap()
     }
     
-    func testComposeTagPicker() {
+    func testComposeTagPicker() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let composeButton = app.buttons["New post"]
         composeButton.tap()
         
         let cancelButton = app.buttons["cancel"]
-        guard waitFor(cancelButton, timeout: 5) else { return }
+        try XCTSkipUnless(waitFor(cancelButton, timeout: 5), "Compose sheet cancel button never appeared")
         
         // Tag button should exist (tag icon in toolbar)
         // Tap to expand tag picker
@@ -243,15 +259,15 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 7. Explore View
     
-    func testExploreViewElements() {
+    func testExploreViewElements() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let searchButton = app.buttons["Search"]
         searchButton.tap()
         
         let exploreHeader = app.staticTexts["explore"]
-        guard waitFor(exploreHeader, timeout: 5) else { return }
+        try XCTSkipUnless(waitFor(exploreHeader, timeout: 5), "Explore view did not open after tap")
         
         // Search field should exist
         let searchField = app.textFields["search for a feeling..."]
@@ -264,9 +280,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 8. Profile View
     
-    func testProfileElements() {
+    func testProfileElements() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let profileTab = app.buttons["Profile"]
         profileTab.tap()
@@ -287,9 +303,9 @@ final class ToskaUITests: XCTestCase {
         XCTAssertFalse(likesTab.exists, "'likes' tab should not exist")
     }
     
-    func testProfileSettingsOpens() {
+    func testProfileSettingsOpens() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let profileTab = app.buttons["Profile"]
         profileTab.tap()
@@ -308,9 +324,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 9. Settings
     
-    func testSettingsElements() {
+    func testSettingsElements() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let profileTab = app.buttons["Profile"]
         profileTab.tap()
@@ -322,7 +338,7 @@ final class ToskaUITests: XCTestCase {
         settingsButton.tap()
         
         let settingsHeader = app.staticTexts["settings"]
-        guard waitFor(settingsHeader, timeout: 5) else { return }
+        try XCTSkipUnless(waitFor(settingsHeader, timeout: 5), "Settings view did not open after tap")
         
         // Check sections exist
         let privacySection = app.staticTexts["privacy"]
@@ -345,9 +361,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 10. Share Card
     
-    func testShareCardMoodStyles() {
+    func testShareCardMoodStyles() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         // Find a share button in the feed
         let shareButtons = app.buttons.matching(NSPredicate(format: "label CONTAINS 'share' OR label CONTAINS 'square.and.arrow.up'"))
@@ -378,9 +394,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 11. Messages
     
-    func testMessagesListOpens() {
+    func testMessagesListOpens() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let profileTab = app.buttons["Profile"]
         profileTab.tap()
@@ -399,9 +415,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 12. Empty States
     
-    func testFollowingEmptyState() {
+    func testFollowingEmptyState() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let followingTab = app.buttons["following"]
         followingTab.tap()
@@ -415,9 +431,9 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 13. Offline Banner
     
-    func testOfflineBannerDoesNotShowWhenOnline() {
+    func testOfflineBannerDoesNotShowWhenOnline() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         // When online, no offline banner should show
         let offlineBanner = app.staticTexts["no connection"]
@@ -426,16 +442,16 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 14. Navigation Consistency
     
-    func testDismissAllSheetsOnTabSwitch() {
+    func testDismissAllSheetsOnTabSwitch() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         // Open explore (a sheet)
         let searchButton = app.buttons["Search"]
         searchButton.tap()
         
         let exploreHeader = app.staticTexts["explore"]
-        guard waitFor(exploreHeader, timeout: 5) else { return }
+        try XCTSkipUnless(waitFor(exploreHeader, timeout: 5), "Explore view did not open after tap")
         
         // Tap profile tab — sheet should dismiss
         let profileTab = app.buttons["Profile"]
@@ -449,15 +465,15 @@ final class ToskaUITests: XCTestCase {
     
     // MARK: - 15. Content Safety
     
-    func testNameDetectionInCompose() {
+    func testNameDetectionInCompose() throws {
         let feedView = app.otherElements["feedView"]
-        guard waitFor(feedView, timeout: 15) else { return }
+        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
         
         let composeButton = app.buttons["New post"]
         composeButton.tap()
         
         let cancelButton = app.buttons["cancel"]
-        guard waitFor(cancelButton, timeout: 5) else { return }
+        try XCTSkipUnless(waitFor(cancelButton, timeout: 5), "Compose sheet cancel button never appeared")
         
         // Type text with a name
         let textEditor = app.textViews.firstMatch

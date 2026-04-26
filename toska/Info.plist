@@ -15,6 +15,8 @@
 	<array>
 		<string>instagram-stories</string>
 	</array>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>toska needs permission to save your share card to your photos.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

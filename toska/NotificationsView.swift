@@ -16,7 +16,7 @@ struct NotificationsView: View {
     // bother them again from this surface. The system prompt fires only
     // after they tap "yes" on the primer, giving Apple's permission alert
     // some context instead of appearing cold.
-    @AppStorage("toska_pushPrimerShown") private var pushPrimerShown = false
+    @AppStorage(UserDefaultsKeys.pushPrimerShown) private var pushPrimerShown = false
     @State private var showPushPrimer = false
     @State private var selectedPostId: String? = nil
     @State private var selectedPostData: PostDetailData? = nil
@@ -27,6 +27,16 @@ struct NotificationsView: View {
     @State private var markAsReadTask: Task<Void, Never>? = nil
     @State private var selectedConversation: (id: String, handle: String, userId: String)? = nil
     @State private var showConversation = false
+    // Real-time listener for the notification feed. Replaces the earlier
+    // one-shot loadNotifications/pull-to-refresh model so likes, replies,
+    // follows, and messages land in the UI as the Cloud Function writes
+    // them — no user action required.
+    @State private var notificationsListener: ListenerRegistration? = nil
+    // Tracks whether the mark-as-read sweep has already been scheduled for
+    // this appear. The listener fires on every snapshot delta; we only want
+    // to mark-read once per visit, not on every keystroke of someone else
+    // liking a post.
+    @State private var markReadScheduledThisVisit = false
 
     // Cached splits — recomputed only when `notifications` changes (see
     // .onChange below) instead of on every body render. Saves a pair of
@@ -125,10 +135,16 @@ struct NotificationsView: View {
                         }
                     }
                     .refreshable {
-                                            await withCheckedContinuation { continuation in
-                                                loadNotifications(onComplete: { continuation.resume() })
-                                            }
-                                        }
+                        // The snapshot listener delivers updates live, so
+                        // pull-to-refresh is cosmetic — it lets the user
+                        // feel they've forced a refresh. The sleep gives
+                        // the spinner a brief visible moment before it
+                        // collapses. We deliberately do NOT re-attach the
+                        // listener here: re-attachment would risk a transient
+                        // empty snapshot between remove and re-register that
+                        // would flicker the notifications list.
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                    }
                 }
             }
         }
@@ -145,9 +161,11 @@ struct NotificationsView: View {
             if !pushPrimerShown {
                 showPushPrimer = true
             }
-            if let last = lastFetchTime, Date().timeIntervalSince(last) < 30 { return }
+            // The listener handles its own idempotency (replaces on re-attach),
+            // so the lastFetchTime debounce is no longer needed for fresh data.
+            // Kept as a no-op property so any future callers compile cleanly.
             lastFetchTime = Date()
-            loadNotifications()
+            startListeningToNotifications()
         }
         .overlay {
             if showPushPrimer {
@@ -160,15 +178,26 @@ struct NotificationsView: View {
             recomputeNotificationGroups()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-            // Came back from background — fetch fresh notifications. The
-            // existing lastFetchTime debounce inside loadNotifications keeps
-            // this cheap if the user only blinked away briefly.
-            lastFetchTime = nil
-            loadNotifications()
+            // Firestore's snapshot listener automatically reconnects and
+            // delivers a fresh snapshot when the app returns to foreground,
+            // so nothing to do here. Previously this forced a re-attach,
+            // which risked flickering the list if the cache-then-server
+            // sequence produced a transient empty state.
         }
         .onDisappear {
             markAsReadTask?.cancel()
             markAsReadTask = nil
+            stopListeningToNotifications()
+        }
+        // Belt-and-suspenders: sign-out can happen while this view is on
+        // screen (session expiry, force-revoke). onDisappear isn't guaranteed
+        // to fire before the splash-swap, so explicitly drop the listener
+        // and clear local state on sign-out.
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+            markAsReadTask?.cancel()
+            markAsReadTask = nil
+            stopListeningToNotifications()
+            notifications = []
         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showConversation = false
@@ -276,8 +305,10 @@ struct NotificationsView: View {
     }
 
     func timeAwareNotifEmpty() -> String {
+            // Matches timeOfDayLabel's 21:00 boundary so "tonight" is consistent
+            // across every surface (prompt label, weather phrase, this empty state).
             let hour = Calendar.current.component(.hour, from: Date())
-            if hour >= 22 || hour < 5 {
+            if hour >= 21 || hour < 5 {
                 return "quiet tonight.\nyoure not alone though."
             } else if hour < 12 {
                 return "nothing yet this morning.\nthats okay."
@@ -386,25 +417,9 @@ struct NotificationsView: View {
         }
     }
 
-    func markAsRead(documentIds: [String]) {
-        guard !documentIds.isEmpty, let uid = Auth.auth().currentUser?.uid else { return }
-        let db = Firestore.firestore()
-        let chunks = stride(from: 0, to: documentIds.count, by: 500).map {
-            Array(documentIds[$0..<min($0 + 500, documentIds.count)])
-        }
-        for chunk in chunks {
-            let batch = db.batch()
-            for docId in chunk {
-                let ref = db.collection("users").document(uid).collection("notifications").document(docId)
-                batch.updateData(["isRead": true], forDocument: ref)
-            }
-            batch.commit { error in
-                if let error = error {
-                    print("⚠️ markAsRead batch failed: \(error)")
-                }
-            }
-        }
-    }
+    // markAsRead(documentIds:) was removed as unused — markAllRemainingAsRead
+    // is the single mark-read surface and covers both the loaded-page subset
+    // and any backlog up to its 500-doc cap.
 
     func markAllRemainingAsRead() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -424,32 +439,50 @@ struct NotificationsView: View {
             }
     }
 
-    // TODO: Switch to addSnapshotListener for real-time notification updates
-    // instead of one-shot getDocuments + pull-to-refresh.
-    func loadNotifications(onComplete: (() -> Void)? = nil) {
-            guard let uid = Auth.auth().currentUser?.uid else { isLoading = false; onComplete?(); return }
+    /// Attach a real-time listener to the user's 50 most recent notifications.
+    /// Previously we did a one-shot fetch + pull-to-refresh, which meant a new
+    /// like/reply/follow didn't appear until the user pulled down. With this,
+    /// likes land the moment the Cloud Function writes them.
+    ///
+    /// Call from onAppear. Removed in onDisappear via stopListeningToNotifications().
+    /// Idempotent — calling twice replaces the existing listener.
+    func startListeningToNotifications() {
+        guard let uid = Auth.auth().currentUser?.uid else { isLoading = false; return }
+        // Replace any existing listener (e.g. if this is called twice on
+        // rapid foreground-background-foreground transitions).
+        notificationsListener?.remove()
+        markReadScheduledThisVisit = false
+
+        // Capture uid so the snapshot callback can verify it still serves the
+        // active user before mutating @State. Without this, a sign-out
+        // immediately after this view appears can leave the listener firing
+        // one more snapshot that writes the previous account's notifications
+        // into the new account's UI.
+        let capturedUid = uid
         let db = Firestore.firestore()
-        db.collection("users").document(uid).collection("notifications")
-                    .order(by: "createdAt", descending: true)
-                    .limit(to: 50)
-                    .getDocuments { snapshot, error in
-                        Task { @MainActor in
-                            if let error = error {
-                                                            print("⚠️ loadNotifications error: \(error)")
-                                                            isLoading = false
-                                                            onComplete?()
-                                                            return
-                                                        }
-                                                        guard let documents = snapshot?.documents else { isLoading = false; onComplete?(); return }
+        notificationsListener = db.collection("users").document(uid).collection("notifications")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 50)
+            .addSnapshotListener { snapshot, error in
+                Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                    if let error = error {
+                        print("⚠️ notifications listener error: \(error)")
+                        isLoading = false
+                        return
+                    }
+                    guard let documents = snapshot?.documents else {
+                        isLoading = false
+                        return
+                    }
 
-                            // Filter out notifications from blocked users
-                            let visibleDocuments = documents.filter { doc in
-                                let fromUserId = doc.data()["fromUserId"] as? String ?? ""
-                                return fromUserId.isEmpty || !BlockedUsersCache.shared.isBlocked(fromUserId)
-                            }
+                    // Filter out notifications from blocked users at render time.
+                    let visibleDocuments = documents.filter { doc in
+                        let fromUserId = doc.data()["fromUserId"] as? String ?? ""
+                        return fromUserId.isEmpty || !BlockedUsersCache.shared.isBlocked(fromUserId)
+                    }
 
-                            notifications = visibleDocuments.map { doc in
-                        let docId = doc.documentID
+                    notifications = visibleDocuments.map { doc -> NotificationItem in
                         let data = doc.data()
                         let type = data["type"] as? String ?? "like"
                         let fromHandle = data["fromHandle"] as? String ?? "anonymous"
@@ -477,7 +510,7 @@ struct NotificationsView: View {
                         }
 
                         return NotificationItem(
-                            id: docId,
+                            id: doc.documentID,
                             icon: iconName(for: type),
                             displayText: displayText,
                             type: type,
@@ -489,22 +522,31 @@ struct NotificationsView: View {
                         )
                     }
 
-                            let unreadIds = visibleDocuments
-                                                    .filter { ($0.data()["isRead"] as? Bool ?? false) == false }
-                                                    .map { $0.documentID }
-                    markAsReadTask?.cancel()
-                    markAsReadTask = Task {
-                        try? await Task.sleep(nanoseconds: 3_000_000_000)
-                        guard !Task.isCancelled else { return }
-                        markAsRead(documentIds: unreadIds)
-                        markAllRemainingAsRead()
+                    // markAllRemainingAsRead sweeps every unread notification up to 500
+                    // in one batch. We only want to schedule it once per visit — the
+                    // listener fires on every snapshot delta, and we don't want to
+                    // bombard Firestore with a batch commit each time a new like
+                    // lands while the user is sitting on the tab. Reset happens in
+                    // startListeningToNotifications() on next appear.
+                    if !markReadScheduledThisVisit {
+                        markReadScheduledThisVisit = true
+                        markAsReadTask?.cancel()
+                        markAsReadTask = Task {
+                            try? await Task.sleep(nanoseconds: 3_000_000_000)
+                            guard !Task.isCancelled else { return }
+                            markAllRemainingAsRead()
+                        }
                     }
 
-                            isLoading = false
-                                                onComplete?()
-                                            }
-                                        }
-                                }
+                    isLoading = false
+                }
+            }
+    }
+
+    func stopListeningToNotifications() {
+        notificationsListener?.remove()
+        notificationsListener = nil
+    }
 
     // MARK: - Push permission primer
     //

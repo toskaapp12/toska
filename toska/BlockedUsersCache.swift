@@ -44,12 +44,30 @@ class BlockedUsersCache {
         stopListening()
         currentUid = uid
 
+        // Capture uid at listener-creation time and re-check it in the
+        // callback. On a fast sign-out/sign-in for a different account, the
+        // old listener's in-flight snapshot can fire AFTER stopListening()
+        // ran but before Firestore actually tore the listener down server-
+        // side — without this guard, the previous user's blocked-users set
+        // would briefly land in the new user's cache. Mirrors the same
+        // pattern used in UserHandleCache.
+        let capturedUid = uid
         listener = Firestore.firestore()
             .collection("users").document(uid).collection("blocked")
-            .addSnapshotListener { [weak self] snapshot, _ in
-                let ids = Set(snapshot?.documents.map { $0.documentID } ?? [])
+            .addSnapshotListener { [weak self] snapshot, error in
+                // On error (permission change, transient network), keep the
+                // existing cache. Coercing snapshot?.documents to [] would
+                // empty the cache and make every blocked user appear unblocked
+                // until the listener reconnects.
+                if let error = error {
+                    print("⚠️ BlockedUsersCache listener error: \(error)")
+                    return
+                }
+                guard let snapshot = snapshot else { return }
+                let ids = Set(snapshot.documents.map { $0.documentID })
                 Task { @MainActor [weak self] in
-                    self?.setBlockedUserIds(ids)
+                    guard let self, self.currentUid == capturedUid else { return }
+                    self.setBlockedUserIds(ids)
                 }
             }
     }
@@ -93,6 +111,16 @@ class BlockedUsersCache {
 
         // 1. Optimistic local update.
         insertLocal(userId)
+
+        // Broadcast to ViewModels so they can strip the blocked user's
+        // posts from in-memory state. Without this, FeedViewModel.posts
+        // (already populated) kept rendering the blocked author's content
+        // until the next refresh.
+        NotificationCenter.default.post(
+            name: .userBlocked,
+            object: nil,
+            userInfo: ["userId": userId]
+        )
 
         // 2. Persist to Firestore. Include the handle when the caller has it
         //    so the Settings "blocked users" list can show recognizable rows

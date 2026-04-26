@@ -32,11 +32,22 @@ class PostInteractionManager {
                     onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
                     return
                 }
-        if let last = RateLimiter.shared.lastLikeTime, Date().timeIntervalSince(last) < 0.8 { return }
+        if let last = RateLimiter.shared.lastLikeTime(for: postId), Date().timeIntervalSince(last) < 0.8 { return }
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ toggleLike — offline, skipping")
                    return
                }
+               // Record the rate-limit timestamp on attempt rather than on
+               // success. Previously this was set inside the transaction's
+               // success branch, which left a window where a second tap
+               // within 0.8s of the first could pass the gate (because
+               // lastLikeTime was still nil/stale). The transaction's
+               // own dedup check still prevents double-likes server-side,
+               // but the local UI was firing two optimistic updates and
+               // two rollbacks per double-tap. Setting the timestamp now
+               // bounds the rate to 1 attempt per 0.8s per post regardless
+               // of outcome — cleaner UI, same server guarantee.
+               RateLimiter.shared.recordLike(for: postId)
                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                Telemetry.likeTapped()
 
@@ -92,9 +103,10 @@ class PostInteractionManager {
                                      )
                     print("⚠️ toggleLike transaction failed: \(error)")
                 } else {
-                    // FIX #1: Set rate limiter only on confirmed success — not before
-                    // the transaction. This allows immediate retry after a failure.
-                    RateLimiter.shared.lastLikeTime = Date()
+                    // Rate-limit timestamp is now set on attempt (above), not
+                    // here on success — keeps double-tap behaviour consistent
+                    // whether the transaction succeeds, fails, or hits a
+                    // dedup no-op.
 
                     // totalLikes counter update handled by Cloud Function.
                     if !authorId.isEmpty, authorId != uid {
@@ -122,11 +134,19 @@ class PostInteractionManager {
                     }
                     return
                 }
-        if let last = RateLimiter.shared.lastSaveTime, Date().timeIntervalSince(last) < 1 { return }
+        if let last = RateLimiter.shared.lastSaveTime(for: postId), Date().timeIntervalSince(last) < 1 { return }
                 guard NetworkMonitor.shared.isConnected else {
                     print("⚠️ toggleSave — offline, skipping")
                     return
                 }
+                // Record on attempt, not success — same rationale as
+                // toggleLike. With a 1-second gate, this also serializes
+                // the save↔unsave order: a rapid save→unsave→save sequence
+                // can't reach the third tap until the first two have at
+                // least started, which keeps Firestore writes from
+                // arriving out of order and leaving the user in the
+                // opposite state from what they intended.
+                RateLimiter.shared.recordSave(for: postId)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let db = Firestore.firestore()
         let saveRef = db.collection("users").document(uid).collection("saved").document(postId)
@@ -140,40 +160,53 @@ class PostInteractionManager {
                     object: nil,
                     userInfo: ["postId": postId, "action": "save", "value": newSaved]
                 )
-        if currentlySaved {
-            saveRef.delete { error in
-                Task { @MainActor in
-                    if error != nil {
-                        onUpdate(true)
-                        NotificationCenter.default.post(
-                            name: .postInteractionChanged,
-                            object: nil,
-                            userInfo: ["postId": postId, "action": "save", "value": true]
-                        )
-                    } else {
-                        RateLimiter.shared.lastSaveTime = Date()
-                    }
+        // Transactional toggle. The previous shape used independent delete or
+        // setData calls — Firestore doesn't guarantee write order across
+        // independent operations, so a fast save→unsave→save sequence
+        // (each tap separated by < the rate-limit gate's window resolution)
+        // could land out of order and end with the post in the opposite
+        // state from what the user intended. Wrapping in a transaction
+        // reads the live state inside the transaction and applies the
+        // toggle relative to that, so concurrent retries always converge
+        // to the user's most recent intent.
+        db.runTransaction({ transaction, errorPointer in
+            let existing: DocumentSnapshot
+            do { existing = try transaction.getDocument(saveRef) }
+            catch let e as NSError {
+                errorPointer?.pointee = e
+                return nil
+            }
+            if newSaved {
+                if !existing.exists {
+                    transaction.setData(
+                        ["createdAt": FieldValue.serverTimestamp()],
+                        forDocument: saveRef
+                    )
+                }
+            } else {
+                if existing.exists {
+                    transaction.deleteDocument(saveRef)
                 }
             }
-        } else {
-            saveRef.setData(["createdAt": FieldValue.serverTimestamp()]) { error in
-                Task { @MainActor in
-                    if error != nil {
-                        onUpdate(false)
-                        NotificationCenter.default.post(
-                            name: .postInteractionChanged,
-                            object: nil,
-                            userInfo: ["postId": postId, "action": "save", "value": false]
-                        )
-                    } else {
-                        RateLimiter.shared.lastSaveTime = Date()
-                        if !authorId.isEmpty, authorId != uid {
-                            sendNotification(postId: postId, toUserId: authorId, type: "save", message: "")
-                        }
-                    }
+            return nil
+        }, completion: { _, error in
+            Task { @MainActor in
+                if let error = error {
+                    print("⚠️ toggleSave transaction failed: \(error)")
+                    // Roll back optimistic update.
+                    onUpdate(currentlySaved)
+                    NotificationCenter.default.post(
+                        name: .postInteractionChanged,
+                        object: nil,
+                        userInfo: ["postId": postId, "action": "save", "value": currentlySaved]
+                    )
+                    return
+                }
+                if newSaved, !authorId.isEmpty, authorId != uid {
+                    sendNotification(postId: postId, toUserId: authorId, type: "save", message: "")
                 }
             }
-        }
+        })
     }
 
     // MARK: - Repost
@@ -199,12 +232,17 @@ class PostInteractionManager {
                     }
                     return
                 }
-        if let last = RateLimiter.shared.lastRepostTime, Date().timeIntervalSince(last) < 2 { return }
+        if let last = RateLimiter.shared.lastRepostTime(for: postId), Date().timeIntervalSince(last) < 2 { return }
         guard uid != authorId else { return }
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ repost — offline, skipping")
                    return
                }
+               // Record on attempt — same rationale as toggleLike/toggleSave.
+               // 2-second gate is enough to let the dedup-check round-trip
+               // settle before a second tap can land, so we don't fire two
+               // optimistic increments per rapid double-tap on the same post.
+               RateLimiter.shared.recordRepost(for: postId)
 
                let db = Firestore.firestore()
 
@@ -257,7 +295,24 @@ class PostInteractionManager {
                             onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+                            // Broadcast to other surfaces rendering the same post so
+                            // their repost button state flips without waiting for a
+                            // refresh. Mirrors the like/save pattern above.
+                            NotificationCenter.default.post(
+                                name: .postInteractionChanged,
+                                object: nil,
+                                userInfo: ["postId": postId, "action": "repost", "value": true]
+                            )
+
                             let repostHandle = UserHandleCache.shared.handle
+                            // Mirror the original post's isShareable flag so the repost
+                            // inherits the author's sharing setting. If the original
+                            // author chose "don't allow sharing", the repost carries
+                            // that forward — the share-card button stays hidden on
+                            // the repost too. Previously reposts hardcoded
+                            // `isShareable: true`, overriding the original author's
+                            // intent in an anonymous/privacy-first app.
+                            let originalIsShareable = data["isShareable"] as? Bool ?? true
 
                             var repostData: [String: Any] = [
                                 "authorId": uid,
@@ -266,7 +321,7 @@ class PostInteractionManager {
                                 "likeCount": 0,
                                 "repostCount": 0,
                                 "replyCount": 0,
-                                "isShareable": true,
+                                "isShareable": originalIsShareable,
                                 "isRepost": true,
                                 "originalPostId": postId,
                                 "originalHandle": originalHandle,
@@ -332,11 +387,18 @@ class PostInteractionManager {
                                 Task { @MainActor in
                                     if let txError = txError {
                                         print("⚠️ repost transaction failed: \(txError)")
-                                        // Roll back the optimistic update.
+                                        // Roll back the optimistic update (locally and
+                                        // across other surfaces that mirrored it).
                                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                        NotificationCenter.default.post(
+                                            name: .postInteractionChanged,
+                                            object: nil,
+                                            userInfo: ["postId": postId, "action": "repost", "value": false]
+                                        )
                                         return
                                     }
-                                    // Atomic write succeeded.
+                                    // Atomic write succeeded. Rate-limit timestamp
+                                    // is set on attempt (above), not here.
                                     if !authorId.isEmpty, authorId != uid {
                                         sendNotification(
                                             postId: postId,
@@ -394,6 +456,18 @@ class PostInteractionManager {
                 "type": type, "fromHandle": notifHandle, "fromUserId": uid,
                 "message": safeMessage, "postId": postId, "isRead": false,
                 "createdAt": FieldValue.serverTimestamp()
-            ], merge: false)
+            ], merge: false) { error in
+                // Without this completion handler the previous shape silently
+                // dropped permission-denied / quota / rules-rejection errors.
+                // The recipient never got the notification, the actor saw no
+                // feedback, and there was no log trail to diagnose later.
+                // Telemetry routes to Crashlytics so persistent failures
+                // (e.g. a rules regression that denies notification creates)
+                // surface in production instead of vanishing.
+                if let error = error {
+                    print("⚠️ sendNotification(\(type)) failed: \(error.localizedDescription)")
+                    Telemetry.recordError(error, context: "PostInteractionManager.sendNotification.\(type)")
+                }
+            }
     }
 }

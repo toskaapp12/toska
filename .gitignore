@@ -20,6 +20,7 @@ functions/node_modules/
 # Firebase CLI debug output (regenerated on every deploy, can be large)
 firebase-debug.log
 firebase-debug.*.log
+.firebase/
 
 # Claude Code session data
 .claude/

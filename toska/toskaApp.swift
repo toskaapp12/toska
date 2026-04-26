@@ -5,9 +5,34 @@ import FirebaseAuth
 import FirebaseAppCheck
 import GoogleSignIn
 
+// AppCheck provider factory for release builds. FirebaseAppCheck ships
+// AppCheckDebugProviderFactory (used in the #if DEBUG branch below) but no
+// built-in App Attest factory — each app provides its own so it can decide
+// what to do on older OS / incompatible devices. We use App Attest directly
+// since the app's deployment target (iOS 18.6) is well above App Attest's
+// iOS 14 minimum. AppAttestProvider(app:) returns nil on simulators (where
+// App Attest isn't supported); that's fine because release builds only run
+// on real devices.
+class AppAttestProviderFactory: NSObject, AppCheckProviderFactory {
+    func createProvider(with app: FirebaseApp) -> AppCheckProvider? {
+        return AppAttestProvider(app: app)
+    }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
 
     var authStateListener: AuthStateDidChangeListenerHandle?
+
+    // AppDelegate normally lives for the app's lifetime, so a manual deinit
+    // isn't strictly required — the OS reclaims everything on terminate. But
+    // if a future refactor ever swaps the delegate (test rig, scene
+    // restructure), an unremoved auth-state listener would keep firing into
+    // a deallocated handler. Defensive cleanup costs nothing.
+    deinit {
+        if let handle = authStateListener {
+            Auth.auth().removeStateDidChangeListener(handle)
+        }
+    }
 
     func application(_ application: UIApplication,
                          didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
@@ -38,6 +63,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
         UNUserNotificationCenter.current().delegate = PushNotificationManager.shared
         Messaging.messaging().delegate = PushNotificationManager.shared
+
+        // Prewarm the Taptic Engine so the first user-facing haptic of the
+        // session (a tab switch, a like, a send) is instant instead of
+        // having ~50–100 ms cold-start latency.
+        HapticManager.prepareAll()
 
         authStateListener = Auth.auth().addStateDidChangeListener { _, user in
             Task { @MainActor in
@@ -93,22 +123,16 @@ struct toskaApp: App {
                     // a meaningful boost for users on larger Dynamic Type
                     // settings without distorting the design language.
                     .dynamicTypeSize(...DynamicTypeSize.accessibility3)
-                    // Universal links: a tap on an https://toskaapp.com/p/{id}
+                    // Universal links: a tap on an https://www.toskaapp.com/p/{id}
                     // link from anywhere in iOS arrives here. We translate it
                     // into the same .openPostFromPush notification that push
                     // notifications use, so MainTabView's existing handler
                     // does the actual deep-link routing — no parallel code path.
                     //
-                    // Three things must be true outside the app for this to
-                    // work end-to-end (none of which can be set from this code):
-                    //   1. apple-app-site-association file at
-                    //      https://toskaapp.com/.well-known/apple-app-site-association
-                    //      with `applinks` declaring this app's bundle ID +
-                    //      Team ID and the `/p/*` path pattern.
-                    //   2. Associated Domains entitlement in the Xcode project
-                    //      with `applinks:toskaapp.com`.
-                    //   3. App ID in Apple Developer with Associated Domains
-                    //      capability enabled.
+                    // Uses www.toskaapp.com rather than the apex because the
+                    // apex has no A records in the current DNS zone; the
+                    // GitHub Pages site (which serves the AASA file) is
+                    // reachable via the www CNAME.
                     .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                         handleUniversalLink(activity)
                     }
@@ -121,10 +145,15 @@ struct toskaApp: App {
         //   /p/{postId}          → open post
         // Everything else falls through to opening the app at the feed,
         // which is the safer default than crashing or 404-ing in-app.
+        //
+        // The postId is validated against the Firestore doc ID character
+        // set before routing. Without this, a crafted URL like
+        // https://www.toskaapp.com/p/..%2F..%2Fadmin can push unexpected
+        // values into the deep-link handler.
         let parts = url.path.split(separator: "/")
         if parts.count >= 2, parts[0] == "p" {
             let postId = String(parts[1])
-            guard !postId.isEmpty else { return }
+            guard isValidFirestoreDocId(postId) else { return }
             NotificationCenter.default.post(
                 name: .openPostFromPush,
                 object: nil,

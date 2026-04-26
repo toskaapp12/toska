@@ -37,7 +37,6 @@ class FeedViewModel: ObservableObject {
     // MARK: - Post Data
     @Published var posts: [FeedPost] = []
         @Published var followingPosts: [FeedPost] = []
-        @Published var recentPosts: [FeedPost] = []
         @Published var followingFetchIncomplete = false
 
     // MARK: - Post Metadata (per-post flags keyed by post ID)
@@ -143,7 +142,6 @@ class FeedViewModel: ObservableObject {
     var currentPosts: [FeedPost] {
         switch selectedTab {
         case 1: return followingPosts.isEmpty ? [] : followingPosts
-        case 2: return recentPosts
         default: return posts
         }
     }
@@ -185,7 +183,6 @@ class FeedViewModel: ObservableObject {
                 print("⚡️ loadInitialData — already fetched, posts.count: \(posts.count)")
                 if posts.isEmpty {
                     fetchPosts()
-                    fetchRecentPosts()
                 }
                 return
             }
@@ -213,17 +210,18 @@ class FeedViewModel: ObservableObject {
             supplementaryTask = nil
             followingTask?.cancel()
             followingTask = nil
-            likedFetchTask?.cancel()
-            likedFetchTask = nil
-            savedFetchTask?.cancel()
-            savedFetchTask = nil
-            repostedFetchTask?.cancel()
-            repostedFetchTask = nil
+            userPreferencesTask?.cancel()
+            userPreferencesTask = nil
+            likedListener?.remove()
+            likedListener = nil
+            savedListener?.remove()
+            savedListener = nil
+            repostedListener?.remove()
+            repostedListener = nil
             hasFetchedInitial = false
         hasLoadedOnce = false
         posts = []
         followingPosts = []
-        recentPosts = []
         likedPostIds = []
         savedPostIds = []
         repostedPostIds = []
@@ -234,8 +232,26 @@ class FeedViewModel: ObservableObject {
 
     func handleNewPostCreated() {
         fetchPosts()
-        fetchRecentPosts()
         fetchMostUnsaidAndDailyMoment()
+    }
+
+    // Called from FeedView in response to .userBlocked so the blocked user's
+    // posts vanish from the in-memory feed immediately, without waiting for
+    // the next refresh to re-run filterBlocked.
+    func handleUserBlocked(userId: String) {
+        guard !userId.isEmpty else { return }
+        let isBlockedAuthor: (FeedPost) -> Bool = { $0.authorId == userId }
+        posts.removeAll(where: isBlockedAuthor)
+        followingPosts.removeAll(where: isBlockedAuthor)
+        // postGifUrls/midnightPostIds/etc. are keyed by postId, not by
+        // authorId, so we can't prune by uid directly. Fall through to
+        // trimPostMetadata which intersects all metadata stores with the
+        // current posts array (after the removeAll above), dropping any
+        // stale entries for the blocked author's posts.
+        trimPostMetadata()
+        // repostedPostIds / likedPostIds / savedPostIds are per-post, not
+        // per-author, and self-heal via their snapshot listeners — no need
+        // to prune them here.
     }
 
     func handleInteractionChanged(_ info: [AnyHashable: Any]) {
@@ -247,6 +263,12 @@ class FeedViewModel: ObservableObject {
             if value { likedPostIds.insert(postId) } else { likedPostIds.remove(postId) }
         case "save":
             if value { savedPostIds.insert(postId) } else { savedPostIds.remove(postId) }
+        case "repost":
+            // Mirror likes/saves — without this, a repost tapped from
+            // PostDetailView or the feed's context menu doesn't flip the
+            // repost state on other rendered copies of the same post, so
+            // the button stays in its pre-action state until a full refresh.
+            if value { repostedPostIds.insert(postId) } else { repostedPostIds.remove(postId) }
         default: break
         }
     }
@@ -259,7 +281,6 @@ class FeedViewModel: ObservableObject {
             fetchError = nil
             fetchPosts()
             fetchFollowingPosts()
-            fetchRecentPosts()
         }
 
     // MARK: - Refresh All
@@ -271,7 +292,6 @@ class FeedViewModel: ObservableObject {
                 fetchSavedPostIds()
                 fetchPosts()
                 fetchFollowingPosts()
-                fetchRecentPosts()
                 fetchWitnessPost()
                 fetchEmotionalWeather()
                 fetchMostUnsaidAndDailyMoment()
@@ -280,110 +300,146 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Fetch User Interaction States
 
-    // Stored Tasks so rapid refresh-all calls cancel any prior in-flight fetch
-    // before starting a new one. Without this, two overlapping queries can race
-    // and the slower response overwrites the fresher one — leaving the cache out
-    // of sync with what the user just did (e.g. a like reverting on screen).
-    private var likedFetchTask: Task<Void, Never>? = nil
-    private var savedFetchTask: Task<Void, Never>? = nil
-    private var repostedFetchTask: Task<Void, Never>? = nil
+    // Snapshot listeners keep likedPostIds / savedPostIds / repostedPostIds
+    // continuously in sync with Firestore. Each listener fires only on the
+    // delta since its last snapshot, so a like added on another device shows
+    // up immediately here without a refresh, and pull-to-refresh no longer
+    // re-fetches 500 docs per call (previous pattern burned ~1500 reads per
+    // refresh across these three). Listeners are idempotent — subsequent
+    // fetch*() calls with a listener already attached are no-ops; they are
+    // torn down and reset in cancelAllTasks on sign-out.
+    private var likedListener: ListenerRegistration? = nil
+    private var savedListener: ListenerRegistration? = nil
+    private var repostedListener: ListenerRegistration? = nil
 
     func fetchLikedPostIds() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        likedFetchTask?.cancel()
-        likedFetchTask = Task { @MainActor [weak self] in
-            let snapshot = try? await Firestore.firestore()
-                .collection("users").document(uid).collection("liked")
-                .order(by: "createdAt", descending: true)
-                .limit(to: 500)
-                .getDocumentsAsync()
-            guard !Task.isCancelled, let self else { return }
-            self.likedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
-        }
+        guard likedListener == nil else { return }
+        // Capture uid so the callback can verify it's still serving the same
+        // account before mutating @Published state. Without this, an in-flight
+        // snapshot fired after a sign-out/sign-in for a different user can
+        // write the previous user's liked set into the new user's UI.
+        let capturedUid = uid
+        likedListener = Firestore.firestore()
+            .collection("users").document(uid).collection("liked")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 500)
+            .addSnapshotListener { [weak self] snapshot, _ in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          Auth.auth().currentUser?.uid == capturedUid else { return }
+                    self.likedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
+                }
+            }
     }
 
     func fetchSavedPostIds() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        savedFetchTask?.cancel()
-        savedFetchTask = Task { @MainActor [weak self] in
-            let snapshot = try? await Firestore.firestore()
-                .collection("users").document(uid).collection("saved")
-                .order(by: "createdAt", descending: true)
-                .limit(to: 500)
-                .getDocumentsAsync()
-            guard !Task.isCancelled, let self else { return }
-            self.savedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
-        }
+        guard savedListener == nil else { return }
+        let capturedUid = uid
+        savedListener = Firestore.firestore()
+            .collection("users").document(uid).collection("saved")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 500)
+            .addSnapshotListener { [weak self] snapshot, _ in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          Auth.auth().currentUser?.uid == capturedUid else { return }
+                    self.savedPostIds = Set(snapshot?.documents.map { $0.documentID } ?? [])
+                }
+            }
     }
 
     func fetchRepostedPostIds() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        repostedFetchTask?.cancel()
-        repostedFetchTask = Task { @MainActor [weak self] in
-            let snapshot = try? await Firestore.firestore()
-                .collection("posts")
-                .whereField("authorId", isEqualTo: uid)
-                .whereField("isRepost", isEqualTo: true)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 200)
-                .getDocumentsAsync()
-            guard !Task.isCancelled, let self else { return }
-            let ids = snapshot?.documents.compactMap { $0.data()["originalPostId"] as? String } ?? []
-            self.repostedPostIds = Set(ids)
-        }
+        guard repostedListener == nil else { return }
+        let capturedUid = uid
+        repostedListener = Firestore.firestore()
+            .collection("posts")
+            .whereField("authorId", isEqualTo: uid)
+            .whereField("isRepost", isEqualTo: true)
+            .order(by: "createdAt", descending: true)
+            .limit(to: 200)
+            .addSnapshotListener { [weak self] snapshot, _ in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          Auth.auth().currentUser?.uid == capturedUid else { return }
+                    let ids = snapshot?.documents.compactMap { $0.data()["originalPostId"] as? String } ?? []
+                    self.repostedPostIds = Set(ids)
+                }
+            }
     }
 
     // MARK: - Fetch User Preferences for For You
 
+    // Task storage so rapid repeat calls (e.g. loadInitialData → refreshAll in
+    // quick succession) cancel any prior in-flight preferences fetch before
+    // starting a new one. Previously there was no cancellation guard and no
+    // task storage, so two concurrent fetches each ran the TaskGroup-based
+    // tag rollup and their increments were both applied to engagedTags —
+    // doubling counts. The new version also assigns engagedTags rather than
+    // incrementing into it, which makes repeat fetches idempotent.
+    private var userPreferencesTask: Task<Void, Never>? = nil
+
     func fetchUserPreferences() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        let db = Firestore.firestore()
+        userPreferencesTask?.cancel()
+        userPreferencesTask = Task { @MainActor [weak self] in
+            let db = Firestore.firestore()
 
-        // Mood lives in users/{uid}/private/data going forward (owner-only)
-        // so it isn't readable by other authenticated users via the public
-        // users-doc rule. Older accounts may still have it on the main doc;
-        // fall back there until OnboardingView/SettingsView writes the new
-        // location and the legacy field gets cleared.
-        Task { @MainActor [weak self] in
+            // Mood lives in users/{uid}/private/data going forward (owner-only)
+            // so it isn't readable by other authenticated users via the public
+            // users-doc rule. Older accounts may still have it on the main doc;
+            // fall back there until OnboardingView/SettingsView writes the new
+            // location and the legacy field gets cleared.
             async let mainSnap = try? db.collection("users").document(uid).getDocumentAsync()
             async let privateSnap = try? db.collection("users").document(uid)
                 .collection("private").document("data").getDocumentAsync()
             let main = await mainSnap?.data() ?? [:]
             let priv = await privateSnap?.data() ?? [:]
-            guard let self else { return }
+            guard !Task.isCancelled, let self else { return }
             self.userMood = (priv["selectedMood"] as? String) ?? (main["selectedMood"] as? String)
-        }
 
-        db.collection("users").document(uid).collection("liked")
-            .order(by: "createdAt", descending: true)
-            .limit(to: 50)
-            .getDocuments { snapshot, _ in
-                guard let docs = snapshot?.documents else { return }
-                let postIds = docs.map { $0.documentID }
-                guard !postIds.isEmpty else { return }
+            // Engaged-tag rollup: fetch the last 50 liked posts, then fetch the
+            // tag of each in parallel chunks, then REPLACE engagedTags with the
+            // fresh count. Never += into the existing dictionary — that
+            // accumulated across refreshes and quietly skewed the for-you
+            // score boost at line ~514.
+            guard let likedSnap = try? await db.collection("users").document(uid).collection("liked")
+                .order(by: "createdAt", descending: true)
+                .limit(to: 50)
+                .getDocumentsAsync() else { return }
+            guard !Task.isCancelled else { return }
 
-                let chunks = stride(from: 0, to: postIds.count, by: 30).map {
-                    Array(postIds[$0..<min($0 + 30, postIds.count)])
+            let postIds = likedSnap.documents.map { $0.documentID }
+            guard !postIds.isEmpty else {
+                self.engagedTags = [:]
+                return
+            }
+            let chunks = stride(from: 0, to: postIds.count, by: 30).map {
+                Array(postIds[$0..<min($0 + 30, postIds.count)])
+            }
+
+            var newTags: [String: Int] = [:]
+            await withTaskGroup(of: [String].self) { group in
+                for chunk in chunks {
+                    group.addTask {
+                        guard !Task.isCancelled else { return [] }
+                        guard let postSnap = try? await db.collection("posts")
+                            .whereField(FieldPath.documentID(), in: chunk)
+                            .getDocumentsAsync() else { return [] }
+                        return postSnap.documents.compactMap { $0.data()["tag"] as? String }
+                    }
                 }
-
-                Task { @MainActor in
-                    await withTaskGroup(of: [String].self) { group in
-                        for chunk in chunks {
-                            group.addTask {
-                                guard let postSnap = try? await db.collection("posts")
-                                    .whereField(FieldPath.documentID(), in: chunk)
-                                    .getDocumentsAsync() else { return [] }
-                                return postSnap.documents.compactMap { $0.data()["tag"] as? String }
-                            }
-                        }
-                        for await tags in group {
-                            for tag in tags {
-                                self.engagedTags[tag, default: 0] += 1
-                            }
-                        }
+                for await tags in group {
+                    for tag in tags {
+                        newTags[tag, default: 0] += 1
                     }
                 }
             }
+            guard !Task.isCancelled else { return }
+            self.engagedTags = newTags
+        }
     }
 
     // MARK: - Filter Helper
@@ -440,7 +496,11 @@ class FeedViewModel: ObservableObject {
     }
 
     private func trimPostMetadata() {
-        let keepIds = Set(posts.map { $0.id })
+        // Keep metadata for any post that is currently visible in either the
+        // For You feed or the Following feed. Using only `posts` here would
+        // drop metadata for Following-tab-only posts the moment this runs.
+        var keepIds = Set(posts.map { $0.id })
+        keepIds.formUnion(followingPosts.map { $0.id })
         postGifUrls = postGifUrls.filter { keepIds.contains($0.key) }
         midnightPostIds = midnightPostIds.intersection(keepIds)
         letterPostIds = letterPostIds.intersection(keepIds)
@@ -463,6 +523,11 @@ class FeedViewModel: ObservableObject {
                 return
             }
             isFetchingPosts = true
+            // Reset the blocking-saturation flag here too, not just inside
+            // loadMorePosts. Without this, a refresh that lands on a clean
+            // batch never clears the stale flag set by a prior pagination
+            // session, and the UI can incorrectly show end-of-feed copy.
+            endedDueToBlocking = false
             let db = Firestore.firestore()
             print("🔄 fetchPosts — firing Firestore query, hasAuth: \(Auth.auth().currentUser != nil)")
 
@@ -536,7 +601,14 @@ class FeedViewModel: ObservableObject {
                 if !newPosts.isEmpty {
                                                                                                                             self.posts = newPosts
                                                                                                                             self.hasLoadedOnce = true
-                                                                                                                            self.lastDocument = topDocs.last?.doc ?? documents.last
+                                                                                                                            // Cursor must track Firestore's query order (createdAt DESC),
+                                                                                                                            // not our client-side score rank. Using topDocs.last previously
+                                                                                                                            // set the cursor to the lowest-scored doc in the top-20 — and
+                                                                                                                            // `start(afterDocument:)` then resumed in createdAt order after
+                                                                                                                            // that doc, silently skipping the chronologically-earlier posts
+                                                                                                                            // that ranked below the top-20 on this page. Net effect was
+                                                                                                                            // permanent holes in the feed.
+                                                                                                                            self.lastDocument = documents.last
                                                                                                                             self.hasMorePosts = documents.count >= 60
                                                                                         } else if documents.count >= 60 {
                                                                                                                                                     self.hasLoadedOnce = true
@@ -689,32 +761,6 @@ class FeedViewModel: ObservableObject {
             }
         }
 
-    // MARK: - Recent Posts
-
-    func fetchRecentPosts() {
-        let db = Firestore.firestore()
-        let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
-
-        db.collection("posts")
-            .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
-            .order(by: "createdAt", descending: true)
-            .limit(to: 30)
-            .getDocuments { [weak self] snapshot, error in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if let error = error {
-                        print("⚠️ fetchRecentPosts error: \(error)")
-                        self.fetchError = "couldn't load recent posts — pull to retry"
-                        return
-                    }
-                    self.fetchError = nil
-                    guard let documents = snapshot?.documents else { return }
-                    let filtered = self.filterBlocked(documents: documents)
-                    self.recentPosts = filtered.map { FeedView.feedPost(from: $0) }
-                }
-            }
-    }
-
     // MARK: - Witness Post
 
     func fetchWitnessPost() {
@@ -830,8 +876,25 @@ class FeedViewModel: ObservableObject {
                     return
                 }
                 Task { @MainActor in
+                    // Captured-uid recheck. The query filter is `authorId ==
+                    // uid`, so a sign-out/sign-in race during the fetch would
+                    // otherwise land the previous user's anniversary post
+                    // text into the new user's UI under the "your post from
+                    // 1 year ago" label — a misattribution that exposes
+                    // year-old authorship across accounts.
+                    guard Auth.auth().currentUser?.uid == uid else { return }
                     guard let doc = snapshot?.documents.first else { return }
                     let data = doc.data()
+                    // Don't surface a year-old post that was later flagged by
+                    // moderation. The post is the current user's own (filter
+                    // above is `authorId == uid`), so blocked-user filtering
+                    // doesn't apply, but the author themselves may have had
+                    // the post auto-flagged for spam/PII/etc. — silently
+                    // showing it again as an anniversary defeats the
+                    // moderation system. Also skip posts soft-flagged as
+                    // concerning content.
+                    if data["flagged"] as? Bool == true { return }
+                    if data["concerningContent"] as? Bool == true { return }
                     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                     self.anniversaryPost = AnniversaryPostData(
                         postId: doc.documentID,

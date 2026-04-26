@@ -45,10 +45,24 @@ class RateLimiter {
     static let shared = RateLimiter()
 
     var lastPostTime: Date? = nil
-    var lastLikeTime: Date? = nil
     var lastReplyTime: Date? = nil
-    var lastSaveTime: Date? = nil
-    var lastRepostTime: Date? = nil
+
+    // Like/save/repost are per-postId so a quick double-tap on the same post
+    // is throttled but interacting with a different post in the next 200ms
+    // works as expected. Previously a single timestamp gated all posts, which
+    // silently dropped scroll-fast like activity with no UI feedback.
+    private var lastLikeByPost: [String: Date] = [:]
+    private var lastSaveByPost: [String: Date] = [:]
+    private var lastRepostByPost: [String: Date] = [:]
+
+    func lastLikeTime(for postId: String) -> Date? { lastLikeByPost[postId] }
+    func recordLike(for postId: String) { lastLikeByPost[postId] = Date() }
+
+    func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
+    func recordSave(for postId: String) { lastSaveByPost[postId] = Date() }
+
+    func lastRepostTime(for postId: String) -> Date? { lastRepostByPost[postId] }
+    func recordRepost(for postId: String) { lastRepostByPost[postId] = Date() }
 
     private init() {}
 }

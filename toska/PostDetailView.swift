@@ -100,8 +100,15 @@ struct PostDetailView: View {
                             likeCount = likes
                             localRepostCount = reposts
                             if !postId.isEmpty {
-                                Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, _ in
+                                Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
                                     Task { @MainActor in
+                                        if let error = error {
+                                            // The reply UI silently uses the 500-char limit
+                                            // when isLetter stays false on error — fine for
+                                            // letters that never resolve, but worth surfacing.
+                                            Telemetry.recordError(error, context: "PostDetailView.isLetter.fetch")
+                                            return
+                                        }
                                         if snapshot?.data()?["isLetter"] as? Bool == true { isLetter = true }
                                     }
                                 }
@@ -139,6 +146,20 @@ struct PostDetailView: View {
                             likePulseTask?.cancel()
                             likePulseTask = nil
                         }
+            // Sign-out tears down both Firestore listeners and dismisses back
+            // to the splash. Without this, a session expiring while on the
+            // detail view leaves the listeners attached to a stale uid; their
+            // next snapshot would log a permission-denied error and the post
+            // would silently freeze in its last-rendered state.
+            .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+                liveListener?.remove()
+                liveListener = nil
+                replyListener?.remove()
+                replyListener = nil
+                likePulseTask?.cancel()
+                likePulseTask = nil
+                dismiss()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                           dismiss()
                       }            .confirmationDialog(isOwnPost ? "your post" : "", isPresented: $showReport) {
@@ -539,8 +560,12 @@ struct PostDetailView: View {
         guard !postId.isEmpty else { return }
         liveListener?.remove()
         let registration = Firestore.firestore().collection("posts").document(postId)
-            .addSnapshotListener { snapshot, _ in
+            .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    if let error = error {
+                        Telemetry.recordError(error, context: "PostDetailView.liveListener")
+                        return
+                    }
                     if snapshot?.exists == false {
                         self.liveListener?.remove()
                         self.liveListener = nil
@@ -727,16 +752,21 @@ struct PostDetailView: View {
                 // Delete all likes
                 let likeSnap = try await db.collection("posts").document(postId).collection("likes").getDocumentsAsync()
                 let likeDocs = likeSnap.documents
-                let likeCount = likeDocs.count
 
-                let likeChunks = stride(from: 0, to: likeDocs.count, by: 249).map {
-                    Array(likeDocs[$0..<min($0 + 249, likeDocs.count)])
+                // Delete only the likes subcollection docs (posts/{postId}/likes/{uid}),
+                // which the post author is permitted to delete per firestore.rules.
+                // Other users' /users/{uid}/liked/{postId} refs are NOT deleted here —
+                // each user owns their own /liked subcollection, and trying to batch-
+                // delete them from the post author's session fails the whole batch
+                // with permission-denied, aborting the delete entirely. Stale /liked
+                // refs self-clean on next visit via ProfileView.loadLikedPosts.
+                let likeChunks = stride(from: 0, to: likeDocs.count, by: 499).map {
+                    Array(likeDocs[$0..<min($0 + 499, likeDocs.count)])
                 }
                 for chunk in likeChunks {
                     let batch = db.batch()
                     for doc in chunk {
                         batch.deleteDocument(doc.reference)
-                        batch.deleteDocument(db.collection("users").document(doc.documentID).collection("liked").document(postId))
                     }
                     try await batch.commit()
                 }
@@ -843,9 +873,21 @@ struct PostDetailView: View {
 
     func lookupAuthorId() {
         guard !postId.isEmpty else { isAuthorIdLoading = false; return }
-        Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, _ in
+        Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
             Task { @MainActor in
+                // Distinguish "post doc has no authorId" (real data issue —
+                // clear the field) from "fetch failed" (network, permission —
+                // preserve whatever we had). The old code treated both the
+                // same, which made the "view author's profile" button vanish
+                // on any transient Firestore error.
+                if let error = error {
+                    print("⚠️ lookupAuthorId failed: \(error)")
+                    isAuthorIdLoading = false
+                    return
+                }
                 guard let data = snapshot?.data() else {
+                    // Post doc doesn't exist — clear the field; the view's
+                    // liveListener will dismiss the screen shortly.
                     authorUserId = ""
                     isAuthorIdLoading = false
                     return

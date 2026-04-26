@@ -177,10 +177,32 @@ struct DailyMomentView: View {
                         .getDocumentAsync()
 
                     if let postData = postSnap.data() {
-                        postText    = postData["text"]         as? String ?? ""
-                        postHandle  = postData["authorHandle"] as? String ?? "anonymous"
-                        postTag     = postData["tag"]          as? String
-                        feltCount   = postData["likeCount"]    as? Int    ?? 0
+                        // Even a curated daily-moment post can have been
+                        // flagged or expired between the curator's selection
+                        // and now. Re-check before rendering — the in-app
+                        // moderation policy is "hide flagged content from
+                        // feeds", and that explicitly includes the daily
+                        // moment surface (one of the most prominent in the
+                        // app). Falls through to the trending fallback if
+                        // any of these tripped.
+                        let isFlagged = postData["flagged"] as? Bool == true
+                        let isConcerning = postData["concerningContent"] as? Bool == true
+                        let isExpired: Bool = {
+                            guard let ts = postData["expiresAt"] as? Timestamp else { return false }
+                            return ts.dateValue() < Date()
+                        }()
+                        let blockedAuthor: Bool = {
+                            let authorId = postData["authorId"] as? String ?? ""
+                            return BlockedUsersCache.shared.isBlocked(authorId)
+                        }()
+                        if isFlagged || isConcerning || isExpired || blockedAuthor {
+                            setFallbackPost()
+                        } else {
+                            postText    = postData["text"]         as? String ?? ""
+                            postHandle  = postData["authorHandle"] as? String ?? "anonymous"
+                            postTag     = postData["tag"]          as? String
+                            feltCount   = postData["likeCount"]    as? Int    ?? 0
+                        }
                     } else {
                         // The curated post ID exists but the post was deleted.
                         setFallbackPost()
@@ -188,22 +210,45 @@ struct DailyMomentView: View {
                 } else {
                     // No curated moment — pick the most-liked post from the
                     // last 24 hours that isn't blocked or expired.
+                    //
+                    // Firestore requires the inequality field (`createdAt`) to
+                    // be the first orderBy, so we can't order by likeCount in
+                    // the query itself. Instead: fetch the 100 most-recent
+                    // posts from the last 24 hours, then sort by likeCount
+                    // client-side and pick the top that passes block/expiry
+                    // filters. Uses the existing composite index
+                    // (createdAt DESC, likeCount DESC).
                     let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
                     let postsSnap = try await db
                         .collection("posts")
                         .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
-                        .order(by: "createdAt", descending: false)
+                        .order(by: "createdAt", descending: true)
                         .order(by: "likeCount", descending: true)
-                        .limit(to: 20)
+                        .limit(to: 100)
                         .getDocumentsAsync()
 
+                    let sortedByLikes = postsSnap.documents.sorted { a, b in
+                        let la = a.data()["likeCount"] as? Int ?? 0
+                        let lb = b.data()["likeCount"] as? Int ?? 0
+                        return la > lb
+                    }
+
                     let blockedIds = BlockedUsersCache.shared.blockedUserIds
-                    guard let topDoc = postsSnap.documents.first(where: {
+                    guard let topDoc = sortedByLikes.first(where: {
                         let d = $0.data()
                         let authorId = d["authorId"] as? String ?? ""
                         if blockedIds.contains(authorId) { return false }
                         if let expiresAt = d["expiresAt"] as? Timestamp,
                            expiresAt.dateValue() < Date() { return false }
+                        // Same moderation filter as the curated path above:
+                        // flagged or concerning posts are silently skipped
+                        // here too. Reposts also skip — the original is
+                        // what's actually trending; surfacing the repost
+                        // would credit the wrong author handle on the
+                        // daily-moment card.
+                        if d["flagged"] as? Bool == true { return false }
+                        if d["concerningContent"] as? Bool == true { return false }
+                        if d["isRepost"] as? Bool == true { return false }
                         return true
                     }) else {
                         setFallbackPost()
@@ -274,8 +319,25 @@ struct DailyMomentView: View {
         ToskaFormatters.longDate.string(from: Date()).lowercased()
     }
 
+    /// dailyMoment doc IDs are written by the curator (server-side / Admin SDK
+    /// — the dailyMoment rule is `allow write: if false;` for clients) so we
+    /// have to match whatever calendar they used. UTC is the only timezone
+    /// where every device on the planet computes the same key for the same
+    /// instant — using the device's local time would make a user in PST and
+    /// a user in JST look up different documents at the same UTC second.
+    /// Without this explicit pin, ToskaFormatters.dateKey defaults to the
+    /// device's current timezone, which only works coincidentally if the
+    /// device happens to be on UTC.
+    private static let utcDateKey: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
     func formattedDateKey() -> String {
-        ToskaFormatters.dateKey.string(from: Date())
+        Self.utcDateKey.string(from: Date())
     }
 
     // MARK: - Share

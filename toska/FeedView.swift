@@ -86,9 +86,18 @@ struct FeedView: View {
                 GeometryReader { geo in
                             ScrollViewReader { proxy in
                                 ScrollView(showsIndicators: false) {
-                            // VStack is used intentionally instead of LazyVStack
-                            // to avoid blank rendering issues with async data —
-                            // LazyVStack can skip rows that haven't resolved yet.
+                            // VStack, not LazyVStack. LazyVStack inside this
+                            // ScrollView produces a blank feed on cold launch:
+                            // posts arrive in vm.posts and the body recomputes
+                            // into the loaded ForEach branch, but the LazyVStack
+                            // reports near-zero measured height and never
+                            // materialises the rows until pull-to-refresh
+                            // re-triggers layout. The earlier perf concern
+                            // (eager render of 60+ posts firing the 5-from-end
+                            // prefetch immediately) is acceptable in exchange
+                            // for the feed actually appearing on launch — the
+                            // user-visible bug here is far worse than the
+                            // wasted prefetch.
                                     VStack(spacing: 0) {
                                                                                 Color.clear.frame(height: 0).id("feedTop")
                                 ToskaRefreshHeader(
@@ -107,7 +116,6 @@ struct FeedView: View {
                                                     Button {
                                                         vm.fetchError = nil
                                                         vm.fetchPosts()
-                                                        vm.fetchRecentPosts()
                                                     } label: {
                                                         Text("retry")
                                                             .font(.system(size: 11, weight: .semibold))
@@ -314,7 +322,16 @@ struct FeedView: View {
                     
                                 Color.clear.frame(height: 80)
                                                                                 }
-                                                                                .id("feedVStack-loaded-\(vm.hasLoadedOnce)-count-\(vm.posts.count)")
+                                                                                // No outer .id() on the LazyVStack. A previous version keyed
+                                                                                // it on hasLoadedOnce to force a clean rebuild on the
+                                                                                // skeleton-to-loaded transition, but inside a ScrollView a
+                                                                                // LazyVStack rebuild can leave the view reporting zero
+                                                                                // measured height — the posts are in vm.posts and the body
+                                                                                // returns the right ForEach branch, but nothing renders
+                                                                                // until pull-to-refresh re-triggers layout. Letting
+                                                                                // SwiftUI's natural diffing swap the skeleton ForEach for
+                                                                                // the posts ForEach keeps the LazyVStack identity stable
+                                                                                // and avoids the blank-feed-on-launch regression.
                                                                             }
                                                                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                                                                                 .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
@@ -414,6 +431,15 @@ struct FeedView: View {
         .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
                     if let info = notif.userInfo {
                         vm.handleInteractionChanged(info)
+                    }
+                }
+        .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+                    // Strip the blocked user's posts from the in-memory feed
+                    // as soon as a block lands, so the user doesn't see the
+                    // offender's content lingering in the feed they're
+                    // scrolling. See BlockedUsersCache.block(_:).
+                    if let userId = notif.userInfo?["userId"] as? String {
+                        vm.handleUserBlocked(userId: userId)
                     }
                 }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -1186,9 +1212,14 @@ func formatCount(_ count: Int) -> String {
 
 // MARK: - Shared Time-of-Day Labels
 
+// "tonight" starts at 9pm (21:00) rather than 10pm — matches the threshold
+// used by OnboardingView.promptTimeLabel and FeedViewModel.weatherPhrase.
+// Previously this helper used 22:00 while the duplicated logic in those two
+// files used 21:00, so between 9pm and 10pm the app showed "this evening" /
+// "tonight" inconsistently depending on which surface the user was on.
 func timeOfDayLabel() -> String {
     let hour = Calendar.current.component(.hour, from: Date())
-    if hour >= 22 || hour < 5 { return "tonight" }
+    if hour >= 21 || hour < 5 { return "tonight" }
     else if hour < 12 { return "this morning" }
     else if hour < 17 { return "this afternoon" }
     else { return "this evening" }
@@ -1433,7 +1464,7 @@ func generateUniqueHandle(attempt: Int = 0, completion: @escaping (String) -> Vo
     let noun = handleNouns.randomElement() ?? "ghost"
     let num = Int.random(in: 1...999)
     let candidate = "\(adj)_\(noun)_\(num)"
-    
+
     Firestore.firestore().collection("users")
         .whereField("handle", isEqualTo: candidate)
         .limit(to: 1)
@@ -1444,6 +1475,52 @@ func generateUniqueHandle(attempt: Int = 0, completion: @escaping (String) -> Vo
                 completion(candidate)
             }
         }
+}
+
+/// Native async variant of `generateUniqueHandle`. Used by sign-up paths
+/// (Apple, Google, Email) where wrapping the callback version in a
+/// continuation+TaskGroup race created a hang risk: if Firestore was
+/// unreachable, the callback never fired, the wrapping Task leaked, and
+/// the sign-up button's spinner stayed forever. Native async/await
+/// participates in Task cancellation, so a `withTimeout(seconds:)`
+/// wrapper actually aborts a stuck attempt.
+///
+/// On any Firestore error or cancellation, falls back to a UUID-based
+/// handle — statistically unique without a network round-trip. On 10
+/// candidate collisions in a row (vanishingly unlikely at current scale),
+/// also falls back to UUID.
+///
+/// Total budget recommendation: wrap with `withTimeout(seconds: 5)` at
+/// the call site so the worst-case sign-up handle assignment is bounded.
+/// On timeout, the call site should also fall back to a UUID handle.
+func generateUniqueHandleAsync(attempt: Int = 0) async -> String {
+    guard attempt < 10 else {
+        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+    }
+    let adj = handleAdjectives.randomElement() ?? "quiet"
+    let noun = handleNouns.randomElement() ?? "ghost"
+    let num = Int.random(in: 1...999)
+    let candidate = "\(adj)_\(noun)_\(num)"
+
+    let snap: QuerySnapshot?
+    do {
+        snap = try await Firestore.firestore().collection("users")
+            .whereField("handle", isEqualTo: candidate)
+            .limit(to: 1)
+            .getDocumentsAsync()
+    } catch {
+        // Network/permission/timeout — UUID fallback is statistically
+        // unique with no further round-trip, which is what we want when
+        // the backend is misbehaving during a sign-up flow.
+        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+    }
+    if Task.isCancelled {
+        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+    }
+    if let docs = snap?.documents, !docs.isEmpty {
+        return await generateUniqueHandleAsync(attempt: attempt + 1)
+    }
+    return candidate
 }
 
 func containsConcerningContent(_ text: String) -> Bool {
@@ -1462,23 +1539,45 @@ enum ContentViolationType {
     case link
 }
 
+// Character-lookup tables precomputed at file scope so contentViolation(in:)
+// doesn't rebuild them on every keystroke. These are small constants; sharing
+// is safe and makes the hot path (normalizeForModeration runs on every typed
+// character as the user composes) cheap.
+private let moderationZeroWidthCharacters: Set<Character> = [
+    "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{00AD}"
+]
+private let moderationHomoglyphMap: [Character: Character] = [
+    // Cyrillic lookalikes
+    "\u{0430}": "a", "\u{0435}": "e", "\u{043E}": "o", "\u{0440}": "p",
+    "\u{0441}": "c", "\u{0443}": "y", "\u{0445}": "x", "\u{0456}": "i",
+    // Greek lookalikes
+    "\u{0391}": "a", "\u{0392}": "b", "\u{0395}": "e", "\u{0397}": "h",
+    "\u{0399}": "i", "\u{039A}": "k", "\u{039C}": "m", "\u{039D}": "n",
+    "\u{039F}": "o", "\u{03A1}": "p", "\u{03A4}": "t", "\u{03A5}": "y",
+]
+
 private func normalizeForModeration(_ text: String) -> String {
-    var s = text.lowercased()
-    // Strip zero-width characters
-    let zeroWidth: [Character] = ["\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{00AD}"]
-    s.removeAll { zeroWidth.contains($0) }
-    // Replace common homoglyphs (Cyrillic/Greek lookalikes)
-    let homoglyphs: [(Character, Character)] = [
-        ("\u{0430}", "a"), ("\u{0435}", "e"), ("\u{043E}", "o"), ("\u{0440}", "p"),
-        ("\u{0441}", "c"), ("\u{0443}", "y"), ("\u{0445}", "x"), ("\u{0456}", "i"),
-        ("\u{0391}", "a"), ("\u{0392}", "b"), ("\u{0395}", "e"), ("\u{0397}", "h"),
-        ("\u{0399}", "i"), ("\u{039A}", "k"), ("\u{039C}", "m"), ("\u{039D}", "n"),
-        ("\u{039F}", "o"), ("\u{03A1}", "p"), ("\u{03A4}", "t"), ("\u{03A5}", "y"),
-    ]
-    for (from, to) in homoglyphs {
-        s = s.map { $0 == from ? to : $0 }.reduce("", { $0 + String($1) })
+    // Single-pass normalization:
+    //   1. lowercase (Swift's Unicode-aware lowercase)
+    //   2. strip zero-width characters
+    //   3. fold homoglyphs to their ASCII lookalike
+    // Previous implementation looped over 20 homoglyph pairs, each iteration
+    // doing s.map(...).reduce("", +) — quadratic string concatenation per
+    // pair, ~O(n² × 20) on the text length. On a 2000-character letter this
+    // was roughly 80M operations, enough to cause visible typing lag while
+    // composing. The current version is a single O(n) walk with O(1)
+    // dictionary lookups per character.
+    var result = ""
+    result.reserveCapacity(text.count)
+    for scalar in text.lowercased() {
+        if moderationZeroWidthCharacters.contains(scalar) { continue }
+        if let replacement = moderationHomoglyphMap[scalar] {
+            result.append(replacement)
+        } else {
+            result.append(scalar)
+        }
     }
-    return s
+    return result
 }
 
 private func collapseForModeration(_ text: String) -> String {

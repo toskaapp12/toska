@@ -37,20 +37,6 @@ async function deleteCollection(collectionRef) {
   }
 }
 
-async function safeDecrement(docRef, field) {
-  try {
-    await db.runTransaction(async (transaction) => {
-      const snap = await transaction.get(docRef);
-      const current = snap.exists ? snap.data()[field] || 0 : 0;
-      if (current > 0) {
-        transaction.update(docRef, { [field]: current - 1 });
-      }
-    });
-  } catch (err) {
-    console.warn("safeDecrement failed:", err.message);
-  }
-}
-
 // Paginated deletion of a user's posts (and their replies/likes/reflections
 // subcollections). Shared by the onUserDocDeleted cascade and the
 // resumePostDeletion scheduler so a heavy author whose cleanup exceeds a
@@ -184,15 +170,29 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       console.log(`Deleted ${postCleanup.totalDeleted} posts for user ${uid}`);
     }
 
+    // Counter decrements are owned by onFollowDeletedUpdateCounts, which
+    // fires on every /users/{userId}/following/{followedId} delete. The
+    // cascade used to manually safeDecrement here as well, which double-
+    // decremented every counter that the trigger had already touched
+    // (X.followingCount in the first loop directly; X.followerCount in
+    // the second loop via the Phase-below subcollection delete on
+    // users/uid/following). Letting the trigger be the single source of
+    // truth keeps the math symmetric with normal follow→unfollow flows.
+    //
+    // First loop deletes the OTHER side of each follower's relationship
+    // (their following list pointing at uid). Second loop deletes the
+    // OTHER side of each followee's relationship (their followers list
+    // pointing at uid). The bulk subcollection delete below handles the
+    // mirror docs on uid's own subcollections — which fire the trigger
+    // again for users/uid/following entries, decrementing each followee's
+    // followerCount.
     const followersSnap = await db.collection("users").doc(uid).collection("followers").get();
     for (const doc of followersSnap.docs) {
       await db.collection("users").doc(doc.id).collection("following").doc(uid).delete();
-      await safeDecrement(db.collection("users").doc(doc.id), "followingCount");
     }
     const followingSnap = await db.collection("users").doc(uid).collection("following").get();
     for (const doc of followingSnap.docs) {
       await db.collection("users").doc(doc.id).collection("followers").doc(uid).delete();
-      await safeDecrement(db.collection("users").doc(doc.id), "followerCount");
     }
 
     const subs = ["saved", "liked", "following", "followers", "notifications", "blocked", "presence", "private"];
@@ -650,13 +650,24 @@ exports.onLikeCreatedUpdateCounts = onDocumentCreated(
   }
 );
 
+// Atomic FieldValue.increment(-1) instead of safeDecrement so concurrent
+// create+delete races commute: if the delete runs before the create's
+// increment lands, the count briefly dips negative and then converges to
+// the correct value when the increment arrives. safeDecrement's
+// transactional `current > 0` guard caused permanent upward drift in the
+// reverse race (delete reads 0, skips the decrement, increment lands
+// afterward). Same fix shape as onReplyDeletedUpdateCount above.
 exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
   "posts/{postId}/likes/{userId}",
   async (event) => {
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
 
-    await safeDecrement(postRef, "likeCount");
+    try {
+      await postRef.update({ likeCount: FieldValue.increment(-1) });
+    } catch (err) {
+      console.warn("onLikeDeletedUpdateCounts: likeCount decrement failed:", err.message);
+    }
 
     // Decrement the post author's totalLikes
     try {
@@ -664,7 +675,9 @@ exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
       if (!postSnap.exists) return;
       const authorId = postSnap.data().authorId;
       if (!authorId) return;
-      await safeDecrement(db.collection("users").doc(authorId), "totalLikes");
+      await db.collection("users").doc(authorId).update({
+        totalLikes: FieldValue.increment(-1),
+      });
     } catch (err) {
       console.warn("onLikeDeletedUpdateCounts: totalLikes decrement failed:", err.message);
     }
@@ -748,8 +761,11 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
 // Mirror of onRepostCreatedUpdateCount. Without this, deleting a repost
 // (by its author, by validatePost for blank/too-long text, by moderation,
 // or by any other path) leaves the original post's repostCount inflated
-// forever — counts permanently drift upward. safeDecrement is transactional
-// and guards against going negative.
+// forever. Atomic FieldValue.increment(-1) — see the onReplyDeletedUpdateCount
+// rationale for why the previous safeDecrement shape caused upward drift
+// under concurrent create+delete races (the `current > 0` guard skipped
+// the decrement when the increment hadn't landed yet, then the increment
+// landed afterward and stuck).
 exports.onRepostDeletedUpdateCount = onDocumentDeleted(
   "posts/{postId}",
   async (event) => {
@@ -759,7 +775,13 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
 
-    await safeDecrement(db.collection("posts").doc(originalPostId), "repostCount");
+    try {
+      await db.collection("posts").doc(originalPostId).update({
+        repostCount: FieldValue.increment(-1),
+      });
+    } catch (err) {
+      console.warn("onRepostDeletedUpdateCount failed:", err.message);
+    }
   }
 );
 
@@ -791,14 +813,31 @@ exports.onFollowCreatedUpdateCounts = onDocumentCreated(
   }
 );
 
+// Atomic FieldValue.increment(-1) for the same race-safety reason
+// documented on onReplyDeletedUpdateCount above. safeDecrement's
+// transactional `current > 0` guard skipped the decrement under a
+// rapid follow→unfollow race where the create-trigger increment hadn't
+// landed yet, leaving permanent upward drift.
 exports.onFollowDeletedUpdateCounts = onDocumentDeleted(
   "users/{userId}/following/{followedId}",
   async (event) => {
     const userId = event.params.userId;
     const followedId = event.params.followedId;
 
-    await safeDecrement(db.collection("users").doc(userId), "followingCount");
-    await safeDecrement(db.collection("users").doc(followedId), "followerCount");
+    try {
+      await db.collection("users").doc(userId).update({
+        followingCount: FieldValue.increment(-1),
+      });
+    } catch (err) {
+      console.warn("onFollowDeletedUpdateCounts: followingCount decrement failed:", err.message);
+    }
+    try {
+      await db.collection("users").doc(followedId).update({
+        followerCount: FieldValue.increment(-1),
+      });
+    } catch (err) {
+      console.warn("onFollowDeletedUpdateCounts: followerCount decrement failed:", err.message);
+    }
   }
 );
 
@@ -861,6 +900,13 @@ exports.onPostCreatedUpdateTagCounts = onDocumentCreated("posts/{postId}", async
   }
 });
 
+// Atomic FieldValue.increment(-1) — same rationale as the other counter
+// triggers. The previous transactional shape with a `current > 0` guard
+// was the asymmetric pattern that caused upward drift on concurrent
+// create+delete races (the no-op delete branch left the matching
+// increment to land afterward and stick). Tag counts can briefly dip
+// negative under concurrent create+delete and converge correctly once
+// both writes complete.
 exports.onPostDeletedUpdateTagCounts = onDocumentDeleted("posts/{postId}", async (event) => {
   const postData = event.data.data();
   if (!postData) return;
@@ -869,18 +915,10 @@ exports.onPostDeletedUpdateTagCounts = onDocumentDeleted("posts/{postId}", async
   if (postData.isRepost === true) return;
 
   try {
-    await db.runTransaction(async (transaction) => {
-      const ref = db.collection("meta").doc("tagCounts");
-      const snap = await transaction.get(ref);
-      const current = snap.exists ? (snap.data()[tag] || 0) : 0;
-      if (current > 0) {
-        transaction.set(
-          ref,
-          { [tag]: current - 1, updatedAt: FieldValue.serverTimestamp() },
-          { merge: true }
-        );
-      }
-    });
+    await db.collection("meta").doc("tagCounts").set(
+      { [tag]: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
   } catch (err) {
     console.warn("onPostDeletedUpdateTagCounts failed:", err.message);
   }
@@ -1529,6 +1567,35 @@ exports.rateLimitNotifications = onDocumentCreated(
       console.log("Notification rate limit exceeded for sender:", fromUserId);
       await db.collection("users").doc(userId).collection("notifications").doc(notifId).delete();
       console.log("Spam notification deleted:", notifId);
+    }
+  }
+);
+
+// Caps a uid to 20 reports per hour. Without this, a malicious account can
+// flood the moderation queue, drowning legitimate reports and degrading the
+// admin.html dashboard. Mirrors rateLimitNotifications: query recent docs
+// by reportedBy in a sliding window, delete the offending doc if the cap is
+// exceeded. Index requirement: reports/(reportedBy ASC, createdAt DESC) —
+// added to firestore.indexes.json.
+exports.rateLimitReports = onDocumentCreated(
+  "reports/{reportId}",
+  async (event) => {
+    const reportData = event.data.data();
+    if (!reportData) return;
+    const reportedBy = reportData.reportedBy;
+    if (!reportedBy) return;
+
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentSnap = await db.collection("reports")
+      .where("reportedBy", "==", reportedBy)
+      .where("createdAt", ">", Timestamp.fromDate(oneHourAgo))
+      .orderBy("createdAt", "desc")
+      .limit(25)
+      .get();
+
+    if (recentSnap.size > 20) {
+      console.log("Report rate limit exceeded for:", reportedBy);
+      await db.collection("reports").doc(event.params.reportId).delete();
     }
   }
 );

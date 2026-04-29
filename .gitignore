@@ -24,6 +24,9 @@ firebase-debug.log
 firebase-debug.*.log
 .firebase/
 
+# Firebase emulator debug logs (firestore, auth, ui, etc.)
+*-debug.log
+
 # Claude Code session data
 .claude/
 

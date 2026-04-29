@@ -51,6 +51,7 @@ struct ShareCardView: View {
                             .font(.system(size: 14, weight: .light))
                             .foregroundColor(.white.opacity(0.3))
                     }
+                    .accessibilityLabel("Close")
                     Spacer()
                     Text("share this")
                         .font(.custom("Georgia-Italic", size: 13))
@@ -162,6 +163,7 @@ struct ShareCardView: View {
                             HStack(spacing: 5) {
                                 ForEach(0..<3, id: \.self) { index in
                                     let icons = ["text.alignleft", "text.aligncenter", "text.alignright"]
+                                    let labels = ["Align left", "Align center", "Align right"]
                                     Button {
                                         withAnimation(.easeInOut(duration: 0.2)) {
                                             selectedAlignment = index
@@ -174,6 +176,8 @@ struct ShareCardView: View {
                                             .background(selectedAlignment == index ? Color.white.opacity(0.08) : Color.clear)
                                             .cornerRadius(4)
                                     }
+                                    .accessibilityLabel(labels[index])
+                                    .accessibilityAddTraits(selectedAlignment == index ? .isSelected : [])
                                 }
                             }
 

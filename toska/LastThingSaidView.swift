@@ -30,6 +30,7 @@ struct LastThingSaidView: View {
                             .font(.system(size: 14, weight: .light))
                             .foregroundColor(.white.opacity(0.3))
                     }
+                    .accessibilityLabel("Back")
                     
                     Spacer()
                     

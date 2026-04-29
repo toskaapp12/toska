@@ -559,9 +559,16 @@ struct PostDetailView: View {
     func startLiveListener() {
         guard !postId.isEmpty else { return }
         liveListener?.remove()
+        // Capture uid so the snapshot callback can verify it's still serving
+        // the same account before mutating @State or dismissing the view.
+        // Without this, a sign-out + sign-in to a different account can let
+        // a delayed snapshot (e.g. moderator deletes the post) dismiss the
+        // post-detail view in the new user's session.
+        let capturedUid = Auth.auth().currentUser?.uid
         let registration = Firestore.firestore().collection("posts").document(postId)
             .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
                         Telemetry.recordError(error, context: "PostDetailView.liveListener")
                         return
@@ -620,22 +627,36 @@ struct PostDetailView: View {
 
     // MARK: - Check States
 
+    // Each check captures uid at call time and gates the @State write on
+    // the auth uid still matching when the Firestore callback resolves.
+    // Without the gate, a sign-out + sign-in to a different account during
+    // the round-trip lands account A's like/save/repost status in account
+    // B's view state.
     func checkIfLiked() {
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+        let capturedUid = uid
         Firestore.firestore().collection("posts").document(postId).collection("likes").document(uid).getDocument { snapshot, _ in
-            Task { @MainActor in isLiked = snapshot?.exists == true }
+            Task { @MainActor in
+                guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                isLiked = snapshot?.exists == true
+            }
         }
     }
 
     func checkIfSaved() {
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+        let capturedUid = uid
         Firestore.firestore().collection("users").document(uid).collection("saved").document(postId).getDocument { snapshot, _ in
-            Task { @MainActor in isSaved = snapshot?.exists == true }
+            Task { @MainActor in
+                guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                isSaved = snapshot?.exists == true
+            }
         }
     }
 
     func checkIfReposted() {
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+        let capturedUid = uid
         Firestore.firestore().collection("posts")
             .whereField("authorId", isEqualTo: uid)
             .whereField("isRepost", isEqualTo: true)
@@ -643,6 +664,7 @@ struct PostDetailView: View {
             .limit(to: 1)
             .getDocuments { snapshot, _ in
                 Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let docs = snapshot?.documents, !docs.isEmpty { isReposted = true }
                 }
             }

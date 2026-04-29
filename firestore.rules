@@ -221,27 +221,56 @@ service cloud.firestore {
           && request.resource.data.fromUserId == request.auth.uid
           && request.resource.data.type is string
           && (
-            // like: actor has a like doc on the post AND the post author is the recipient
+            // like: actor has a like doc on the post AND the post author is the recipient.
+            // The like-create rule (posts/{postId}/likes/{likeUserId}) already
+            // refuses to write a like doc when the post author has blocked the
+            // actor, so the exists() check below transitively enforces block.
+            // The explicit !exists(blocked) clause is defense-in-depth: if the
+            // like-create check is ever loosened, we don't want the notification
+            // path to silently become a block-bypass.
             (request.resource.data.type == 'like'
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId)/likes/$(request.auth.uid)))
-            // save: actor has a save doc AND the post author is the recipient
+            // save: actor has a save doc AND the post author is the recipient.
+            // The /users/{uid}/saved/{postId} create rule is owner-only (no
+            // block check there), so unlike `like` this branch has no
+            // transitive block enforcement — without the explicit exists()
+            // check below, a blocked user can save a post and write a save
+            // notification doc into the author's notifications subcollection.
+            // sendPushNotification's runtime block check (functions/index.js)
+            // suppresses the actual push, but the notification doc would
+            // still be visible in-app and consume per-recipient storage and
+            // notification rate-limit budget. Adding the rule-level check
+            // closes the gap at the layer the brief calls out as load-bearing.
             || (request.resource.data.type == 'save'
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
               && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved/$(request.resource.data.postId)))
-            // follow: actor is in the recipient's followers subcollection
+            // follow: actor is in the recipient's followers subcollection.
+            // /users/{uid}/followers/{followerId} create already enforces the
+            // block check, so the exists() below is transitively safe.
             || (request.resource.data.type == 'follow'
               && exists(/databases/$(database)/documents/users/$(userId)/followers/$(request.auth.uid)))
-            // message: actor is a participant in the named conversation AND recipient is too
+            // message: actor is a participant in the named conversation AND
+            // recipient is too. With the conversations create rule capped at
+            // exactly 2 participants, a tampered actor cannot fabricate a
+            // 3-party conversation to bypass block enforcement on the
+            // associated message-create rule. The explicit !exists(blocked)
+            // clause below is defense-in-depth so writing a 'message'-type
+            // notification doc never goes through when the recipient has
+            // blocked the actor, even if a future change loosens the
+            // conversation cap or message rule.
             || (request.resource.data.type == 'message'
               && request.resource.data.conversationId is string
               && exists(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId))
               && request.auth.uid in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants
-              && userId in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants)
+              && userId in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants
+              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid)))
             // reply: post exists, recipient is post author, actor isn't blocked,
             // AND notifId is the deterministic shape PostInteractionManager.
             // sendNotification writes ("reply_{postId}_{actorUid}"). Without the
@@ -438,8 +467,18 @@ service cloud.firestore {
       //   - every value in the map equal to 0 (matches what the iOS clients
       //     currently write: ["uidA": 0, "uidB": 0]).
       // Either way no slot can land >0 at create time.
+      //
+      // Participants is hard-capped at exactly 2 distinct uids. Without this
+      // cap, a tampered client could create a 3+ participant conversation,
+      // which would short-circuit the block-enforcement clause in the
+      // messages create rule below (the size != 2 leg). OtherProfileView.
+      // startConversation is the only legitimate creator and writes exactly
+      // [uid, otherUid], so the cap doesn't break any current call site.
       allow create: if isAuth()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
         && request.auth.uid in request.resource.data.participants
+        && request.resource.data.participants[0] != request.resource.data.participants[1]
         && (
           !request.resource.data.keys().hasAny(['messageCount'])
           || request.resource.data.messageCount.size() == 0
@@ -498,16 +537,21 @@ service cloud.firestore {
           && request.resource.data.clientCountedV1 == true
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
           && get(/databases/$(database)/documents/conversations/$(convoId)).data.get('messageCount', {}).get(request.auth.uid, 0) < 5
-          && (
-            // Two-participant DM (the only shape the app currently creates):
-            // get the other participant and check their blocked subcollection.
-            get(/databases/$(database)/documents/conversations/$(convoId)).data.participants.size() != 2
-            || !exists(/databases/$(database)/documents/users/$(
-              get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[0] == request.auth.uid
-                ? get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[1]
-                : get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[0]
-            )/blocked/$(request.auth.uid))
-          );
+          // Two-participant DM enforcement. The conversations create rule
+          // above caps participants at exactly 2, so this branch is the
+          // only shape that can legitimately exist. Previously this clause
+          // short-circuited true for participants.size() != 2 — combined
+          // with an unbounded create rule, a tampered client could craft a
+          // 3+ participant conversation and bypass the block check. The
+          // create-side cap closes the front door for new convos; this
+          // strict size==2 assertion closes the back door for any legacy
+          // multi-party docs that may still exist.
+          && get(/databases/$(database)/documents/conversations/$(convoId)).data.participants.size() == 2
+          && !exists(/databases/$(database)/documents/users/$(
+            get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[0] == request.auth.uid
+              ? get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[1]
+              : get(/databases/$(database)/documents/conversations/$(convoId)).data.participants[0]
+          )/blocked/$(request.auth.uid));
         allow update, delete: if false;
       }
     }
@@ -515,11 +559,27 @@ service cloud.firestore {
     match /feelingCircles/{circleId} {
       allow read: if isAuth() && request.auth.uid in resource.data.participants;
       allow create: if isAuth();
+      // Updates can only touch `participants`, can only add or remove the
+      // calling uid, and must keep the list at <= 20. Previously the rule
+      // required only that auth.uid was somewhere in the new list — which
+      // let a tampered client forcibly add other users (e.g. setting
+      // participants to [auth.uid, victim_a, victim_b]) without their
+      // consent. The two `difference(...).hasOnly([auth.uid])` clauses
+      // structurally lock both directions: nobody else can be added by
+      // this user, and nobody else can be evicted by this user. Joining
+      // (FeelingCircleView.joinCircle's arrayUnion([uid])) and leaving
+      // both fit the new shape so legitimate flows still work.
       allow update: if isAuth()
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['participants'])
-        && request.auth.uid in request.resource.data.participants
-        && request.resource.data.participants.size() <= 20;
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() <= 20
+        && request.resource.data.participants.toSet()
+            .difference(resource.data.participants.toSet())
+            .hasOnly([request.auth.uid])
+        && resource.data.participants.toSet()
+            .difference(request.resource.data.participants.toSet())
+            .hasOnly([request.auth.uid]);
       allow delete: if false;
 
       match /messages/{messageId} {
@@ -562,6 +622,12 @@ service cloud.firestore {
     //   - `keys().hasOnly(...)` locks the schema — no extra fields slip in.
     //   - `reason.size() <= 50` caps the machine-code length (the free-text
     //     label is separate and also bounded by client UI).
+    //   - `text.size() <= 4000` caps the snapshot of the reported content.
+    //     The post text-cap is 2000; 4000 is generous for legitimate reports
+    //     and tight enough that a tampered client can't push a 200KB blob
+    //     into the moderation queue (admin.html renders 50 reports per
+    //     page; uncapped text would let a single abuser push megabytes per
+    //     page render through rateLimitReports's 20/hour ceiling).
     //
     // Reads and mutations are denied to all clients — only the Admin SDK
     // (moderator tooling / Cloud Functions) should touch the queue after
@@ -576,6 +642,9 @@ service cloud.firestore {
         && request.resource.data.type in ['post', 'reply', 'user', 'conversation']
         && request.resource.data.status == 'pending'
         && request.resource.data.createdAt == request.time
+        && (!('text' in request.resource.data.keys())
+            || (request.resource.data.text is string
+                && request.resource.data.text.size() <= 4000))
         && request.resource.data.keys().hasOnly([
              'reportedBy', 'reason', 'reasonLabel', 'type', 'status', 'createdAt',
              'postId', 'replyId', 'conversationId',

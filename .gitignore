@@ -13,9 +13,11 @@ Package.resolved
 # CocoaPods (if used later)
 Pods/
 
-# Node (Cloud Functions)
+# Node (Cloud Functions, rules tests)
 node_modules/
 functions/node_modules/
+firestore-tests/node_modules/
+firestore-tests/package-lock.json
 
 # Firebase CLI debug output (regenerated on every deploy, can be large)
 firebase-debug.log

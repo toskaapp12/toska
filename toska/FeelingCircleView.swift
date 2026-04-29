@@ -57,6 +57,7 @@ struct FeelingCircleView: View {
                                 .font(.system(size: 13, weight: .light))
                                 .foregroundColor(Color.toskaBlue)
                         }
+                        .accessibilityLabel("Back")
                         Spacer()
                         VStack(spacing: 2) {
                             HStack(spacing: 5) {
@@ -217,6 +218,7 @@ struct FeelingCircleView: View {
                                         .foregroundColor(canSend ? tagColor(for: tag) : Color.white.opacity(0.1))
                                 }
                                 .disabled(!canSend)
+                                .accessibilityLabel("Send")
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)

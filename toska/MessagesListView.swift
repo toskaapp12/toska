@@ -22,6 +22,7 @@ struct MessagesListView: View {
                             .font(.system(size: 14, weight: .light))
                             .foregroundColor(Color.toskaBlue)
                     }
+                    .accessibilityLabel("Back")
                     Spacer()
                     Text("messages")
                         .font(.system(size: 14, weight: .semibold))

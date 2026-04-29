@@ -107,6 +107,7 @@ struct ExploreView: View {
                                 .font(.system(size: 13))
                                 .foregroundColor(Color.toskaTimestamp)
                         }
+                        .accessibilityLabel("Clear search")
                     }
                 }
                 .padding(.horizontal, 12)

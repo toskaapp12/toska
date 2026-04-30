@@ -115,7 +115,7 @@ struct LateNightTheme {
     static var inputBackground: Color { isLateNight ? Color(hex: "17191a") : Color(hex: "e8eaed") }
 
     // Text
-    static var primaryText: Color   { isLateNight ? Color(hex: "e0e2e6") : Color(hex: "1a1c22") }
+    static var primaryText: Color   { isLateNight ? Color(hex: "e0e2e6") : Color(hex: "0a0908") }
     static var secondaryText: Color { isLateNight ? Color(hex: "85898f") : Color(hex: "8a8d96") }
     static var tertiaryText: Color  { isLateNight ? Color(hex: "555960") : Color(hex: "b8bbc2") }
     static var handleText: Color    { isLateNight ? Color(hex: "b0b3b8") : Color(hex: "2a2c32") }

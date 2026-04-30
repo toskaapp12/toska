@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseCore
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import FirebaseAnalytics
@@ -971,7 +972,18 @@ func recordPolicyAcceptance(for uid: String) {
 // fire-and-forget overload exists for sync callsites (AgeGateView's
 // onConfirmAdult closure) that don't have an async context.
 
-private let confirmAdultEndpoint = "https://us-central1-toska-4ebf4.cloudfunctions.net/confirmAdult"
+// Resolved at call time from the active Firebase app's project ID so a
+// Debug build (loading GoogleService-Info-Staging.plist → toskastaging)
+// hits staging's confirmAdult endpoint and Release builds (toska-4ebf4)
+// hit prod's. Without this, every build hammered prod's confirmAdult
+// regardless of which Firestore project Auth/Firestore were pointed at —
+// a Debug-build signup would write confirmedAdult to the prod user doc
+// (cross-environment leak) AND the staging user would be permanently
+// missing the field, getting blocked by hasConfirmedAdult() forever.
+private func confirmAdultEndpoint() -> String {
+    let projectId = FirebaseApp.app()?.options.projectID ?? "toska-4ebf4"
+    return "https://us-central1-\(projectId).cloudfunctions.net/confirmAdult"
+}
 
 enum ConfirmAdultError: Error {
     case badEndpoint
@@ -982,7 +994,7 @@ enum ConfirmAdultError: Error {
 
 @MainActor
 func confirmAdultServerSide(uid: String) async throws {
-    guard let endpoint = URL(string: confirmAdultEndpoint) else {
+    guard let endpoint = URL(string: confirmAdultEndpoint()) else {
         throw ConfirmAdultError.badEndpoint
     }
     var attemptsRemaining = 1

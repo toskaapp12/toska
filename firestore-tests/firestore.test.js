@@ -29,6 +29,10 @@ const RULES_PATH = path.join(__dirname, "..", "firestore.rules");
 let env;
 
 async function setUserDoc(uid, fields = {}) {
+  // Default helper seeds confirmedAdult=true so tests focused on other
+  // rules don't have to repeat the field. Adult-gate tests pass an
+  // explicit fields = { confirmedAdult: false } to exercise the new
+  // hasConfirmedAdult() check.
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx
       .firestore()
@@ -39,6 +43,7 @@ async function setUserDoc(uid, fields = {}) {
         followerCount: 0,
         followingCount: 0,
         totalLikes: 0,
+        confirmedAdult: true,
         ...fields,
       });
   });
@@ -451,6 +456,122 @@ describe("Finding 4: reports text capped at 4000 chars", () => {
         type: "post",
         status: "pending",
         createdAt: serverTimestamp(),
+      })
+    );
+  });
+});
+
+describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", () => {
+  it("rejects post create when confirmedAdult is missing", async () => {
+    await setUserDoc("alice", { confirmedAdult: false });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "alice123",
+        text: "hello",
+        createdAt: new Date(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("rejects reply create when confirmedAdult is missing", async () => {
+    await setUserDoc("alice");                          // post author, confirmed
+    await setUserDoc("bob", { confirmedAdult: false }); // replier, NOT confirmed
+    await setPost("p1", "alice");
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("replies").add({
+        authorId: "bob",
+        text: "reply text",
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects DM message create when confirmedAdult is missing", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob", { confirmedAdult: false });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      });
+    });
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("conversations").doc("c1").collection("messages").doc("m1").set({
+        senderId: "bob",
+        text: "hi",
+        createdAt: new Date(),
+        clientCountedV1: true,
+      })
+    );
+  });
+
+  it("rejects circle message create when confirmedAdult is missing", async () => {
+    await setUserDoc("alice", { confirmedAdult: false });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        participants: ["alice"],
+        createdAt: new Date(),
+      });
+    });
+
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        authorHandle: "alice123",
+        text: "feeling lonely",
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("allows post create when confirmedAdult is true", async () => {
+    // Belt-and-suspenders: confirms the gate isn't blocking legitimate users.
+    // setUserDoc seeds confirmedAdult=true by default, so this is the
+    // happy-path counterpart to the rejection tests above.
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "alice123",
+        text: "hello",
+        createdAt: new Date(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("allows likes/saves/follows even when confirmedAdult is false", async () => {
+    // The gate is publishing-only — consumption + relationship actions
+    // don't need it. A user who hasn't accepted the adult terms can still
+    // browse + like, just can't publish content.
+    await setUserDoc("alice");
+    await setUserDoc("bob", { confirmedAdult: false });
+    await setPost("p1", "alice");
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1").collection("likes").doc("bob").set({
+        createdAt: new Date(),
+      })
+    );
+    await assertSucceeds(
+      b.collection("users").doc("bob").collection("saved").doc("p1").set({
+        createdAt: new Date(),
       })
     );
   });

@@ -37,6 +37,33 @@ service cloud.firestore {
         || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restrictedUntil', request.time) < request.time;
     }
 
+    // Server-side enforcement of the adult-confirmation gate. iOS displays
+    // an age-confirmation gate during OnboardingView before the first post,
+    // and recordPolicyAcceptance() writes `confirmedAdult: true` on the
+    // user doc once the user accepts. Previously these checks ran only on
+    // the iOS client — a tampered build that skipped OnboardingView could
+    // post without ever seeing (let alone confirming) the adult-content
+    // notice. This function moves that enforcement to the rules layer so
+    // every "publishing" write (post / reply / DM message / circle
+    // message) requires the field to be true on the caller's user doc.
+    //
+    // NOT applied to: user-doc create (the doc has to exist before
+    // confirmedAdult can be set), user-doc update (so OnboardingView can
+    // set it), likes/saves/follows/blocks (consumption + relationship
+    // actions, not publishing), notifications (already covered by per-
+    // type predicates).
+    //
+    // Costs: shares the same get() lookup as notRestricted() within a
+    // single rule evaluation, so per-write Firestore read cost is unchanged.
+    //
+    // Backward compat: any user who completed iOS onboarding has
+    // confirmedAdult=true set by recordPolicyAcceptance. Legitimate
+    // production users are not blocked by this rule.
+    function hasConfirmedAdult() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('confirmedAdult', false) == true;
+    }
+
     // Legacy PII fields that lived on the main user doc before the migration
     // to users/{uid}/private/data (firestore.rules:43-61 documents the move).
     // Post-migration, no client write path touches these on the main doc
@@ -337,6 +364,7 @@ service cloud.firestore {
       allow read: if isAuth();
       allow create: if isAuth()
         && notRestricted()
+        && hasConfirmedAdult()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
@@ -414,6 +442,7 @@ service cloud.firestore {
         // hides their content from the blocker, not vice versa.
         allow create: if isAuth()
           && notRestricted()
+          && hasConfirmedAdult()
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
@@ -521,6 +550,7 @@ service cloud.firestore {
         // and asserting no /users/{other}/blocked/{sender} doc exists.
         allow create: if isAuth()
           && notRestricted()
+          && hasConfirmedAdult()
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
@@ -587,6 +617,7 @@ service cloud.firestore {
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
         allow create: if isAuth()
           && notRestricted()
+          && hasConfirmedAdult()
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0

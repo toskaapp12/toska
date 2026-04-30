@@ -12,7 +12,17 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
     private var continuation: CheckedContinuation<Void, Error>?
 
     // MARK: - Keychain key
+    //
+    // `authCodeKey` is the kSecAttrAccount value; `keychainService` is the
+    // kSecAttrService value. The combination of (service, account) uniquely
+    // identifies this app's Apple auth-code keychain entry. Previously the
+    // queries set only kSecAttrAccount, which meant a SecItemDelete with no
+    // service filter could match unrelated kSecClassGenericPassword items
+    // sharing the keychain access group — third-party SDKs that store
+    // tokens with the same account string would have been wiped. The
+    // service scope is the standard fix.
     private static let authCodeKey = "toska_apple_auth_code"
+    private static let keychainService = "com.toskaapp.toska.appleAuth"
 
     // MARK: - Start Sign In
 
@@ -240,6 +250,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
     private static func saveAuthCode(_ data: Data) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
             kSecAttrAccount as String: authCodeKey,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
@@ -251,6 +262,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
     private static func loadAuthCode() -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
             kSecAttrAccount as String: authCodeKey,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
@@ -263,6 +275,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
     private static func deleteAuthCode() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keychainService,
             kSecAttrAccount as String: authCodeKey
         ]
         SecItemDelete(query as CFDictionary)

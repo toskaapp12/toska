@@ -142,6 +142,17 @@ struct toskaApp: App {
 
     private func handleUniversalLink(_ activity: NSUserActivity) {
         guard let url = activity.webpageURL else { return }
+        // iOS gates universal-link delivery to domains in the entitlement's
+        // associated-domains list (applinks:www.toskaapp.com), so in
+        // practice only that host reaches this handler. The explicit host
+        // and scheme checks below are defense-in-depth: if the entitlement
+        // is ever loosened (e.g. another applinks domain added for a
+        // marketing site), an attacker-controlled host can't steer this
+        // routing logic just because they got a URL into NSUserActivity.
+        // We also reject http:// — only https:// universal links should
+        // hit this code path.
+        guard url.scheme == "https",
+              url.host == "www.toskaapp.com" else { return }
         // Path shapes we route:
         //   /p/{postId}          → open post
         // Everything else falls through to opening the app at the feed,

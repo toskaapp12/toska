@@ -2,7 +2,7 @@
   "projects": {
     "default": "toska-4ebf4",
     "prod": "toska-4ebf4",
-    "staging": "TODO-staging-project-id"
+    "staging": "toskastaging"
   },
   "targets": {},
   "etags": {}

@@ -39,5 +39,8 @@ firebase-debug.*.log
 *.local
 .env
 
-# Firebase config (client key — safe but triggers GitHub secret scanning)
-**/GoogleService-Info.plist
+# Firebase config (client API key — public per Google docs but matches
+# patterns GitHub's secret scanner flags, and keeping it out keeps
+# checkouts environment-agnostic). Wildcard covers prod + staging +
+# any future per-environment variant.
+**/GoogleService-Info*.plist

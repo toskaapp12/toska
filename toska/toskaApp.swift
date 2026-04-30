@@ -43,7 +43,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             let providerFactory = AppAttestProviderFactory()
             #endif
             AppCheck.setAppCheckProviderFactory(providerFactory)
+
+            // Environment switch: Debug builds talk to the `toskastaging`
+            // Firebase project; Release builds talk to `toska-4ebf4` (prod).
+            // Both plists are bundled with the app — Release ignores the
+            // staging plist by reading `GoogleService-Info.plist` via the
+            // default FirebaseApp.configure() path. Without this branch,
+            // every simulator run + every TestFlight build hits production,
+            // which is how prior incidents leaked test data into the live
+            // feed. See RUNBOOK.md → Environments for the full workflow.
+            #if DEBUG
+            if let stagingPath = Bundle.main.path(forResource: "GoogleService-Info-Staging", ofType: "plist"),
+               let stagingOptions = FirebaseOptions(contentsOfFile: stagingPath) {
+                FirebaseApp.configure(options: stagingOptions)
+                print("🔥 Firebase configured against STAGING (toskastaging)")
+            } else {
+                // Fallback so a missing staging plist doesn't wedge the
+                // dev build — fall back to prod with a loud warning.
+                print("⚠️ GoogleService-Info-Staging.plist not found; falling back to prod")
+                FirebaseApp.configure()
+            }
+            #else
             FirebaseApp.configure()
+            #endif
 
             // Analytics + Crashlytics are wired through the Telemetry namespace
             // in ToskaTheme.swift. FirebaseApp.configure() above also boots

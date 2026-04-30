@@ -337,17 +337,27 @@ struct CreateAccountView: View {
                         "showFollowerCount": false,
                         "hasCompletedOnboarding": false,
                         "createdAt": FieldValue.serverTimestamp(),
-                        // Age + policy acceptance fields. We reach this path only
-                        // after both gates passed, so we record it atomically
-                        // with user-doc creation.
-                        "confirmedAdult": true,
-                        "confirmedAdultAt": FieldValue.serverTimestamp(),
+                        // Policy acceptance fields. The matching adult-confirmation
+                        // fields (`confirmedAdult` / `confirmedAdultAt`) are
+                        // server-owned and written by the confirmAdult Cloud
+                        // Function below — firestore.rules denies these fields
+                        // from any client write at create or update.
                         "acceptedPolicyVersion": currentPolicyVersion,
                         "acceptedPolicyAt": FieldValue.serverTimestamp()
                     ])
                     try? await db.collection("users").document(uid)
                         .collection("private").document("data")
                         .setData(["email": trimmedEmail], merge: true)
+                    // Mark the user adult-confirmed via the server before
+                    // we transition to onboarding. We `try?` here so a
+                    // network blip doesn't block signup — OnboardingView's
+                    // checkAcceptanceStatus will re-show the age gate on
+                    // next launch if the server write didn't land.
+                    // Awaiting (rather than fire-and-forget) prevents the
+                    // race where OnboardingView reads the user doc before
+                    // confirmedAdult propagates and re-shows the age gate
+                    // a second time for a user who already passed it here.
+                    try? await confirmAdultServerSide(uid: uid)
                     isLoading = false
                                         UserHandleCache.shared.startListening()
                                         Telemetry.signupCompleted(method: .email)

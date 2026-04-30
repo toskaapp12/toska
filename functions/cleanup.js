@@ -8,15 +8,24 @@
 //
 // Bypass paths:
 //   - GCLOUD_PROJECT env var ends with -test, -dev, or -staging
+//   - GCLOUD_PROJECT is in the explicit non-prod allowlist below
+//     (covers Toska's `toskastaging` project, which doesn't fit the
+//     hyphenated suffix shape)
 //   - --allow-prod argv flag is passed (for the rare legitimate
 //     prod cleanup; treat as a deliberate, confirmed action)
 const admin = require("firebase-admin");
+
+// Known non-prod project IDs that the suffix regex below doesn't catch.
+// Keep this list short and audited — every entry here gets blanket
+// permission to be wiped without --allow-prod.
+const NON_PROD_PROJECTS = new Set(["toskastaging"]);
 
 const projectId = process.env.GCLOUD_PROJECT
   || process.env.GOOGLE_CLOUD_PROJECT
   || "";
 const allowProd = process.argv.includes("--allow-prod");
-const looksTesty = /-(?:test|dev|staging)$/.test(projectId);
+const looksTesty = NON_PROD_PROJECTS.has(projectId)
+  || /-(?:test|dev|staging)$/.test(projectId);
 
 if (!allowProd && !looksTesty) {
   console.error(

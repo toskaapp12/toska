@@ -2,6 +2,7 @@ import SwiftUI
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import FirebaseAnalytics
+import FirebaseAppCheck
 import FirebaseCrashlytics
 
 #if !DEBUG
@@ -935,21 +936,106 @@ struct PolicyAcceptanceView: View {
 //
 // The fields are intentionally additive to the user doc (merge: true) so we
 // never overwrite existing onboarding state.
+//
+// `confirmedAdult` and `confirmedAdultAt` are NOT written here — they're
+// server-owned fields gated by the firestore.rules user-doc create+update
+// deny-list. Callers that need to mark the user adult-confirmed call
+// `confirmAdultServerSide(uid:)` after the iOS age gate passes; that helper
+// invokes the confirmAdult Cloud Function which writes via the Admin SDK.
 
 @MainActor
-func recordPolicyAcceptance(for uid: String, confirmedAdult: Bool = true) {
-    var data: [String: Any] = [
+func recordPolicyAcceptance(for uid: String) {
+    let data: [String: Any] = [
         "acceptedPolicyVersion": currentPolicyVersion,
         "acceptedPolicyAt": FieldValue.serverTimestamp(),
     ]
-    if confirmedAdult {
-        data["confirmedAdult"] = true
-        data["confirmedAdultAt"] = FieldValue.serverTimestamp()
-    }
     Firestore.firestore().collection("users").document(uid).setData(data, merge: true) { error in
         if let error = error {
             print("⚠️ recordPolicyAcceptance write failed: \(error)")
             Telemetry.recordError(error, context: "recordPolicyAcceptance")
+        }
+    }
+}
+
+// MARK: - Adult-Confirmation Server Call
+//
+// Invokes the confirmAdult Cloud Function (functions/index.js) to write
+// `confirmedAdult: true` + `confirmedAdultAt` on the user doc via the Admin
+// SDK. Required because firestore.rules now refuses these fields from any
+// client write — only the Admin-SDK path (this function) can set them.
+//
+// Wire-compatible with reconcileMyCounts: App Check token + Bearer ID token,
+// 200 on success, 409 on user-doc-not-yet-propagated (one retry handles the
+// signup-flow race), other codes throw. Async/throws is the primary shape
+// so signup flows can await it before transitioning UI; the void-returning
+// fire-and-forget overload exists for sync callsites (AgeGateView's
+// onConfirmAdult closure) that don't have an async context.
+
+private let confirmAdultEndpoint = "https://us-central1-toska-4ebf4.cloudfunctions.net/confirmAdult"
+
+enum ConfirmAdultError: Error {
+    case badEndpoint
+    case noIDToken
+    case noResponse
+    case httpStatus(Int)
+}
+
+@MainActor
+func confirmAdultServerSide(uid: String) async throws {
+    guard let endpoint = URL(string: confirmAdultEndpoint) else {
+        throw ConfirmAdultError.badEndpoint
+    }
+    var attemptsRemaining = 1
+    while true {
+        guard let idToken = try await Auth.auth().currentUser?.getIDToken() else {
+            throw ConfirmAdultError.noIDToken
+        }
+        let appCheckToken: String?
+        do {
+            appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false).token
+        } catch {
+            print("⚠️ confirmAdult: app check token fetch failed: \(error)")
+            Telemetry.recordError(error, context: "confirmAdult.appCheck")
+            throw error
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        if let appCheckToken {
+            request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
+        }
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw ConfirmAdultError.noResponse
+        }
+        if http.statusCode == 200 { return }
+        // 409 means the user doc doesn't exist yet — the create probably
+        // hasn't propagated. Retry once after 750ms.
+        if http.statusCode == 409, attemptsRemaining > 0 {
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            attemptsRemaining -= 1
+            continue
+        }
+        let err = ConfirmAdultError.httpStatus(http.statusCode)
+        print("⚠️ confirmAdult HTTP \(http.statusCode)")
+        Telemetry.recordError(err, context: "confirmAdult.http")
+        throw err
+    }
+}
+
+// Fire-and-forget convenience for sync callsites — wraps the async call in
+// a detached Task and swallows errors after logging. Used by AgeGateView's
+// onConfirmAdult closure where there's no async context to await.
+@MainActor
+func confirmAdultServerSideFireAndForget(uid: String) {
+    Task { @MainActor in
+        do {
+            try await confirmAdultServerSide(uid: uid)
+        } catch {
+            // Already logged in confirmAdultServerSide; swallow here.
         }
     }
 }

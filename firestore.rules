@@ -159,7 +159,15 @@ service cloud.firestore {
         // Apple/Google/email auth all have a non-empty email; anonymous sign-in does not.
         && (request.resource.data.keys().hasAll(['email'])
               ? request.resource.data.email is string
-              : true);
+              : true)
+        // Adult-confirmation fields are server-owned. The confirmAdult
+        // Cloud Function (functions/index.js) is the only legitimate
+        // writer — it uses the Admin SDK to set both fields after
+        // verifying App Check + auth, so a tampered client cannot
+        // shortcut the iOS age gate by writing the field here at
+        // signup. CreateAccountView no longer includes these fields
+        // in the inline create; AppleSignInHelper never did.
+        && !request.resource.data.keys().hasAny(['confirmedAdult', 'confirmedAdultAt']);
       // Owners can update their user doc except for:
       //   - fcmToken (lives in the private subcollection; main-doc writes of
       //     it are blocked to keep the field surface narrow)
@@ -174,7 +182,8 @@ service cloud.firestore {
                     && request.resource.data.handle.size() <= 30
                     && request.resource.data.handle.matches('^[a-zA-Z0-9_-]+$')))
             && !request.resource.data.diff(resource.data).affectedKeys()
-                .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil'])
+                .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil',
+                         'confirmedAdult', 'confirmedAdultAt'])
             // Legacy PII fields (email/selectedMood/notify*/pushEnabled/
             // gentleCheckIn) must not be re-introduced or modified once the
             // migration to users/{uid}/private/data is complete. Deletes are

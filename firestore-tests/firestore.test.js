@@ -601,6 +601,60 @@ describe("regression: prior audit fixes (2026-04-26)", () => {
     );
   });
 
+  // confirmedAdult / confirmedAdultAt are now server-only fields, written
+  // only by the confirmAdult Cloud Function via Admin SDK. firestore.rules
+  // refuses both create-time and update-time client writes so a tampered
+  // client can't shortcut the iOS age gate by setting the field directly.
+  it("rejects user doc create that includes confirmedAdult", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").set({
+        handle: "alice123",
+        followerCount: 0,
+        followingCount: 0,
+        totalLikes: 0,
+        createdAt: new Date(),
+        confirmedAdult: true,
+      })
+    );
+  });
+
+  it("rejects user doc create that includes confirmedAdultAt", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").set({
+        handle: "alice123",
+        followerCount: 0,
+        followingCount: 0,
+        totalLikes: 0,
+        createdAt: new Date(),
+        confirmedAdultAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects user doc update that sets confirmedAdult", async () => {
+    await setUserDoc("alice", { confirmedAdult: false });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        confirmedAdult: true,
+      })
+    );
+  });
+
+  it("rejects user doc update that flips confirmedAdult false", async () => {
+    // setUserDoc seeds confirmedAdult: true via the rules-disabled helper —
+    // verify the owner can't undo that via a direct update either.
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        confirmedAdult: false,
+      })
+    );
+  });
+
   it("rejects post create from a server-restricted user", async () => {
     // Set restricted=true with no expiry — admin restriction
     await setUserDoc("alice", {

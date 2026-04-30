@@ -1936,6 +1936,101 @@ exports.reconcileMyCounts = onRequest(
 );
 
 // ============================================================
+// confirmAdult — server-only writer for the age-gate field
+//
+// Closes the bypass where a tampered client could set
+// `confirmedAdult: true` directly on its own user doc to defeat
+// the hasConfirmedAdult() rules check. With this endpoint:
+//   - firestore.rules denies clients from writing
+//     `confirmedAdult` / `confirmedAdultAt` at user-doc create
+//     OR update.
+//   - This function uses the Admin SDK (which bypasses rules) to
+//     write the fields after verifying App Check + ID token.
+//   - App Check enforcement (App Attest in release) restricts the
+//     endpoint to attested Toska binaries — a tampered or
+//     non-attested client cannot call it at all.
+//
+// Idempotent: safe to invoke any number of times; later calls
+// just refresh `confirmedAdultAt`. Used by:
+//   - CreateAccountView after the inline age + policy gate
+//     (replacing the previous direct field write at user-doc
+//     create time)
+//   - ToskaTheme.recordPolicyAcceptance for Apple/Google signups
+//     that hit the age gate after AppleSignInHelper has already
+//     created the user doc
+//
+// Uses update() rather than set+merge so the function fails loudly
+// (NOT_FOUND) if the user doc doesn't exist — the legitimate
+// callers always create the doc first.
+// ============================================================
+
+exports.confirmAdult = onRequest(
+  { cors: false },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "method not allowed" });
+      return;
+    }
+
+    const appCheckToken = req.get("X-Firebase-AppCheck");
+    if (!appCheckToken) {
+      res.status(401).json({ error: "missing app check token" });
+      return;
+    }
+    try {
+      await getAppCheck().verifyToken(appCheckToken);
+    } catch (err) {
+      res.status(401).json({ error: "invalid app check token" });
+      return;
+    }
+
+    const authHeader = req.get("Authorization") || "";
+    const match = authHeader.match(/^Bearer\s+(.+)$/);
+    if (!match) {
+      res.status(401).json({ error: "missing bearer token" });
+      return;
+    }
+    let uid;
+    try {
+      const decoded = await getAuth().verifyIdToken(match[1]);
+      uid = decoded.uid;
+    } catch (err) {
+      res.status(401).json({ error: "invalid token" });
+      return;
+    }
+
+    // 5 calls/hour/uid is well above legitimate use (one call at
+    // first signup is the normal case, plus the rare retry on
+    // network failure) and bounds even an attested-but-tampered
+    // client's ability to spam writes.
+    const allowed = await checkRateLimit(uid, "confirmAdult", 5, 3600);
+    if (!allowed) {
+      res.status(429).json({ error: "rate limit exceeded" });
+      return;
+    }
+
+    try {
+      await db.collection("users").doc(uid).update({
+        confirmedAdult: true,
+        confirmedAdultAt: FieldValue.serverTimestamp(),
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      // NOT_FOUND (code 5) means the user doc doesn't exist yet —
+      // the client called us before the signup flow finished
+      // creating it. Surface as 409 so the client can retry once
+      // the doc is in place. Other errors are 500.
+      if (err.code === 5) {
+        res.status(409).json({ error: "user doc missing" });
+        return;
+      }
+      console.warn("confirmAdult failed:", err.message);
+      res.status(500).json({ error: "write failed" });
+    }
+  }
+);
+
+// ============================================================
 // Admin audit log
 //
 // Mirrors admin-initiated writes to a write-once adminAuditLog collection

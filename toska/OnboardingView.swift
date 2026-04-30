@@ -208,6 +208,16 @@ struct OnboardingView: View {
         .fullScreenCover(isPresented: $showAgeGate) {
             AgeGateView(
                 onConfirmAdult: {
+                    // Mark the user adult-confirmed via the confirmAdult
+                    // Cloud Function. firestore.rules denies clients from
+                    // writing `confirmedAdult` directly, so this is the
+                    // only legitimate path. Failure is logged but does
+                    // not block progression — the next launch's
+                    // checkAcceptanceStatus will re-show the gate if the
+                    // server write didn't land.
+                    if let uid = Auth.auth().currentUser?.uid {
+                        confirmAdultServerSideFireAndForget(uid: uid)
+                    }
                     showAgeGate = false
                     showPolicyAcceptance = true
                 },

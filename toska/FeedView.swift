@@ -34,47 +34,40 @@ import FirebaseAuth
 struct FeedView: View {
     @ObservedObject var vm: FeedViewModel
 
+    // Inline search state. The search bar lives below the prompt card
+    // (rendered after FeedHeaderCard in the scroll content) and filters
+    // vm.currentPosts in-memory by handle / text / tag containing the
+    // query. No Firestore round-trip — searches only what's already
+    // loaded. Cleared text returns to the unfiltered feed.
+    @State private var searchText = ""
+    @FocusState private var searchFocused: Bool
+
+    /// True when post matches the current search query (or no query is set).
+    /// Case-insensitive substring on handle, text, and tag.
+    private func matchesSearch(_ post: FeedPost) -> Bool {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return true }
+        return post.handle.lowercased().contains(q)
+            || post.text.lowercased().contains(q)
+            || (post.tag?.lowercased().contains(q) ?? false)
+    }
 
     var body: some View {
             VStack(spacing: 0) {
                     // MARK: - Header
                     //
-                    // Reddit/X-style inline search bar in the header. Previously
-                    // a magnifying-glass icon Button that opened ExploreView as
-                    // a sheet; the search bar is more discoverable and matches
-                    // user expectations from comparable social apps. Tapping
-                    // anywhere on the bar still opens ExploreView (same
-                    // destination, same search logic — the bar is a styled
-                    // tappable affordance, not a real focused TextField, which
-                    // would require duplicating ExploreView's search state into
-                    // FeedView).
-                    //
-                    // The accessibility label stays "Search" so toskaUITests'
-                    // `app.buttons["Search"]` lookups still resolve.
-            HStack(spacing: 10) {
+                    // Just the wordmark. The search affordance lives below the
+                    // prompt card now (see InlineSearchBar after FeedHeaderCard
+                    // in the scroll content), so there's no need for a header
+                    // search button. ExploreView is still reachable from the
+                    // empty-feed state ("explore" button) for the rare case
+                    // where someone has no posts in the window AND wants the
+                    // tag chips / trending / "feeling people" experience.
+            HStack {
                             Text("toska")
                                 .font(.custom("Georgia-Italic", size: 22))
                                 .foregroundColor(LateNightTheme.handleText)
-
-                            Button {
-                                vm.showExplore = true
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 12, weight: .light))
-                                        .foregroundColor(LateNightTheme.secondaryText)
-                                    Text("search")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(LateNightTheme.secondaryText)
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Search")
+                            Spacer()
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
@@ -153,7 +146,49 @@ struct FeedView: View {
                                                     if vm.selectedTab == 0 {
                                                         FeedHeaderCard(vm: vm)
                                                     }
-                    
+
+                                // MARK: - Inline search
+                                //
+                                // Sits directly under the prompt card. Real
+                                // TextField; filters vm.currentPosts in-memory
+                                // by handle / text / tag. No sheet, no
+                                // navigation — results display in place of
+                                // the unfiltered feed below. ExploreView
+                                // (tag chips, trending, "feeling people")
+                                // remains accessible from the empty-feed
+                                // state's "explore" button below for the
+                                // separate browse-by-tag flow.
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 12, weight: .light))
+                                        .foregroundColor(LateNightTheme.secondaryText)
+                                    TextField("search", text: $searchText)
+                                        .font(.system(size: 13))
+                                        .foregroundColor(LateNightTheme.handleText)
+                                        .autocorrectionDisabled()
+                                        .textInputAutocapitalization(.never)
+                                        .focused($searchFocused)
+                                        .submitLabel(.search)
+                                        .accessibilityLabel("Search")
+                                    if !searchText.isEmpty {
+                                        Button {
+                                            searchText = ""
+                                            searchFocused = false
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(LateNightTheme.tertiaryText)
+                                        }
+                                        .accessibilityLabel("Clear search")
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
+                                .padding(.horizontal, 12)
+                                .padding(.top, 8)
+
                                 if vm.selectedTab == 1 && vm.followingPosts.isEmpty {
                                                         VStack(spacing: 12) {
                                                             Text("\"the things we don't\nsay out loud still\nneed somewhere to go.\"")
@@ -257,7 +292,7 @@ struct FeedView: View {
                                     .padding(.top, 60)
                                     .padding(.bottom, 40)
                                                                 } else {
-                                                                                                                                    ForEach(vm.currentPosts) { post in
+                                                                                                                                    ForEach(vm.currentPosts.filter(matchesSearch)) { post in
                                                                                                                                         if post.id.hasPrefix("sample_") {
                                                                                                                                             FeedPostRow(
                                                                                                                                                 handle: post.handle,

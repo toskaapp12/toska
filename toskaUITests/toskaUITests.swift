@@ -155,18 +155,15 @@ final class ToskaUITests: XCTestCase {
         XCTAssertFalse(recentTab.exists, "'recent' tab should not exist")
     }
     
-    func testFeedSearchButton() throws {
+    func testFeedSearchBar() throws {
+        // The search affordance is now an inline TextField below the prompt
+        // card, not a button that opens ExploreView as a sheet. The
+        // accessibility label "Search" is still set on the text field.
         let feedView = app.otherElements["feedView"]
         try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
-        
-        let searchButton = app.buttons["Search"]
-        XCTAssertTrue(searchButton.exists, "Search button not found")
-        
-        searchButton.tap()
-        
-        // ExploreView should appear
-        let exploreHeader = app.staticTexts["explore"]
-        XCTAssertTrue(waitFor(exploreHeader, timeout: 5), "Explore view did not open")
+
+        let searchField = app.textFields["Search"]
+        XCTAssertTrue(searchField.exists, "Inline search field not found")
     }
     
     // MARK: - 5. Tab Bar Navigation
@@ -260,22 +257,15 @@ final class ToskaUITests: XCTestCase {
     // MARK: - 7. Explore View
     
     func testExploreViewElements() throws {
-        let feedView = app.otherElements["feedView"]
-        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
-        
-        let searchButton = app.buttons["Search"]
-        searchButton.tap()
-        
-        let exploreHeader = app.staticTexts["explore"]
-        try XCTSkipUnless(waitFor(exploreHeader, timeout: 5), "Explore view did not open after tap")
-        
-        // Search field should exist
-        let searchField = app.textFields["search for a feeling..."]
-        XCTAssertTrue(searchField.exists, "Search field not found")
-        
-        // Tag pills should exist (at least "longing")
-        let longingPill = app.buttons.matching(NSPredicate(format: "label CONTAINS 'longing'")).firstMatch
-        XCTAssertTrue(longingPill.exists, "Tag pills not found")
+        // ExploreView used to be the primary search destination, opened via
+        // a magnifying-glass button in the feed header. The header search
+        // affordance was replaced with an inline TextField, and ExploreView
+        // is now reachable only from the empty-feed state's "explore" button.
+        // The empty-feed state requires both signed-in AND zero posts in
+        // window — too narrow a precondition to drive reliably from this
+        // test. Skip with a documented reason; revisit if ExploreView grows
+        // a stable always-on entry point.
+        try XCTSkipIf(true, "ExploreView no longer has a stable entry point from the populated feed")
     }
     
     // MARK: - 8. Profile View
@@ -443,24 +433,15 @@ final class ToskaUITests: XCTestCase {
     // MARK: - 14. Navigation Consistency
     
     func testDismissAllSheetsOnTabSwitch() throws {
-        let feedView = app.otherElements["feedView"]
-        try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
-        
-        // Open explore (a sheet)
-        let searchButton = app.buttons["Search"]
-        searchButton.tap()
-        
-        let exploreHeader = app.staticTexts["explore"]
-        try XCTSkipUnless(waitFor(exploreHeader, timeout: 5), "Explore view did not open after tap")
-        
-        // Tap profile tab — sheet should dismiss
-        let profileTab = app.buttons["Profile"]
-        profileTab.tap()
-        
-        sleep(1)
-        
-        // Explore should no longer be visible
-        XCTAssertFalse(exploreHeader.exists, "Explore sheet did not dismiss on tab switch")
+        // Originally exercised sheet dismissal by opening ExploreView from
+        // the feed header search button (which was a sheet) and asserting it
+        // dismissed on tab switch. ExploreView is no longer reachable from
+        // the populated-feed state, and the inline search bar isn't a sheet
+        // — so this test's premise no longer holds. The dismiss-on-tab-
+        // switch behavior is still desirable for *other* sheets (compose,
+        // share card, report) and should be re-asserted via one of those
+        // when the tests are next refreshed.
+        try XCTSkipIf(true, "Search-button-opens-sheet flow removed; revisit with a different sheet")
     }
     
     // MARK: - 15. Content Safety

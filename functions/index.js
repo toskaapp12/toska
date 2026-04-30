@@ -1,6 +1,6 @@
 const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
@@ -1964,49 +1964,30 @@ exports.reconcileMyCounts = onRequest(
 // callers always create the doc first.
 // ============================================================
 
-exports.confirmAdult = onRequest(
-  { cors: false },
-  async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "method not allowed" });
-      return;
+// Migrated from onRequest to onCall:
+//   - onCall bypasses Cloud Run's allUsers IAM requirement that the
+//     toskastaging org policy forbids — call goes through Firebase's
+//     own RPC pipeline, not a public Cloud Run HTTP endpoint.
+//   - Auth + App Check are handled by the Firebase SDK on the client and
+//     verified by onCall's runtime; no manual ID token verification or
+//     X-Firebase-AppCheck header parsing here.
+//   - Errors are thrown as HttpsError; the iOS client decodes them into
+//     typed FunctionsErrorCode values automatically.
+//
+// `enforceAppCheck: true` rejects requests whose App Check token is
+// missing or invalid before our handler runs.
+exports.confirmAdult = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError("unauthenticated", "must be signed in");
     }
+    const uid = request.auth.uid;
 
-    const appCheckToken = req.get("X-Firebase-AppCheck");
-    if (!appCheckToken) {
-      res.status(401).json({ error: "missing app check token" });
-      return;
-    }
-    try {
-      await getAppCheck().verifyToken(appCheckToken);
-    } catch (err) {
-      res.status(401).json({ error: "invalid app check token" });
-      return;
-    }
-
-    const authHeader = req.get("Authorization") || "";
-    const match = authHeader.match(/^Bearer\s+(.+)$/);
-    if (!match) {
-      res.status(401).json({ error: "missing bearer token" });
-      return;
-    }
-    let uid;
-    try {
-      const decoded = await getAuth().verifyIdToken(match[1]);
-      uid = decoded.uid;
-    } catch (err) {
-      res.status(401).json({ error: "invalid token" });
-      return;
-    }
-
-    // 5 calls/hour/uid is well above legitimate use (one call at
-    // first signup is the normal case, plus the rare retry on
-    // network failure) and bounds even an attested-but-tampered
-    // client's ability to spam writes.
+    // 5 calls/hour/uid — see prior commit; same bound applies.
     const allowed = await checkRateLimit(uid, "confirmAdult", 5, 3600);
     if (!allowed) {
-      res.status(429).json({ error: "rate limit exceeded" });
-      return;
+      throw new HttpsError("resource-exhausted", "rate limit exceeded");
     }
 
     try {
@@ -2014,18 +1995,18 @@ exports.confirmAdult = onRequest(
         confirmedAdult: true,
         confirmedAdultAt: FieldValue.serverTimestamp(),
       });
-      res.json({ ok: true });
+      return { ok: true };
     } catch (err) {
-      // NOT_FOUND (code 5) means the user doc doesn't exist yet —
-      // the client called us before the signup flow finished
-      // creating it. Surface as 409 so the client can retry once
-      // the doc is in place. Other errors are 500.
+      // NOT_FOUND (code 5): user doc doesn't exist yet because the
+      // client called us before the signup flow finished creating it.
+      // Surface as failed-precondition so the iOS retry path
+      // (confirmAdultServerSide's once-with-backoff loop) can decide
+      // to retry once after a short sleep.
       if (err.code === 5) {
-        res.status(409).json({ error: "user doc missing" });
-        return;
+        throw new HttpsError("failed-precondition", "user doc missing");
       }
       console.warn("confirmAdult failed:", err.message);
-      res.status(500).json({ error: "write failed" });
+      throw new HttpsError("internal", "write failed");
     }
   }
 );

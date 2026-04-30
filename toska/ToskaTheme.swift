@@ -5,6 +5,7 @@ import FirebaseAuth
 import FirebaseAnalytics
 import FirebaseAppCheck
 import FirebaseCrashlytics
+import FirebaseFunctions
 
 #if !DEBUG
 func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {}
@@ -972,69 +973,40 @@ func recordPolicyAcceptance(for uid: String) {
 // fire-and-forget overload exists for sync callsites (AgeGateView's
 // onConfirmAdult closure) that don't have an async context.
 
-// Resolved at call time from the active Firebase app's project ID so a
-// Debug build (loading GoogleService-Info-Staging.plist → toskastaging)
-// hits staging's confirmAdult endpoint and Release builds (toska-4ebf4)
-// hit prod's. Without this, every build hammered prod's confirmAdult
-// regardless of which Firestore project Auth/Firestore were pointed at —
-// a Debug-build signup would write confirmedAdult to the prod user doc
-// (cross-environment leak) AND the staging user would be permanently
-// missing the field, getting blocked by hasConfirmedAdult() forever.
-private func confirmAdultEndpoint() -> String {
-    let projectId = FirebaseApp.app()?.options.projectID ?? "toska-4ebf4"
-    return "https://us-central1-\(projectId).cloudfunctions.net/confirmAdult"
-}
-
-enum ConfirmAdultError: Error {
-    case badEndpoint
-    case noIDToken
-    case noResponse
-    case httpStatus(Int)
-}
+// confirmAdult is a Firebase Callable function. The Functions SDK
+// resolves the endpoint from the active FirebaseApp's project ID
+// automatically, so Debug builds (toskastaging plist) call staging's
+// function and Release builds (toska-4ebf4 plist) call prod's — no
+// hardcoded URLs, no manual project-ID switching.
+//
+// onCall (server side) bypasses Cloud Run's allUsers IAM requirement
+// that the toskastaging GCP organization policy forbids. Auth + App
+// Check are handled by the SDK on this side and verified by the
+// onCall runtime on the server.
 
 @MainActor
 func confirmAdultServerSide(uid: String) async throws {
-    guard let endpoint = URL(string: confirmAdultEndpoint()) else {
-        throw ConfirmAdultError.badEndpoint
-    }
+    let callable = Functions.functions().httpsCallable("confirmAdult")
     var attemptsRemaining = 1
     while true {
-        guard let idToken = try await Auth.auth().currentUser?.getIDToken() else {
-            throw ConfirmAdultError.noIDToken
-        }
-        let appCheckToken: String?
         do {
-            appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false).token
-        } catch {
-            print("⚠️ confirmAdult: app check token fetch failed: \(error)")
-            Telemetry.recordError(error, context: "confirmAdult.appCheck")
+            _ = try await callable.call()
+            return
+        } catch let error as NSError {
+            // Server returns failed-precondition when the user doc
+            // doesn't exist yet (signup-flow race). Retry once after
+            // 750ms — same shape as the previous HTTP 409 handling.
+            if error.domain == FunctionsErrorDomain,
+               error.code == FunctionsErrorCode.failedPrecondition.rawValue,
+               attemptsRemaining > 0 {
+                try? await Task.sleep(nanoseconds: 750_000_000)
+                attemptsRemaining -= 1
+                continue
+            }
+            print("⚠️ confirmAdult call failed: \(error.localizedDescription)")
+            Telemetry.recordError(error, context: "confirmAdult.callable")
             throw error
         }
-
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 15
-        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
-        if let appCheckToken {
-            request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
-        }
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw ConfirmAdultError.noResponse
-        }
-        if http.statusCode == 200 { return }
-        // 409 means the user doc doesn't exist yet — the create probably
-        // hasn't propagated. Retry once after 750ms.
-        if http.statusCode == 409, attemptsRemaining > 0 {
-            try? await Task.sleep(nanoseconds: 750_000_000)
-            attemptsRemaining -= 1
-            continue
-        }
-        let err = ConfirmAdultError.httpStatus(http.statusCode)
-        print("⚠️ confirmAdult HTTP \(http.statusCode)")
-        Telemetry.recordError(err, context: "confirmAdult.http")
-        throw err
     }
 }
 

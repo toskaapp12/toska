@@ -1017,6 +1017,11 @@ struct EditReplyView: View {
     @State private var showNameWarning = false
     @State private var showGentleCheck = false
     @State private var gentleCheckLevel: CrisisLevel = .soft
+    // Hard content-policy gate (slurs / threats / sexual content / spam).
+    // Without this, an edit can sneak prohibited content past the
+    // create-reply moderation pre-check. Mirror of ComposeView's pattern.
+    @State private var showContentWarning = false
+    @State private var contentWarningMessage = ""
     // Surfaced inline below the edit field when saveReply fails. Cleared
     // on the next attempt or on successful save (success dismisses the view).
     @State private var saveError: String? = nil
@@ -1084,6 +1089,11 @@ struct EditReplyView: View {
         } message: {
             Text("your reply may include a name or identifying info. toska is anonymous for everyone.")
         }
+        .alert("content not allowed", isPresented: $showContentWarning) {
+            Button("ok", role: .cancel) {}
+        } message: {
+            Text(contentWarningMessage)
+        }
         .overlay {
             if showGentleCheck {
                 CrisisCheckInView(
@@ -1097,12 +1107,23 @@ struct EditReplyView: View {
         .animation(.easeOut(duration: 0.2), value: showGentleCheck)
     }
 
-    /// Validates name and crisis-content before letting saveReply proceed.
-    /// Without this, an edit can quietly inject content that the original
-    /// reply-create flow would have intercepted.
+    /// Validates content-policy, name, and crisis-content before letting
+    /// saveReply proceed. Without this, an edit can quietly inject content
+    /// that the original reply-create flow would have intercepted.
+    /// Order: hard policy violations first (slurs / threats / sexual / spam
+    /// → block save), then identifying-info warning (allow with confirm),
+    /// then crisis check (allow with check-in). The server-side
+    /// onReplyUpdated trigger re-runs moderation as a backstop, but
+    /// catching it client-side gives the user a chance to revise before
+    /// the reply gets deleted or flagged in their absence.
     func attemptSave() {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        if let violation = contentViolation(in: trimmed) {
+            contentWarningMessage = contentViolationMessage(for: violation)
+            showContentWarning = true
+            return
+        }
         if containsNameOrIdentifyingInfo(trimmed) { showNameWarning = true; return }
         if let level = crisisCheckLevelRespectingSetting(for: trimmed) {
             gentleCheckLevel = level

@@ -1,6 +1,38 @@
+// PROJECT GUARD — refuse to run unless the operator explicitly opts in OR
+// the project ID looks non-production. This script wipes every post,
+// reply, like, conversation, message, circle, report, daily moment,
+// final post, pending deletion, and per-user subcollection — pointing it
+// at production by accident would be irrecoverable. Common mistake mode
+// is `gcloud config set project <real-project>` lingering in the shell
+// after a debugging session.
+//
+// Bypass paths:
+//   - GCLOUD_PROJECT env var ends with -test, -dev, or -staging
+//   - --allow-prod argv flag is passed (for the rare legitimate
+//     prod cleanup; treat as a deliberate, confirmed action)
 const admin = require("firebase-admin");
+
+const projectId = process.env.GCLOUD_PROJECT
+  || process.env.GOOGLE_CLOUD_PROJECT
+  || "";
+const allowProd = process.argv.includes("--allow-prod");
+const looksTesty = /-(?:test|dev|staging)$/.test(projectId);
+
+if (!allowProd && !looksTesty) {
+  console.error(
+    `\nREFUSING TO RUN: project "${projectId || "(unset)"}" doesn't look like a test/dev project.\n` +
+    `\nThis script wipes every post, reply, conversation, circle, report, and per-user subcollection.\n` +
+    `If this is intentional (e.g. one-time cleanup of a doomed prod), pass --allow-prod:\n` +
+    `  node cleanup.js --allow-prod\n` +
+    `\nOtherwise, point at a test project:\n` +
+    `  GCLOUD_PROJECT=toska-4ebf4-test node cleanup.js\n`
+  );
+  process.exit(1);
+}
+
 admin.initializeApp();
 const db = admin.firestore();
+console.log(`Cleanup running against project: ${projectId || "(default)"}`);
 
 // Iteration cap is a defensive bound: this script is admin tooling meant for
 // dev/test databases, but if someone accidentally points it at a collection

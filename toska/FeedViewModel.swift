@@ -928,9 +928,20 @@ class FeedViewModel: ObservableObject {
                         self.setDefaultWeather()
                         return
                     }
+                    // Filter out posts authored by users the viewer has blocked.
+                    // Without this, a blocked user's tag selections still
+                    // shape the aggregate "today's weather" message — the
+                    // viewer keeps seeing emotional cues from someone they
+                    // explicitly cut off. This is the same client-side
+                    // pattern the feed itself uses.
                     var tagCounts: [String: Int] = [:]
                     for doc in documents {
-                        if let tag = doc.data()["tag"] as? String {
+                        let data = doc.data()
+                        let authorId = data["authorId"] as? String ?? ""
+                        if !authorId.isEmpty, BlockedUsersCache.shared.isBlocked(authorId) {
+                            continue
+                        }
+                        if let tag = data["tag"] as? String {
                             tagCounts[tag, default: 0] += 1
                         }
                     }

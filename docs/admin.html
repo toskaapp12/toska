@@ -128,18 +128,38 @@
             appId: "1:183467627187:ios:ce1217a856e980f70756c6"
         });
 
-        // To enable App Check, uncomment below and supply a reCAPTCHA
-        // Enterprise site key from the Google Cloud console (it is a
-        // public site key, safe to commit). Once enabled, the iOS
-        // client's existing App Attest enforcement plus this web App
-        // Check token together restrict all Firestore reads/writes to
-        // attested toska clients only.
+        // App Check via reCAPTCHA Enterprise. Once a site key is set
+        // below, every Firestore read/write from this dashboard carries
+        // an App Check token; combined with the iOS client's App Attest
+        // enforcement, this restricts all Firestore traffic to attested
+        // toska clients. A non-attested origin (random browser tab,
+        // headless scraper, stolen admin session moved to another
+        // device) is rejected at the API layer even with a valid auth
+        // token.
         //
-        // import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js";
-        // initializeAppCheck(app, {
-        //   provider: new ReCaptchaEnterpriseProvider("YOUR_RECAPTCHA_SITE_KEY"),
-        //   isTokenAutoRefreshEnabled: true,
-        // });
+        // To enable:
+        //   1. Cloud Console → reCAPTCHA Enterprise → Create key →
+        //      type: web, allowed domains: www.toskaapp.com
+        //   2. Copy the site key (starts with 6L... — public, safe to
+        //      commit) and replace RECAPTCHA_SITE_KEY below
+        //   3. Firebase Console → App Check → Web app → register the
+        //      reCAPTCHA Enterprise provider with the same site key
+        //   4. Wait for the unverified-request rate to drop near zero in
+        //      the App Check metrics, then flip enforcement to "Enforced"
+        //      on Cloud Firestore
+        //
+        // Until step 2 is done, the constant below stays empty and the
+        // initializeAppCheck call is skipped — the dashboard keeps
+        // working without App Check. No fail-closed surprise.
+        const RECAPTCHA_SITE_KEY = ""; // TODO: paste reCAPTCHA Enterprise site key
+        if (RECAPTCHA_SITE_KEY) {
+            const { initializeAppCheck, ReCaptchaEnterpriseProvider } =
+                await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js");
+            initializeAppCheck(app, {
+                provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
+                isTokenAutoRefreshEnabled: true,
+            });
+        }
 
         const auth = getAuth(app);
         const db = getFirestore(app);

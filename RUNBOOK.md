@@ -90,11 +90,39 @@ Most tests `XCTSkip` based on auth state — that's intentional, not failure.
 
 ---
 
+## Environments
+
+| Alias | Project ID | When to use |
+|---|---|---|
+| `prod` (default) | `toska-4ebf4` | The live production project. All real users. |
+| `staging` | `TODO-staging-project-id` | Throwaway environment for testing rule changes, function deploys, or iOS feature flows before they touch users. **Always deploy here first** for any non-trivial change. |
+
+Switch with `firebase use prod` / `firebase use staging`. The Firebase
+CLI shows the active alias in its prompt.
+
+iOS Debug builds load `GoogleService-Info-Staging.plist`; Release
+builds load the production `GoogleService-Info.plist`. The build phase
+that does this swap is documented in the iOS section below.
+
 ## Deploy procedures
 
 Always deploy in this order: **rules → indexes → functions → iOS**.
 Functions can depend on rules; iOS depends on functions; reversing the
 order risks calling code paths that don't exist yet.
+
+**Always staging before prod** for non-trivial changes. The pattern is:
+
+```sh
+firebase use staging
+firebase deploy --only firestore:rules
+# verify in the staging project's Firebase Console
+firebase use prod
+firebase deploy --only firestore:rules
+```
+
+A typo in rules that compiles but breaks a query is exactly what
+staging catches — try it once with the iOS Debug build before flipping
+prod.
 
 ### Firestore rules
 
@@ -431,3 +459,25 @@ real users, not just attackers.
 - **Apple Developer support**: https://developer.apple.com/contact
 - **Security report inbox**: salte@saltedevelopments.com (no separate
   security@ alias yet — set one up if accepting external reports)
+
+### Backup admin / bus-factor — currently deferred
+
+There is one Owner on this project (`salte@saltedevelopments.com`).
+Adding a backup admin would mitigate "primary maintainer permanently
+unavailable" risk, but the trust bar is high — you're handing someone
+the keys to the product. For v1.0 with no co-founder, the pragmatic
+substitute is solid account-recovery hygiene on the Owner account:
+
+- **Google account** (https://myaccount.google.com/security):
+  recovery phone + recovery email + downloaded 2FA backup codes stored
+  offline (printed in a safe, password manager with its own recovery,
+  sealed envelope to a family member, etc.)
+- **Apple ID** (https://appleid.apple.com → Account Recovery): same
+  shape — recovery contact + downloaded recovery key
+- **Password manager**: master password recoverable through some
+  out-of-band channel (printed, family member, fireproof safe)
+
+Revisit the secondary-admin decision when there's a co-founder or
+long-term trusted business partner. The setup is ~10 minutes per
+console (Firebase IAM, App Store Connect, GitHub) once you have a
+person; the hard part is the trust decision, not the clicking.

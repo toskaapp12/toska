@@ -231,55 +231,86 @@ docs aren't reindexed; new writes use the updated set.
 ### Add an admin user
 
 Admins are determined by the existence of `/admins/{uid}` with
-`role: "admin"`. Rules forbid client writes to this collection.
+`role: "admin"`. Rules forbid client writes to this collection — only
+the Admin SDK (and you, via the Console) can write here.
+
+**Via Firebase Console:** Firestore → `admins` collection → **Add document**
+→ Document ID = `<uid>` → field `role` (string) `admin` → Save.
+
+**Via Node script** (faster for batch operations — run from `functions/`):
 
 ```sh
-gcloud firestore documents create /admins/<UID> \
-  --project=toska-4ebf4 \
-  --field='role=admin'
+cd functions && node -e '
+  const a = require("firebase-admin");
+  a.initializeApp();
+  a.firestore().doc("admins/" + process.argv[1])
+    .set({role: "admin"})
+    .then(() => process.exit());' <UID>
 ```
 
-Or via Firebase Console → Firestore → `admins` collection → Add
-document with ID = uid and field `role: "admin"`.
+Requires `GOOGLE_APPLICATION_CREDENTIALS` to point at a service-account
+key, or run `gcloud auth application-default login` first.
 
 ### Restrict (silence) a user
 
-Either use the admin dashboard (https://www.toskaapp.com/admin.html →
-Restricted Users tab) or directly:
+Easiest: admin dashboard at https://www.toskaapp.com/admin.html →
+**Restricted Users** tab.
+
+**Via Firebase Console:** Firestore → `users/<uid>` → Edit fields →
+add `restricted: true`, `restrictedAt: <server timestamp>`,
+`restrictedBy: <your-uid>`. To auto-expire after 48h, also add
+`restrictedUntil: <Timestamp 48h from now>`. Without it, the
+restriction persists until manually cleared.
+
+**Via Node script** (run from `functions/`):
 
 ```sh
-gcloud firestore documents update /users/<UID> \
-  --project=toska-4ebf4 \
-  --field='restricted=true,restrictedAt=now,restrictedBy=<your-uid>'
+cd functions && node -e '
+  const a = require("firebase-admin");
+  a.initializeApp();
+  const FV = a.firestore.FieldValue;
+  a.firestore().doc("users/" + process.argv[1]).update({
+    restricted: true,
+    restrictedAt: FV.serverTimestamp(),
+    restrictedBy: "admin",
+  }).then(() => process.exit());' <UID>
 ```
-
-To auto-expire after 48h, set `restrictedUntil` to a Timestamp 48h
-in the future. Without it, the restriction persists until manually
-cleared.
 
 ### Force-delete a post (moderation)
 
-Admin dashboard → Flagged Posts → Delete. Or:
+Admin dashboard → **Flagged Posts** → Delete.
 
-```sh
-gcloud firestore documents delete /posts/<POST_ID> --project=toska-4ebf4
-```
+**Via Firebase Console:** Firestore → `posts/<postId>` → menu (⋮) →
+Delete document. Subcollections (replies/likes/reflections) need to
+be deleted separately, but the next `cleanupExpiredPosts` sweep will
+catch any orphans if they have an `expiresAt`.
 
-The `onPostDeletedUpdateTagCounts` trigger fires automatically; counters
-self-heal.
+The `onPostDeletedUpdateTagCounts` trigger fires automatically;
+tag counters self-heal.
 
 ### Repair a user's follower counts
 
 The `reconcileMyCounts` HTTPS endpoint lets a user fix their own counts
-from inside the app (Settings → Reconcile counts). Server-side equivalent
-for an admin:
+from inside the app (Settings → Reconcile counts). Server-side
+equivalent for an admin — Console: edit `users/<uid>`, set
+`followerCount` and `followingCount` to the actual subcollection sizes.
+
+**Via Node script** (run from `functions/`):
 
 ```sh
-gcloud firestore documents update /users/<UID> --project=toska-4ebf4 \
-  --field='followerCount=<actual-count>,followingCount=<actual-count>'
+cd functions && node -e '
+  const a = require("firebase-admin");
+  a.initializeApp();
+  const uid = process.argv[1];
+  const ref = a.firestore().doc("users/" + uid);
+  Promise.all([
+    ref.collection("followers").count().get(),
+    ref.collection("following").count().get(),
+  ]).then(([f, fi]) => ref.update({
+    followerCount: f.data().count,
+    followingCount: fi.data().count,
+  })).then(() => process.exit());' <UID>
 ```
-
-Counter triggers prevent further drift; this is a one-time correction.
 
 ### Bump iOS build number
 

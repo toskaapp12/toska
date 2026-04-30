@@ -87,8 +87,13 @@ struct ContentView: View {
             // can return and accept later if they change their mind.
             PolicyAcceptanceView(
                 onAccept: {
+                    // Version-bump retro-prompt records only the policy
+                    // acceptance fields — confirmedAdult is intentionally
+                    // not touched here (existing users were already
+                    // adult-confirmed at signup; new policy versions are
+                    // about ToS changes, not the age gate).
                     if let uid = Auth.auth().currentUser?.uid {
-                        recordPolicyAcceptance(for: uid, confirmedAdult: false)
+                        recordPolicyAcceptance(for: uid)
                     }
                     showPolicyUpdate = false
                 },

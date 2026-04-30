@@ -38,20 +38,42 @@ struct FeedView: View {
     var body: some View {
             VStack(spacing: 0) {
                     // MARK: - Header
-            HStack {
+                    //
+                    // Reddit/X-style inline search bar in the header. Previously
+                    // a magnifying-glass icon Button that opened ExploreView as
+                    // a sheet; the search bar is more discoverable and matches
+                    // user expectations from comparable social apps. Tapping
+                    // anywhere on the bar still opens ExploreView (same
+                    // destination, same search logic — the bar is a styled
+                    // tappable affordance, not a real focused TextField, which
+                    // would require duplicating ExploreView's search state into
+                    // FeedView).
+                    //
+                    // The accessibility label stays "Search" so toskaUITests'
+                    // `app.buttons["Search"]` lookups still resolve.
+            HStack(spacing: 10) {
                             Text("toska")
                                 .font(.custom("Georgia-Italic", size: 22))
                                 .foregroundColor(LateNightTheme.handleText)
-                            
-                            Spacer()
-                            
+
                             Button {
                                 vm.showExplore = true
                             } label: {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 16, weight: .light))
-                                    .foregroundColor(LateNightTheme.secondaryText)
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 12, weight: .light))
+                                        .foregroundColor(LateNightTheme.secondaryText)
+                                    Text("search")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(LateNightTheme.secondaryText)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Color.white.opacity(0.06))
+                                .clipShape(Capsule())
                             }
+                            .buttonStyle(.plain)
                             .accessibilityLabel("Search")
                         }
                         .padding(.horizontal, 16)

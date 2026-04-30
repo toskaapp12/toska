@@ -17,7 +17,9 @@ Pods/
 node_modules/
 functions/node_modules/
 firestore-tests/node_modules/
-firestore-tests/package-lock.json
+# firestore-tests/package-lock.json is committed so CI caches npm installs
+# reproducibly. Functions has no lockfile because the deploy pipeline
+# resolves dependencies fresh on the cloud builder.
 
 # Firebase CLI debug output (regenerated on every deploy, can be large)
 firebase-debug.log

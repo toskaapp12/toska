@@ -189,6 +189,45 @@ struct FeedView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)
 
+                                // Category pills — appear only while the
+                                // search bar is focused. Tapping a pill
+                                // fills searchText with the tag name (which
+                                // triggers matchesSearch to filter posts on
+                                // post.tag), dismisses the keyboard, and
+                                // returns the user to the filtered feed.
+                                // Hidden as soon as focus leaves the search
+                                // bar so the chrome doesn't compete with the
+                                // feed in the resting state.
+                                if searchFocused {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 8) {
+                                            ForEach(sharedTags, id: \.name) { tag in
+                                                Button {
+                                                    searchText = tag.name
+                                                    searchFocused = false
+                                                } label: {
+                                                    HStack(spacing: 4) {
+                                                        Image(systemName: tag.icon)
+                                                            .font(.system(size: 10))
+                                                        Text(tag.name)
+                                                            .font(.system(size: 11, weight: .medium))
+                                                    }
+                                                    .foregroundColor(Color(hex: tag.colorHex))
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 6)
+                                                    .background(Color(hex: tag.colorHex).opacity(0.12))
+                                                    .clipShape(Capsule())
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                    }
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 2)
+                                    .transition(.opacity)
+                                }
+
                                 if vm.selectedTab == 1 && vm.followingPosts.isEmpty {
                                                         VStack(spacing: 12) {
                                                             Text("\"the things we don't\nsay out loud still\nneed somewhere to go.\"")

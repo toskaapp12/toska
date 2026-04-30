@@ -1,7 +1,10 @@
 # firestore-tests
 
-Rules unit tests for `firestore.rules`. Runs against the local Firestore
-emulator — no production data touched.
+Two test surfaces for the Firestore layer:
+- **`npm test`** — rules unit tests against the local emulator. No live
+  data touched. ~30s.
+- **`npm run e2e`** — end-to-end smoke test against live `toskastaging`.
+  Creates and deletes a throwaway user. ~10s.
 
 ## One-time setup
 
@@ -10,18 +13,50 @@ cd firestore-tests
 npm install
 ```
 
-The Firebase CLI must be installed globally (`npm install -g firebase-tools`).
-Java 11+ must be on your PATH (the emulator is a Java process).
+For `npm test`: Firebase CLI installed globally
+(`npm install -g firebase-tools`) and Java 21+ on PATH (the emulator is
+a Java process).
 
-## Run
+For `npm run e2e`: `gcloud auth application-default login` so the
+firebase-admin SDK can resolve credentials.
 
-```sh
-cd firestore-tests
-npm test
-```
+## Rules unit tests — `npm test`
 
-This boots `firestore` + `auth` emulators, runs the mocha suite against
-them, and tears the emulators down. ~30 seconds end-to-end.
+Boots `firestore` + `auth` emulators, runs the mocha suite, tears them
+down. Each test exercises a single rule clause via `assertSucceeds` /
+`assertFails`.
+
+Coverage:
+- The findings closed in the 2026-04-29 security audit (one describe
+  block per finding)
+- Regressions for the prior 2026-04-26 audit fixes (handle XSS, legacy
+  PII immutability, `notRestricted()` enforcement, post `flagged`
+  update lockdown)
+- Baseline sanity (legitimate writes succeed, malformed writes fail)
+- The 2026-04-30 `hasConfirmedAdult()` gate
+
+## End-to-end test — `npm run e2e`
+
+Creates a real Auth user in `toskastaging`, writes a complete user doc
+via Admin SDK (mimicking what a successful signup + confirmAdult call
+produces), signs in as that user via the Firebase Web SDK, attempts a
+post write (asserts success), strips `confirmedAdult` from the user
+doc, attempts another post write (asserts denial), then cleans up.
+
+Self-cleaning even on partial failure. Refuses to run against any
+project other than `toskastaging` via the `GCLOUD_PROJECT` env var
+guard at the top of the script.
+
+What this proves that `npm test` alone doesn't:
+- Real Auth + real Firestore + real deployed rules all align with
+  what the emulator-based unit tests claim.
+- The `hasConfirmedAdult()` rule actually denies writes against the
+  live ruleset, not just the local emulator copy.
+
+What this still doesn't prove:
+- The iOS-side `confirmAdult` callable invocation. For that, sign up
+  in the simulator and verify
+  `users/{uid}.confirmedAdult` afterward.
 
 ## What's covered
 

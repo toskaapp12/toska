@@ -773,6 +773,18 @@ struct ComposeView: View {
                     if let error = error {
                         Telemetry.recordError(error, context: "ComposeView.addPost")
                         self.postError = "couldnt post. try again. the feeling isnt going anywhere."
+                        // Confirmed failure → shorten the rate-limit window
+                        // so retry waits ~5s instead of the full 30s. The
+                        // postError banner explicitly says "try again";
+                        // making the user wait 30 seconds while staring at
+                        // that message is contradictory UX. We don't clear
+                        // lastPostTime entirely because the Firestore SDK's
+                        // offline queue may still eventually deliver the
+                        // write, and an instantly-retryable button leads to
+                        // duplicate posts when both eventually land. 5s is
+                        // long enough to discourage frantic mashing,
+                        // short enough not to feel punitive.
+                        RateLimiter.shared.lastPostTime = Date().addingTimeInterval(-25)
                     } else {
                         Telemetry.postCreated(
                             tag: self.selectedTag,

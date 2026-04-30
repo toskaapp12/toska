@@ -15,8 +15,23 @@
 //     Debug build). For that, sign up in the simulator and check
 //     `users/{uid}.confirmedAdult` afterward.
 //
-// Run with: cd firestore-tests && npm run e2e
-// Prereq: `gcloud auth application-default login` for Admin SDK ADC.
+// Run with:
+//   cd firestore-tests
+//   TOSKA_STAGING_WEB_API_KEY="AIza…" \
+//   TOSKA_STAGING_APP_ID="1:…:ios:…" \
+//   TOSKA_STAGING_SENDER_ID="…" \
+//   npm run e2e
+//
+// Prereqs:
+//   - `gcloud auth application-default login` for Admin SDK ADC
+//   - Firebase Web SDK config for toskastaging in env vars (above).
+//     Firebase Web API keys are technically public per Google's docs
+//     (auth+rules are the access control, not key secrecy), but
+//     keeping them out of source keeps GitHub's secret scanner quiet
+//     and lets contributors clone without extra plumbing.
+//
+// Tip: drop these into firestore-tests/.env (gitignored) and
+// `source .env` before running.
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
@@ -42,6 +57,21 @@ if (envProject && envProject !== PROJECT_ID) {
   );
   process.exit(1);
 }
+
+// Pull the Web SDK config from env. Fail loudly if missing so a
+// contributor doesn't get a confusing Firebase auth error 30 lines down.
+const WEB_API_KEY = process.env.TOSKA_STAGING_WEB_API_KEY;
+const WEB_APP_ID = process.env.TOSKA_STAGING_APP_ID;
+const WEB_SENDER_ID = process.env.TOSKA_STAGING_SENDER_ID;
+if (!WEB_API_KEY || !WEB_APP_ID || !WEB_SENDER_ID) {
+  console.error(
+    "\nMissing one of TOSKA_STAGING_WEB_API_KEY / TOSKA_STAGING_APP_ID / " +
+    "TOSKA_STAGING_SENDER_ID in env. See the run instructions at the top " +
+    "of this file.\n"
+  );
+  process.exit(1);
+}
+
 const TEST_EMAIL = `e2e_${Date.now()}@example.com`;
 const TEST_PASSWORD = "test_pw_" + Math.random().toString(36).slice(2);
 const TEST_HANDLE = `test_${Date.now().toString(36)}`;
@@ -53,11 +83,11 @@ const adminDb = admin.firestore();
 
 // ---------- Web SDK setup ----------
 const webApp = initializeApp({
-  apiKey: "AIzaSyCTGuUzy9maPF84fZh5gD_-eZ2qkie75OQ",
+  apiKey: WEB_API_KEY,
   authDomain: `${PROJECT_ID}.firebaseapp.com`,
   projectId: PROJECT_ID,
-  appId: "1:260913424323:ios:a6631554b2614bed01ff76",
-  messagingSenderId: "260913424323",
+  appId: WEB_APP_ID,
+  messagingSenderId: WEB_SENDER_ID,
 });
 const webAuth = getAuth(webApp);
 const webDb = getFirestore(webApp);

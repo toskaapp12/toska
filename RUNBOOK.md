@@ -95,7 +95,7 @@ Most tests `XCTSkip` based on auth state — that's intentional, not failure.
 | Alias | Project ID | When to use |
 |---|---|---|
 | `prod` (default) | `toska-4ebf4` | The live production project. All real users. |
-| `staging` | `TODO-staging-project-id` | Throwaway environment for testing rule changes, function deploys, or iOS feature flows before they touch users. **Always deploy here first** for any non-trivial change. |
+| `staging` | `toskastaging` | Throwaway environment for testing rule changes, function deploys, or iOS feature flows before they touch users. **Always deploy here first** for any non-trivial change. |
 
 Switch with `firebase use prod` / `firebase use staging`. The Firebase
 CLI shows the active alias in its prompt.

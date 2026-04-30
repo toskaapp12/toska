@@ -3,7 +3,7 @@
   "private": true,
   "description": "Rules unit tests for firestore.rules — runs against the local Firestore emulator.",
   "scripts": {
-    "test": "PATH=\"/opt/homebrew/opt/openjdk@21/bin:$PATH\" firebase emulators:exec --only firestore,auth --project=toska-test 'mocha --timeout 15000 firestore.test.js'"
+    "test": "PATH=\"/opt/homebrew/opt/openjdk@21/bin:$PATH\" firebase emulators:exec --only firestore,auth --project=toska-test 'npx mocha --timeout 15000 firestore.test.js'"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.0",

@@ -50,12 +50,11 @@ jobs:
 
     - name: Run rules unit tests
       working-directory: firestore-tests
-      # Boots firestore + auth emulators, runs mocha against firestore.test.js,
-      # tears emulators down. Same as `npm test` locally but without the
-      # macOS-specific PATH prefix.
-      run: |
-        firebase emulators:exec --only firestore,auth --project=toska-test \
-          'mocha --timeout 15000 firestore.test.js'
+      # Calls the package.json `test` script so CI uses the exact same
+      # command users run locally — single source of truth. The script's
+      # macOS-specific PATH prefix (/opt/homebrew/opt/openjdk@21/bin) is
+      # harmless on Linux since setup-java already put Java 21 on PATH.
+      run: npm test
 
   functions-syntax:
     name: Cloud Functions syntax check

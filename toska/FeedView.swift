@@ -1388,6 +1388,143 @@ func crisisLevel(for text: String) -> CrisisLevel? {
     return nil
 }
 
+// Confusable map used by `canonicalize`. Covers the unicode points a poster
+// most commonly reaches for when trying to slip a name past the warning
+// modal: Cyrillic / Greek lookalikes that render visually identical to
+// Latin letters in the iOS system font. The map is intentionally LARGER
+// than `moderationHomoglyphMap` (used by contentViolation) because the
+// name-detection path needs to fold both upper- and lower-case forms — a
+// poster typing "sаrah" with Cyrillic а is the exact case we want to catch,
+// and the slur-detection map only handles uppercase.
+//
+// Fullwidth letters (U+FF21..U+FF5A, "Ｓａｒａｈ") are handled by code-point
+// arithmetic in `canonicalize` rather than this table — they're contiguous
+// and the table would just be 52 mechanical entries.
+private let nameConfusableMap: [Character: Character] = [
+    // Cyrillic uppercase
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
+    "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "І": "I", "Ј": "J",
+    // Cyrillic lowercase
+    "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o",
+    "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "і": "i", "ј": "j",
+    // Greek uppercase
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
+    "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+    // Greek lowercase
+    "α": "a", "β": "b", "ε": "e", "ι": "i", "ο": "o", "ρ": "p",
+    "τ": "t", "υ": "y", "χ": "x",
+]
+
+private let nameLeetMap: [Character: Character] = [
+    "0": "o", "1": "i", "3": "e", "4": "a",
+    "5": "s", "7": "t", "8": "b",
+    "@": "a", "$": "s",
+]
+
+/// Lossless-ish normalization for the name-detection path. Folds the cases
+/// that don't change semantic meaning of a name token but do bypass an
+/// ASCII-only substring lookup:
+///   - NFD decompose then strip combining marks (U+0300..U+036F): "Sårāh" → "Sarah"
+///   - Fullwidth ASCII (U+FF21..U+FF5A) → ASCII: "Ｓａｒａｈ" → "Sarah"
+///   - Confusable Cyrillic / Greek letters → Latin: "Sаrah" → "Sarah"
+///   - Lowercase
+///
+/// Deliberately does NOT do leet substitution — that's destructive on legit
+/// numbers ("3 months ago" must NOT become "e months ago" for the general
+/// prose checks). Leet lives in `aggressiveNormalizeForNameMatch`, which is
+/// only consulted by the curated-name lookup.
+private func canonicalize(_ text: String) -> String {
+    let decomposed = text.decomposedStringWithCanonicalMapping
+    var result = ""
+    result.reserveCapacity(decomposed.count)
+    for scalar in decomposed.unicodeScalars {
+        let value = scalar.value
+        // Combining marks — drop after NFD decompose.
+        if value >= 0x0300 && value <= 0x036F { continue }
+        // Fullwidth uppercase A-Z (U+FF21..U+FF3A).
+        if value >= 0xFF21 && value <= 0xFF3A {
+            result.unicodeScalars.append(Unicode.Scalar(value - 0xFEE0)!)
+            continue
+        }
+        // Fullwidth lowercase a-z (U+FF41..U+FF5A).
+        if value >= 0xFF41 && value <= 0xFF5A {
+            result.unicodeScalars.append(Unicode.Scalar(value - 0xFEE0)!)
+            continue
+        }
+        let ch = Character(scalar)
+        if let mapped = nameConfusableMap[ch] {
+            result.append(mapped)
+        } else {
+            result.unicodeScalars.append(scalar)
+        }
+    }
+    return result.lowercased()
+}
+
+/// Aggressive normalization for the curated-name lookup ONLY.
+/// Builds on `canonicalize` then:
+///   - Substitutes leet characters (0→o, 1→i, 3→e, 4→a, 5→s, 7→t, 8→b, @→a, $→s)
+///   - Collapses single-letter separator chains: "j.o.h.n" / "j-o-h-n" /
+///     "j_o_h_n" / "j o h n" → "john"
+///
+/// Conservative on false positives by design: the result is checked ONLY
+/// against the curated first/last name sets. We do NOT run this output
+/// through the general identifying-pattern keywords or the address regex,
+/// because de-leet would mangle legit numeric content ("3 months ago" → "e
+/// months ago"; "$200 bucks" → "s200 bucks") and the collapse pass would
+/// fuse incidental letter sequences into spurious tokens.
+// Compiled once at file scope. Pattern: single letter, then 1+ runs of
+// (separator+ then single letter), bounded by word boundaries. Matches
+// "j.o.h.n", "j o h n", "j-o-h-n", "j_o_h_n", etc. Single-character classes
+// only and no nested quantifiers — backtracking-safe even on a 2000-char
+// text. Force-unwrapping is OK here: the pattern is a constant, so a
+// failure to compile would surface immediately on first call.
+private let nameSeparatorCollapseRegex: NSRegularExpression =
+    try! NSRegularExpression(pattern: "\\b[a-z](?:[.\\-_ ]+[a-z])+\\b")
+
+private func aggressiveNormalizeForNameMatch(_ text: String) -> String {
+    let canon = canonicalize(text)
+    var deLeet = ""
+    deLeet.reserveCapacity(canon.count)
+    for ch in canon {
+        deLeet.append(nameLeetMap[ch] ?? ch)
+    }
+    var result = deLeet
+    let nsRange = NSRange(result.startIndex..<result.endIndex, in: result)
+    let matches = nameSeparatorCollapseRegex.matches(in: result, range: nsRange)
+    // Iterate in reverse so earlier-match indices remain valid as we mutate.
+    for match in matches.reversed() {
+        guard let range = Range(match.range, in: result) else { continue }
+        let collapsed = String(result[range]).filter { $0.isLetter }
+        result.replaceSubrange(range, with: collapsed)
+    }
+    return result
+}
+
+/// Surnames intentionally restricted to predominantly-proper-noun forms.
+/// Excluded high-FP names that are also common English words: Brown, White,
+/// Green, Hill, Wood, Long, King, Price, Young, Ward, Cook, Hall, Gray,
+/// Wright, Reed — flagging "the brown dog" or "King" (used as a noun for
+/// rulers) on a heartbreak post would be worse than missing a surname mention.
+/// Tradeoff accepted: this list intentionally undercovers; the cost of a
+/// false positive in this app (deletes a vulnerable user's post) outweighs
+/// the cost of missing a surname that could have been caught.
+private let commonLastNames: Set<String> = [
+    "smith", "johnson", "williams", "jones", "garcia", "miller", "davis",
+    "rodriguez", "martinez", "hernandez", "lopez", "gonzalez", "wilson",
+    "anderson", "thomas", "taylor", "jackson", "martin", "perez",
+    "thompson", "harris", "clark", "ramirez", "lewis", "robinson",
+    "scott", "torres", "nguyen", "flores", "adams", "nelson", "rivera",
+    "campbell", "mitchell", "carter", "roberts", "gomez", "phillips",
+    "evans", "turner", "parker", "cruz", "edwards", "collins", "reyes",
+    "stewart", "morris", "morales", "murphy", "rogers", "gutierrez",
+    "ortiz", "morgan", "peterson", "bailey", "kelly", "howard", "ramos",
+    "richardson", "watson", "chavez", "bennett", "mendoza", "ruiz",
+    "hughes", "alvarez", "castillo", "sanders", "patel", "myers", "ross",
+    "foster", "jimenez", "cooper", "walker", "allen", "washington",
+    "jefferson", "lincoln", "kennedy", "obama",
+]
+
 func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     let commonNames: Set<String> = [
         "james", "john", "robert", "michael", "david", "richard", "joseph", "thomas", "charles",
@@ -1411,6 +1548,17 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "nora", "zoey", "eleanor", "hazel", "audrey",
         "claire", "skylar", "paisley", "everly", "caroline",
         "genesis", "emilia", "kennedy", "kinsley", "naomi", "aaliyah", "elena",
+        // Common nicknames — added 2026-05-01 sprint after the test suite
+        // surfaced an evasion-vector miss for "M1k3" (de-leets to "mike",
+        // which had no entry in the full-name list). Filtered out:
+        //   - jordan (country, high FP risk)
+        //   - max, drew, sue (common verbs/intensifiers)
+        //   - bob, rob, nick (also verbs in common usage)
+        // Mirror set lives in functions/moderation.js — keep in sync.
+        "mike", "tom", "jim", "tim", "dan", "sam", "ben", "tony", "jake",
+        "leo", "ian", "kyle", "evan", "greg", "jeff", "kurt", "paul",
+        "pete", "eli", "brett", "todd", "troy",
+        "liz", "beth", "kate", "ann", "jane", "lynn", "abby", "becky", "jess",
     ]
     let ambiguousWords: Set<String> = [
                 // Common English words that happen to also be names
@@ -1431,7 +1579,14 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "last name", "full name", "school name", "works at", "goes to",
         "lives in", "lives on", "lives at", "address",
         "apartment", "apt ", "suite ",
-        "her name is", "his name is", "their name is", "named ",
+        "her name is", "his name is", "their name is",
+        // NOTE: "named " was previously in this list as a broad keyword and
+        // false-positived on legitimate sentences like "she named the dog
+        // Rex" or "we named the album X". The careful `namedPatterns` check
+        // below (which requires the following token to be capitalized) is
+        // strictly better and catches the cases we care about ("she was
+        // named Olivia") without the FP surface. Same removal in the
+        // server-side mirror at functions/moderation.js.
         "zip code", "zipcode",
         "discord", "telegram", "whatsapp", "signal",
         "threads", "bluesky", "reddit",
@@ -1530,6 +1685,137 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
             .replacingOccurrences(of: "\\d{1,2}/\\d{1,2}/\\d{2,4}", with: "", options: .regularExpression)
         let digits = digitStripped.filter { $0.isNumber }
         if digits.count >= 10 { return true }
+
+    // ============================================================
+    // EVASION HARDENING — additive layers for the 2026-05-01 pre-launch sprint.
+    //
+    // The original chain (above) handles plain prose well, but heartbroken
+    // posters in a public-anonymous app sometimes try to dodge the warning
+    // modal with cryptic stylization. Generic anonymous social apps fail
+    // mostly to harassment + hate speech (Whisper, Yik Yak, Secret all died
+    // this way); heartbreak content is structurally brand-safer but
+    // introduces a different sharp edge: a poster in a high-emotion state
+    // is tempted to identify their ex by name, address, social handle, or
+    // workplace. Anonymous + public + named-target = textbook defamation,
+    // plus an Apple-Guideline-1.2 takedown trigger.
+    //
+    // Vectors closed by the layers below:
+    //   - Unicode confusables  (Sаrah, Ｓａｒａｈ, Sårāh)
+    //   - Leetspeak             (j0hn, 5arah, m1k3, m@tt)
+    //   - Separator tricks      (J.o.h.n, j-o-h-n, j o h n, j_o_h_n)
+    //   - Last names            (Smith from accounting)
+    //   - Apartment / unit nums (apt 4B, unit 12, #207)
+    //   - Initials w/ context   (my ex J.S.)
+    //   - URLs                  (instagram.com/handle, t.me/handle)
+    //
+    // Layers run AFTER the original chain so we don't change its semantics —
+    // anything that already flagged still flags first; new layers only
+    // catch inputs the original missed.
+    // ============================================================
+
+    // Layer 1: URL / social-link detection.
+    // The existing identifyingPatterns catches the keyword "instagram", but
+    // misses domain-style references like "instagram.com/handle" when the
+    // surrounding context doesn't already trip the keyword. The url
+    // detection in contentViolation() is upstream of name detection at
+    // every call site, so most of these are already caught — this layer
+    // is defense in depth for surfaces that may eventually consult name
+    // detection without a contentViolation gate (and to make the behavior
+    // explicit when reading this function in isolation).
+    let urlRegexes = [
+        "https?://",
+        "\\bwww\\.[a-z]",
+        "\\b(instagram|tiktok|facebook|twitter|snapchat|linkedin|reddit|youtube|youtu|t|discord|telegram|whatsapp|signal|onlyfans|threads|bluesky|cash\\.app|venmo|paypal)\\.(com|me|gg|tv|be|co|app|net|org|io)\\b",
+        "\\b(linktr\\.ee|bit\\.ly|tinyurl)\\b",
+    ]
+    for pattern in urlRegexes {
+        if lowered.range(of: pattern, options: .regularExpression) != nil { return true }
+    }
+
+    // Layer 2: Apartment / unit / suite numbers.
+    // The existing identifyingPatterns includes "apartment", "apt ", "suite "
+    // — but "apt " requires a trailing space, so "apt4B" or "apt.4B" miss.
+    // It also has no rule for bare "#207". This layer fixes both.
+    let apartmentRegex = "\\b(apt|unit|suite|ste)\\.?\\s*#?\\s*\\d+[a-z]?\\b"
+    if lowered.range(of: apartmentRegex, options: .regularExpression) != nil { return true }
+    if text.range(of: "#\\s*\\d{1,4}[a-z]?\\b", options: .regularExpression) != nil { return true }
+
+    // Layer 3: Dotted initials with relationship context — "my ex J.S.".
+    // The existing relationship-prefix loop tokenizes "J.S." into single
+    // chars and bails on the count >= 2 check. Scan a 40-char window after
+    // each prefix for a dotted-initials pattern instead.
+    for prefix in relationshipPrefixes {
+        if let range = lowered.range(of: prefix) {
+            let afterPrefix = String(text[range.upperBound...])
+            let scanWindow = String(afterPrefix.prefix(40))
+            if scanWindow.range(of: "\\b[A-Z]\\.[A-Z]\\.?", options: .regularExpression) != nil {
+                return true
+            }
+        }
+    }
+
+    // Layer 4: Per-token canonicalize-then-name-lookup.
+    // Catches confusables (Cyrillic/Greek/fullwidth) and accented forms.
+    // Capitalization gate: original first character must be uppercase, AND
+    // the canonicalized token must not be a sentence-starter in the
+    // canonicalized text — same false-positive guards the existing
+    // first-name loop applies.
+    let canonical = canonicalize(text)
+    let canonicalSentenceStarters: Set<String> = Set(
+        canonical.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .compactMap { $0.components(separatedBy: CharacterSet.alphanumerics.inverted).first(where: { !$0.isEmpty }) }
+    )
+    let originalTokens = text.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+    for word in originalTokens {
+        let canonWord = canonicalize(word)
+        if canonWord.count < 2 { continue }
+        if ambiguousWords.contains(canonWord) { continue }
+        if safeCapitalizedWords.contains(canonWord) { continue }
+        let isFirstName = commonNames.contains(canonWord)
+        let isLastName = commonLastNames.contains(canonWord) && canonWord.count >= 3
+        if !isFirstName && !isLastName { continue }
+        guard let firstChar = word.first, firstChar.isUppercase else { continue }
+        // Sentence-starter exemption applies only to legit-prose tokens.
+        // If canonicalize had to fold confusables / fullwidth / accents to
+        // reach the name (i.e. the original lowercased token differs from
+        // the canonical token), that's evidence of deliberate evasion and
+        // the sentence-start exemption no longer applies — "Mіchael" at the
+        // start of a sentence is an attack, not a casual capitalization.
+        let isEvasion = word.lowercased() != canonWord
+        if !isEvasion && canonicalSentenceStarters.contains(canonWord) { continue }
+        return true
+    }
+
+    // Layer 5: Whole-text aggressive normalization.
+    // Catches separator chains (j.o.h.n, j o h n) and leet (j0hn, 5arah)
+    // collapsing to a known first or last name. Only flags when the
+    // aggressive form differs from the canonical form (i.e. there's
+    // actual evidence of evasion — otherwise Layer 4 already had a chance).
+    let aggressive = aggressiveNormalizeForNameMatch(text)
+    let canonicalTokens = canonical.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+    let canonicalTokenSet = Set(canonicalTokens)
+    let aggressiveTokens = aggressive.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count >= 2 }
+    for token in aggressiveTokens {
+        if ambiguousWords.contains(token) { continue }
+        if safeCapitalizedWords.contains(token) { continue }
+        let isName = commonNames.contains(token) || (commonLastNames.contains(token) && token.count >= 3)
+        if !isName { continue }
+        if canonicalTokenSet.contains(token) { continue }  // already had a chance via Layer 4
+        return true
+    }
+
+    // Layer 6: Identifying-pattern keywords on canonicalized text.
+    // The original loop ran identifyingPatterns against `lowered`, missing
+    // fullwidth ("Ｉｎｓｔａｇｒａｍ ＠me") and confusable variants. Re-run
+    // the same patterns against canonicalized text. (We already returned
+    // true for any original-text match above; this only catches inputs
+    // where the original missed due to non-ASCII evasion.)
+    for pattern in identifyingPatterns {
+        if canonical.contains(pattern) { return true }
+    }
+
     return false
 }
 

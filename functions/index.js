@@ -1,4 +1,5 @@
 const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { containsNameOrIdentifyingInfo } = require("./moderation");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -1016,6 +1017,22 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
     await db.collection("posts").doc(postId).delete();
     return;
   }
+
+  // Server-side mirror of FeedView.swift::containsNameOrIdentifyingInfo.
+  // The iOS pre-publish detector grew aggressive evasion-hardening (Unicode
+  // confusables, leet, separator collapse, last names, dotted initials) in
+  // the 2026-05-01 pre-launch sprint. A tampered client that bypasses the
+  // iOS check would otherwise slip a named-target post (anonymous + public
+  // + named-target = textbook defamation) straight through to feed. Delete
+  // outright at the validate-trigger boundary, matching how this trigger
+  // already handles blank / over-length posts. The companion onPostCreated
+  // path will still fire (and fail-noisily on the now-deleted doc), but the
+  // post is gone before any reader could see it.
+  if (containsNameOrIdentifyingInfo(text)) {
+    console.warn(`Deleting post ${postId} — server-side identifying-info detector tripped`);
+    await db.collection("posts").doc(postId).delete();
+    return;
+  }
 });
 
 // ============================================================
@@ -1048,6 +1065,18 @@ exports.validateReply = onDocumentCreated(
 
     if (text.length > 500) {
       console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
+      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      return;
+    }
+
+    // Same rationale as validatePost: tampered client bypassing the iOS
+    // detector cannot slip a named-target reply through. Reply moderation
+    // (onReplyCreatedModerate) would soft-flag PII rather than delete, so
+    // doing the harder takedown here at the validate-trigger boundary
+    // matches the existing blank/over-length policy and ensures the worst
+    // cases never reach a reader.
+    if (containsNameOrIdentifyingInfo(text)) {
+      console.warn(`Deleting reply ${replyId} on post ${postId} — server-side identifying-info detector tripped`);
       await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
       return;
     }
@@ -1132,6 +1161,14 @@ function containsPII(text) {
   if (emailPattern.test(text)) return true;
   if (addressPattern.test(text)) return true;
   if (identifyingPhrases.some((phrase) => lower.includes(phrase))) return true;
+  // Defense in depth: validatePost / validateReply already delete on the
+  // create trigger, but onPostUpdated / onReplyUpdated / onMessageCreated
+  // moderation runs through this helper. Without delegation here, an editor
+  // (or a tampered client editing into an existing doc) could slip a name
+  // past the soft-flag pipeline. The delegated detector is a strict
+  // superset of the checks above; the redundant calls above are kept for
+  // clarity and because they run cheaply on early returns.
+  if (containsNameOrIdentifyingInfo(text)) return true;
   return false;
 }
 
@@ -1353,6 +1390,20 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
   //     metadata fields, etc.) doesn't need a moderation pass.
   if (before.text === after.text) return;
 
+  // Identifying-info detection: take down on edit, not just flag.
+  // validatePost deletes name-containing posts at create time; without the
+  // mirror here, an author could publish clean text, pass create-time
+  // moderation, then edit a name in. computePostFlagReason() also routes
+  // this through "personal_information" (because containsPII delegates),
+  // but that path FLAGS rather than DELETES. For the name-detection vector
+  // specifically (defamation / Apple Guideline 1.2 risk on a public
+  // anonymous app), takedown is the right policy on edits too.
+  if (containsNameOrIdentifyingInfo(after.text)) {
+    console.warn(`Deleting post ${postId} after edit — server-side identifying-info detector tripped`);
+    await db.collection("posts").doc(postId).delete();
+    return;
+  }
+
   const flagReason = computePostFlagReason(after.text);
   const concerning = isPostConcerning(after.text);
 
@@ -1446,6 +1497,15 @@ exports.onReplyUpdated = onDocumentUpdated(
     const before = (event.data && event.data.before && event.data.before.data()) || {};
     const after = (event.data && event.data.after && event.data.after.data()) || {};
     if (before.text === after.text) return;
+
+    // Identifying-info detection on edit: take down outright. Mirrors the
+    // onPostUpdated handling — applyReplyModeration would otherwise route
+    // a "personal_information" flagReason to the soft-flag path.
+    if (containsNameOrIdentifyingInfo(after.text)) {
+      console.warn(`Deleting reply ${event.params.replyId} on post ${event.params.postId} after edit — server-side identifying-info detector tripped`);
+      await db.collection("posts").doc(event.params.postId).collection("replies").doc(event.params.replyId).delete();
+      return;
+    }
 
     const flagReason = computeReplyFlagReason(after.text);
     if (!flagReason) return;

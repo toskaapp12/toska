@@ -382,10 +382,6 @@ These were flagged during the 2026-04-26 / 2026-04-29 audits and
 deliberately not fixed. Re-evaluate if any of these become exploited
 or scale past their current risk model:
 
-- **EditReplyView** lacks a `contentViolation` handler — edited replies
-  bypass the client-side moderation precheck (server-side
-  `onReplyUpdated` still re-runs moderation, so flagged content gets
-  caught at the trigger layer).
 - **functions/cleanup.js** missing project-id guard — admin tooling
   that wipes everything; safe because it's run manually on dev DBs only.
 - **AppleSignInHelper.revokeTokenIfNeeded** keychain delete query is

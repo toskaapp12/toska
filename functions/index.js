@@ -65,6 +65,98 @@ async function cleanupPostsForUid(uid, maxIterations) {
   return { totalDeleted, capHit: batchCount >= maxIterations };
 }
 
+// Paginated deletion of a deleted user's orphaned cross-user notifications.
+// Notifications authored by `uid` (likes, replies, follows, etc.) live in
+// the *recipient's* notifications subcollection — addressable via
+// collectionGroup. Previously inlined in onUserDocDeleted with a 50-iter
+// cap and no continuation; for users with > 25K orphaned notifications
+// the leftovers stayed in recipients' inboxes showing a deleted user's
+// stale handle. Pulled into a helper so resumeUserCleanup can drain the
+// remainder across subsequent runs (same shape as cleanupPostsForUid).
+async function cleanupNotificationsForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const snap = await db.collectionGroup("notifications")
+      .where("fromUserId", "==", uid)
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Paginated deletion of feeling-circle messages authored by a deleted
+// user. Same shape as the notification helper — collectionGroup query,
+// 500-doc batch, returns capHit so the caller can queue continuation.
+async function cleanupCircleMessagesForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const snap = await db.collectionGroup("messages")
+      .where("authorId", "==", uid)
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Paginated deletion of pending reports filed by a deleted user. Reports
+// filed *against* this user must persist (moderation history survives
+// deletion); reports they themselves filed are cleaned up so the queue
+// doesn't attribute pending items to a tombstoned uid.
+async function cleanupSubmittedReportsForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const snap = await db.collection("reports")
+      .where("reportedBy", "==", uid)
+      .where("status", "==", "pending")
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Write a continuation marker that resumeUserCleanup picks up. Keyed by
+// `${uid}_${type}` for idempotency — re-queuing the same type is a no-op
+// rewrite of the same fields. cumulativeDeleted is set on initial queue
+// and FieldValue.increment'd by resume passes.
+async function queueUserCleanupContinuation(uid, type, totalDeleted) {
+  try {
+    await db.collection("userDeletionCleanupQueue")
+      .doc(`${uid}_${type}`)
+      .set({
+        uid,
+        type,
+        queuedAt: FieldValue.serverTimestamp(),
+        cumulativeDeleted: totalDeleted,
+      });
+  } catch (err) {
+    console.error(`userDeletionCleanupQueue write failed for ${uid}/${type}:`, err.message);
+  }
+}
+
 // ============================================================
 // HTTP endpoint rate limiting (per-uid sliding window)
 //
@@ -228,71 +320,47 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       }
     }
 
-    // Cross-user notifications authored by the deleted user — likes,
-    // replies, follows, reposts, saves, messages all leave a doc in
-    // the *recipient's* notifications subcollection with fromUserId
-    // set to the actor. The user-doc trigger never visits those, so
-    // they used to linger forever showing a deleted user's old handle.
-    // collectionGroup walks every user's notifications in one query.
+    // Cross-user notifications, feeling-circle messages, and pending
+    // reports the deleted user filed. Each helper paginates with a
+    // 50-iteration cap (≈25K docs); if more remain, queue a
+    // continuation entry that resumeUserCleanup drains across hourly
+    // sweeps. Without the continuation, heavy users could leave
+    // orphaned data — fine for typical v1.0 scale but a GDPR Art. 17
+    // gap that compounds over time.
     try {
-      // Hard-cap the loop so a user with millions of orphaned notifications
-      // can't stall this function past its timeout. 50 iterations × 500 = 25K
-      // notifications cleaned per invocation; any leftovers get swept the next
-      // time the trigger replays.
-      let totalDeletedNotifs = 0;
-      for (let i = 0; i < 50; i++) {
-        const orphanedNotifs = await db.collectionGroup("notifications")
-          .where("fromUserId", "==", uid)
-          .limit(500)
-          .get();
-        if (orphanedNotifs.empty) break;
-        const batch = db.batch();
-        orphanedNotifs.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
-        totalDeletedNotifs += orphanedNotifs.size;
-        if (orphanedNotifs.size < 500) break;
+      const notifResult = await cleanupNotificationsForUid(uid, 50);
+      if (notifResult.totalDeleted > 0) {
+        console.log(`Deleted ${notifResult.totalDeleted} orphaned notifications for user ${uid}`);
       }
-      if (totalDeletedNotifs > 0) {
-        console.log(`Deleted ${totalDeletedNotifs} orphaned notifications for user:`, uid);
+      if (notifResult.capHit) {
+        await queueUserCleanupContinuation(uid, "notifications", notifResult.totalDeleted);
+        console.warn(`Notifications cleanup cap hit for ${uid}; queued for resume.`);
       }
     } catch (err) {
       console.warn("Orphaned notification cleanup failed:", err.message);
     }
 
-    // Feeling-circle messages authored by the deleted user. The circles
-    // themselves expire on their own schedule (cleanupExpiredCircles),
-    // but their messages are addressable via collectionGroup and would
-    // otherwise stay visible inside still-active circles.
     try {
-      const orphanedCircleMsgs = await db.collectionGroup("messages")
-        .where("authorId", "==", uid)
-        .limit(500)
-        .get();
-      if (!orphanedCircleMsgs.empty) {
-        const batch = db.batch();
-        orphanedCircleMsgs.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
-        console.log(`Deleted ${orphanedCircleMsgs.size} feeling-circle messages for user:`, uid);
+      const circleResult = await cleanupCircleMessagesForUid(uid, 50);
+      if (circleResult.totalDeleted > 0) {
+        console.log(`Deleted ${circleResult.totalDeleted} feeling-circle messages for user ${uid}`);
+      }
+      if (circleResult.capHit) {
+        await queueUserCleanupContinuation(uid, "circleMessages", circleResult.totalDeleted);
+        console.warn(`Circle-message cleanup cap hit for ${uid}; queued for resume.`);
       }
     } catch (err) {
       console.warn("Feeling-circle message cleanup failed:", err.message);
     }
 
-    // Reports submitted by the deleted user. We keep reports filed
-    // *against* this user (moderation history must survive deletion)
-    // but clear the ones they filed so the moderation queue doesn't
-    // attribute pending items to a tombstoned uid.
     try {
-      const submittedReports = await db.collection("reports")
-        .where("reportedBy", "==", uid)
-        .where("status", "==", "pending")
-        .limit(500)
-        .get();
-      if (!submittedReports.empty) {
-        const batch = db.batch();
-        submittedReports.docs.forEach((doc) => batch.delete(doc.ref));
-        await batch.commit();
-        console.log(`Deleted ${submittedReports.size} pending reports filed by user:`, uid);
+      const reportResult = await cleanupSubmittedReportsForUid(uid, 50);
+      if (reportResult.totalDeleted > 0) {
+        console.log(`Deleted ${reportResult.totalDeleted} pending reports filed by user ${uid}`);
+      }
+      if (reportResult.capHit) {
+        await queueUserCleanupContinuation(uid, "reports", reportResult.totalDeleted);
+        console.warn(`Pending-report cleanup cap hit for ${uid}; queued for resume.`);
       }
     } catch (err) {
       console.warn("Pending-report cleanup failed:", err.message);
@@ -1682,6 +1750,61 @@ exports.resumePostDeletion = onSchedule("every 60 minutes", async () => {
 // Scheduled stale pendingDeletions monitor — runs every hour
 // ============================================================
 
+// ============================================================
+// Resume orphaned-data cleanup for heavy deleted users — M-3 fix
+// ============================================================
+//
+// Drains userDeletionCleanupQueue entries written by onUserDocDeleted
+// when a single invocation hit its iteration cap. Each queue doc is
+// keyed by `${uid}_${type}` where type ∈ {notifications, circleMessages,
+// reports}. We process up to 20 entries per run and drop the entry
+// when the corresponding helper reports capHit=false (i.e., the
+// collection is empty for that uid).
+//
+// Mirrors resumePostDeletion's shape so future cleanup types can be
+// added by extending the dispatch table without changing the schedule.
+// ============================================================
+
+exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
+  const queueSnap = await db.collection("userDeletionCleanupQueue").limit(20).get();
+  if (queueSnap.empty) {
+    console.log("userDeletionCleanupQueue is empty.");
+    return;
+  }
+
+  const dispatch = {
+    notifications: cleanupNotificationsForUid,
+    circleMessages: cleanupCircleMessagesForUid,
+    reports: cleanupSubmittedReportsForUid,
+  };
+
+  for (const doc of queueSnap.docs) {
+    const { uid, type } = doc.data();
+    const handler = dispatch[type];
+    if (!handler) {
+      console.warn(`Unknown cleanup type ${type} for ${uid}; dropping queue entry.`);
+      await doc.ref.delete();
+      continue;
+    }
+    try {
+      const result = await handler(uid, 50);
+      if (result.capHit) {
+        await doc.ref.update({
+          lastResumedAt: FieldValue.serverTimestamp(),
+          cumulativeDeleted: FieldValue.increment(result.totalDeleted),
+        });
+        console.log(`Partial cleanup for ${uid}/${type}: +${result.totalDeleted}, staying in queue.`);
+      } else {
+        console.log(`Completed cleanup for ${uid}/${type}: +${result.totalDeleted} this pass.`);
+        await doc.ref.delete();
+      }
+    } catch (err) {
+      console.error(`resumeUserCleanup failed for ${uid}/${type}:`, err.message);
+      // Leave in queue; next invocation will retry.
+    }
+  }
+});
+
 exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
   const tenMinutesAgo = Timestamp.fromDate(new Date(Date.now() - 10 * 60 * 1000));
 
@@ -2077,5 +2200,44 @@ exports.auditReportResolution = onDocumentUpdated(
       before: { status: before.status || null },
       after:  { status: after.status  || null, action: after.action || null },
     });
+  }
+);
+
+// ============================================================
+// New-report admin notification — H-1 from pre-submission review
+// ============================================================
+//
+// Emits a structured warning log on every new pending report so a
+// Cloud Logging-based alert policy in Cloud Monitoring can match and
+// route to the existing Toska Alerts notification channel
+// (salte@saltedevelopments.com). The in-app ReportSheet promises
+// "reports are reviewed within 24 hours" — without this, the admin
+// only sees new reports when they happen to open admin.html.
+//
+// One-time setup on prod (toska-4ebf4): create a log-based alert
+// policy that filters on jsonPayload.tag = "new_report_for_review"
+// and notifies the Toska Alerts channel. Same shape on staging if
+// you want staging-environment alerts too.
+//
+// Severity is set to WARNING so it doesn't get mixed in with the
+// rate-limited ERROR-rate alert that already exists for runtime
+// failures of sendPushNotification / onUserDocDeleted / validatePost.
+// ============================================================
+
+exports.notifyAdminsOfNewReport = onDocumentCreated(
+  "reports/{reportId}",
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+    // JSON.stringify the payload so Cloud Logging parses each field
+    // into jsonPayload.* — the alert filter then reads jsonPayload.tag.
+    console.warn(JSON.stringify({
+      tag: "new_report_for_review",
+      reportId: event.params.reportId,
+      type: data.type || "unknown",
+      reason: data.reason || "unknown",
+      reportedHandle: data.reportedHandle || null,
+      severity: "WARNING",
+    }));
   }
 );

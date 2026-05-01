@@ -100,6 +100,18 @@ struct SettingsView: View {
                                 toggleRow("share anonymous usage data", subtitle: "helps us fix bugs and improve the app. never includes what you wrote.", isOn: $shareAnonymousUsage)
                                 Divider().padding(.leading, 14)
                                 actionRow("view content policy") { showContentPolicy = true }
+                                Divider().padding(.leading, 14)
+                                actionRow("privacy policy") {
+                                    if let url = URL(string: "https://www.toskaapp.com/privacy") {
+                                        UIApplication.shared.open(url)
+                                    }
+                                }
+                                Divider().padding(.leading, 14)
+                                actionRow("terms of service") {
+                                    if let url = URL(string: "https://www.toskaapp.com/terms") {
+                                        UIApplication.shared.open(url)
+                                    }
+                                }
                             }
                             .background(Color.white)
                             .cornerRadius(12)

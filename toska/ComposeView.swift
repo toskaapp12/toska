@@ -772,7 +772,24 @@ struct ComposeView: View {
                     self.isPosting = false
                     if let error = error {
                         Telemetry.recordError(error, context: "ComposeView.addPost")
-                        self.postError = "couldnt post. try again. the feeling isnt going anywhere."
+                        let nsError = error as NSError
+                        // permission-denied on first post usually means
+                        // hasConfirmedAdult() rejected the write because the
+                        // confirmAdult Cloud Function call from the iOS age
+                        // gate hadn't landed (network blip / App Check token
+                        // race during signup). Kick off a retry of that call
+                        // and surface a specific error so the user knows the
+                        // retry is meaningful, not a blind retry of the same
+                        // failing operation. On the next post-tap, hasConfirmedAdult()
+                        // should pass.
+                        if nsError.domain == "FIRFirestoreErrorDomain", nsError.code == 7 {
+                            Task.detached {
+                                try? await confirmAdultServerSide(uid: uid)
+                            }
+                            self.postError = "still setting up your account — try again in a moment"
+                        } else {
+                            self.postError = "couldnt post. try again. the feeling isnt going anywhere."
+                        }
                         // Confirmed failure → shorten the rate-limit window
                         // so retry waits ~5s instead of the full 30s. The
                         // postError banner explicitly says "try again";

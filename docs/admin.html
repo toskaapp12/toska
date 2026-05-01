@@ -49,6 +49,17 @@
         .status-resolved { opacity: 0.4; }
         .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1c1e1f; color: #6ba58e; padding: 10px 20px; border-radius: 8px; font-size: 12px; display: none; z-index: 100; border: 1px solid #6ba58e30; }
         .loading { text-align: center; padding: 40px; color: #555960; }
+        /* H-1: 24-hour SLA visibility. ReportSheet promises "reports are
+           reviewed within 24 hours"; this styling surfaces which pending
+           reports are nearing or past that threshold so the admin can
+           triage them first. .overdue uses the same red as .card-reason
+           to draw the eye; .aging is amber for the 12–24h band. */
+        .card.overdue { border-color: #c45c5c80; }
+        .card.aging { border-color: #c49a6c60; }
+        .sla-badge { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 4px; margin-left: 8px; }
+        .sla-overdue { background: #c45c5c20; color: #c45c5c; }
+        .sla-aging { background: #c49a6c20; color: #c49a6c; }
+        .header .stat.overdue strong { color: #c45c5c; }
     </style>
 </head>
 <body>
@@ -65,6 +76,7 @@
             <h1>toska admin</h1>
             <div class="right">
                 <span class="stat">pending: <strong id="pendingCount">0</strong></span>
+                <span class="stat overdue">overdue: <strong id="overdueCount">0</strong></span>
                 <span class="stat">flagged: <strong id="flaggedCount">0</strong></span>
                 <button id="signOutBtn">sign out</button>
             </div>
@@ -275,20 +287,47 @@
                 document.getElementById("pendingCount").textContent = snap.size;
 
                 if (snap.empty) {
+                    document.getElementById("overdueCount").textContent = 0;
                     emptyState(container, "nothing to review", "no pending reports right now");
                     return;
                 }
 
                 container.replaceChildren();
+                let overdueCount = 0;
+                const now = Date.now();
+                const TWELVE_HOURS_MS = 12 * 3600 * 1000;
+                const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1000;
                 snap.forEach(d => {
                     const r = d.data();
-                    const time = r.createdAt?.toDate?.() ? timeAgo(r.createdAt.toDate()) : "unknown";
+                    const reportDate = r.createdAt?.toDate?.() || null;
+                    const time = reportDate ? timeAgo(reportDate) : "unknown";
+                    // H-1: classify each pending report against the
+                    // 24-hour review SLA the in-app ReportSheet promises.
+                    // Overdue (>24h) → red border + count badge. Aging
+                    // (>12h) → amber so the admin sees what's about to
+                    // miss SLA before it does.
+                    const ageMs = reportDate ? now - reportDate.getTime() : 0;
+                    let slaClass = "";
+                    let slaBadge = null;
+                    if (ageMs > TWENTY_FOUR_HOURS_MS) {
+                        slaClass = "overdue";
+                        slaBadge = span("sla-badge sla-overdue", "overdue");
+                        overdueCount += 1;
+                    } else if (ageMs > TWELVE_HOURS_MS) {
+                        slaClass = "aging";
+                        slaBadge = span("sla-badge sla-aging", "aging");
+                    }
 
-                    const card = el("div", "card");
+                    const card = el("div", `card${slaClass ? " " + slaClass : ""}`);
                     card.id = `report-${d.id}`;
 
                     const header = el("div", "card-header");
-                    header.append(typeBadge(r.type), span("card-time", time));
+                    const headerLeft = el("div");
+                    headerLeft.style.display = "flex";
+                    headerLeft.style.alignItems = "center";
+                    headerLeft.appendChild(typeBadge(r.type));
+                    if (slaBadge) headerLeft.appendChild(slaBadge);
+                    header.append(headerLeft, span("card-time", time));
                     card.appendChild(header);
 
                     const reasonText = r.reasonLabel || r.reason || "";
@@ -340,6 +379,7 @@
                     card.appendChild(actions);
                     container.appendChild(card);
                 });
+                document.getElementById("overdueCount").textContent = overdueCount;
             } catch (e) {
                 emptyState(container, "error loading reports", e.message);
             }

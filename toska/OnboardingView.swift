@@ -113,9 +113,22 @@ struct OnboardingView: View {
                 }
                 
                 Spacer()
-                
+
+                // Gate every forward-navigation control on acceptanceChecked.
+                // Without this, a fast tapper can advance from welcome →
+                // mood → "skip" before checkAcceptanceStatus's async read
+                // returns and triggers the age-gate fullScreenCover —
+                // completing onboarding without ever seeing the gate. The
+                // server hasConfirmedAdult() rule still blocks publishing,
+                // but Apple expects the user to take an affirmative action
+                // before reaching content surfaces. Until the read resolves
+                // we render a small spinner in place of the buttons.
                 VStack(spacing: 8) {
-                    if currentStep < 2 {
+                    if !acceptanceChecked {
+                        ProgressView()
+                            .tint(Color.toskaBlue)
+                            .padding(.vertical, 18)
+                    } else if currentStep < 2 {
                         Button {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 currentStep += 1

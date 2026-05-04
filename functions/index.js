@@ -21,9 +21,21 @@ const GIPHY_KEY = defineSecret("GIPHY_KEY");
 // Helper functions
 // ============================================================
 
-async function deleteCollection(collectionRef) {
+// Bounded paginated deletion of every doc in a collection. Caps at
+// `maxBatches` 499-doc commits per invocation so a single call can't
+// run past a function's timeout — earlier shape was an `while (true)`
+// loop, fine for typical per-post subcollections but capable of
+// stranding a viral post's 100k+ likes mid-cleanup.
+//
+// Returns `{ totalDeleted, capHit }`. Most callers ignore the return —
+// the cap is just a safety net. Callers that orchestrate continuation
+// (cleanupPostsForUid + the userDeletionCleanupQueue path) check
+// capHit and queue the rest.
+async function deleteCollection(collectionRef, maxBatches = 100) {
   const batchSize = 499;
-  while (true) {
+  let batches = 0;
+  let totalDeleted = 0;
+  while (batches < maxBatches) {
     const snapshot = await collectionRef.limit(batchSize).get();
     if (snapshot.empty) break;
     const batch = db.batch();
@@ -34,8 +46,22 @@ async function deleteCollection(collectionRef) {
       console.warn("deleteCollection batch failed:", err.message);
       break;
     }
+    batches++;
+    totalDeleted += snapshot.size;
     if (snapshot.size < batchSize) break;
   }
+  const capHit = batches >= maxBatches;
+  if (capHit) {
+    // Loud warning is the signal: somewhere a subcollection grew large
+    // enough to hit the cap. The legacy unbounded loop hid this; surface
+    // it now so we can add a continuation path before it becomes data
+    // loss in production.
+    console.warn(
+      `deleteCollection cap hit on ${collectionRef.path}: ` +
+      `deleted ${totalDeleted} this pass, more remain.`
+    );
+  }
+  return { totalDeleted, capHit };
 }
 
 // Paginated deletion of a user's posts (and their replies/likes/reflections
@@ -50,6 +76,111 @@ async function cleanupPostsForUid(uid, maxIterations) {
   while (batchCount < maxIterations) {
     const batch = await db.collection("posts")
       .where("authorId", "==", uid)
+      .limit(100)
+      .get();
+    if (batch.empty) break;
+    for (const postDoc of batch.docs) {
+      await deleteCollection(postDoc.ref.collection("replies"));
+      await deleteCollection(postDoc.ref.collection("likes"));
+      await deleteCollection(postDoc.ref.collection("reflections"));
+      await postDoc.ref.delete();
+    }
+    batchCount++;
+    totalDeleted += batch.size;
+    if (batch.size < 100) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Paginated cleanup of mirror follow edges for a deleted user. Each follow
+// relationship lives in two places:
+//   - the follower's `following/{followee}` doc
+//   - the followee's `followers/{follower}` doc
+// Previously the cascade did unbounded `.get()` calls on the deleted user's
+// followers and following subcollections, then issued one Firestore call per
+// edge — for users with five-figure social graphs that exceeded memory or
+// timed out before completing.
+//
+// Now: paginate at 100 edges per pass, batch-delete both sides (the deleted
+// user's local edge AND the mirror in the peer's subcollection), and return
+// capHit so resumeUserCleanup can drain the rest across hourly sweeps.
+//
+// Counter decrements stay owned by onFollowDeletedUpdateCounts. The trigger
+// fires on `users/{userId}/following/{followedId}` deletes only — so two
+// of the four delete shapes here fire a trigger:
+//   - peer/following/{deletedUid}    (fires; -1 peer.followingCount, -1 deletedUid.followerCount)
+//   - deletedUid/following/{peer}    (fires; -1 deletedUid.followingCount, -1 peer.followerCount)
+// Net: each peer loses one follow on the relevant side. The deletedUid's own
+// counters become moot once the user doc is gone (writes silently no-op on
+// a missing doc, matching how the previous shape worked).
+async function cleanupMirrorFollowsForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+
+  // Followers side: peers who follow uid. Delete their `following/{uid}`
+  // mirror (fires trigger) AND uid's local `followers/{peer}` row.
+  while (batchCount < maxIterations) {
+    const snap = await db.collection("users").doc(uid).collection("followers")
+      .limit(100)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.delete(db.collection("users").doc(doc.id).collection("following").doc(uid));
+      batch.delete(doc.ref);
+    }
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.warn("cleanupMirrorFollowsForUid followers batch failed:", err.message);
+      break;
+    }
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 100) break;
+  }
+
+  // Following side: peers uid follows. Delete their `followers/{uid}` row
+  // (no trigger) AND uid's local `following/{peer}` row (fires trigger).
+  while (batchCount < maxIterations) {
+    const snap = await db.collection("users").doc(uid).collection("following")
+      .limit(100)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.delete(db.collection("users").doc(doc.id).collection("followers").doc(uid));
+      batch.delete(doc.ref);
+    }
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.warn("cleanupMirrorFollowsForUid following batch failed:", err.message);
+      break;
+    }
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 100) break;
+  }
+
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Paginated deletion of reposts of a deleted user's content. Reposts live in
+// the top-level `posts` collection with `originalAuthorId == <deleted uid>`
+// and remain visible on third-party profiles (ProfileView renders them with
+// `originalHandle` as the byline) long after the original author deleted
+// their account. Same shape as cleanupPostsForUid — also deletes per-post
+// subcollections so the repost's own likes/replies/reflections don't orphan.
+//
+// `originalAuthorId` is a single-field equality filter — Firestore auto-
+// indexes that, no composite needed.
+async function cleanupRepostsForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const batch = await db.collection("posts")
+      .where("originalAuthorId", "==", uid)
       .limit(100)
       .get();
     if (batch.empty) break;
@@ -96,6 +227,13 @@ async function cleanupNotificationsForUid(uid, maxIterations) {
 // Paginated deletion of feeling-circle messages authored by a deleted
 // user. Same shape as the notification helper — collectionGroup query,
 // 500-doc batch, returns capHit so the caller can queue continuation.
+//
+// Feeling-circle messages only — NOT DMs. The collectionGroup query
+// filters on `authorId`, which is the field circle messages use; DM
+// messages use `senderId` instead, so they don't match. DM cleanup
+// happens via the conversations cascade in onUserDocDeleted (entire
+// conversation doc + messages subcollection deleted when uid is a
+// participant).
 async function cleanupCircleMessagesForUid(uid, maxIterations) {
   let batchCount = 0;
   let totalDeleted = 0;
@@ -155,6 +293,53 @@ async function queueUserCleanupContinuation(uid, type, totalDeleted) {
       });
   } catch (err) {
     console.error(`userDeletionCleanupQueue write failed for ${uid}/${type}:`, err.message);
+  }
+}
+
+// ============================================================
+// Counter-trigger event dedup
+//
+// Eventarc/Pub/Sub deliver Firestore document events with at-least-once
+// semantics. Counter triggers below use `FieldValue.increment(±1)` which
+// is NOT idempotent under redelivery — a single physical create-event
+// delivered twice would double the count. `sendPushNotification` already
+// guards against this via a transactional `processed: true` claim on the
+// notification doc; counter triggers had no equivalent.
+//
+// Pattern: at trigger entry, runTransaction-set `processedTriggerEvents/
+// {event.id}`. If the doc already exists, return without doing the
+// counter update (already processed). The event.id is the Eventarc
+// CloudEvent id, stable across retries of the same delivery.
+//
+// `expiresAt` is for a Firestore TTL policy on the collection (configure
+// once via Firebase Console → Firestore → TTL → field path
+// `processedTriggerEvents.expiresAt`). Without TTL the collection grows
+// unbounded; the scheduled `cleanupProcessedTriggerEvents` sweep below is
+// a fallback for projects where TTL isn't configured yet.
+// ============================================================
+async function claimTriggerEvent(eventId) {
+  // No event id available (test env, malformed event) → run without dedup.
+  // Better to over-count once than to silently drop the counter update.
+  if (!eventId || typeof eventId !== "string") return true;
+  const claimRef = db.collection("processedTriggerEvents").doc(eventId);
+  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  try {
+    return await db.runTransaction(async (tx) => {
+      const snap = await tx.get(claimRef);
+      if (snap.exists) return false;
+      tx.set(claimRef, {
+        processedAt: FieldValue.serverTimestamp(),
+        expiresAt,
+      });
+      return true;
+    });
+  } catch (err) {
+    // Failing open here is the right call: a transient Firestore hiccup
+    // shouldn't permanently skip a real counter update. The cost is one
+    // potential double-count per Firestore-outage event — same shape as
+    // the pre-fix behavior. Log so persistent issues surface.
+    console.warn(`claimTriggerEvent ${eventId} errored, failing open:`, err.message);
+    return true;
   }
 }
 
@@ -263,32 +448,26 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       console.log(`Deleted ${postCleanup.totalDeleted} posts for user ${uid}`);
     }
 
-    // Counter decrements are owned by onFollowDeletedUpdateCounts, which
-    // fires on every /users/{userId}/following/{followedId} delete. The
-    // cascade used to manually safeDecrement here as well, which double-
-    // decremented every counter that the trigger had already touched
-    // (X.followingCount in the first loop directly; X.followerCount in
-    // the second loop via the Phase-below subcollection delete on
-    // users/uid/following). Letting the trigger be the single source of
-    // truth keeps the math symmetric with normal follow→unfollow flows.
-    //
-    // First loop deletes the OTHER side of each follower's relationship
-    // (their following list pointing at uid). Second loop deletes the
-    // OTHER side of each followee's relationship (their followers list
-    // pointing at uid). The bulk subcollection delete below handles the
-    // mirror docs on uid's own subcollections — which fire the trigger
-    // again for users/uid/following entries, decrementing each followee's
-    // followerCount.
-    const followersSnap = await db.collection("users").doc(uid).collection("followers").get();
-    for (const doc of followersSnap.docs) {
-      await db.collection("users").doc(doc.id).collection("following").doc(uid).delete();
-    }
-    const followingSnap = await db.collection("users").doc(uid).collection("following").get();
-    for (const doc of followingSnap.docs) {
-      await db.collection("users").doc(doc.id).collection("followers").doc(uid).delete();
+    // Follower/following cleanup runs through the paginated helper so a
+    // heavy social graph doesn't OOM the cascade or time out before
+    // completing. The helper deletes both sides (peer mirror + uid's local
+    // edge) in batched commits, so we drop "following"/"followers" from the
+    // generic subs loop below — they're already empty by the time we get
+    // there. If the cap is hit, resumeUserCleanup drains the rest hourly.
+    try {
+      const followsResult = await cleanupMirrorFollowsForUid(uid, 50);
+      if (followsResult.totalDeleted > 0) {
+        console.log(`Deleted ${followsResult.totalDeleted} follow edges for user ${uid}`);
+      }
+      if (followsResult.capHit) {
+        await queueUserCleanupContinuation(uid, "follows", followsResult.totalDeleted);
+        console.warn(`Follow-edge cleanup cap hit for ${uid}; queued for resume.`);
+      }
+    } catch (err) {
+      console.warn("Follow-edge cleanup failed:", err.message);
     }
 
-    const subs = ["saved", "liked", "following", "followers", "notifications", "blocked", "presence", "private"];
+    const subs = ["saved", "liked", "notifications", "blocked", "presence", "private"];
     for (const sub of subs) {
       await deleteCollection(db.collection("users").doc(uid).collection(sub));
     }
@@ -365,6 +544,24 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       }
     } catch (err) {
       console.warn("Pending-report cleanup failed:", err.message);
+    }
+
+    // Reposts of this user's content by other accounts. These don't show up
+    // in the authorId==uid sweep above (different field) and previously
+    // orphaned indefinitely — third-party profiles kept showing the deleted
+    // user's @handle as the repost byline forever. Same 50-iter cap and
+    // queue-for-resume shape as the helpers above.
+    try {
+      const repostResult = await cleanupRepostsForUid(uid, 50);
+      if (repostResult.totalDeleted > 0) {
+        console.log(`Deleted ${repostResult.totalDeleted} third-party reposts of user ${uid}`);
+      }
+      if (repostResult.capHit) {
+        await queueUserCleanupContinuation(uid, "reposts", repostResult.totalDeleted);
+        console.warn(`Repost cleanup cap hit for ${uid}; queued for resume.`);
+      }
+    } catch (err) {
+      console.warn("Repost cleanup failed:", err.message);
     }
 
     console.log("Cleanup complete for user:", uid);
@@ -695,6 +892,7 @@ exports.onPendingDeletionCreated = onDocumentCreated(
 exports.onLikeCreatedUpdateCounts = onDocumentCreated(
   "posts/{postId}/likes/{userId}",
   async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
 
@@ -729,6 +927,7 @@ exports.onLikeCreatedUpdateCounts = onDocumentCreated(
 exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
   "posts/{postId}/likes/{userId}",
   async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
 
@@ -760,6 +959,7 @@ exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
 exports.onReplyCreatedUpdateCount = onDocumentCreated(
   "posts/{postId}/replies/{replyId}",
   async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     const replyData = event.data.data();
     if (!replyData) return;
@@ -793,6 +993,7 @@ exports.onReplyCreatedUpdateCount = onDocumentCreated(
 exports.onReplyDeletedUpdateCount = onDocumentDeleted(
   "posts/{postId}/replies/{replyId}",
   async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     try {
       await db.collection("posts").doc(postId).update({
@@ -816,6 +1017,9 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
     if (postData.isRepost !== true) return;
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
+    // Claim is gated on the isRepost guards above so non-repost create
+    // events don't burn a processedTriggerEvents row for a no-op.
+    if (!await claimTriggerEvent(event.id)) return;
 
     try {
       await db.collection("posts").doc(originalPostId).update({
@@ -843,6 +1047,7 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
     if (postData.isRepost !== true) return;
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
+    if (!await claimTriggerEvent(event.id)) return;
 
     try {
       await db.collection("posts").doc(originalPostId).update({
@@ -854,6 +1059,64 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
   }
 );
 
+// Cleanup hook: when an original (non-repost) post is deleted, every
+// repost pointing at it is now orphaned with originalPostId referencing
+// nothing. PostDetailView's iOS delete path already tries to clean these
+// up at line 803-807, but rules deny non-author repost deletes from the
+// client (allow delete: authorId == auth.uid OR isAdmin) — those `try?`
+// calls silently fail and the reposts stick around forever. Server-side
+// trigger uses the Admin SDK and bypasses rules, so it actually works.
+//
+// Also fires on admin-deleted posts, validatePost-deleted posts (size /
+// blank / name-PII takedowns), onPostUpdated-deleted posts (edited-in
+// name detection), and cleanupExpiredPosts — every path that produces a
+// post delete. The trigger is naturally idempotent: if the iOS path
+// already deleted everything, the second pass finds an empty result.
+//
+// Bounded at 50 iterations × 100 reposts = 5000 cleared per invocation.
+// Re-firing on a future event isn't an option (the parent post is gone),
+// so for posts with > 5000 reposts the leftovers would orphan; if that
+// becomes a concern, swap in the queueUserCleanupContinuation pattern
+// keyed by originalPostId.
+exports.onPostDeletedCleanupReposts = onDocumentDeleted("posts/{postId}", async (event) => {
+  const postData = event.data.data();
+  if (!postData) return;
+  // Only original posts can have reposts pointing at them. Repost-of-
+  // repost is forbidden by PostInteractionManager.repost (line 290 in
+  // PostInteractionManager.swift), so a repost being deleted never has
+  // children to clean up.
+  if (postData.isRepost === true) return;
+  const postId = event.params.postId;
+
+  let totalDeleted = 0;
+  for (let i = 0; i < 50; i++) {
+    const snap = await db.collection("posts")
+      .where("isRepost", "==", true)
+      .where("originalPostId", "==", postId)
+      .limit(100)
+      .get();
+    if (snap.empty) break;
+    for (const repostDoc of snap.docs) {
+      // Each repost may itself carry replies/likes/reflections that
+      // accumulated while the repost was live. Clean them up before
+      // deleting the repost doc — same shape as cleanupPostsForUid.
+      await deleteCollection(repostDoc.ref.collection("replies"));
+      await deleteCollection(repostDoc.ref.collection("likes"));
+      await deleteCollection(repostDoc.ref.collection("reflections"));
+      try {
+        await repostDoc.ref.delete();
+      } catch (err) {
+        console.warn(`onPostDeletedCleanupReposts: failed to delete repost ${repostDoc.id}:`, err.message);
+      }
+    }
+    totalDeleted += snap.size;
+    if (snap.size < 100) break;
+  }
+  if (totalDeleted > 0) {
+    console.log(`onPostDeletedCleanupReposts: cleared ${totalDeleted} reposts of ${postId}`);
+  }
+});
+
 // ============================================================
 // Counter: follow counts (server-side only)
 // ============================================================
@@ -861,6 +1124,7 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
 exports.onFollowCreatedUpdateCounts = onDocumentCreated(
   "users/{userId}/following/{followedId}",
   async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
     const userId = event.params.userId;
     const followedId = event.params.followedId;
 
@@ -890,6 +1154,7 @@ exports.onFollowCreatedUpdateCounts = onDocumentCreated(
 exports.onFollowDeletedUpdateCounts = onDocumentDeleted(
   "users/{userId}/following/{followedId}",
   async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
     const userId = event.params.userId;
     const followedId = event.params.followedId;
 
@@ -958,6 +1223,9 @@ exports.onPostCreatedUpdateTagCounts = onDocumentCreated("posts/{postId}", async
   const tag = postData.tag;
   if (!tag || typeof tag !== "string") return;
   if (postData.isRepost === true) return;
+  // Claim is gated on the no-op early returns above so non-tag-bearing
+  // posts don't burn a processedTriggerEvents row.
+  if (!await claimTriggerEvent(event.id)) return;
 
   try {
     await db.collection("meta").doc("tagCounts").set(
@@ -982,6 +1250,7 @@ exports.onPostDeletedUpdateTagCounts = onDocumentDeleted("posts/{postId}", async
   const tag = postData.tag;
   if (!tag || typeof tag !== "string") return;
   if (postData.isRepost === true) return;
+  if (!await claimTriggerEvent(event.id)) return;
 
   try {
     await db.collection("meta").doc("tagCounts").set(
@@ -1002,7 +1271,55 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   const postData = event.data.data();
   if (!postData) return;
 
-  if (postData.isRepost === true) return;
+  // Reposts now run through their own validation path. Previously this
+  // trigger early-returned on isRepost === true, which let a tampered
+  // client write a repost doc with arbitrary text + originalAuthorId
+  // attributing fabricated content to any other user (PROFILE rendering
+  // in ProfileView.swift uses originalHandle as the byline). The legit
+  // iOS writer (PostInteractionManager.repost) copies the original's
+  // text/authorId verbatim — if those don't match, the repost is
+  // fabricated and gets the same takedown the blank/over-length branches
+  // get below.
+  //
+  // Counter math is symmetric either way: onRepostCreatedUpdateCount
+  // increments and onRepostDeletedUpdateCount decrements, so a bad-repost
+  // delete here ends up net-zero on the original's repostCount regardless
+  // of which trigger lands first.
+  if (postData.isRepost === true) {
+    const originalPostId = postData.originalPostId;
+    if (typeof originalPostId !== "string" || !originalPostId) {
+      console.warn(`Deleting repost ${postId} — missing originalPostId`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
+    const originalSnap = await db.collection("posts").doc(originalPostId).get();
+    if (!originalSnap.exists) {
+      console.warn(`Deleting repost ${postId} — original ${originalPostId} not found`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
+    const originalData = originalSnap.data();
+    if (originalData.isRepost === true) {
+      console.warn(`Deleting repost ${postId} — cannot repost a repost`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
+    if (postData.text !== originalData.text) {
+      console.warn(`Deleting repost ${postId} — text mismatch with original`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
+    if (postData.originalAuthorId !== originalData.authorId) {
+      console.warn(`Deleting repost ${postId} — originalAuthorId mismatch`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
+    // originalHandle is intentionally not equality-checked: the original
+    // author may have rotated their handle between when the reposter
+    // fetched the original and when this trigger fires. The display would
+    // be slightly stale but isn't an attribution forgery.
+    return;
+  }
 
   const text = postData.text;
 
@@ -1325,6 +1642,25 @@ async function checkRepeatOffenderPosts(authorId) {
       return flaggedAt.toDate().getTime() > sevenDaysAgoMs;
     });
     if (recentFlagged.length >= 5) {
+      // Idempotency: if the user is already inside an active system
+      // restriction window, leave it alone. Without this guard, every
+      // subsequent flagged post inside the rolling 7-day count above the
+      // 5-flag threshold rewrote restrictedUntil to now+48h — letting a user
+      // who keeps tripping the threshold get trapped in a perpetually
+      // extending auto-restriction. Admin restrictions (restrictedBy != "system")
+      // are untouched here either way; this branch only fires when the
+      // existing restriction was itself system-set.
+      const userSnap = await db.collection("users").doc(authorId).get();
+      const userData = userSnap.exists ? userSnap.data() : {};
+      const alreadyRestricted = userData.restricted === true
+        && userData.restrictedBy === "system"
+        && userData.restrictedUntil
+        && typeof userData.restrictedUntil.toDate === "function"
+        && userData.restrictedUntil.toDate().getTime() > Date.now();
+      if (alreadyRestricted) {
+        console.log(`User ${authorId} already in active system restriction; skipping extension`);
+        return;
+      }
       const restrictedUntil = Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
       await db.collection("users").doc(authorId).update({
         restricted: true,
@@ -1608,6 +1944,39 @@ exports.rateLimitReplies = onDocumentCreated(
 // Scheduled post expiration cleanup — runs every hour
 // ============================================================
 
+// Fallback cleanup for processedTriggerEvents — the Firestore TTL policy
+// on `expiresAt` is the primary mechanism, but if TTL isn't configured on
+// a project (staging fresh-start, ops oversight) this scheduled sweep
+// keeps the collection from growing unbounded. Daily cadence is plenty —
+// each entry already lives 7 days for in-flight Eventarc retries to land.
+exports.cleanupProcessedTriggerEvents = onSchedule("every 24 hours", async () => {
+  const now = Timestamp.now();
+  let totalDeleted = 0;
+  // Bounded sweep: 5 batches × 500 = 2500 deletions per run. At our
+  // expected event volume that's more than the daily inflow; if we ever
+  // fall behind, the next run picks up where we left off.
+  for (let i = 0; i < 5; i++) {
+    const snap = await db.collection("processedTriggerEvents")
+      .where("expiresAt", "<=", now)
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.warn("cleanupProcessedTriggerEvents batch failed:", err.message);
+      break;
+    }
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  if (totalDeleted > 0) {
+    console.log(`cleanupProcessedTriggerEvents: deleted ${totalDeleted} expired entries`);
+  }
+});
+
 exports.cleanupExpiredPosts = onSchedule("every 60 minutes", async () => {
   const now = Timestamp.now();
   console.log("Running expired post cleanup at:", now.toDate());
@@ -1748,6 +2117,9 @@ exports.onMessageCreatedUpdateCount = onDocumentCreated(
 
     const senderId = messageData.senderId;
     if (!senderId) return;
+    // Claim gated below the early returns so the v1-client skip path
+    // doesn't burn a processedTriggerEvents row per message.
+    if (!await claimTriggerEvent(event.id)) return;
 
     try {
       await db.collection("conversations").doc(convoId).update({
@@ -1836,6 +2208,8 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     notifications: cleanupNotificationsForUid,
     circleMessages: cleanupCircleMessagesForUid,
     reports: cleanupSubmittedReportsForUid,
+    reposts: cleanupRepostsForUid,
+    follows: cleanupMirrorFollowsForUid,
   };
 
   for (const doc of queueSnap.docs) {

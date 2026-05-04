@@ -484,12 +484,42 @@ service cloud.firestore {
       }
 
       match /reflections/{reflectionId} {
-        allow read: if isAuth();
+        // Reflections are AnniversaryCardView's "reflect on this moment"
+        // text saved per (post, uid). Only the reflection author and the
+        // post author have a legitimate need to read them — the previous
+        // `if isAuth()` opened them to anyone signed in, which is a
+        // privacy leak even though the doc IDs are uid-scoped (an
+        // attacker enumerating uids could harvest reflections at scale).
+        // Post-author read access is required for PostDetailView's
+        // delete-post cleanup path which lists this subcollection
+        // before tearing it down.
+        allow read: if isAuth()
+          && (resource.data.authorId == request.auth.uid
+              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+        // Schema lockdown + 500-char text cap mirrors the iOS UI bound
+        // at AnniversaryCardView.swift:157 — without it a tampered
+        // client could store arbitrary-length text per (post, uid),
+        // wasting Firestore storage on otherwise-private docs.
         allow create: if isAuth()
           && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.keys().hasOnly(['authorId', 'text', 'createdAt'])
+          && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
-        allow update, delete: if isAuth()
-          && resource.data.authorId == request.auth.uid;
+        allow update: if isAuth()
+          && resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+        // Post author can also delete reflections under their own post —
+        // PostDetailView's pre-delete-post cleanup loop reads + deletes
+        // them before deleting the parent. Without this, those `try?`
+        // deletes were rule-rejected silently and reflections orphaned.
+        allow delete: if isAuth()
+          && (resource.data.authorId == request.auth.uid
+              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
       }
     }
 
@@ -522,20 +552,32 @@ service cloud.firestore {
           || request.resource.data.messageCount.size() == 0
           || request.resource.data.messageCount.values().hasOnly([0])
         );
-      // On update messageCount can only change in two ways: not at all, or
-      // by exactly +1 to the calling user's own slot. Other participants'
-      // slots are immutable from the client side; this preserves the cap
-      // (a peer can't reset themselves) and prevents the same pre-seal
-      // attack via update. ConversationView.sendMessage's transaction
-      // increments messageCount.{auth.uid} by 1 inside the same write that
-      // creates the message, which matches this constraint exactly.
+      // Schema-locked update rule. Previously only `participants` and
+      // `createdAt` were blocked from change — every other field was open
+      // to either participant, including arbitrary keys a future trigger
+      // might trust (`flagged`, custom metadata, etc.) and per-peer slots
+      // in maps the rule didn't constrain. Now we explicitly allow-list
+      // the seven legitimate top-level fields ConversationView and
+      // OtherProfileView write, then constrain every per-uid map so a
+      // participant can only change their own slot.
+      //
+      // Allowed top-level mutations:
+      //   - lastMessage / lastMessageAt   (sendMessage)
+      //   - messageCount.{auth.uid}       (sendMessage; +1 only)
+      //   - typing.{auth.uid}             (updateTypingStatus)
+      //   - typingAt.{auth.uid}           (updateTypingStatus)
+      //   - lastRead.{auth.uid}           (markAsRead)
+      //   - participantHandles.{auth.uid} (OtherProfileView.startConversation
+      //                                    update path; refreshes own handle)
+      //
       // The legacy onMessageCreatedUpdateCount Cloud Function and the
       // post-moderation decrement in onMessageCreatedModerate use the
       // Admin SDK and bypass these rules.
       allow update: if isAuth()
         && request.auth.uid in resource.data.participants
-        && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['participants', 'createdAt'])
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['lastMessage', 'lastMessageAt', 'messageCount',
+                      'typing', 'typingAt', 'lastRead', 'participantHandles'])
         && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['messageCount'])
           || (
@@ -545,6 +587,30 @@ service cloud.firestore {
             && request.resource.data.messageCount.get(request.auth.uid, 0)
                  == resource.data.get('messageCount', {}).get(request.auth.uid, 0) + 1
           )
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['typing'])
+          || (request.resource.data.typing is map
+              && request.resource.data.typing.diff(resource.data.get('typing', {}))
+                   .affectedKeys().hasOnly([request.auth.uid]))
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['typingAt'])
+          || (request.resource.data.typingAt is map
+              && request.resource.data.typingAt.diff(resource.data.get('typingAt', {}))
+                   .affectedKeys().hasOnly([request.auth.uid]))
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastRead'])
+          || (request.resource.data.lastRead is map
+              && request.resource.data.lastRead.diff(resource.data.get('lastRead', {}))
+                   .affectedKeys().hasOnly([request.auth.uid]))
+        )
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participantHandles'])
+          || (request.resource.data.participantHandles is map
+              && request.resource.data.participantHandles.diff(resource.data.get('participantHandles', {}))
+                   .affectedKeys().hasOnly([request.auth.uid]))
         );
       allow delete: if false;
 
@@ -597,7 +663,42 @@ service cloud.firestore {
 
     match /feelingCircles/{circleId} {
       allow read: if isAuth() && request.auth.uid in resource.data.participants;
-      allow create: if isAuth();
+      // Hardened create. Previously `if isAuth();` — a tampered client
+      // could create a circle with arbitrary `participants: [victim, …]`
+      // (the size-20 + own-uid-only diff guard on update did not apply at
+      // create), arbitrary `expiresAt` (defeating cleanupExpiredCircles),
+      // or scratch fields. Lockdown:
+      //   - keys allow-listed to the five fields FeelingCircleView writes
+      //   - participants: must be exactly [auth.uid]; force-add of others
+      //     happens only via update, where the existing diff guard limits
+      //     additions to the caller's own uid
+      //   - createdAt: pinned to request.time so backdating is impossible
+      //   - expiresAt: bounded to (now, now + 26h]; the legitimate writer
+      //     (FeelingCircleView.joinCircle) sets it to next-local-midnight
+      //     which is at most ~25h ahead even at the extreme UTC-12
+      //     timezone. 26h gives device-clock-skew slack
+      //   - tag/date are optional (write happens with merge:true) but if
+      //     present must be short strings
+      allow create: if isAuth()
+        && request.resource.data.keys().hasOnly(
+             ['tag', 'date', 'participants', 'createdAt', 'expiresAt']
+           )
+        && request.resource.data.keys().hasAll(
+             ['participants', 'createdAt', 'expiresAt']
+           )
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 1
+        && request.resource.data.participants[0] == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt < request.time + duration.value(26, 'h')
+        && (!('tag' in request.resource.data.keys())
+            || (request.resource.data.tag is string
+                && request.resource.data.tag.size() <= 50))
+        && (!('date' in request.resource.data.keys())
+            || (request.resource.data.date is string
+                && request.resource.data.date.size() <= 32));
       // Updates can only touch `participants`, can only add or remove the
       // calling uid, and must keep the list at <= 20. Previously the rule
       // required only that auth.uid was somewhere in the new list — which
@@ -708,6 +809,16 @@ service cloud.firestore {
     match /adminAuditLog/{entryId} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // Internal dedup ledger written by Cloud Functions counter triggers
+    // via the Admin SDK (which bypasses these rules). Clients have no
+    // legitimate reason to read or write here — every entry is keyed by
+    // an Eventarc CloudEvent id. Configure a Firestore TTL on the
+    // `expiresAt` field so docs auto-delete; the scheduled
+    // cleanupProcessedTriggerEvents sweep is a fallback if TTL isn't on.
+    match /processedTriggerEvents/{eventId} {
+      allow read, write: if false;
     }
 
     match /pendingDeletions/{uid} {

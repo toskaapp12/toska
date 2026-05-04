@@ -559,6 +559,30 @@ ship via GitHub Pages on push.
 
 ---
 
+## Firestore TTL policies
+
+These collections rely on a Firestore TTL policy to garbage-collect their own
+documents. Configure once per project (prod and staging) — the policy is
+silent if not set, and the fallback scheduled cleanup will eventually drain.
+
+| Collection | TTL field | Purpose |
+|---|---|---|
+| `processedTriggerEvents` | `expiresAt` | Counter-trigger dedup ledger; entries written with a 7-day expiry by `claimTriggerEvent` in functions/index.js. Without TTL, the fallback `cleanupProcessedTriggerEvents` schedule prunes daily. |
+
+Configure via Firebase Console → Firestore → TTL → **Create policy**, or
+gcloud:
+
+```sh
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=processedTriggerEvents \
+  --enable-ttl --project=toska-4ebf4
+```
+
+Backfill TTL is a one-time async job on Google's side (~minutes for empty
+collections, longer if the collection already has data).
+
+---
+
 ## Secrets inventory
 
 | Secret | Stored in | Rotation procedure |

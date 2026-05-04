@@ -676,3 +676,280 @@ describe("regression: prior audit fixes (2026-04-26)", () => {
     );
   });
 });
+
+describe("conversations update is schema-locked to allow-listed fields", () => {
+  async function seedConvo(extra = {}) {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        typing: { alice: false, bob: false },
+        typingAt: {},
+        lastRead: {},
+        participantHandles: { alice: "alice", bob: "bob" },
+        createdAt: new Date(),
+        ...extra,
+      });
+    });
+  }
+
+  it("allows lastMessage + lastMessageAt + own messageCount slot bumped by 1", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c1").update({
+        lastMessage: "hi",
+        lastMessageAt: new Date(),
+        "messageCount.alice": 1,
+      })
+    );
+  });
+
+  it("allows updating own typing slot", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c1").update({
+        "typing.alice": true,
+      })
+    );
+  });
+
+  it("allows refreshing own participantHandles slot", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c1").update({
+        "participantHandles.alice": "alice_new",
+      })
+    );
+  });
+
+  it("rejects writing the other peer's participantHandles slot", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").update({
+        "participantHandles.bob": "spoofed",
+      })
+    );
+  });
+
+  it("rejects writing the other peer's typing slot", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").update({
+        "typing.bob": true,
+      })
+    );
+  });
+
+  it("rejects writing the other peer's lastRead slot", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").update({
+        "lastRead.bob": new Date(),
+      })
+    );
+  });
+
+  it("rejects messageCount jump of more than +1", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").update({
+        "messageCount.alice": 5,
+      })
+    );
+  });
+
+  it("rejects writing arbitrary unlisted top-level fields", async () => {
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    // `flagged` would let a future trigger trust client-supplied moderation
+    // state; the schema lock keeps it (and any other unlisted key) out.
+    await assertFails(
+      a.collection("conversations").doc("c1").update({
+        flagged: false,
+      })
+    );
+  });
+});
+
+describe("feelingCircles create is constrained to caller-only participants", () => {
+  // serverTimestamp() resolves to request.time inside the rule evaluation,
+  // matching the createdAt == request.time predicate.
+  function tomorrowMidnight() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 1);
+    return d;
+  }
+
+  it("allows legitimate first-joiner create", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        date: "2026-05-04",
+        participants: ["alice"],
+        createdAt: serverTimestamp(),
+        expiresAt: tomorrowMidnight(),
+      })
+    );
+  });
+
+  it("rejects create with another user pre-seeded into participants", async () => {
+    // The original wide-open create rule let a tampered client force-seed
+    // victims into a circle's participants list at creation time, bypassing
+    // the size-20 + own-uid-only enforcement on update.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        date: "2026-05-04",
+        participants: ["alice", "victim1", "victim2"],
+        createdAt: serverTimestamp(),
+        expiresAt: tomorrowMidnight(),
+      })
+    );
+  });
+
+  it("rejects create where the caller isn't the participant", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        date: "2026-05-04",
+        participants: ["bob"],
+        createdAt: serverTimestamp(),
+        expiresAt: tomorrowMidnight(),
+      })
+    );
+  });
+
+  it("rejects create with expiresAt far in the future (defeats hourly cleanup)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    const farFuture = new Date();
+    farFuture.setDate(farFuture.getDate() + 7);
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        date: "2026-05-04",
+        participants: ["alice"],
+        createdAt: serverTimestamp(),
+        expiresAt: farFuture,
+      })
+    );
+  });
+
+  it("rejects create with a scratch field outside the schema", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        date: "2026-05-04",
+        participants: ["alice"],
+        createdAt: serverTimestamp(),
+        expiresAt: tomorrowMidnight(),
+        flagged: false,
+      })
+    );
+  });
+});
+
+describe("reflections subcollection is reflection-author-or-post-author scoped", () => {
+  beforeEach(async () => {
+    // alice owns post p1; bob is an unrelated third party.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setUserDoc("carol");
+    await setPost("p1", "alice");
+  });
+
+  async function seedReflection(reflectionAuthor) {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("reflections").doc(reflectionAuthor)
+        .set({
+          authorId: reflectionAuthor,
+          text: "looking back at this",
+          createdAt: new Date(),
+        });
+    });
+  }
+
+  it("allows the reflection author to read their own reflection", async () => {
+    await seedReflection("bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1").collection("reflections").doc("bob").get()
+    );
+  });
+
+  it("allows the post author to read reflections under their post", async () => {
+    // Required by PostDetailView.swift:809 cleanup loop before deleting
+    // the parent post.
+    await seedReflection("bob");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1").collection("reflections").doc("bob").get()
+    );
+  });
+
+  it("rejects an unrelated user from reading someone else's reflection", async () => {
+    // Was previously open to any auth user — privacy leak.
+    await seedReflection("bob");
+    const c = env.authenticatedContext("carol").firestore();
+    await assertFails(
+      c.collection("posts").doc("p1").collection("reflections").doc("bob").get()
+    );
+  });
+
+  it("allows a legitimate reflection create", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1").collection("reflections").doc("bob").set({
+        authorId: "bob",
+        text: "thinking about this again",
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects reflection create with text > 500 chars", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("reflections").doc("bob").set({
+        authorId: "bob",
+        text: "x".repeat(501),
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects reflection create with extra unlisted field", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("reflections").doc("bob").set({
+        authorId: "bob",
+        text: "ok",
+        createdAt: new Date(),
+        flagged: false,
+      })
+    );
+  });
+
+  it("allows the post author to delete a reflection under their post", async () => {
+    // PostDetailView's pre-delete-post cleanup needs this; previously
+    // the rule denied it and the try? swallowed the failure.
+    await seedReflection("bob");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1").collection("reflections").doc("bob").delete()
+    );
+  });
+});

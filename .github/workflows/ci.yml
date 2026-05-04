@@ -111,6 +111,14 @@ jobs:
   #     github-actions-rules-deploy@toskastaging.iam.gserviceaccount.com \
   #     --project=toskastaging --role=roles/iam.workloadIdentityUser \
   #     --member="principalSet://iam.googleapis.com/projects/260913424323/locations/global/workloadIdentityPools/github-actions/attribute.repository/toskaapp12/toska"
+  #
+  # The per-repo security boundary lives in the `attribute.repository/toskaapp12/toska`
+  # selector on the principalSet above — NOT in the provider's attribute_condition,
+  # which is intentionally org-wide (`repository_owner == 'toskaapp12'`) so the same
+  # provider is reusable for future SAs. If you add another SA binding here, use the
+  # same per-repo principalSet form. Do NOT use `attribute.repository_owner/toskaapp12`
+  # in a binding — that would silently let any repo in the toskaapp12 org impersonate
+  # that SA.
   deploy-rules-staging:
     name: Deploy rules to staging
     runs-on: ubuntu-latest

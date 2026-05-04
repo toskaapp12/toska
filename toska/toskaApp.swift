@@ -68,14 +68,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             FirebaseApp.configure()
             #endif
 
-            // Boot Firebase Performance Monitoring. The SDK auto-starts on
-            // FirebaseApp.configure() once linked, but explicitly touching
-            // `sharedInstance()` here both forces the init early (so the
-            // first network/screen trace isn't dropped) and gives a clear
-            // grep target if something later disables it. Auto-collected
-            // metrics include app-start, foreground/background, network
-            // request latency, and screen rendering. See RUNBOOK →
-            // Monitoring for the dashboard URL.
+            // FirebasePerformance auto-starts at dyld load time via
+            // +[FPRClient load], which is why this target needs -ObjC in
+            // OTHER_LDFLAGS — without it the +load is dead-stripped and
+            // Performance silently never starts. This explicit reference
+            // isn't what initializes the SDK (that already happened); it's
+            // a link-time assertion that FirebasePerformance is present and
+            // a grep target. See RUNBOOK → Monitoring.
             _ = Performance.sharedInstance()
 
             // Analytics + Crashlytics are wired through the Telemetry namespace

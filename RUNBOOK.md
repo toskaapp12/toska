@@ -187,13 +187,62 @@ The Firebase Console keeps rule history.
 2. Find the last-known-good revision
 3. **Revert to this version** → Confirm
 
-Faster CLI alternative if you have the prior commit hash:
+Faster CLI alternative if you have the prior commit hash. **Always
+staging-first** for non-emergency rollbacks (the same pattern as forward
+deploys):
 
 ```sh
+firebase use staging
 git checkout <good-commit> -- firestore.rules
+firebase deploy --only firestore:rules
+# verify against staging Firestore Console — Rules tab now shows the
+# rolled-back version with current timestamp
+firebase use prod
 firebase deploy --only firestore:rules
 git checkout HEAD -- firestore.rules    # restore working tree
 ```
+
+For a true emergency (production ALREADY broken, no time for staging),
+skip directly to prod and use the Firebase Console "Revert to this
+version" path — it's one click and doesn't require `firebase login` to
+be valid.
+
+**Gotchas surfaced by the 2026-05-04 dry-run on staging (Tier 2 #4):**
+
+- **Tests don't roll back with rules.** `firestore-tests/firestore.test.js`
+  pins the *current* rule behavior. Rolling back firestore.rules without
+  also reverting the tests will fail any regression tests that pin clauses
+  added since the rollback target. The dry-run rolled back to commit
+  `0983569` (pre-server-only-confirmedAdult-writer) and 4 of 33 tests
+  failed — the ones pinning `confirmedAdult` write protection. This is
+  not a runbook bug; it's reality. If you're rolling back rules in an
+  emergency, **don't gate the redeploy on `npm test`** — go by Firebase
+  Console rule-compilation success and a smoke test in the iOS Debug
+  build instead. Re-running `npm test` is only meaningful after both
+  rules and tests are at the same revision.
+- **Staging can drift behind prod.** The dry-run's first deploy to
+  staging reported `latest version of firestore.rules already up to
+  date, skipping upload` — meaning staging's deployed rules were already
+  at the rollback target (older than HEAD). Recent rule changes had
+  reached prod but never staging. After rules deploys, **explicitly
+  deploy to staging too**, even if the change feels prod-only. Better:
+  add a CI step that deploys rules to staging on merge to main, so
+  drift can't accumulate.
+- **`firebase use staging` requires fresh CLI auth.** A `firebase login
+  --reauth` window may be needed before the rollback can start. Tokens
+  expire silently. Don't discover this mid-incident; verify access by
+  running `firebase projects:list` once a week if rollback is on your
+  on-call radar.
+
+**Verifying a rules rollback landed:**
+
+1. Firebase Console → Firestore → Rules tab → check the timestamp on the
+   active rule version matches your deploy.
+2. Pick one client query that depends on the rolled-back behavior and
+   run it from the iOS Debug build (or a quick `node` script using the
+   Web SDK) — confirm the rule allows/denies as expected.
+3. If you have time, `npm test` against the *matched* rules+tests
+   revision — but skip in an emergency (see gotcha above).
 
 ### Cloud Functions rollback
 

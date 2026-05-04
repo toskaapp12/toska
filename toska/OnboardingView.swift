@@ -6,10 +6,28 @@ import FirebaseFirestore
 struct OnboardingView: View {
     @Binding var isComplete: Bool
     @State private var currentStep = 0
+    @State private var selectedStage: String? = nil
     @State private var selectedMood: String? = nil
     @State private var userHandle = "anonymous"
     @State private var showFirstPostCompose = false
     @State private var firstPostPublished = false
+
+    // Breakup-stage axis. Captured first (as a step) so the rest of the
+    // experience can be framed around where the user actually is in
+    // their breakup, not just what they're feeling right now. Stored to
+    // users/{uid}/private/data alongside selectedMood. Order matters —
+    // arranged loosely by recency so the first option is the freshest
+    // wound and "still in it" sits in the middle (it's its own thing,
+    // not a stage on a timeline).
+    let breakupStages: [String] = [
+        "it just happened",
+        "a few weeks in",
+        "months in",
+        "a year or more",
+        "still in it",
+        "they left",
+        "i left",
+    ]
 
     // Age + policy gates. Shown as fullScreenCovers before the onboarding
     // steps become visible, only for users whose user doc doesn't already
@@ -85,15 +103,19 @@ struct OnboardingView: View {
         }
     var body: some View {
         ZStack {
-            if currentStep == 0 || currentStep == 2 || currentStep == 3 {
-                Color(hex: "0a0908").ignoresSafeArea()
-            } else {
+            // Step 1 (identity / handle reveal) is the only light-bg step.
+            // All other steps are dark — including the new stage step (2)
+            // which carries the same emotional weight as mood (3) and
+            // first-post (4).
+            if currentStep == 1 {
                 Color(hex: "faf8f5").ignoresSafeArea()
+            } else {
+                Color(hex: "0a0908").ignoresSafeArea()
             }
-            
+
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
-                    ForEach(0..<4, id: \.self) { index in
+                    ForEach(0..<5, id: \.self) { index in
                         Circle()
                             .fill(index <= currentStep ? Color.toskaBlue : Color.toskaBlue.opacity(0.2))
                             .frame(width: 6, height: 6)
@@ -101,14 +123,15 @@ struct OnboardingView: View {
                 }
                 .padding(.top, 20)
                 .padding(.bottom, 30)
-                
+
                 Spacer()
-                
+
                 switch currentStep {
                 case 0: welcomeStep
                 case 1: identityStep
-                case 2: moodStep
-                case 3: firstPostStep
+                case 2: stageStep
+                case 3: moodStep
+                case 4: firstPostStep
                 default: EmptyView()
                 }
                 
@@ -144,6 +167,32 @@ struct OnboardingView: View {
                         }
                     } else if currentStep == 2 {
                         Button {
+                            saveStageAndAdvance()
+                        } label: {
+                            Text("next")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color(hex: "0a0908"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                        }
+
+                        Button {
+                            // Skip stage → still advance to mood. We don't
+                            // mark onboarding complete on stage-skip because
+                            // the user hasn't yet seen the mood / first-post
+                            // steps which finish the flow.
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentStep = 3
+                            }
+                        } label: {
+                            Text("skip")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.white.opacity(0.3))
+                        }
+                    } else if currentStep == 3 {
+                        Button {
                             saveMoodAndAdvance()
                         } label: {
                             Text("next")
@@ -154,7 +203,7 @@ struct OnboardingView: View {
                                 .background(Color.white)
                                 .cornerRadius(12)
                         }
-                        
+
                         Button {
                                                     if let uid = Auth.auth().currentUser?.uid {
                                                         let userRef = Firestore.firestore().collection("users").document(uid)
@@ -176,7 +225,7 @@ struct OnboardingView: View {
                                                         .font(.system(size: 11))
                                                         .foregroundColor(Color.white.opacity(0.3))
                                                 }
-                    } else if currentStep == 3 {
+                    } else if currentStep == 4 {
                         Button {
                             showFirstPostCompose = true
                         } label: {
@@ -348,6 +397,35 @@ struct OnboardingView: View {
             isComplete = false
         }
     }
+    func saveStageAndAdvance() {
+        // Stage is the load-bearing personalization signal — it tells us
+        // where the user is in their breakup, which the rest of the app
+        // can frame around (feed weighting, prompt selection, anniversary
+        // logic). Stored alongside selectedMood in the owner-only private
+        // subcollection. Advance optimistically: a transient write
+        // failure shouldn't block the user from continuing onboarding,
+        // and Settings can re-prompt if the value didn't land.
+        Task { @MainActor in
+            if let uid = Auth.auth().currentUser?.uid, let stage = selectedStage {
+                do {
+                    try await Firestore.firestore().collection("users").document(uid)
+                        .collection("private").document("data")
+                        .setData(["breakupStage": stage], merge: true)
+                } catch {
+                    print("⚠️ Onboarding stage save failed: \(error)")
+                    Telemetry.recordError(error, context: "Onboarding.saveStage")
+                    // Best-effort — fall through to advance. Unlike mood,
+                    // there's no in-app surface yet that breaks if stage
+                    // is missing, and we don't want a network blip to
+                    // strand the user on the stage step.
+                }
+            }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                currentStep = 3
+            }
+        }
+    }
+
     func saveMoodAndAdvance() {
         // Previously this fired the Firestore write and advanced the UI
         // without awaiting. On a network/permission failure the user saw
@@ -374,7 +452,7 @@ struct OnboardingView: View {
                 }
             }
             withAnimation(.easeInOut(duration: 0.3)) {
-                currentStep = 3
+                currentStep = 4
             }
         }
     }
@@ -404,7 +482,7 @@ struct OnboardingView: View {
                     .padding(.horizontal, 24)
                     .padding(.bottom, 12)
                 
-                Text("this is a place for the things\nyou cant say out loud.")
+                Text("this is a place for the things\nyou wish youd said to them.")
                     .font(.custom("Georgia-Italic", size: 13))
                     .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .multilineTextAlignment(.center)
@@ -456,6 +534,52 @@ struct OnboardingView: View {
         }
     }
     
+    var stageStep: some View {
+        VStack(spacing: 12) {
+            Text("where are you in it")
+                .font(.custom("Georgia-Italic", size: 24))
+                .foregroundColor(.white)
+
+            Text("nobody else has to know.\nthis just helps us know what to show you.")
+                .font(.system(size: 11))
+                .foregroundColor(Color.toskaBlue)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.bottom, 8)
+
+            VStack(spacing: 6) {
+                ForEach(breakupStages, id: \.self) { stage in
+                    Button {
+                        selectedStage = stage
+                    } label: {
+                        Text(stage)
+                            .font(.system(size: 13, weight: selectedStage == stage ? .semibold : .regular))
+                            .foregroundColor(selectedStage == stage ? .white : Color.white.opacity(0.7))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                selectedStage == stage
+                                    ? Color.toskaBlue.opacity(0.55)
+                                    : Color.white.opacity(0.05)
+                            )
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(
+                                        selectedStage == stage
+                                            ? Color.toskaBlue
+                                            : Color.white.opacity(0.08),
+                                        lineWidth: 0.5
+                                    )
+                            )
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
     var moodStep: some View {
             VStack(spacing: 12) {
                 Text("where are you at right now")

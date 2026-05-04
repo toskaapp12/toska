@@ -283,7 +283,7 @@ struct FeedView: View {
                                             .font(.custom("Georgia-Italic", size: 18))
                                             .foregroundColor(LateNightTheme.secondaryText)
                                             .multilineTextAlignment(.center)
-                                        Text("be the first one to say something.\nor go find someone who already did.")
+                                        Text("be the first one to say what you couldnt say to them.\nor go find someone who already did.")
                                             .font(.system(size: 12))
                                             .foregroundColor(LateNightTheme.tertiaryText)
                                             .multilineTextAlignment(.center)

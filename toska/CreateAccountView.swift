@@ -43,7 +43,7 @@ struct CreateAccountView: View {
                     .foregroundColor(Color.toskaTextDark)
                     .padding(.bottom, 4)
                 
-                Text("no names. no faces. just feelings.")
+                Text("no names. no faces. not even theirs.")
                     .font(.system(size: 11))
                     .foregroundColor(Color.toskaTextLight)
                     .padding(.bottom, 16)

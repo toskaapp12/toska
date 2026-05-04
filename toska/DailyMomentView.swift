@@ -397,7 +397,7 @@ struct DailyMomentView: View {
                     Text("toska")
                         .font(.custom("Georgia-Italic", size: 18))
                         .foregroundColor(.white.opacity(0.15))
-                    Text("for the things you cant say out loud")
+                    Text("for the things you couldnt say to them")
                         .font(.system(size: 9))
                         .foregroundColor(.white.opacity(0.08))
                 }

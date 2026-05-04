@@ -35,7 +35,7 @@ struct SignInView: View {
                     .foregroundColor(Color(hex: "111111"))
                     .padding(.bottom, 4)
                 
-                Text("sign in to continue to toska.")
+                Text("its still here when youre ready.")
                     .font(.system(size: 11))
                     .foregroundColor(Color.toskaTextLight)
                     .padding(.bottom, 24)

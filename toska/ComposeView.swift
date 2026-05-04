@@ -72,7 +72,7 @@ struct ComposeView: View {
             let tod = timeOfDayLabel()
             if tod == "tonight" { return "whats keeping you up..." }
             else if tod == "this morning" { return "how did you sleep..." }
-            else if tod == "this afternoon" { return "say the thing you cant say out loud..." }
+            else if tod == "this afternoon" { return "say the thing you cant say to them..." }
             else { return "how are you. honestly..." }
         }
 

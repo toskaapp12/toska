@@ -285,6 +285,124 @@ No client-side opt-out today. If you need to disable in production, two paths:
 
 ---
 
+## Moderation operational runbook
+
+The in-app ReportSheet promises users "reports are reviewed within 24 hours."
+That commitment is the SLA. Everything below is structured around honoring it
+with a one-person solo-founder operation.
+
+### The chain
+
+```
+user submits report
+    ↓
+reports/{reportId} doc created with status: "pending"
+    ↓
+notifyAdminsOfNewReport (Cloud Function) emits a structured WARNING log
+with tag: "new_report_for_review" → Cloud Logging alert policy routes
+to salte@saltedevelopments.com (Toska Alerts notification channel)
+    ↓
+admin opens https://www.toskaapp.com/admin.html → sees report card with:
+    - aging badge (amber, >12h old)  OR
+    - overdue badge (red, >24h old)
+    ↓
+admin reviews report context (post/reply/profile/conversation),
+takes action: dismiss / restrict-user / delete-content / etc.,
+writes back status: "resolved" or "dismissed" + action
+    ↓
+auditReportResolution (Cloud Function) detects the status change and
+writes an adminAuditLog entry: action: "report.resolved" (or .dismissed),
+adminUid, targetType: "report", before/after status
+```
+
+### Daily review cadence
+
+**Once a day, target.** Two windows that work for most schedules:
+
+- **Morning (9–10am local)**: catches anything reported overnight before it
+  ages out of SLA. Walk through the dashboard, resolve everything, close.
+- **Evening (5–7pm local)**: catches the daytime reports before bed so
+  nothing sits ≥12h before being looked at.
+
+If you can only do one, **pick evening** — overnight reports get caught the
+next morning before they hit 24h, but afternoon reports left until next
+morning are already aging.
+
+**What to look for, in priority order:**
+
+1. **Anything with an `overdue` (red) badge.** SLA already missed; resolve
+   first. Document why it took >24h if there's a pattern.
+2. **Reports involving named individuals or PII.** The 2026-05-01 moderation
+   sprint hardens detection but defamation risk is real — these get
+   precedence over abstract harassment claims.
+3. **Self-harm / crisis content** flagged via `concerningContent: true`.
+   Not user-reportable today, but worth scanning the flagged-posts tab for.
+4. **Aging (amber, >12h) badges** in chronological order.
+5. **Fresh pending reports** (no badge) — under SLA, address as time allows.
+
+### Escalation thresholds
+
+Solo-founder reality: there's no one to escalate to. The threshold isn't
+"call someone" — it's "what does triage look like when you can't keep up."
+
+- **Pending count sustained >20 for >48 hours**: SLA is structurally at
+  risk. Step back from feature work, batch-process the queue, then
+  evaluate whether you need:
+  - Tighter rate limits on reports (currently fail-open at 5/min/uid)
+  - A second admin (see "Add an admin user" below)
+  - Auto-dismissal heuristics for low-quality reports
+- **Pending count >50** or **single report aged >72h**: take everything
+  off the calendar that day. Process the queue. Post-mortem afterward
+  on what let it pile up.
+- **Same reporter appearing >5 times in a week against different
+  targets**: likely abuse-of-report pattern. Consider restricting that
+  reporter (rate-limit hits faster, less ammo for harassment-via-report).
+- **Same target reported >3 times in a week by different reporters**:
+  probably real signal even if individual reports look weak. Investigate
+  the target's posting history rather than each report in isolation.
+
+### Pending count alarms
+
+There's no automated alarm on pending-count today. Two options if it
+becomes a concern:
+
+1. **Cloud Monitoring metric**: a log-based metric counting `tag:
+   new_report_for_review` minus `auditReportResolution` writes per hour.
+   Alert when net positive sustains >10/hour for an hour.
+2. **Daily digest email**: a scheduled function that counts
+   `reports/{*}` where `status == "pending"` and emails the count if
+   >0. Cheap to build, gives you a "queue size" number with breakfast.
+
+Neither is wired up today. Build #1 if you start missing the SLA; build
+#2 if you just want lower-anxiety mornings.
+
+### Where to look when something's wrong
+
+| Symptom | First place to look |
+|---|---|
+| New report email never arrived | Cloud Logging filter `resource.labels.function_name="notifyAdminsOfNewReport" severity>=WARNING` — check that the function fired and emitted the tag |
+| Admin dashboard shows wrong count | Hard-refresh `https://www.toskaapp.com/admin.html` (cached JS); if still wrong, query `reports` collection directly via Firestore Console with `status == pending` |
+| Audit log missing entries | Cloud Logging on `auditReportResolution` — the trigger only writes when `status` changed, so no-op updates won't appear |
+| Same reporter spamming reports | `reports` collection → group by `reportedBy` over last 7 days; rate limiter (`rateLimitReports`) caps but doesn't block-on-burst |
+
+### Action verbs reference
+
+When resolving a report, set `action` on the report doc to one of:
+- `dismissed` — report didn't warrant action; no change to target
+- `content_deleted` — the offending post/reply/message was deleted
+- `user_warned` — out-of-band note to the target (no automated mechanism;
+  stays as documentation only)
+- `user_restricted` — `restricted: true` set on the target's user doc
+  (auto-expires per `restrictedUntil` if you set one; see "Restrict a user")
+- `user_banned` — equivalent to restricted-with-no-restrictedUntil; lasts
+  until manually cleared
+
+These strings appear in `adminAuditLog` and the admin dashboard's history
+tab. Keep them consistent — a future automated-pattern-detection layer
+will key off of them.
+
+---
+
 ## Common operations
 
 ### Add an admin user

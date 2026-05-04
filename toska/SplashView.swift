@@ -41,7 +41,7 @@ struct SplashView: View {
                     .foregroundColor(.white)
                     .padding(.bottom, 6)
 
-                Text("say what you never said")
+                Text("for the things you couldnt say to your ex")
                     .font(.custom("Georgia-Italic", size: 12))
                     .foregroundColor(.white.opacity(0.3))
 

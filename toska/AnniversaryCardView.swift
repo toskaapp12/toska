@@ -23,7 +23,7 @@ struct AnniversaryCardView: View {
                     .font(.system(size: 11))
                     .foregroundColor(Color(hex: "c9a97a"))
 
-                Text("one year ago today")
+                Text("a year into it")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(Color(hex: "c9a97a"))
                     .tracking(0.3)

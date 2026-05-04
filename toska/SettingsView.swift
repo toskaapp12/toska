@@ -289,7 +289,7 @@ struct SettingsView: View {
                                                         Text("toska v1.0")
                                                             .font(.system(size: 9))
                                                             .foregroundColor(Color.toskaDivider)
-                                                        Text("for the things you can't say out loud")
+                                                        Text("for the things you couldnt say to them")
                                                             .font(.custom("Georgia-Italic", size: 9))
                                                             .foregroundColor(Color.toskaDivider.opacity(0.5))
                                                     }

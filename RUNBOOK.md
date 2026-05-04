@@ -252,6 +252,37 @@ docs aren't reindexed; new writes use the updated set.
   `onUserDocDeleted`, or `validatePost` (rate-limited to 1 alert per 5 min)
 - **Billing budget**: 50% / 90% / 100% of $50/month
 
+### Firebase Performance Monitoring
+
+Wired into the iOS app as of 2026-05-04 (Tier 2 #2). The SDK auto-collects:
+- App start traces (cold start, warm start, time-to-first-render)
+- Foreground / background transitions
+- Network request latency (HTTPS to firebaseappcheck, firestore, etc.)
+- Screen rendering time (slow + frozen frames)
+
+Dashboard: https://console.firebase.google.com/project/toska-4ebf4/performance
+
+Note: data takes up to 12-24 hours to appear in the dashboard after the first
+session reports. The SDK is silent at launch (no Crashlytics-style banner) —
+verify by checking for `+[FPRClient load]` symbol in the build output via:
+
+```sh
+nm /path/to/toska.app/toska.debug.dylib | grep FPRClient
+```
+
+The `-ObjC` linker flag in the toska target's `OTHER_LDFLAGS` is required —
+Performance ships as static-library ObjC categories, and without `-ObjC` the
+linker dead-strips them. Removing it will silently disable Performance auto-
+collection without a build error.
+
+Boot sequence in `toska/toskaApp.swift`: `FirebaseApp.configure()` →
+`Performance.sharedInstance()` (one-line touch to force singleton init early
+so the first network/screen trace isn't dropped).
+
+No client-side opt-out today. If you need to disable in production, two paths:
+1. Firebase Console → Performance → ⚙ → Disable data collection
+2. iOS code: `Performance.sharedInstance().isInstrumentationEnabled = false`
+
 ---
 
 ## Common operations

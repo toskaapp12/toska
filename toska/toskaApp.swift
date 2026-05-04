@@ -3,6 +3,7 @@ import FirebaseCore
 import FirebaseMessaging
 import FirebaseAuth
 import FirebaseAppCheck
+import FirebasePerformance
 import GoogleSignIn
 
 // AppCheck provider factory for release builds. FirebaseAppCheck ships
@@ -66,6 +67,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             #else
             FirebaseApp.configure()
             #endif
+
+            // Boot Firebase Performance Monitoring. The SDK auto-starts on
+            // FirebaseApp.configure() once linked, but explicitly touching
+            // `sharedInstance()` here both forces the init early (so the
+            // first network/screen trace isn't dropped) and gives a clear
+            // grep target if something later disables it. Auto-collected
+            // metrics include app-start, foreground/background, network
+            // request latency, and screen rendering. See RUNBOOK →
+            // Monitoring for the dashboard URL.
+            _ = Performance.sharedInstance()
 
             // Analytics + Crashlytics are wired through the Telemetry namespace
             // in ToskaTheme.swift. FirebaseApp.configure() above also boots

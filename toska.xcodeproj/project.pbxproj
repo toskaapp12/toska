@@ -16,6 +16,7 @@
 		3F7B32B92F91408B0014C0DA /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */; };
 		3F7B32BD2F9AC1670014C0DA /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 3F7B32BC2F9AC1670014C0DA /* FirebaseAppCheck */; };
 		3FA5E0C32FA3F3F80012B898 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = 3FA5E0C22FA3F3F80012B898 /* FirebaseFunctions */; };
+		3FBCBED12FBE5A8B0012B898 /* FirebasePerformance in Frameworks */ = {isa = PBXBuildFile; productRef = 3FBCBED02FBE5A8B0012B898 /* FirebasePerformance */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 				3F33E7182F69C17200E7F27D /* GoogleSignIn in Frameworks */,
 				3F33E6D82F69982500E7F27D /* FirebaseAuth in Frameworks */,
 				3F33E6DA2F69982500E7F27D /* FirebaseFirestore in Frameworks */,
+				3FBCBED12FBE5A8B0012B898 /* FirebasePerformance in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,6 +144,7 @@
 				3F7B32B82F91408B0014C0DA /* FirebaseCrashlytics */,
 				3F7B32BC2F9AC1670014C0DA /* FirebaseAppCheck */,
 				3FA5E0C22FA3F3F80012B898 /* FirebaseFunctions */,
+				3FBCBED02FBE5A8B0012B898 /* FirebasePerformance */,
 			);
 			productName = toska;
 			productReference = 3F33E6C62F69977700E7F27D /* toska.app */;
@@ -424,6 +427,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.toskaapp.toska;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -460,6 +467,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.toskaapp.toska;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -620,6 +631,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFunctions;
+		};
+		3FBCBED02FBE5A8B0012B898 /* FirebasePerformance */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3F33E6D62F69982500E7F27D /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebasePerformance;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

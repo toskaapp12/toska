@@ -85,6 +85,14 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Personalization
     var userMood: String? = nil
+    // Captured during onboarding's stage step (`OnboardingView.stageStep`)
+    // and stored at users/{uid}/private/data.breakupStage. Used by the
+    // For You scorer to bias the time-decay floor: fresh-breakup users
+    // want recent posts; year+ / months-in users want reflective ones
+    // that have aged well to keep showing up. nil for accounts that
+    // haven't been through the stage step yet — the scorer falls back
+    // to the original default decay floor in that case.
+    var userBreakupStage: String? = nil
     var engagedTags: [String: Int] = [:]
 
     // MARK: - Constants
@@ -399,6 +407,10 @@ class FeedViewModel: ObservableObject {
             let priv = await privateSnap?.data() ?? [:]
             guard !Task.isCancelled, let self else { return }
             self.userMood = (priv["selectedMood"] as? String) ?? (main["selectedMood"] as? String)
+            // breakupStage is private-only — written by OnboardingView.stageStep
+            // and (eventually) editable in Settings. No legacy main-doc
+            // fallback because the field never lived there.
+            self.userBreakupStage = priv["breakupStage"] as? String
 
             // Engaged-tag rollup: fetch the last 50 liked posts, then fetch the
             // tag of each in parallel chunks, then REPLACE engagedTags with the
@@ -563,7 +575,23 @@ class FeedViewModel: ObservableObject {
                                                 else if hoursAgo < 24 { score += 10 }
                                                 else { score += max(0, 5 - hoursAgo / 24) }
 
-                                                let decayFactor = max(0.2, 1.0 - (hoursAgo / 48.0))
+                                                // Stage-aware time-decay floor. Default is 0.2 — older posts
+                                                // bottom out at 20% of fresh-engagement signal, which suits
+                                                // fresh-breakup users who want recent feeling. Users further out
+                                                // (months / a year+) want reflective posts that aged well to keep
+                                                // surfacing, so we raise the floor for them — older highly-engaged
+                                                // posts retain more of their score and float up vs the default.
+                                                // "still in it" stays on the fresh-floor since they're effectively
+                                                // pre-breakup — the live moment matters more than the archive.
+                                                let decayFloor: Double
+                                                switch self.userBreakupStage {
+                                                case "a year or more": decayFloor = 0.6
+                                                case "months in":      decayFloor = 0.45
+                                                case "they left", "i left":
+                                                    decayFloor = 0.35
+                                                default:               decayFloor = 0.2
+                                                }
+                                                let decayFactor = max(decayFloor, 1.0 - (hoursAgo / 48.0))
                                                 score += Double(likeCount) * 1.5 * decayFactor
                                                 score += Double(replyCount) * 2.0 * decayFactor
 

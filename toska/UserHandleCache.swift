@@ -26,6 +26,12 @@ class UserHandleCache {
     // hasn't seen Settings yet still gets the soft-tier check-in. The explicit
     // crisis tier ignores this flag — see CrisisCheckInView / crisisLevel(for:).
     private(set) var gentleCheckIn: Bool = true
+    // Breakup stage — captured during onboarding's stage step
+    // (OnboardingView.stageStep), stored at users/{uid}/private/data.breakupStage.
+    // Exposed here so view-layer consumers (ComposeView placeholder logic,
+    // future stage-aware surfaces) can read it without their own listener.
+    // nil for accounts that pre-date the stage step or skipped it.
+    private(set) var breakupStage: String? = nil
     // Backing store: what the user doc says. Consumers read `isRestricted`
     // below, which applies the restrictedUntil auto-expiry so a user whose
     // 48-hour system-restriction has elapsed is no longer gated even if the
@@ -86,6 +92,7 @@ class UserHandleCache {
                         Task { @MainActor [weak self] in
                             guard let self, self.currentUid == capturedUid else { return }
                             self.privateGentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool
+                            self.breakupStage = snapshot?.data()?["breakupStage"] as? String
                             self.recomputeGentleCheckIn()
                         }
                     }
@@ -107,6 +114,7 @@ class UserHandleCache {
         legacyGentleCheckIn = true
         rawIsRestricted = false
         restrictedUntil = nil
+        breakupStage = nil
         currentUid = nil
     }
 }

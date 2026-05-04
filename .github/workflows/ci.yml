@@ -81,7 +81,7 @@ jobs:
   # had silently fallen behind prod's because forward deploys to staging
   # weren't part of any team workflow. Now they are.
   #
-  # Skipped on PRs: secrets aren't readable from PRs opened from forks
+  # Skipped on PRs: id-token isn't issuable from PRs opened from forks
   # (a GitHub security default), and we don't want PR runs touching
   # staging's deployed rules anyway.
   #
@@ -89,6 +89,28 @@ jobs:
   # `firebase deploy --only firestore:rules` from a developer machine,
   # after manual verification on staging. See RUNBOOK.md → Deploy
   # procedures and Rollback procedures.
+  #
+  # Auth: Workload Identity Federation. GitHub mints a short-lived OIDC
+  # token for this run, exchanges it via STS for a Google access token
+  # scoped to the github-actions-rules-deploy service account on
+  # toskastaging. No long-lived service-account JSON key is stored on
+  # GitHub. The toskastaging GCP org enforces the
+  # iam.disableServiceAccountKeyCreation policy ("Secure by Default")
+  # which blocks the JSON-key approach anyway, so WIF is the only path.
+  #
+  # GCP-side setup (one-time, already done — documented for future-you):
+  #   gcloud iam workload-identity-pools create github-actions \
+  #     --project=toskastaging --location=global
+  #   gcloud iam workload-identity-pools providers create-oidc github \
+  #     --project=toskastaging --location=global \
+  #     --workload-identity-pool=github-actions \
+  #     --attribute-mapping=google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_owner=assertion.repository_owner \
+  #     --attribute-condition="assertion.repository_owner == 'toskaapp12'" \
+  #     --issuer-uri=https://token.actions.githubusercontent.com
+  #   gcloud iam service-accounts add-iam-policy-binding \
+  #     github-actions-rules-deploy@toskastaging.iam.gserviceaccount.com \
+  #     --project=toskastaging --role=roles/iam.workloadIdentityUser \
+  #     --member="principalSet://iam.googleapis.com/projects/260913424323/locations/global/workloadIdentityPools/github-actions/attribute.repository/toskaapp12/toska"
   deploy-rules-staging:
     name: Deploy rules to staging
     runs-on: ubuntu-latest
@@ -96,6 +118,10 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
+      # Required for google-github-actions/auth to mint the OIDC token
+      # GitHub presents to Google STS. Without this, auth silently fails
+      # with "the GitHub Action workflow must specify ... ".
+      id-token: write
     steps:
     - uses: actions/checkout@v4
 
@@ -107,16 +133,11 @@ jobs:
     - name: Install firebase-tools
       run: npm install -g firebase-tools@15
 
-    - name: Auth to Google Cloud as the staging deploy service account
-      # google-github-actions/auth writes the credentials JSON to a temp
-      # file and exports GOOGLE_APPLICATION_CREDENTIALS. firebase-tools
-      # picks it up automatically — no `firebase login` token needed.
-      # Service account: github-actions-rules-deploy@toskastaging.iam.gserviceaccount.com
-      # Role: Firebase Rules Admin (least privilege; cannot deploy
-      # functions or modify other resources).
+    - name: Auth to Google Cloud via Workload Identity Federation
       uses: google-github-actions/auth@v2
       with:
-        credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_TOSKASTAGING }}
+        workload_identity_provider: projects/260913424323/locations/global/workloadIdentityPools/github-actions/providers/github
+        service_account: github-actions-rules-deploy@toskastaging.iam.gserviceaccount.com
 
     - name: Deploy firestore.rules to staging
       # Idempotent: if the rules content hash matches what's already

@@ -70,9 +70,25 @@ struct ComposeView: View {
             if isLetter { return "dear you..." }
             if isWhisper { return "say it quietly..." }
             let tod = timeOfDayLabel()
+            // Stage-aware overrides: the user's breakup-stage answer from
+            // onboarding (UserHandleCache.shared.breakupStage) tunes the
+            // afternoon prompt to where they actually are. Defaults to the
+            // generic to-them prompt for nil / unmapped stages so accounts
+            // that pre-date or skipped the stage step still get the right
+            // breakup framing.
+            let stage = UserHandleCache.shared.breakupStage
+            if tod == "this afternoon" {
+                switch stage {
+                case "still in it":      return "say the thing you cant say to them yet..."
+                case "a year or more":   return "what would you tell them now..."
+                case "they left":        return "say what they didnt let you say..."
+                case "i left":           return "say the thing you held back when you left..."
+                case "it just happened": return "say the thing you cant text them..."
+                default:                 return "say the thing you cant say to them..."
+                }
+            }
             if tod == "tonight" { return "whats keeping you up..." }
             else if tod == "this morning" { return "how did you sleep..." }
-            else if tod == "this afternoon" { return "say the thing you cant say to them..." }
             else { return "how are you. honestly..." }
         }
 

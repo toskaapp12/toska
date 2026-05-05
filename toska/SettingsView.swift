@@ -46,9 +46,17 @@ struct SettingsView: View {
     @State private var exportError: String? = nil
     
     var body: some View {
+        // SettingsView keeps its custom centered-title header. NavigationStack
+        // wraps the whole thing only so NavigationLinks (drafts, blocked
+        // users) actually push — without this, those rows had been silently
+        // no-op'ing because there was no nav hierarchy in scope. Hidden
+        // toolbar leaves the custom header intact at this level; child views
+        // (DraftsView, BlockedUsersListView) reveal the system bar so the
+        // back button shows on push.
+        NavigationStack {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
@@ -387,6 +395,8 @@ struct SettingsView: View {
                 onAccept: { showContentPolicy = false },
                 onDecline: { showContentPolicy = false }
             )
+        }
+        .toolbar(.hidden, for: .navigationBar)
         }
     }
     

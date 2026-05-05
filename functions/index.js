@@ -388,13 +388,23 @@ async function claimTriggerEvent(eventId) {
 // re-attempt cleanly. Each call gets its own subKey so two paired writes
 // (e.g., "post" + "user" sub-events) can fail/retry independently.
 //
+// On commit failure we RE-THROW so the trigger function fails and
+// Eventarc redelivers. This requires the trigger to be declared with
+// `{ retry: true }` — without that flag, v2 Firestore triggers default
+// to no retry on failure and the drift would persist. The trigger
+// declarations below set retry: true; if you add a new caller, set it
+// there too. Idempotency is provided by the per-subKey claim doc, so
+// repeated retries can't double-apply.
+//
 // transactionFn must do all its tx.get reads BEFORE any tx.update/set
 // writes (Firestore transaction constraint); the claim's tx.set lands
 // last. transactionFn may return a value which becomes the resolved
-// promise's value; on already-processed or error, undefined is returned.
+// promise's value; on already-processed, undefined is returned.
 // ============================================================
 async function claimedTransaction(eventId, subKey, transactionFn) {
   if (!eventId || typeof eventId !== "string") {
+    // Local/test fallback: no event ID means no idempotency key, so we
+    // can't safely retry — swallow to avoid runaway local emulator loops.
     try { return await db.runTransaction(transactionFn); }
     catch (err) {
       console.warn(`claimedTransaction (no eventId, ${subKey}) failed:`, err.message);
@@ -415,10 +425,12 @@ async function claimedTransaction(eventId, subKey, transactionFn) {
       return result;
     });
   } catch (err) {
-    // Transaction rolled back, claim NOT set — Eventarc redelivery will
-    // re-attempt. Log so persistent failures surface.
-    console.warn(`claimedTransaction ${eventId}/${subKey} failed, will retry on redelivery:`, err.message);
-    return undefined;
+    // Transaction rolled back, claim NOT set. Re-throw so the trigger
+    // function fails and Eventarc redelivers — on the next attempt the
+    // already-succeeded sibling sub-claim is set and skips, while this
+    // one re-runs. Caller must declare retry: true on the trigger.
+    console.warn(`claimedTransaction ${eventId}/${subKey} failed, re-throwing for redelivery:`, err.message);
+    throw err;
   }
 }
 
@@ -631,6 +643,11 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
 
     // Reflections this user wrote on other users' posts. Reflections under
     // the deleted user's own posts are already handled by cleanupPostsForUid.
+    // The helper depends on the reflections.authorId collection-group index
+    // (firestore.indexes.json). If the index is missing or still backfilling
+    // at deploy time, the query throws FAILED_PRECONDITION; queue a resume
+    // continuation in that case so the hourly sweep retries once the index
+    // is ready, instead of silently dropping cross-user reflection cleanup.
     try {
       const reflectionResult = await cleanupReflectionsForUid(uid, 50);
       if (reflectionResult.totalDeleted > 0) {
@@ -642,6 +659,11 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       }
     } catch (err) {
       console.warn("Cross-user reflection cleanup failed:", err.message);
+      try {
+        await queueUserCleanupContinuation(uid, "reflections", 0);
+      } catch (queueErr) {
+        console.warn("Failed to queue reflection-cleanup resume:", queueErr.message);
+      }
     }
 
     // Reposts of this user's content by other accounts. These don't show up
@@ -988,7 +1010,10 @@ exports.onPendingDeletionCreated = onDocumentCreated(
 // ============================================================
 
 exports.onLikeCreatedUpdateCounts = onDocumentCreated(
-  "posts/{postId}/likes/{userId}",
+  // retry: true is load-bearing — claimedTransaction re-throws on commit
+  // failure so Eventarc redelivers, and the per-subKey claim doc dedups
+  // the side that already succeeded so retries can't double-apply.
+  { document: "posts/{postId}/likes/{userId}", retry: true },
   async (event) => {
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
@@ -1029,7 +1054,7 @@ exports.onLikeCreatedUpdateCounts = onDocumentCreated(
 // reverse race (delete reads 0, skips the decrement, increment lands
 // afterward). Same fix shape as onReplyDeletedUpdateCount above.
 exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
-  "posts/{postId}/likes/{userId}",
+  { document: "posts/{postId}/likes/{userId}", retry: true },
   async (event) => {
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
@@ -1223,7 +1248,7 @@ exports.onPostDeletedCleanupReposts = onDocumentDeleted("posts/{postId}", async 
 // ============================================================
 
 exports.onFollowCreatedUpdateCounts = onDocumentCreated(
-  "users/{userId}/following/{followedId}",
+  { document: "users/{userId}/following/{followedId}", retry: true },
   async (event) => {
     const userId = event.params.userId;
     const followedId = event.params.followedId;
@@ -1253,7 +1278,7 @@ exports.onFollowCreatedUpdateCounts = onDocumentCreated(
 // rapid follow→unfollow race where the create-trigger increment hadn't
 // landed yet, leaving permanent upward drift.
 exports.onFollowDeletedUpdateCounts = onDocumentDeleted(
-  "users/{userId}/following/{followedId}",
+  { document: "users/{userId}/following/{followedId}", retry: true },
   async (event) => {
     const userId = event.params.userId;
     const followedId = event.params.followedId;

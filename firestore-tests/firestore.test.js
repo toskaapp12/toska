@@ -262,6 +262,70 @@ describe("Finding 1: conversation participants must be exactly 2", () => {
       })
     );
   });
+
+  // 8b9923c: phantom-convo bypass close. Without the new !exists(.../blocked/...)
+  // clause on convo create, blocked users could write the convo doc itself
+  // (just not messages), surfacing an empty conversation in the blocker's
+  // MessagesListView.
+  it("blocked user cannot create the conversation doc in the first place (caller is participants[0])", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setBlock("bob", "alice"); // bob blocks alice
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("blocked user cannot create the conversation doc when caller is participants[1]", async () => {
+    // Exercises the other branch of the ternary that picks "the other
+    // participant" — make sure both orderings deny.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setBlock("alice", "bob"); // alice blocks bob
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"], // bob is participants[1]
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("allows convo create when neither side has blocked the other", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c2").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("allows convo create when caller blocked the OTHER user (block is one-directional)", async () => {
+    // Mirrors the existing message-create semantics: only the recipient's
+    // block stops the sender. If the caller blocked the other user, they
+    // can still initiate (and presumably immediately leave / not respond).
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setBlock("alice", "bob"); // alice blocks bob
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c3").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
 });
 
 describe("Finding 2: feelingCircles update can only add/remove caller", () => {
@@ -424,6 +488,120 @@ describe("Finding 3: blocked user cannot create save notification", () => {
           type: "message",
           fromUserId: "bob",
           conversationId: "c1",
+          isRead: false,
+          createdAt: new Date(),
+        })
+    );
+  });
+});
+
+// 8b9923c: in-app fromHandle spoofing close. The push-payload handle is
+// re-resolved server-side by sendPushNotification, but the in-app render
+// trusted whatever fromHandle the client wrote. The new rule pins
+// fromHandle (when present) to the caller's actual handle on their user
+// doc. setUserDoc seeds handle=`handle_${uid}` so tests can assert match
+// vs. mismatch deterministically.
+describe("fromHandle is pinned to caller's actual handle on notification create", () => {
+  it("allows notification create when fromHandle matches caller's handle", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          fromHandle: "handle_bob", // matches setUserDoc default
+          postId: "p1",
+          isRead: false,
+          createdAt: new Date(),
+        })
+    );
+  });
+
+  it("rejects notification create when fromHandle is spoofed to another user's handle", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          fromHandle: "handle_alice", // spoofed — bob's real handle is handle_bob
+          postId: "p1",
+          isRead: false,
+          createdAt: new Date(),
+        })
+    );
+  });
+
+  it("rejects notification create with a fully fabricated fromHandle string", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          fromHandle: "@victim_lookalike",
+          postId: "p1",
+          isRead: false,
+          createdAt: new Date(),
+        })
+    );
+  });
+
+  it("allows notification create when fromHandle is omitted entirely", async () => {
+    // Defense-in-depth: omission is the legitimate code path for callers
+    // that don't render an in-app handle. The rule clause is gated on
+    // 'fromHandle' in keys() so absent is accepted.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          postId: "p1",
           isRead: false,
           createdAt: new Date(),
         })

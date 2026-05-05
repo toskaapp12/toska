@@ -346,28 +346,47 @@ struct FeelingCircleView: View {
         var midnight = calendar.startOfDay(for: Date())
         midnight = calendar.date(byAdding: .day, value: 1, to: midnight) ?? midnight
 
-        circleRef.setData([
-            "tag": tag,
-            "date": ToskaFormatters.dateKey.string(from: Date()),
-            "participants": FieldValue.arrayUnion([uid]),
-            "createdAt": FieldValue.serverTimestamp(),
-            "expiresAt": Timestamp(date: midnight)
-        ], merge: true) { error in
-            Task { @MainActor in
-                if let error = error {
-                    // Don't flip hasJoined or bump participantCount on failure
-                    // — previous shape did both unconditionally, leaving the
-                    // user in a fake "joined" state with a participant count
-                    // off-by-one until the next refresh. Surface the failure
-                    // to telemetry so persistent denials (rules, quota) show
-                    // up in production logs.
-                    print("⚠️ FeelingCircleView.joinCircle failed: \(error.localizedDescription)")
-                    Telemetry.recordError(error, context: "FeelingCircleView.joinCircle")
-                    return
+        // Branch on doc existence so the rule sees the right shape:
+        //   - first joiner → CREATE: write all five fields, hits the
+        //     create rule (size==1 participants, schema lockdown, etc.)
+        //   - Nth joiner → UPDATE: write ONLY participants via arrayUnion,
+        //     hits the update rule (affectedKeys hasOnly participants).
+        //
+        // Previously this used a single setData(merge:true) for both
+        // paths, which on the update path re-resolved createdAt to a
+        // fresh serverTimestamp — that lands as an "affected" key and
+        // the update rule's hasOnly(['participants']) clause denied it
+        // every time. The `try?` and Telemetry-record at the callsite
+        // swallowed the failure silently, so second/third/Nth joiners
+        // never actually joined. Confirmed via firestore-tests.
+        Task { @MainActor in
+            let existing = try? await circleRef.getDocumentAsync()
+            do {
+                if existing?.exists == true {
+                    // UPDATE path — touch only participants.
+                    try await circleRef.updateData([
+                        "participants": FieldValue.arrayUnion([uid])
+                    ])
+                } else {
+                    // CREATE path — full schema for first joiner.
+                    try await circleRef.setData([
+                        "tag": tag,
+                        "date": ToskaFormatters.dateKey.string(from: Date()),
+                        "participants": [uid],
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "expiresAt": Timestamp(date: midnight)
+                    ])
                 }
                 hasJoined = true
                 participantCount += 1
                 startListening()
+            } catch {
+                // Don't flip hasJoined or bump participantCount on failure —
+                // surface the error to telemetry so persistent denials (rules,
+                // quota) show up in production logs instead of pretending the
+                // join succeeded.
+                print("⚠️ FeelingCircleView.joinCircle failed: \(error.localizedDescription)")
+                Telemetry.recordError(error, context: "FeelingCircleView.joinCircle")
             }
         }
     }

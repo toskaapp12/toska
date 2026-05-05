@@ -7,6 +7,14 @@ struct OnboardingView: View {
     @Binding var isComplete: Bool
     @State private var currentStep = 0
     @State private var selectedStage: String? = nil
+    // Crystallization beat — when a stage is selected, fetch how many
+    // others picked the same one and show it inline below the buttons
+    // ("47 others are in this with you tonight"). The aggregate lives
+    // at meta/breakupStageCounts and is maintained server-side by
+    // onBreakupStageChanged. nil while loading or on read failure
+    // (we just hide the line — softer than an error).
+    @State private var stageCohortCount: Int? = nil
+    @State private var stageCountTask: Task<Void, Never>? = nil
     @State private var selectedMood: String? = nil
     @State private var userHandle = "anonymous"
     @State private var showFirstPostCompose = false
@@ -551,6 +559,7 @@ struct OnboardingView: View {
                 ForEach(breakupStages, id: \.self) { stage in
                     Button {
                         selectedStage = stage
+                        fetchStageCohortCount(for: stage)
                     } label: {
                         Text(stage)
                             .font(.system(size: 13, weight: selectedStage == stage ? .semibold : .regular))
@@ -577,6 +586,67 @@ struct OnboardingView: View {
                 }
             }
             .padding(.horizontal, 24)
+
+            // Crystallization moment — once a stage is picked, show a
+            // single line of social proof with the live cohort count.
+            // Hidden while loading or on read failure (count == nil) and
+            // when no stage is selected yet (selectedStage == nil).
+            if let stage = selectedStage, let n = stageCohortCount, n > 0 {
+                Text(cohortLine(forCount: n, stage: stage))
+                    .font(.custom("Georgia-Italic", size: 13))
+                    .foregroundColor(Color.toskaBlue.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .padding(.top, 8)
+                    .padding(.horizontal, 24)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: stageCohortCount)
+    }
+
+    /// Renders the social-proof line under the stage list. Singular vs.
+    /// plural copy tunes for n=1 ("one other person...") so the line
+    /// doesn't read as off-by-one. Excludes the current user from the
+    /// count by subtracting 1, since their selection just incremented
+    /// the aggregate via the onBreakupStageChanged trigger.
+    func cohortLine(forCount rawCount: Int, stage: String) -> String {
+        let others = max(0, rawCount - 1)
+        if others == 0 {
+            return "youre the first one tonight."
+        } else if others == 1 {
+            return "one other person is in this with you tonight."
+        } else {
+            return "\(others) others are in this with you tonight."
+        }
+    }
+
+    /// Reads meta/breakupStageCounts and pulls the count for the chosen
+    /// stage. Cancels any in-flight request when the user picks a
+    /// different stage so the latest selection wins. The trigger that
+    /// maintains the aggregate (functions/index.js: onBreakupStageChanged)
+    /// fires when saveStageAndAdvance writes to private/data, so the
+    /// count reflects the user's own selection too — see cohortLine
+    /// for the -1 adjustment.
+    func fetchStageCohortCount(for stage: String) {
+        stageCountTask?.cancel()
+        stageCohortCount = nil
+        stageCountTask = Task { @MainActor in
+            do {
+                let snap = try await Firestore.firestore()
+                    .collection("meta").document("breakupStageCounts")
+                    .getDocumentAsync()
+                guard !Task.isCancelled, self.selectedStage == stage else { return }
+                let raw = snap.data()?[stage]
+                if let asInt = raw as? Int { self.stageCohortCount = asInt }
+                else if let asInt64 = raw as? Int64 { self.stageCohortCount = Int(asInt64) }
+                else if let asNumber = raw as? NSNumber { self.stageCohortCount = asNumber.intValue }
+                else { self.stageCohortCount = 0 }
+            } catch {
+                // Silent fallback — the line just doesn't render. Better
+                // than surfacing a load error inside the onboarding flow.
+                print("⚠️ fetchStageCohortCount failed: \(error)")
+            }
         }
     }
 

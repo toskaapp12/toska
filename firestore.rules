@@ -842,6 +842,25 @@ service cloud.firestore {
       allow read: if isAuth();
     }
 
+    // Server-maintained aggregate counters. Cloud Functions write here via
+    // Admin SDK (which bypasses rules); clients only read.
+    //   meta/tagCounts          — onPostCreated/Deleted maintain per-tag
+    //                             counts. Read by ExploreView.fetchTagCounts
+    //                             and the explore tag chips.
+    //   meta/breakupStageCounts — onBreakupStageChanged maintains per-stage
+    //                             user counts. Read by OnboardingView's
+    //                             stage step to render the "you're not alone
+    //                             tonight" crystallization beat with a real
+    //                             number.
+    //
+    // Previously this match was missing entirely; the catch-all deny at the
+    // bottom rejected reads, so meta/tagCounts has been silently failing
+    // every ExploreView appearance.
+    match /meta/{docId} {
+      allow read: if isAuth();
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,4 +1,4 @@
-const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { containsNameOrIdentifyingInfo } = require("./moderation");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
@@ -1209,6 +1209,45 @@ exports.onLikeWritten = onDocumentCreated(
       isRead: false,
       createdAt: FieldValue.serverTimestamp(),
     });
+  }
+);
+
+// ============================================================
+// Breakup-stage aggregate — feeds the onboarding "you're not alone
+// tonight" crystallization beat with a real number.
+//
+// Triggered on every write to users/{uid}/private/data (the only doc
+// in the private subcollection that carries breakupStage). Compares
+// before / after; if the value changed, atomically increments the new
+// stage's count and decrements the old stage's count at
+// meta/breakupStageCounts/{stage}. First-time set increments only
+// (no prior to decrement).
+//
+// At-least-once dedup via claimTriggerEvent — same shape as the other
+// counter triggers. Without it a redelivered event would double-count
+// a stage transition.
+// ============================================================
+exports.onBreakupStageChanged = onDocumentWritten(
+  "users/{userId}/private/{docId}",
+  async (event) => {
+    if (event.params.docId !== "data") return;
+    if (!await claimTriggerEvent(event.id)) return;
+
+    const before = event.data?.before?.data() || {};
+    const after  = event.data?.after?.data()  || {};
+    const beforeStage = typeof before.breakupStage === "string" ? before.breakupStage : null;
+    const afterStage  = typeof after.breakupStage  === "string" ? after.breakupStage  : null;
+    if (beforeStage === afterStage) return;
+
+    const ref = db.collection("meta").doc("breakupStageCounts");
+    const updates = { updatedAt: FieldValue.serverTimestamp() };
+    if (afterStage)  updates[afterStage]  = FieldValue.increment(1);
+    if (beforeStage) updates[beforeStage] = FieldValue.increment(-1);
+    try {
+      await ref.set(updates, { merge: true });
+    } catch (err) {
+      console.warn("onBreakupStageChanged set failed:", err.message);
+    }
   }
 );
 

@@ -253,6 +253,34 @@ async function cleanupCircleMessagesForUid(uid, maxIterations) {
   return { totalDeleted, capHit: batchCount >= maxIterations };
 }
 
+// Paginated deletion of reflections authored by a deleted user on OTHER
+// users' posts. Reflections under the deleted user's own posts are
+// already cleaned up by cleanupPostsForUid (which deletes the per-post
+// reflections subcollection before deleting the post). What's left are
+// reflections this user wrote on someone else's post — visible to that
+// post's author via PostDetailView reflection enumeration with the
+// deleted handle attached. Same shape as cleanupNotificationsForUid:
+// collectionGroup query on `authorId`, paginate, return capHit so
+// resumeUserCleanup can drain across hourly sweeps.
+async function cleanupReflectionsForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const snap = await db.collectionGroup("reflections")
+      .where("authorId", "==", uid)
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
 // Paginated deletion of pending reports filed by a deleted user. Reports
 // filed *against* this user must persist (moderation history survives
 // deletion); reports they themselves filed are cleaned up so the queue
@@ -340,6 +368,57 @@ async function claimTriggerEvent(eventId) {
     // the pre-fix behavior. Log so persistent issues surface.
     console.warn(`claimTriggerEvent ${eventId} errored, failing open:`, err.message);
     return true;
+  }
+}
+
+// ============================================================
+// Atomic claim+write for multi-write counter triggers.
+//
+// The plain `claimTriggerEvent` pattern (claim FIRST, then do writes)
+// has a partial-failure trap: if the claim is set but a subsequent write
+// fails, Eventarc redelivery sees the claim and skips the entire trigger
+// — leaving the failed counter update permanently un-applied. For
+// triggers that issue two related writes (e.g., post.likeCount AND
+// user.totalLikes), this can cause silent counter drift on the second
+// write that has no self-correcting path.
+//
+// `claimedTransaction` rolls the claim INTO the user-supplied transaction
+// so claim-set and writes are atomic: if any write throws, the whole
+// transaction rolls back including the claim, and Eventarc retry can
+// re-attempt cleanly. Each call gets its own subKey so two paired writes
+// (e.g., "post" + "user" sub-events) can fail/retry independently.
+//
+// transactionFn must do all its tx.get reads BEFORE any tx.update/set
+// writes (Firestore transaction constraint); the claim's tx.set lands
+// last. transactionFn may return a value which becomes the resolved
+// promise's value; on already-processed or error, undefined is returned.
+// ============================================================
+async function claimedTransaction(eventId, subKey, transactionFn) {
+  if (!eventId || typeof eventId !== "string") {
+    try { return await db.runTransaction(transactionFn); }
+    catch (err) {
+      console.warn(`claimedTransaction (no eventId, ${subKey}) failed:`, err.message);
+      return undefined;
+    }
+  }
+  const claimRef = db.collection("processedTriggerEvents").doc(`${eventId}_${subKey}`);
+  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  try {
+    return await db.runTransaction(async (tx) => {
+      const claimSnap = await tx.get(claimRef);
+      if (claimSnap.exists) return undefined; // already processed by a prior delivery
+      const result = await transactionFn(tx);
+      tx.set(claimRef, {
+        processedAt: FieldValue.serverTimestamp(),
+        expiresAt,
+      });
+      return result;
+    });
+  } catch (err) {
+    // Transaction rolled back, claim NOT set — Eventarc redelivery will
+    // re-attempt. Log so persistent failures surface.
+    console.warn(`claimedTransaction ${eventId}/${subKey} failed, will retry on redelivery:`, err.message);
+    return undefined;
   }
 }
 
@@ -467,7 +546,11 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       console.warn("Follow-edge cleanup failed:", err.message);
     }
 
-    const subs = ["saved", "liked", "notifications", "blocked", "presence", "private"];
+    // `drafts` is included so a user's pre-publish rehearsal text doesn't
+    // survive their account delete. Without it, drafts persist forever
+    // (rules deny reads to anyone but the now-deleted owner — orphaned
+    // tombstones with no GC path).
+    const subs = ["saved", "liked", "notifications", "blocked", "presence", "private", "drafts"];
     for (const sub of subs) {
       await deleteCollection(db.collection("users").doc(uid).collection(sub));
     }
@@ -544,6 +627,21 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       }
     } catch (err) {
       console.warn("Pending-report cleanup failed:", err.message);
+    }
+
+    // Reflections this user wrote on other users' posts. Reflections under
+    // the deleted user's own posts are already handled by cleanupPostsForUid.
+    try {
+      const reflectionResult = await cleanupReflectionsForUid(uid, 50);
+      if (reflectionResult.totalDeleted > 0) {
+        console.log(`Deleted ${reflectionResult.totalDeleted} cross-user reflections by user ${uid}`);
+      }
+      if (reflectionResult.capHit) {
+        await queueUserCleanupContinuation(uid, "reflections", reflectionResult.totalDeleted);
+        console.warn(`Reflection cleanup cap hit for ${uid}; queued for resume.`);
+      }
+    } catch (err) {
+      console.warn("Cross-user reflection cleanup failed:", err.message);
     }
 
     // Reposts of this user's content by other accounts. These don't show up
@@ -892,28 +990,34 @@ exports.onPendingDeletionCreated = onDocumentCreated(
 exports.onLikeCreatedUpdateCounts = onDocumentCreated(
   "posts/{postId}/likes/{userId}",
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
 
-    try {
-      await postRef.update({ likeCount: FieldValue.increment(1) });
-    } catch (err) {
-      console.warn("onLikeCreatedUpdateCounts: likeCount increment failed:", err.message);
-    }
+    // Atomic claim+increment likeCount. Read post inside the transaction
+    // so a missing-post case short-circuits without faulting the
+    // tx.update call (otherwise NOT_FOUND rolls back the claim and
+    // Eventarc spins until retry-budget exhaustion).
+    await claimedTransaction(event.id, "post", async (tx) => {
+      const snap = await tx.get(postRef);
+      if (!snap.exists) return;
+      tx.update(postRef, { likeCount: FieldValue.increment(1) });
+    });
 
-    // Increment the post author's totalLikes
-    try {
-      const postSnap = await postRef.get();
+    // Atomic claim+increment totalLikes on the post author. Independent
+    // sub-claim so a failure here doesn't stall the post-counter retry
+    // (and vice versa). Reads postRef itself so this transaction can
+    // run cleanly on Eventarc redelivery even if the closure that
+    // captured authorId from the first transaction was discarded.
+    await claimedTransaction(event.id, "user", async (tx) => {
+      const postSnap = await tx.get(postRef);
       if (!postSnap.exists) return;
       const authorId = postSnap.data().authorId;
       if (!authorId) return;
-      await db.collection("users").doc(authorId).update({
-        totalLikes: FieldValue.increment(1),
-      });
-    } catch (err) {
-      console.warn("onLikeCreatedUpdateCounts: totalLikes increment failed:", err.message);
-    }
+      const userRef = db.collection("users").doc(authorId);
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) return; // author deleted between like create and trigger
+      tx.update(userRef, { totalLikes: FieldValue.increment(1) });
+    });
   }
 );
 
@@ -927,28 +1031,25 @@ exports.onLikeCreatedUpdateCounts = onDocumentCreated(
 exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
   "posts/{postId}/likes/{userId}",
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     const postRef = db.collection("posts").doc(postId);
 
-    try {
-      await postRef.update({ likeCount: FieldValue.increment(-1) });
-    } catch (err) {
-      console.warn("onLikeDeletedUpdateCounts: likeCount decrement failed:", err.message);
-    }
+    await claimedTransaction(event.id, "post", async (tx) => {
+      const snap = await tx.get(postRef);
+      if (!snap.exists) return;
+      tx.update(postRef, { likeCount: FieldValue.increment(-1) });
+    });
 
-    // Decrement the post author's totalLikes
-    try {
-      const postSnap = await postRef.get();
+    await claimedTransaction(event.id, "user", async (tx) => {
+      const postSnap = await tx.get(postRef);
       if (!postSnap.exists) return;
       const authorId = postSnap.data().authorId;
       if (!authorId) return;
-      await db.collection("users").doc(authorId).update({
-        totalLikes: FieldValue.increment(-1),
-      });
-    } catch (err) {
-      console.warn("onLikeDeletedUpdateCounts: totalLikes decrement failed:", err.message);
-    }
+      const userRef = db.collection("users").doc(authorId);
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) return;
+      tx.update(userRef, { totalLikes: FieldValue.increment(-1) });
+    });
   }
 );
 
@@ -1124,25 +1225,25 @@ exports.onPostDeletedCleanupReposts = onDocumentDeleted("posts/{postId}", async 
 exports.onFollowCreatedUpdateCounts = onDocumentCreated(
   "users/{userId}/following/{followedId}",
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const userId = event.params.userId;
     const followedId = event.params.followedId;
 
-    try {
-      await db.collection("users").doc(userId).update({
-        followingCount: FieldValue.increment(1),
-      });
-    } catch (err) {
-      console.warn("onFollowCreatedUpdateCounts: followingCount increment failed:", err.message);
-    }
+    // Atomic claim+increment for each side of the follow edge. Independent
+    // sub-claims so a failure on one side (e.g., target user already
+    // deleted) doesn't stall the other from retrying.
+    await claimedTransaction(event.id, "follower", async (tx) => {
+      const ref = db.collection("users").doc(userId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      tx.update(ref, { followingCount: FieldValue.increment(1) });
+    });
 
-    try {
-      await db.collection("users").doc(followedId).update({
-        followerCount: FieldValue.increment(1),
-      });
-    } catch (err) {
-      console.warn("onFollowCreatedUpdateCounts: followerCount increment failed:", err.message);
-    }
+    await claimedTransaction(event.id, "followed", async (tx) => {
+      const ref = db.collection("users").doc(followedId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      tx.update(ref, { followerCount: FieldValue.increment(1) });
+    });
   }
 );
 
@@ -1154,24 +1255,22 @@ exports.onFollowCreatedUpdateCounts = onDocumentCreated(
 exports.onFollowDeletedUpdateCounts = onDocumentDeleted(
   "users/{userId}/following/{followedId}",
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const userId = event.params.userId;
     const followedId = event.params.followedId;
 
-    try {
-      await db.collection("users").doc(userId).update({
-        followingCount: FieldValue.increment(-1),
-      });
-    } catch (err) {
-      console.warn("onFollowDeletedUpdateCounts: followingCount decrement failed:", err.message);
-    }
-    try {
-      await db.collection("users").doc(followedId).update({
-        followerCount: FieldValue.increment(-1),
-      });
-    } catch (err) {
-      console.warn("onFollowDeletedUpdateCounts: followerCount decrement failed:", err.message);
-    }
+    await claimedTransaction(event.id, "follower", async (tx) => {
+      const ref = db.collection("users").doc(userId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      tx.update(ref, { followingCount: FieldValue.increment(-1) });
+    });
+
+    await claimedTransaction(event.id, "followed", async (tx) => {
+      const ref = db.collection("users").doc(followedId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      tx.update(ref, { followerCount: FieldValue.increment(-1) });
+    });
   }
 );
 
@@ -1225,19 +1324,46 @@ exports.onLikeWritten = onDocumentCreated(
 //
 // At-least-once dedup via claimTriggerEvent — same shape as the other
 // counter triggers. Without it a redelivered event would double-count
-// a stage transition.
+// a stage transition. The claim is gated below the docId/stage-change
+// short-circuits so unrelated private/data writes (mood, fcmToken,
+// notify prefs) don't burn a processedTriggerEvents row apiece.
+//
+// Mirror of OnboardingView.swift:30-38. A tampered client could write
+// any string into private/data.breakupStage; without the allowlist,
+// meta/breakupStageCounts would accumulate adversarial keys (storage
+// pollution, no UI surface today since ExploreView iterates a fixed
+// stage list, but the meta doc is unbounded).
 // ============================================================
+const ALLOWED_BREAKUP_STAGES = new Set([
+  "it just happened",
+  "a few weeks in",
+  "months in",
+  "a year or more",
+  "still in it",
+  "they left",
+  "i left",
+]);
+
 exports.onBreakupStageChanged = onDocumentWritten(
   "users/{userId}/private/{docId}",
   async (event) => {
     if (event.params.docId !== "data") return;
-    if (!await claimTriggerEvent(event.id)) return;
 
     const before = event.data?.before?.data() || {};
     const after  = event.data?.after?.data()  || {};
-    const beforeStage = typeof before.breakupStage === "string" ? before.breakupStage : null;
-    const afterStage  = typeof after.breakupStage  === "string" ? after.breakupStage  : null;
-    if (beforeStage === afterStage) return;
+    const rawBefore = typeof before.breakupStage === "string" ? before.breakupStage : null;
+    const rawAfter  = typeof after.breakupStage  === "string" ? after.breakupStage  : null;
+    if (rawBefore === rawAfter) return;
+
+    // Drop stage values not in the allowlist so the meta doc only
+    // accumulates keys we actually display. A delta between two junk
+    // values short-circuits to no-op; a junk → real or real → junk
+    // transition only counts the legitimate side.
+    const beforeStage = rawBefore && ALLOWED_BREAKUP_STAGES.has(rawBefore) ? rawBefore : null;
+    const afterStage  = rawAfter  && ALLOWED_BREAKUP_STAGES.has(rawAfter)  ? rawAfter  : null;
+    if (!beforeStage && !afterStage) return;
+
+    if (!await claimTriggerEvent(event.id)) return;
 
     const ref = db.collection("meta").doc("breakupStageCounts");
     const updates = { updatedAt: FieldValue.serverTimestamp() };
@@ -2249,6 +2375,7 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     reports: cleanupSubmittedReportsForUid,
     reposts: cleanupRepostsForUid,
     follows: cleanupMirrorFollowsForUid,
+    reflections: cleanupReflectionsForUid,
   };
 
   for (const doc of queueSnap.docs) {

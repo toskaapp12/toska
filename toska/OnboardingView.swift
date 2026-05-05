@@ -607,17 +607,19 @@ struct OnboardingView: View {
 
     /// Renders the social-proof line under the stage list. Singular vs.
     /// plural copy tunes for n=1 ("one other person...") so the line
-    /// doesn't read as off-by-one. Excludes the current user from the
-    /// count by subtracting 1, since their selection just incremented
-    /// the aggregate via the onBreakupStageChanged trigger.
+    /// doesn't read as off-by-one. The displayed count is read at
+    /// stage-button tap time, BEFORE saveStageAndAdvance fires the
+    /// onBreakupStageChanged trigger — so for first-time onboarders
+    /// (the dominant case) the user is not yet in the aggregate and
+    /// rawCount is already the "others" count. Subtracting 1 here
+    /// would under-state by one; keep rawCount as-is.
     func cohortLine(forCount rawCount: Int, stage: String) -> String {
-        let others = max(0, rawCount - 1)
-        if others == 0 {
+        if rawCount <= 0 {
             return "youre the first one tonight."
-        } else if others == 1 {
+        } else if rawCount == 1 {
             return "one other person is in this with you tonight."
         } else {
-            return "\(others) others are in this with you tonight."
+            return "\(rawCount) others are in this with you tonight."
         }
     }
 

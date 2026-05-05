@@ -253,9 +253,24 @@ service cloud.firestore {
         // is still deterministic so an attacker can only write one of each
         // type per (post, victim, actor) triple — plus they must not be
         // blocked by the author.
+        // fromHandle defense-in-depth: rules already pin fromUserId to the
+        // authenticated caller, but `fromHandle` was previously unvalidated —
+        // a tampered client could write a fake handle string into another
+        // user's notification doc, and NotificationsView's renderer trusted
+        // the value verbatim ("@victim_handle followed you"). The push payload
+        // is already protected because sendPushNotification re-resolves the
+        // handle from the sender's user doc before sending; this clause closes
+        // the in-app spoofing vector by requiring fromHandle (when present)
+        // to match the caller's actual handle on their user doc. Cost: one
+        // extra get() per notification create, fine at v1.0 volume.
         allow create: if isAuth()
           && request.resource.data.fromUserId == request.auth.uid
           && request.resource.data.type is string
+          && (
+            !('fromHandle' in request.resource.data.keys())
+            || request.resource.data.fromHandle ==
+                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle
+          )
           && (
             // like: actor has a like doc on the post AND the post author is the recipient.
             // The like-create rule (posts/{postId}/likes/{likeUserId}) already
@@ -575,6 +590,15 @@ service cloud.firestore {
       // messages create rule below (the size != 2 leg). OtherProfileView.
       // startConversation is the only legitimate creator and writes exactly
       // [uid, otherUid], so the cap doesn't break any current call site.
+      //
+      // Block enforcement at create time: the message-create rule already
+      // refuses to deliver a message when the recipient has blocked the
+      // sender, so blocked users can't send. But without the same check
+      // at convo create, a tampered client can still write the convo doc
+      // itself — leaving an empty conversation in the blocker's
+      // MessagesListView (which queries `participants array-contains uid`)
+      // as a phantom UI artifact. Adding the !exists() check here mirrors
+      // the message-create rule and forecloses the phantom-convo bypass.
       allow create: if isAuth()
         && request.resource.data.participants is list
         && request.resource.data.participants.size() == 2
@@ -584,7 +608,12 @@ service cloud.firestore {
           !request.resource.data.keys().hasAny(['messageCount'])
           || request.resource.data.messageCount.size() == 0
           || request.resource.data.messageCount.values().hasOnly([0])
-        );
+        )
+        && !exists(/databases/$(database)/documents/users/$(
+          request.resource.data.participants[0] == request.auth.uid
+            ? request.resource.data.participants[1]
+            : request.resource.data.participants[0]
+        )/blocked/$(request.auth.uid));
       // Schema-locked update rule. Previously only `participants` and
       // `createdAt` were blocked from change — every other field was open
       // to either participant, including arbitrary keys a future trigger

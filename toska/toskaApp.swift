@@ -38,6 +38,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                          didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
             print("🔥 AppDelegate — didFinishLaunching")
+            // SIMULATOR APP CHECK GOTCHA — see RUNBOOK.md → Local development
+            // → "Simulator App Check — first-run gotcha". On a fresh simulator
+            // install, the debug token printed below must be registered in
+            // Firebase Console (toskastaging) before any Firebase call
+            // requiring App Check will succeed; otherwise expect cascading
+            // 403s on confirmAdult / handle queries / count reconcile.
             #if DEBUG
             let providerFactory = AppCheckDebugProviderFactory()
             #else

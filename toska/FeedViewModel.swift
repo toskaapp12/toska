@@ -588,8 +588,13 @@ class FeedViewModel: ObservableObject {
                                                 // posts retain more of their score and float up vs the default.
                                                 // "still in it" stays on the fresh-floor since they're effectively
                                                 // pre-breakup — the live moment matters more than the archive.
+                                                // Read stage from UserHandleCache first; fall back to the
+                                                // VM-local copy. The cache listener boots earlier than
+                                                // fetchUserPreferences so a fresh feed load gets the right
+                                                // floor on the first scoring pass instead of the second.
+                                                let stageForFloor = UserHandleCache.shared.breakupStage ?? self.userBreakupStage
                                                 let decayFloor: Double
-                                                switch self.userBreakupStage {
+                                                switch stageForFloor {
                                                 case "a year or more": decayFloor = 0.6
                                                 case "months in":      decayFloor = 0.45
                                                 case "they left", "i left":
@@ -894,7 +899,15 @@ class FeedViewModel: ObservableObject {
         // "still in it" users haven't had a breakup yet — anniversaries
         // are nonsensical for them. Skip the whole fetch. nil and any
         // other stage value still walks the full milestone ladder.
-        if userBreakupStage == "still in it" {
+        //
+        // Read from UserHandleCache rather than self.userBreakupStage:
+        // refreshAll() and loadInitialData both call this on the same
+        // tick they call fetchUserPreferences, so self.userBreakupStage
+        // is racy on first load. The cache listener boots from
+        // AppDelegate's auth-state listener (toskaApp.swift), so it has
+        // a head start and is populated by the time the feed is ready.
+        let stage = UserHandleCache.shared.breakupStage ?? userBreakupStage
+        if stage == "still in it" {
             anniversaryPost = nil
             return
         }

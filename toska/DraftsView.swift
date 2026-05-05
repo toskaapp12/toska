@@ -23,13 +23,11 @@ struct DraftItem: Identifiable {
 
 @MainActor
 struct DraftsView: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var drafts: [DraftItem] = []
     @State private var listener: ListenerRegistration? = nil
     @State private var selectedDraft: DraftItem? = nil
 
     var body: some View {
-        NavigationStack {
             ZStack {
                 LateNightTheme.background.ignoresSafeArea()
 
@@ -85,15 +83,7 @@ struct DraftsView: View {
             }
             .navigationTitle("drafts")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Text("done")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.toskaBlue)
-                    }
-                }
-            }
+            .toolbar(.visible, for: .navigationBar)
             .fullScreenCover(item: $selectedDraft) { draft in
                 ComposeView(
                     initialText: draft.text,
@@ -101,7 +91,6 @@ struct DraftsView: View {
                     onPostSuccess: nil
                 )
             }
-        }
         .onAppear { startListening() }
         .onDisappear { stopListening() }
     }

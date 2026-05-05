@@ -149,6 +149,25 @@ struct SettingsView: View {
                             VStack(spacing: 0) {
                                 toggleRow("gentle check-in", subtitle: "we'll check in on softer signals. crisis language always shows resources.", isOn: $settings.gentleCheckIn)
                                 Divider().padding(.leading, 14)
+                                NavigationLink(destination: DraftsView()) {
+                                    HStack(alignment: .top) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("drafts")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(Color.toskaTextDark)
+                                            Text("things you wrote but didnt share")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color.toskaTextLight)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 10, weight: .light))
+                                            .foregroundColor(Color.toskaDivider)
+                                    }
+                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 14)
+                                }
+                                Divider().padding(.leading, 14)
                                 NavigationLink(destination: BlockedUsersListView()) {
                                     HStack {
                                         Text("blocked users")

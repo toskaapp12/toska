@@ -8,6 +8,11 @@ struct ComposeView: View {
     var initialText: String = ""
     var initialTag: String? = nil
     var onPostSuccess: (() -> Void)? = nil
+    // When opened from DraftsView, the id of the draft being edited.
+    // The Save button updates that doc instead of creating a new draft;
+    // a successful Publish deletes the draft so the user ends up with
+    // one published post instead of a stranded draft + post pair.
+    var editingDraftId: String? = nil
     // Draft persistence keys. AppStorage survives force-quit so a user mid-
     // compose doesn't lose their words if iOS terminates the app or they
     // accidentally swipe it away. Cleared on successful post.
@@ -66,6 +71,19 @@ struct ComposeView: View {
             && !UserHandleCache.shared.isRestricted
     }
 
+    // Save-as-draft is intentionally less gated than post:
+    //   - no rate-limit (drafts don't fan out to feed / push / counters)
+    //   - no restriction check (drafts never publish — even a restricted
+    //     user can save private text)
+    //   - GIF-only drafts skipped (a draft is text the user is wrestling
+    //     with; a saved GIF without text isn't the use case here)
+    // Network is still required since the write hits Firestore.
+    var canSave: Bool {
+        !trimmedText.isEmpty
+            && !isPosting
+            && NetworkMonitor.shared.isConnected
+    }
+
     var composePlaceholder: String {
             if isLetter { return "dear you..." }
             if isWhisper { return "say it quietly..." }
@@ -98,7 +116,7 @@ struct ComposeView: View {
 
             VStack(spacing: 0) {
                 // MARK: - Top bar
-                HStack {
+                HStack(spacing: 10) {
                     Button { dismiss() } label: {
                         Text("cancel")
                             .font(.system(size: 14))
@@ -106,6 +124,26 @@ struct ComposeView: View {
                     }
 
                     Spacer()
+
+                    // Save-as-draft. Soft secondary-styled button so the
+                    // primary "post" still reads as the default action.
+                    // Wording shifts to "update" when editing an existing
+                    // draft so the user knows whether they're creating
+                    // a new entry or revising the open one.
+                    Button { saveAsDraft() } label: {
+                        Text(editingDraftId == nil ? "save" : "update")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(canSave ? Color.toskaBlue : Color.toskaBlue.opacity(0.4))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.clear)
+                            .overlay(
+                                Capsule().stroke(canSave ? Color.toskaBlue : Color.toskaBlue.opacity(0.3), lineWidth: 0.5)
+                            )
+                            .clipShape(Capsule())
+                    }
+                    .disabled(!canSave)
+                    .accessibilityLabel(editingDraftId == nil ? "Save as draft" : "Update draft")
 
                     Button { attemptPost() } label: {
                         Text(isPosting ? "posting..." : "post")
@@ -137,6 +175,27 @@ struct ComposeView: View {
                 }
                 if !postError.isEmpty {
                     warningBanner(icon: "exclamationmark.circle", text: postError, color: "c45c5c")
+                }
+
+                // Soft "still in it" nudge: users who picked the
+                // pre-breakup stage in onboarding may not be ready to
+                // post publicly (partner could see / recognize their
+                // handle). Surface the save-as-draft path so they have
+                // a place to write without having to ship it. Hidden
+                // when editing an existing draft (the call to action
+                // is already obvious there).
+                if UserHandleCache.shared.breakupStage == "still in it" && editingDraftId == nil {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 10))
+                        Text("dont have to share it. tap save and it stays just for you.")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(Color.toskaBlue.opacity(0.75))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.toskaBlue.opacity(0.06))
                 }
 
                 Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
@@ -727,6 +786,45 @@ struct ComposeView: View {
         }
     }
 
+    /// Save the current text to users/{uid}/drafts/ instead of publishing.
+    /// Creates a new draft when editingDraftId is nil; otherwise updates
+    /// the existing one (text + updatedAt). No rate-limit / moderation
+    /// triggers fire — drafts never reach feed / explore / push paths.
+    func saveAsDraft() {
+        guard canSave else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        let draftsRef = db.collection("users").document(uid).collection("drafts")
+        Task { @MainActor in
+            do {
+                if let id = editingDraftId {
+                    // Update existing draft. Rules permit text + updatedAt only.
+                    try await draftsRef.document(id).updateData([
+                        "text": trimmedText,
+                        "updatedAt": FieldValue.serverTimestamp(),
+                    ])
+                } else {
+                    // Create a new draft with the rule's required schema.
+                    try await draftsRef.addDocument(data: [
+                        "text": trimmedText,
+                        "createdAt": FieldValue.serverTimestamp(),
+                    ])
+                }
+                // Clear the in-progress draft cache so the next compose-open
+                // doesn't re-prompt with the same words. The persisted-to-
+                // Firestore version is the canonical store now.
+                draftText = ""
+                draftTag = ""
+                Telemetry.draftSaved(isUpdate: editingDraftId != nil)
+                dismiss()
+            } catch {
+                print("⚠️ ComposeView.saveAsDraft failed: \(error)")
+                Telemetry.recordError(error, context: "ComposeView.saveAsDraft")
+                postError = "couldnt save. try again."
+            }
+        }
+    }
+
     func postNow() {
         guard !isPosting else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -829,6 +927,24 @@ struct ComposeView: View {
                         // next compose opens clean.
                         self.draftText = ""
                         self.draftTag = ""
+                        // If we were editing an existing saved draft and the
+                        // user chose to publish (rather than update), delete
+                        // the draft so they don't end up with a stranded
+                        // draft + the published post. Best-effort — failure
+                        // here doesn't roll back the post since the post
+                        // has already landed; worst case the user sees the
+                        // draft still in their list and can delete it
+                        // manually from DraftsView.
+                        if let id = self.editingDraftId {
+                            Firestore.firestore()
+                                .collection("users").document(uid)
+                                .collection("drafts").document(id)
+                                .delete { err in
+                                    if let err = err {
+                                        print("⚠️ ComposeView post-success draft delete failed: \(err)")
+                                    }
+                                }
+                        }
                         NotificationCenter.default.post(name: .newPostCreated, object: nil)
                         if let onPostSuccess = self.onPostSuccess {
                             onPostSuccess()

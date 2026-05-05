@@ -68,6 +68,39 @@ open toska.xcodeproj
 # In Xcode: select an iPhone simulator → Cmd+R
 ```
 
+### Simulator App Check — first-run gotcha
+
+Debug builds use `AppCheckDebugProviderFactory` (toskaApp.swift, AppDelegate
+launch). On a fresh simulator install, the SDK prints a debug token to the
+Xcode console at launch:
+
+```
+[FirebaseAppCheck][I-FAA005001] Firebase App Check debug token: 'XXXXXXXX-…'
+```
+
+Until that token is registered in **Firebase Console → toskastaging → Build
+→ App Check → iOS app → ⋮ → Manage debug tokens**, every Firebase call
+that requires App Check fails with HTTP 403 / `App attestation failed`.
+Symptoms cascade: handle-uniqueness queries hit `Missing or insufficient
+permissions`, the `confirmAdult` callable returns `Unauthenticated`, and
+the user lands in a half-broken account state (auth user exists,
+`confirmedAdult` never written, rules deny most subsequent writes).
+
+**Workflow**:
+1. Launch the app once. Copy the debug token from the Xcode console.
+2. Register it under a descriptive name (e.g. `tess-iphone17-sim`).
+3. Re-launch. Token is stable across re-launches until the simulator is
+   erased ("Device → Erase All Content and Settings").
+
+**Never** register debug tokens against the prod App Check config — anyone
+holding a leaked debug token would bypass attestation.
+
+For E2E flows that gate permanent server-side state (`confirmAdult`,
+`onCall` smoke tests), use a real device. App Attest works there with no
+token registration, and the simulator path has multiple stacked failure
+modes that aren't worth debugging when the underlying check works fine on
+device.
+
 ### Run rules unit tests
 
 ```sh

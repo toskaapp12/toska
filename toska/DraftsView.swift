@@ -87,8 +87,8 @@ struct DraftsView: View {
             .fullScreenCover(item: $selectedDraft) { draft in
                 ComposeView(
                     initialText: draft.text,
-                    editingDraftId: draft.id,
-                    onPostSuccess: nil
+                    onPostSuccess: nil,
+                    editingDraftId: draft.id
                 )
             }
         .onAppear { startListening() }

@@ -314,6 +314,30 @@ describe("Finding 2: feelingCircles update can only add/remove caller", () => {
     );
   });
 
+  it("second joiner can update participants only (matches iOS branched path)", async () => {
+    // Mirrors the UPDATE branch of FeelingCircleView.joinCircle: when the
+    // doc already exists, iOS issues an updateData with ONLY participants
+    // (arrayUnion). The previous shape — a single setData(merge:true)
+    // re-writing createdAt as serverTimestamp — was silently denied here
+    // and joinCircle quietly logged + bailed for every Nth joiner.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        date: "2026-05-04",
+        participants: ["alice"],
+        createdAt: new Date(2026, 4, 4, 12, 0),
+        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+      });
+    });
+    const { arrayUnion } = require("firebase/firestore");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("feelingCircles").doc("fc1").update({
+        participants: arrayUnion("bob"),
+      })
+    );
+  });
+
   it("rejects evicting another participant", async () => {
     await env.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("feelingCircles").doc("fc1").set({

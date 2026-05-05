@@ -367,6 +367,39 @@ service cloud.firestore {
       match /private/{docId} {
         allow read, write: if isOwner(userId);
       }
+
+      // Drafts — pre-publish "the conversation you can't bring yourself
+      // to have" rehearsal space. Owner-only at every layer: a draft
+      // never appears in feed, explore, or any public surface, and no
+      // other authenticated user can read or list them. Designed for
+      // "still in it" users who can't safely post yet (partner could
+      // see / recognize) but need somewhere to write it down. Drafts
+      // can later be promoted to a real post via the iOS path; that's
+      // a normal posts/{postId} create + draft delete, gated by the
+      // existing post-create rule.
+      //
+      // Schema lockdown (text required, size-capped to match the post
+      // limit, plus the two timestamps). createdAt is pinned to
+      // request.time on create so a tampered client can't backdate.
+      // updatedAt isn't pinned so the iOS edit path can refresh it
+      // freely without a server round-trip on each keystroke.
+      match /drafts/{draftId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['text', 'createdAt', 'updatedAt'])
+          && request.resource.data.keys().hasAll(['text', 'createdAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time;
+        allow update: if isOwner(userId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['text', 'updatedAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000;
+        allow delete: if isOwner(userId);
+      }
     }
 
     match /posts/{postId} {

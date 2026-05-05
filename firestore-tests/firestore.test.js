@@ -977,3 +977,75 @@ describe("reflections subcollection is reflection-author-or-post-author scoped",
     );
   });
 });
+
+describe("drafts subcollection — owner-only rehearsal space", () => {
+  it("allows owner to create a draft with valid shape", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").collection("drafts").doc("d1").set({
+        text: "the thing i havent said yet",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("rejects another user reading someone else's drafts", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("alice").collection("drafts").doc("d1")
+        .set({ text: "private", createdAt: new Date() });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice").collection("drafts").doc("d1").get()
+    );
+  });
+
+  it("rejects draft create with text > 2000 chars", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").collection("drafts").doc("d1").set({
+        text: "x".repeat(2001),
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("rejects draft create with extra unlisted field", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").collection("drafts").doc("d1").set({
+        text: "ok",
+        createdAt: serverTimestamp(),
+        flagged: false,
+      })
+    );
+  });
+
+  it("allows owner to update text + updatedAt", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("alice").collection("drafts").doc("d1")
+        .set({ text: "first draft", createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").collection("drafts").doc("d1").update({
+        text: "revised",
+        updatedAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows owner to delete their own draft", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("alice").collection("drafts").doc("d1")
+        .set({ text: "anything", createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").collection("drafts").doc("d1").delete()
+    );
+  });
+});

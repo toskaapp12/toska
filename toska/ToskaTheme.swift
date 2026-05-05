@@ -376,6 +376,14 @@ extension Telemetry {
         event("post_created", parameters: params)
     }
 
+    /// Save-as-draft (ComposeView). `is_update` distinguishes a fresh
+    /// save from edits to an existing draft so the funnel can tell
+    /// "people who use drafts as one-shot rehearsal" from "people who
+    /// keep iterating on the same draft."
+    static func draftSaved(isUpdate: Bool = false) {
+        event("draft_saved", parameters: ["is_update": isUpdate])
+    }
+
     static func replyCreated(parentIsOwn: Bool, hasGif: Bool) {
         event("reply_created", parameters: ["parent_is_own": parentIsOwn, "has_gif": hasGif])
     }

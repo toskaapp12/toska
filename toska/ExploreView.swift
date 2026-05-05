@@ -59,6 +59,13 @@ struct ExploreView: View {
     @State private var isSearching = false
     @State private var hasSearched = false
     @State private var tagCounts: [String: Int] = [:]
+    // Cohort counts by breakup stage (meta/breakupStageCounts) — shown
+    // as a soft-chip row above the mood tags. The breakup-specific
+    // signal that anchors the explore tab in the wedge: a visitor
+    // browsing the surface immediately sees "people in 'a year or more'
+    // (230)" / "people in 'they left' (47)" rather than just feeling
+    // tags any anonymous app could surface.
+    @State private var breakupStageCounts: [String: Int] = [:]
     @State private var hasFetchedInitial = false
     @State private var feelingPeople: [FeelingPerson] = []
     @State private var activeConversation: ConversationSelection? = nil
@@ -117,6 +124,48 @@ struct ExploreView: View {
                 .padding(.horizontal, 16)
                                 .padding(.bottom, 8)
                                 
+                                // Stage chips — breakup-cohort signal above the
+                                // mood tags. Display order mirrors OnboardingView.
+                                // breakupStages and we hide stages with zero count
+                                // so an empty cohort doesn't get its own chip.
+                                // Hidden during search and when a tag is selected
+                                // (focus mode for tag-filtered feed).
+                                if !hasSearched && selectedTag == nil && !breakupStageCounts.isEmpty {
+                                    let stageOrder = [
+                                        "it just happened",
+                                        "a few weeks in",
+                                        "months in",
+                                        "a year or more",
+                                        "still in it",
+                                        "they left",
+                                        "i left",
+                                    ]
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 8) {
+                                            ForEach(stageOrder, id: \.self) { stage in
+                                                if let count = breakupStageCounts[stage], count > 0 {
+                                                    HStack(spacing: 4) {
+                                                        Text(stage)
+                                                            .font(.system(size: 11, weight: .medium))
+                                                        Text("·")
+                                                            .font(.system(size: 8))
+                                                            .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                                        Text("\(count)")
+                                                            .font(.system(size: 10))
+                                                    }
+                                                    .foregroundColor(Color.toskaBlue)
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 6)
+                                                    .background(Color.toskaBlue.opacity(0.06))
+                                                    .cornerRadius(16)
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                    }
+                                    .padding(.bottom, 8)
+                                }
+
                                 // Tag pills
                                 if !hasSearched && selectedTag == nil {
                                     ScrollView(.horizontal, showsIndicators: false) {
@@ -370,6 +419,7 @@ struct ExploreView: View {
                     }
                     fetchTrendingPosts()
                     fetchTagCounts()
+                    fetchBreakupStageCounts()
                     checkForFinalPosts()
                 }
                 .onDisappear {
@@ -632,6 +682,32 @@ struct ExploreView: View {
         // now maintains meta/tagCounts, incrementing and decrementing each tag key
         // as posts are created and deleted. The client reads one document instead
         // of 200, saving ~199 Firestore reads every time ExploreView appears.
+        // Reads the per-stage user count maintained by the
+        // onBreakupStageChanged Cloud Function (functions/index.js).
+        // Same shape as fetchTagCounts: one document read, no fan-out.
+        // Failure is silent — the chip row just hides itself rather
+        // than splash a load error across the explore surface.
+        func fetchBreakupStageCounts() {
+            Firestore.firestore().collection("meta").document("breakupStageCounts")
+                .getDocument { snapshot, error in
+                    Task { @MainActor in
+                        if let error = error {
+                            print("⚠️ fetchBreakupStageCounts failed: \(error)")
+                            return
+                        }
+                        guard let data = snapshot?.data() else { return }
+                        var counts: [String: Int] = [:]
+                        for (key, value) in data {
+                            if key == "updatedAt" { continue }
+                            if let n = value as? Int { counts[key] = n }
+                            else if let n = value as? Int64 { counts[key] = Int(n) }
+                            else if let n = value as? NSNumber { counts[key] = n.intValue }
+                        }
+                        breakupStageCounts = counts
+                    }
+                }
+        }
+
         func fetchTagCounts() {
             Firestore.firestore().collection("meta").document("tagCounts")
                 .getDocument { snapshot, error in

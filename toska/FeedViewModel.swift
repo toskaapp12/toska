@@ -20,6 +20,11 @@ struct AnniversaryPostData {
     let text: String
     let tag: String?
     let dateString: String
+    // Header label rendered at the top of AnniversaryCardView. Drives the
+    // four-milestone progression (1mo / 3mo / 6mo / 1yr); previously this
+    // was a hardcoded "a year into it" because only the 1-year window was
+    // queried. Defaults inferred from milestone walk in fetchAnniversaryPost.
+    let milestoneLabel: String
 }
 
 // MARK: - FeedViewModel
@@ -886,52 +891,82 @@ class FeedViewModel: ObservableObject {
 
     func fetchAnniversaryPost() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // "still in it" users haven't had a breakup yet — anniversaries
+        // are nonsensical for them. Skip the whole fetch. nil and any
+        // other stage value still walks the full milestone ladder.
+        if userBreakupStage == "still in it" {
+            anniversaryPost = nil
+            return
+        }
         let db = Firestore.firestore()
         let now = Date()
-        let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: now) ?? now
-        let oneYearAgoStart = oneYearAgo.addingTimeInterval(-12 * 60 * 60)
-        let oneYearAgoEnd = oneYearAgo.addingTimeInterval(12 * 60 * 60)
+        let cal = Calendar.current
 
-        db.collection("posts")
-            .whereField("authorId", isEqualTo: uid)
-            .whereField("isRepost", isEqualTo: false)
-            .whereField("createdAt", isGreaterThan: Timestamp(date: oneYearAgoStart))
-            .whereField("createdAt", isLessThan: Timestamp(date: oneYearAgoEnd))
-            .limit(to: 1)
-            .getDocuments { snapshot, error in
-                if let error = error {
-                    print("⚠️ fetchAnniversaryPost — check composite index (authorId, isRepost, createdAt): \(error)")
-                    return
+        // Milestones walked in priority order — most-meaningful first.
+        // First window with a non-flagged post wins; the others are skipped.
+        // Window is 24h centered on the milestone date so a post written
+        // anytime that day surfaces. Same composite index requirement as
+        // before (authorId, isRepost, createdAt).
+        struct Milestone {
+            let component: Calendar.Component
+            let value: Int
+            let label: String
+        }
+        let milestones: [Milestone] = [
+            Milestone(component: .year,  value: -1, label: "a year into it"),
+            Milestone(component: .month, value: -6, label: "six months in"),
+            Milestone(component: .month, value: -3, label: "three months in"),
+            Milestone(component: .month, value: -1, label: "a month in"),
+        ]
+
+        Task { @MainActor in
+            for m in milestones {
+                guard let target = cal.date(byAdding: m.component, value: m.value, to: now) else { continue }
+                let start = target.addingTimeInterval(-12 * 60 * 60)
+                let end = target.addingTimeInterval(12 * 60 * 60)
+
+                let snap: QuerySnapshot?
+                do {
+                    snap = try await db.collection("posts")
+                        .whereField("authorId", isEqualTo: uid)
+                        .whereField("isRepost", isEqualTo: false)
+                        .whereField("createdAt", isGreaterThan: Timestamp(date: start))
+                        .whereField("createdAt", isLessThan: Timestamp(date: end))
+                        .limit(to: 1)
+                        .getDocumentsAsync()
+                } catch {
+                    print("⚠️ fetchAnniversaryPost(\(m.label)) — check composite index (authorId, isRepost, createdAt): \(error)")
+                    continue
                 }
-                Task { @MainActor in
-                    // Captured-uid recheck. The query filter is `authorId ==
-                    // uid`, so a sign-out/sign-in race during the fetch would
-                    // otherwise land the previous user's anniversary post
-                    // text into the new user's UI under the "your post from
-                    // 1 year ago" label — a misattribution that exposes
-                    // year-old authorship across accounts.
-                    guard Auth.auth().currentUser?.uid == uid else { return }
-                    guard let doc = snapshot?.documents.first else { return }
-                    let data = doc.data()
-                    // Don't surface a year-old post that was later flagged by
-                    // moderation. The post is the current user's own (filter
-                    // above is `authorId == uid`), so blocked-user filtering
-                    // doesn't apply, but the author themselves may have had
-                    // the post auto-flagged for spam/PII/etc. — silently
-                    // showing it again as an anniversary defeats the
-                    // moderation system. Also skip posts soft-flagged as
-                    // concerning content.
-                    if data["flagged"] as? Bool == true { return }
-                    if data["concerningContent"] as? Bool == true { return }
-                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                    self.anniversaryPost = AnniversaryPostData(
-                        postId: doc.documentID,
-                        text: data["text"] as? String ?? "",
-                        tag: data["tag"] as? String,
-                        dateString: ToskaFormatters.fullDate.string(from: createdAt).lowercased()
-                    )
-                }
+                // Captured-uid recheck. The query filter is `authorId == uid`,
+                // so a sign-out/sign-in race during the fetch would otherwise
+                // land the previous user's milestone post text into the new
+                // user's UI under the milestone label — a misattribution that
+                // exposes prior-account authorship.
+                guard Auth.auth().currentUser?.uid == uid else { return }
+                guard let doc = snap?.documents.first else { continue }
+                let data = doc.data()
+                // Don't surface a milestone post that was later flagged by
+                // moderation — see fetchAnniversaryPost original-version
+                // rationale. Skip + continue so an older milestone window
+                // can still match if this one's hit was flagged.
+                if data["flagged"] as? Bool == true { continue }
+                if data["concerningContent"] as? Bool == true { continue }
+                let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                self.anniversaryPost = AnniversaryPostData(
+                    postId: doc.documentID,
+                    text: data["text"] as? String ?? "",
+                    tag: data["tag"] as? String,
+                    dateString: ToskaFormatters.fullDate.string(from: createdAt).lowercased(),
+                    milestoneLabel: m.label
+                )
+                return
             }
+            // No milestone matched — clear any stale prior value so a card
+            // from yesterday's session doesn't linger after the post was
+            // deleted or its window passed.
+            self.anniversaryPost = nil
+        }
     }
 
     // MARK: - Emotional Weather

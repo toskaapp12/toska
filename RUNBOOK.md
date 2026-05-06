@@ -167,6 +167,34 @@ firebase deploy --only firestore:rules
 parse without uploading. Always run dry-run before a production deploy
 on a Friday afternoon.
 
+#### Pre-deploy: legacy-PII scrub (one-time, gating)
+
+The 2026-05-06 security audit tightened the `users/{userId}` read rule
+so non-owner reads are denied when the doc still carries legacy PII
+fields (`email`, `selectedMood`, `notify*`, `pushEnabled`,
+`gentleCheckIn`, `fcmToken`). Pre-migration accounts that never opened
+Settings or completed onboarding still have those fields on the main
+doc; deploying the rule before scrubbing them will make those users'
+profiles unreadable to peers (OtherProfileView shows a blank state).
+
+**Run this BEFORE deploying the rule change:**
+
+```sh
+cd functions
+node scrubLegacyPII.js                    # dry run — prints, writes nothing
+node scrubLegacyPII.js --apply            # performs the scrub
+```
+
+The script reads each user's `private/data` doc first and only deletes
+a legacy field on the main doc when the private copy already exists OR
+it preserves the value into `private/data` in the same batch. No data
+is dropped on the floor. Idempotent — safe to re-run.
+
+After the scrub completes (zero remaining legacy fields in dry-run),
+deploy the rules. If any user with legacy fields shows up in the queue
+later (rare but possible — a stale client write that pre-dates the
+write-side `legacyPIIFieldsImmutable()` guard), re-run the scrub.
+
 ### Firestore indexes
 
 ```sh
@@ -334,6 +362,36 @@ docs aren't reindexed; new writes use the updated set.
   `onUserDocDeleted`, or `validatePost` (rate-limited to 1 alert per 5 min)
 - **Billing budget**: 50% / 90% / 100% of $50/month
 
+### Alerts to wire (audit follow-ups)
+
+The 2026-05-06 audit added new structured-log signals; the corresponding
+Cloud Monitoring policies are not yet built. Build them before the next
+launch so drift / abuse signals reach a human.
+
+- **Counter drift** — `jsonPayload.tag = "counter_drift"` from any of the
+  single-write counter triggers (`onReplyCreatedUpdateCount`,
+  `onReplyDeletedUpdateCount`, `onRepostCreated/DeletedUpdateCount`,
+  `onPostCreated/DeletedUpdateTagCounts`, `onBreakupStageChanged`,
+  `onMessageCreatedUpdateCount`). After the dedup claim is set, a
+  failed counter write silently drifts the count off-by-one with no
+  recovery path. Alert if >5 events in any 1-hour window. Logged via
+  `functions/index.js::logCounterDrift`.
+
+  Cloud Logging filter:
+  ```
+  jsonPayload.tag = "counter_drift" AND severity = "ERROR"
+  ```
+
+- **Report flooding** — log-based metric on
+  `console.log("Report rate limit exceeded for target:", ...)`. The
+  Tier-2 per-target cap (10/hour) limits any one victim's flood; an
+  alert on >3 distinct targets hitting the cap in a day flags a
+  coordinated abuser-network.
+
+- **24h moderation SLA** — currently honored by a dashboard "overdue"
+  badge but not a paging signal. Two builds available (see "Pending
+  count alarms" below); for v1 the simpler daily-digest is enough.
+
 ### Firebase Performance Monitoring
 
 Wired into the iOS app as of 2026-05-04 (Tier 2 #2). The SDK auto-collects:
@@ -457,6 +515,30 @@ becomes a concern:
 
 Neither is wired up today. Build #1 if you start missing the SLA; build
 #2 if you just want lower-anxiety mornings.
+
+#### 24h SLA — concrete wiring (recommended pre-launch)
+
+The audit flagged that the in-app SLA promise ("reports are reviewed
+within 24 hours") has no automated overdue signal — only the dashboard
+badge. Minimum viable wiring:
+
+```sh
+# Cloud Logging: create a log-based metric "reports_aged_24h"
+gcloud logging metrics create reports_aged_24h \
+  --description "Count of pending reports aging beyond 24h" \
+  --log-filter='resource.type="cloud_run_revision"
+    AND jsonPayload.tag="report_aged_24h"'
+```
+
+Then add a scheduled Cloud Function that runs once an hour, queries
+`reports.where(status == "pending").where(createdAt < now - 24h)` and
+emits a structured log with `tag: "report_aged_24h"` per overdue
+report (or just emits the count). Wire a Cloud Monitoring alert policy
+on the metric: trigger on count > 0 for 30 minutes, route to the
+existing Toska Alerts notification channel.
+
+This is the simplest fix that converts the SLA promise from "trust the
+admin to remember" to "the system pages when forgetting starts."
 
 ### Where to look when something's wrong
 
@@ -631,6 +713,91 @@ key; safe to ship in the iOS bundle. Treat all other items as secret.
 
 ---
 
+## Console-level security settings
+
+These can't be encoded in the repo — they live in the Firebase / Cloud /
+GitHub consoles. The 2026-05-06 audit flagged each one; verify before
+launch and re-check on every Owner-handover. Each entry says where to
+look and what "good" looks like.
+
+### Firebase Console
+
+- **App Check enforcement** — Firebase Console → App Check → APIs.
+  Each API needs to read **Enforced**, not "Unenforced (monitoring only)":
+  - Cloud Firestore: Enforced
+  - Cloud Functions: Enforced (callable functions enforce per-function
+    via `enforceAppCheck: true` in code; this console setting backstops
+    onRequest endpoints — `giphyProxy`, `reconcileMyCounts` —
+    even though they verify tokens manually too)
+  - Identity Toolkit (Auth): Enforced
+  - Cloud Storage: Enforced (or set to Unenforced if Storage isn't used)
+- **Email enumeration protection** — Firebase Console → Authentication
+  → Settings → User actions → "Email enumeration protection" must be
+  **Enabled**. Without it, the underlying `identitytoolkit` REST
+  endpoint differs in response codes for exists / not-exists, allowing
+  an attacker who knows a target's email to confirm whether they have
+  a Toska account. The iOS SDK's `sendPasswordReset` is silent client-
+  side either way; this setting closes the REST-API leak.
+- **Owner account 2FA** — https://myaccount.google.com/security on the
+  Owner email (`salte@saltedevelopments.com`). Two-factor must be on,
+  recovery codes downloaded and stored offline. See "Backup admin /
+  bus-factor" at the bottom of this RUNBOOK.
+
+### GCP Console
+
+- **Billing budgets** — Cloud Console → Billing → Budgets & alerts.
+  Currently 50% / 90% / 100% of $50/month (per Active alerts above).
+  Verify the alert email channel is `salte@saltedevelopments.com`.
+- **WIF service account scope** — IAM & Admin → Service accounts →
+  `github-actions-rules-deploy@toskastaging.iam.gserviceaccount.com`.
+  Verify it holds **only** the role(s) needed for `firebase deploy
+  --only firestore:rules` against `toskastaging`. If it has broader
+  roles (e.g. `roles/owner`), tighten — the `ci.yml` workflow uses
+  this SA on every push to main and a credential leak's blast radius
+  is bounded by these roles.
+
+### GitHub repo
+
+- **Branch protection on `main`** — Settings → Branches → Branch
+  protection rules → `main`:
+  - Require a pull request before merging
+  - Require approvals (≥1)
+  - Require status checks to pass before merging (rules tests +
+    moderation tests at minimum)
+  - Restrict who can push to matching branches
+  - Disallow force pushes
+  - Require signed commits (optional but recommended)
+- **Secrets exposure to forks** — Settings → Actions → General →
+  "Allow GitHub Actions to create and approve pull requests": **off**.
+  The current `ci.yml` uses `push` (not `pull_request_target`) for the
+  privileged staging-rules-deploy job, so fork PRs cannot trigger it
+  — but verify periodically that no contributor changes that to the
+  `_target` form, which would pass secrets to fork-controlled code.
+
+### iOS / Apple
+
+- **`GoogleService-Info-Staging.plist` strip** — `toska.xcodeproj`
+  Build Phases include a script that removes the staging plist from
+  Release archives (commit `84992d6`). After every Xcode-project
+  surgery, verify the script is still in the Build Phases list AND
+  still references `GoogleService-Info-Staging.plist` by name. Without
+  it a Release archive talks to staging — which mostly fails App Check
+  but could leak prod traffic to staging if config is mismerged.
+- **Apple ID 2FA** — `appleid.apple.com` → Sign-In and Security →
+  Two-Factor Authentication: on. Trusted devices listed; trusted phone
+  numbers up-to-date. Recovery key downloaded and stored offline (the
+  same fireproof-safe the Google recovery codes go in).
+
+### Periodic re-check cadence
+
+- Pre-launch: walk every item above before the App Store submission.
+- Quarterly: 15-minute pass through this whole section. Most settings
+  don't change, but App Check enforcement has been silently flipped
+  to "Unenforced" by Firebase before during outages.
+- After any Owner / billing-account / GitHub-org change: full re-walk.
+
+---
+
 ## Known accepted gaps
 
 These were flagged during the 2026-04-26 / 2026-04-29 audits and
@@ -649,6 +816,35 @@ or scale past their current risk model:
 - **App Check on docs/admin.html** is a TODO — to enable, get a
   reCAPTCHA Enterprise site key and uncomment the block in
   `docs/admin.html`. The site key is public and safe to commit.
+
+These items were flagged during the 2026-05-06 audit and deliberately
+deferred:
+
+- **`giphyProxy` is `onRequest`, not `onCall`** — the function manually
+  verifies App Check + Auth + rate-limit rather than relying on
+  `enforceAppCheck: true`. Implementation is correct (audit verified),
+  migration to `onCall` is hardening only and requires a paired iOS
+  change. Do it next time `giphyProxy` is touched anyway.
+- **RTL-reversed name evasion** in the moderation detector — the
+  bidi-strip closes display-time confusion, but the underlying name
+  match doesn't reverse codepoints, so `‮nhoJ‬` rendering as "John"
+  visually still slips through the detector. Documented in
+  `firestore-tests/moderation.test.js` (the test was intentionally
+  removed). Realistic threat is moderator confusion, not detector
+  bypass; revisit if false-negative reports start showing this pattern.
+- **`recordPolicyAcceptance` is fire-and-forget** — if the write fails,
+  the user advances anyway. Mitigated by `ContentView` re-prompting on
+  next launch when `acceptedPolicyVersion < currentPolicyVersion`. No
+  data is lost; user just sees the policy banner once more.
+- **Telemetry `redactPII` is conservative-not-perfect** — the regex set
+  catches email / handle / uid-shaped / phone patterns but won't catch
+  custom-format identifiers (e.g., a 6-character alphanumeric code, or
+  a name in plain text). Forcing function for callsites; not a guarantee.
+- **Single-write counter triggers still claim-then-write** — the audit
+  recommended migrating to `claimedTransaction` + `retry: true` for
+  reply / repost / tag / stage / message-count counters. Tier B added
+  structured `counter_drift` logging instead; the architectural fix is
+  bigger and deferred until a counter drift incident actually happens.
 
 ---
 

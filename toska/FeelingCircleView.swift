@@ -13,6 +13,11 @@ struct FeelingCircleView: View {
     @State private var participantCount = 0
     @State private var listener: ListenerRegistration? = nil
     @State private var hasJoined = false
+    // Surfaces joinCircle failures to the user instead of swallowing them
+    // into Telemetry. Empty string = no error visible; populated = render
+    // a soft inline message under the join button.
+    @State private var joinErrorMessage = ""
+    @State private var isJoining = false
     @State private var showNameWarning = false
     @State private var showContentWarning = false
     @State private var contentWarningMessage = ""
@@ -142,16 +147,30 @@ struct FeelingCircleView: View {
                             HStack(spacing: 6) {
                                 Image(systemName: "person.2")
                                     .font(.system(size: 12))
-                                Text("join the circle")
+                                Text(isJoining ? "joining…" : "join the circle")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundColor(Color(hex: "0a0908"))
                             .padding(.horizontal, 28)
                             .padding(.vertical, 12)
-                            .background(Color.white)
+                            .background(Color.white.opacity(isJoining ? 0.6 : 1.0))
                             .cornerRadius(20)
                         }
+                        .disabled(isJoining)
                         .padding(.top, 4)
+
+                        // Surface persistent join failures (rule denial,
+                        // network drop, etc.) so the user can retry instead
+                        // of staring at an inert button. Soft copy fits the
+                        // vulnerable-surface tone; the underlying error is
+                        // already in Telemetry for diagnostics.
+                        if !joinErrorMessage.isEmpty {
+                            Text(joinErrorMessage)
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.5))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
 
                         if participantCount > 0 {
                             Text("\(participantCount) already here")

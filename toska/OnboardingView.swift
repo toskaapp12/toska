@@ -47,6 +47,14 @@ struct OnboardingView: View {
     @State private var showPolicyAcceptance = false
     @State private var acceptanceChecked = false
     @State private var moodSaveError = false
+    // Triggers the "couldn't save that" alert when a skip-or-complete flow
+    // fails to persist hasCompletedOnboarding (or selectedMood). Without
+    // this, the previous code marked the user as done locally even when
+    // the Firestore write failed — leading to "stuck mid-onboarding" loops
+    // on next launch (ContentView re-checks the flag and re-shows the
+    // onboarding cover).
+    @State private var onboardingSaveError = false
+    @State private var isFinishingOnboarding = false
     
     let tags = sharedTags
     
@@ -213,26 +221,13 @@ struct OnboardingView: View {
                         }
 
                         Button {
-                                                    if let uid = Auth.auth().currentUser?.uid {
-                                                        let userRef = Firestore.firestore().collection("users").document(uid)
-                                                        userRef.setData(["hasCompletedOnboarding": true], merge: true) { error in
-                                                            if let error = error {
-                                                                print("⚠️ Onboarding skip (mood) write failed: \(error)")
-                                                            }
-                                                        }
-                                                        // Mood is sensitive — store in the owner-only private
-                                                        // subcollection rather than on the main user doc.
-                                                        if let mood = selectedMood {
-                                                            userRef.collection("private").document("data")
-                                                                .setData(["selectedMood": mood], merge: true)
-                                                        }
-                                                    }
-                                                    Telemetry.onboardingCompleted(); isComplete = true
-                                                } label: {
-                                                    Text("skip")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(Color.white.opacity(0.3))
-                                                }
+                            finishOnboarding(persistMood: true)
+                        } label: {
+                            Text(isFinishingOnboarding ? "saving…" : "skip")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.white.opacity(0.3))
+                        }
+                        .disabled(isFinishingOnboarding)
                     } else if currentStep == 4 {
                         Button {
                             showFirstPostCompose = true
@@ -247,24 +242,13 @@ struct OnboardingView: View {
                         }
                         
                         Button {
-                                                    if let uid = Auth.auth().currentUser?.uid {
-                                                        let userRef = Firestore.firestore().collection("users").document(uid)
-                                                        userRef.setData(["hasCompletedOnboarding": true], merge: true) { error in
-                                                            if let error = error {
-                                                                print("⚠️ Onboarding skip-for-now write failed: \(error)")
-                                                            }
-                                                        }
-                                                        if let mood = selectedMood {
-                                                            userRef.collection("private").document("data")
-                                                                .setData(["selectedMood": mood], merge: true)
-                                                        }
-                                                    }
-                                                    Telemetry.onboardingCompleted(); isComplete = true
-                                                } label: {
-                                                    Text("skip for now")
-                                                        .font(.system(size: 11))
-                                                        .foregroundColor(Color.white.opacity(0.3))
-                                                }
+                            finishOnboarding(persistMood: true)
+                        } label: {
+                            Text(isFinishingOnboarding ? "saving…" : "skip for now")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.white.opacity(0.3))
+                        }
+                        .disabled(isFinishingOnboarding)
                     }
                 }
                 .padding(.horizontal, 24)
@@ -323,19 +307,14 @@ struct OnboardingView: View {
                 onPostSuccess: {
                     showFirstPostCompose = false
                     firstPostPublished = true
-                    if let uid = Auth.auth().currentUser?.uid {
-                                            Firestore.firestore().collection("users").document(uid).setData([
-                                                "hasCompletedOnboarding": true
-                                            ], merge: true) { error in
-                                                if let error = error {
-                                                    print("⚠️ Onboarding complete write failed: \(error)")
-                                                }
-                                            }
-                                        }
-                    // Small delay so the user sees the compose dismiss
+                    // Small delay so the user sees the compose dismiss,
+                    // then await the hasCompletedOnboarding write before
+                    // flipping isComplete. finishOnboarding internally
+                    // surfaces failures via onboardingSaveError so the
+                    // user can retry instead of getting stuck mid-flow.
                     Task {
-                                            try? await Task.sleep(nanoseconds: 400_000_000)
-                        Telemetry.onboardingCompleted(); isComplete = true
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        finishOnboarding(persistMood: false)
                     }
                 }
             )
@@ -344,6 +323,11 @@ struct OnboardingView: View {
             Button("try again") {}
         } message: {
             Text("we couldnt save your mood. check your connection and try again.")
+        }
+        .alert("couldnt finish that", isPresented: $onboardingSaveError) {
+            Button("try again") {}
+        } message: {
+            Text("we couldnt save your progress. check your connection and try again.")
         }
     }
     
@@ -431,6 +415,50 @@ struct OnboardingView: View {
             withAnimation(.easeInOut(duration: 0.3)) {
                 currentStep = 3
             }
+        }
+    }
+
+    /// Awaits the hasCompletedOnboarding write and (optionally) the mood
+    /// write, only flipping `isComplete` if both succeed. Replaces the
+    /// fire-and-forget shape that left the user "stuck mid-onboarding"
+    /// when the writes silently failed: the local flag flipped, but the
+    /// server state didn't, so the next launch re-showed onboarding.
+    /// Surfaces failures via the existing onboardingSaveError alert so
+    /// the user can retry.
+    ///
+    /// `persistMood` is true when the caller wants the currently-selected
+    /// mood pinned to the private/data subcollection alongside the flag.
+    /// The mood-only / flag-only branches both go through this method to
+    /// keep the rollback semantics identical.
+    func finishOnboarding(persistMood: Bool) {
+        guard !isFinishingOnboarding else { return }
+        isFinishingOnboarding = true
+        Task { @MainActor in
+            defer { isFinishingOnboarding = false }
+            guard let uid = Auth.auth().currentUser?.uid else {
+                // No auth means the cover will dismiss into a sign-in
+                // surface anyway; flip and let ContentView re-resolve.
+                Telemetry.onboardingCompleted()
+                isComplete = true
+                return
+            }
+            let userRef = Firestore.firestore().collection("users").document(uid)
+            do {
+                try await userRef.setData(
+                    ["hasCompletedOnboarding": true],
+                    merge: true
+                )
+                if persistMood, let mood = selectedMood {
+                    try await userRef.collection("private").document("data")
+                        .setData(["selectedMood": mood], merge: true)
+                }
+            } catch {
+                Telemetry.recordError(error, context: "Onboarding.finishOnboarding")
+                onboardingSaveError = true
+                return
+            }
+            Telemetry.onboardingCompleted()
+            isComplete = true
         }
     }
 

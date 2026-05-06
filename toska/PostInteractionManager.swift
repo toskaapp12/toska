@@ -33,6 +33,17 @@ class PostInteractionManager {
                     return
                 }
         if let last = RateLimiter.shared.lastLikeTime(for: postId), Date().timeIntervalSince(last) < 0.8 { return }
+               // In-flight guard: rejects re-entry while a previous toggle's
+               // transaction is still running. The 0.8s rate limit catches
+               // fast double-taps, but a slow transaction (network latency,
+               // contended write) can run longer than 0.8s and let a second
+               // tap fire while the first is mid-commit — both optimistic
+               // updates land, both rollbacks race, the UI thrashes. The
+               // server is still consistent (transactions dedupe via the
+               // existing-like-doc check), but the user sees the heart
+               // toggle twice. Marking in-flight here and clearing in the
+               // completion handler closes the window cleanly.
+               guard !RateLimiter.shared.isLikeInFlight(postId) else { return }
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ toggleLike — offline, skipping")
                    return
@@ -48,6 +59,7 @@ class PostInteractionManager {
                // bounds the rate to 1 attempt per 0.8s per post regardless
                // of outcome — cleaner UI, same server guarantee.
                RateLimiter.shared.recordLike(for: postId)
+               RateLimiter.shared.markLikeInFlight(postId)
                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                Telemetry.likeTapped()
 
@@ -93,6 +105,9 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
+                // Always clear the in-flight marker, regardless of success
+                // or failure, so a later legitimate tap can re-enter.
+                RateLimiter.shared.markLikeComplete(postId)
                 if let error = error {
                     // Roll back optimistic update.
                     onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))

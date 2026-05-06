@@ -320,16 +320,78 @@ enum Telemetry {
 
     /// Records a non-fatal error for later crash-report aggregation.
     /// Use this in catch blocks where we'd otherwise just print a warning.
+    ///
+    /// Both the context label and the error's localizedDescription are run
+    /// through `redactPII` before they hit Crashlytics. Today every callsite
+    /// passes a static method-name label (`"ConversationView.sendMessage"`)
+    /// so the context redaction is a no-op in practice — but the redaction
+    /// is the forcing function: a future careless callsite that interpolates
+    /// a uid or handle into the context label gets scrubbed automatically.
+    /// Same for error.localizedDescription, which the Firestore SDK can
+    /// occasionally surface with a uid embedded.
     static func recordError(_ error: Error, context: String? = nil) {
         guard isOptedIn else { return }
         if let ctx = context {
-            Crashlytics.crashlytics().setCustomValue(ctx, forKey: "context")
+            Crashlytics.crashlytics().setCustomValue(redactPII(ctx), forKey: "context")
         }
+        Crashlytics.crashlytics().setCustomValue(
+            redactPII(error.localizedDescription),
+            forKey: "errorMessage"
+        )
         Crashlytics.crashlytics().record(error: error)
         #if DEBUG
         let suffix = context.map { " [\($0)]" } ?? ""
         print("💥 non-fatal\(suffix): \(error)")
         #endif
+    }
+
+    /// Scrub PII patterns from any string before it lands in
+    /// Crashlytics / Analytics / any other diagnostics surface. Conservative
+    /// regex set — false positives (a legitimate "user@somewhere" reference
+    /// in a static label) are a small cost for the certainty that no error
+    /// payload leaks email/handle/uid/phone. Order matters: email before
+    /// handle (an email contains an `@\w+` substring that the handle regex
+    /// would otherwise catch first), and uid-shape last so it doesn't
+    /// shadow earlier matches.
+    ///
+    /// Public so callsites that need to log a value explicitly (e.g.
+    /// structured event parameters) can opt into the same scrub.
+    static func redactPII(_ raw: String) -> String {
+        var s = raw
+        // Email
+        if let re = try? NSRegularExpression(
+            pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+        ) {
+            s = re.stringByReplacingMatches(
+                in: s, range: NSRange(s.startIndex..., in: s),
+                withTemplate: "<email>"
+            )
+        }
+        // Handle (@word)
+        if let re = try? NSRegularExpression(pattern: "@[A-Za-z0-9_-]{2,30}") {
+            s = re.stringByReplacingMatches(
+                in: s, range: NSRange(s.startIndex..., in: s),
+                withTemplate: "<handle>"
+            )
+        }
+        // Phone-shaped: 7+ consecutive digits, optionally with separators.
+        if let re = try? NSRegularExpression(
+            pattern: "(?:\\+?\\d[\\d\\s.\\-]{6,}\\d)"
+        ) {
+            s = re.stringByReplacingMatches(
+                in: s, range: NSRange(s.startIndex..., in: s),
+                withTemplate: "<phone>"
+            )
+        }
+        // Firebase Auth uid shape: ~28 char alphanumeric run. Conservative
+        // 20+ to avoid scrubbing common base64 fragments under that length.
+        if let re = try? NSRegularExpression(pattern: "[A-Za-z0-9]{20,}") {
+            s = re.stringByReplacingMatches(
+                in: s, range: NSRange(s.startIndex..., in: s),
+                withTemplate: "<uid>"
+            )
+        }
+        return s
     }
 }
 

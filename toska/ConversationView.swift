@@ -770,17 +770,57 @@ struct ConversationView: View {
                 guard !self.isBlockedEitherDirection else { return }
                 let minuteBucket = Int(Date().timeIntervalSince1970 / 60)
                 let docId = "message_\(self.conversationId)_\(uid)_\(minuteBucket)"
-                db.collection("users").document(self.otherUserId)
-                    .collection("notifications").document(docId).setData([
-                        "type": "message",
-                        "fromHandle": UserHandleCache.shared.handle,
-                        "fromUserId": uid,
-                        "message": "sent you a message",
-                        "postId": "",
-                        "conversationId": self.conversationId,
-                        "isRead": false,
-                        "createdAt": FieldValue.serverTimestamp()
-                    ], merge: false)
+                let otherUid = self.otherUserId
+                let convoId = self.conversationId
+                let myHandle = UserHandleCache.shared.handle
+                // Block-race re-check before the notification write. The
+                // local `isBlockedEitherDirection` flag is sourced from
+                // BlockedUsersCache which lags by ~snapshot-tick; if the
+                // recipient blocks the sender between the message-write
+                // transaction (above) and this notification-write call,
+                // the message rule will deny that block at the next
+                // attempt but THIS notification write would still slip
+                // through and pop a notification doc into the recipient's
+                // inbox. The server-side rule for notifications also
+                // re-checks the block (firestore.rules:286+ has explicit
+                // !exists(blocked) on every notification type), so the
+                // server denies it too — but a freshly-blocking recipient
+                // staring at MessagesListView could see the doc transiently
+                // before the rule catches up. The async exists() check
+                // below makes the client honor the block before sending.
+                Task { @MainActor in
+                    let blockRef = db.collection("users").document(otherUid)
+                        .collection("blocked").document(uid)
+                    do {
+                        let blockSnap = try await blockRef.getDocumentAsync()
+                        if blockSnap.exists { return }
+                    } catch {
+                        // On a connectivity hiccup, fall through. The
+                        // server-side rule will still deny if the block
+                        // landed; missing the notification on a transient
+                        // error is acceptable.
+                    }
+                    do {
+                        try await db.collection("users").document(otherUid)
+                            .collection("notifications").document(docId).setData([
+                                "type": "message",
+                                "fromHandle": myHandle,
+                                "fromUserId": uid,
+                                "message": "sent you a message",
+                                "postId": "",
+                                "conversationId": convoId,
+                                "isRead": false,
+                                "createdAt": FieldValue.serverTimestamp()
+                            ], merge: false)
+                    } catch {
+                        // Best-effort: server-side rule already blocks the
+                        // notification when the recipient has blocked the
+                        // sender; if we get here on a true error, the
+                        // recipient just doesn't get a push for this one
+                        // message — preferable to crashing the send path.
+                        Telemetry.recordError(error, context: "ConversationView.notifyOnSend")
+                    }
+                }
             }
         })
     }

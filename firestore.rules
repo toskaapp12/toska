@@ -75,6 +75,30 @@ service cloud.firestore {
     // readable user doc. The fcmToken / restricted family stay denied
     // entirely via the existing `affectedKeys().hasAny([...])` clause; those
     // fields should never be touched by clients at all.
+    // Read-side legacy-PII guard. Mirrors legacyPIIFieldsImmutable() but for
+    // *reads* on the public-projection user doc: a non-owner read is denied
+    // when the doc still carries any legacy PII field that the migration has
+    // moved to users/{uid}/private/data. Without this, pre-migration accounts
+    // that haven't re-saved still expose email/notify*/selectedMood/etc. to
+    // any authenticated reader (the rule layer can't field-mask, only allow
+    // or deny the whole document). functions/scrubLegacyPII.js is the
+    // companion script that scrubs the long tail; once it has run across the
+    // user table this predicate becomes a no-op for every doc.
+    function noLegacyPIIVisible() {
+      return !('email' in resource.data.keys())
+        && !('selectedMood' in resource.data.keys())
+        && !('fcmToken' in resource.data.keys())
+        && !('notifyLikes' in resource.data.keys())
+        && !('notifyReplies' in resource.data.keys())
+        && !('notifyFollows' in resource.data.keys())
+        && !('notifyReposts' in resource.data.keys())
+        && !('notifySaves' in resource.data.keys())
+        && !('notifyMessages' in resource.data.keys())
+        && !('notifyMilestones' in resource.data.keys())
+        && !('pushEnabled' in resource.data.keys())
+        && !('gentleCheckIn' in resource.data.keys());
+    }
+
     function legacyPIIFieldsImmutable() {
       return (!('email' in request.resource.data.keys())
               || request.resource.data.email == resource.data.get('email', null))
@@ -141,10 +165,21 @@ service cloud.firestore {
       //     reads keep working; sensitive prefs are no longer here to leak.
       //   - Long-tail cleanup: any pre-migration accounts still have legacy
       //     copies on the main doc until they open settings or onboarding
-      //     fires a save. A one-time admin script can scrub them by reading
-      //     and deleting the legacy field set; not strictly required since
-      //     reads now prefer the private copy.
-      allow read: if isOwner(userId) || isAuth();
+      //     fires a save. functions/scrubLegacyPII.js is the one-time admin
+      //     scrub; until it has run, the noLegacyPIIVisible() guard below
+      //     denies non-owner reads on those docs entirely (whole-doc deny is
+      //     the only granularity rules support; OtherProfileView degrades to
+      //     "loading…" for unscrubbed accounts).
+      //
+      // Block-aware: a user the target has blocked cannot read the target's
+      // profile doc. Without this, blocked users could still load
+      // OtherProfileView, observe handle/follower counts, and use the public
+      // projection to escalate harassment with a sock-puppet that mirrors
+      // the victim's identity. Costs +1 doc read per non-owner read.
+      allow read: if isOwner(userId)
+        || (isAuth()
+            && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+            && noLegacyPIIVisible());
       allow create: if isOwner(userId)
         && request.resource.data.handle is string
         && request.resource.data.handle.size() <= 30
@@ -263,9 +298,32 @@ service cloud.firestore {
         // the in-app spoofing vector by requiring fromHandle (when present)
         // to match the caller's actual handle on their user doc. Cost: one
         // extra get() per notification create, fine at v1.0 volume.
+        // Schema lockdown — every other writable collection (posts, replies,
+        // messages, reflections, reports, conversations, drafts) constrains
+        // its fields with keys().hasOnly([...]). Notifications was the
+        // outlier: every type-specific branch below validates the meaningful
+        // fields, but a tampered client could attach arbitrary extras
+        // (`flagged: false`, `trustedByAdmin: true`, scratch fields) that a
+        // future trigger or admin tool might trust. The allow-list below
+        // covers every field the iOS write paths produce
+        // (PostInteractionManager.sendNotification, ConversationView's
+        // message-notification write, OtherProfileView's follow-notification
+        // write). conversationId is optional (only set on type=='message').
+        // createdAt is pinned to request.time; isRead must be false on
+        // create so an attacker can't write a "pre-read" decoy that hides
+        // itself from the recipient's unread badge.
         allow create: if isAuth()
           && request.resource.data.fromUserId == request.auth.uid
           && request.resource.data.type is string
+          && request.resource.data.keys().hasOnly([
+               'type', 'fromUserId', 'fromHandle', 'message',
+               'postId', 'conversationId', 'isRead', 'createdAt'
+             ])
+          && request.resource.data.keys().hasAll([
+               'type', 'fromUserId', 'isRead', 'createdAt'
+             ])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.isRead == false
           && (
             !('fromHandle' in request.resource.data.keys())
             || request.resource.data.fromHandle ==
@@ -448,6 +506,12 @@ service cloud.firestore {
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
         && request.resource.data.replyCount == 0
+        // createdAt pinned to server time. Drafts/circles/reports already
+        // enforce this; the three highest-volume write paths (posts/replies/
+        // messages) didn't, which let a tampered client backdate posts to
+        // resurface old content in recency-sorted feed queries or to predate
+        // a post before a moderation restriction took effect.
+        && request.resource.data.createdAt == request.time
         // Block enforcement on reposts: if this is a repost of someone
         // else's content (isRepost == true with an originalAuthorId), the
         // original author can't have blocked the reposter. For original
@@ -497,6 +561,14 @@ service cloud.firestore {
         // they've blocked. Without this check, blocked users could keep
         // engaging server-side; the client filter (BlockedUsersCache) only
         // hides their content from the blocker, not vice versa.
+        // Schema lockdown + createdAt pin + likeCount==0 enforcement to
+        // match the post-create rule. Required fields cover what
+        // PostDetailView.postReplyNow always writes; optional fields
+        // (parentReplyId, gifUrl, authorHandle, parentPostText/Handle,
+        // likeCount) cover the rest of the legitimate iOS write shape.
+        // Without hasOnly, a tampered client could attach `flagged: false`
+        // or pre-inflate likeCount; without the createdAt pin replies could
+        // be backdated to predate moderation restrictions.
         allow create: if isAuth()
           && notRestricted()
           && hasConfirmedAdult()
@@ -504,6 +576,14 @@ service cloud.firestore {
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 500
+          && request.resource.data.keys().hasOnly([
+               'authorId', 'authorHandle', 'text', 'likeCount', 'createdAt',
+               'parentPostText', 'parentPostHandle', 'parentReplyId', 'gifUrl'
+             ])
+          && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
+          && request.resource.data.createdAt == request.time
+          && (!('likeCount' in request.resource.data.keys())
+              || request.resource.data.likeCount == 0)
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         // Text-size cap mirrored from create. Without it, an author could
         // edit a 500-char reply into multi-KB content and bypass both the
@@ -548,13 +628,29 @@ service cloud.firestore {
         // at AnniversaryCardView.swift:157 — without it a tampered
         // client could store arbitrary-length text per (post, uid),
         // wasting Firestore storage on otherwise-private docs.
+        //
+        // Reflections are the post author's own anniversary thoughts on
+        // their own post — AnniversaryCardView.swift gates the editor
+        // client-side to authorId == currentUid. The previous rule allowed
+        // any authenticated user to create a reflection on any post; the
+        // post-author-only read rule meant no one but the post author saw
+        // them, but a tampered client could still spam reflection writes
+        // into another user's post. Restrict create to the post author so
+        // reflections under /posts/{X}/reflections only ever come from X.
+        // The block-check is preserved as defense-in-depth even though
+        // post author == caller already implies they're not blocked by
+        // themselves; if a future change splits these identities the
+        // block enforcement still holds.
+        // createdAt pinned to request.time to match drafts/circles/reports.
         allow create: if isAuth()
           && request.resource.data.authorId == request.auth.uid
+          && get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 500
           && request.resource.data.keys().hasOnly(['authorId', 'text', 'createdAt'])
           && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
+          && request.resource.data.createdAt == request.time
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         allow update: if isAuth()
           && resource.data.authorId == request.auth.uid
@@ -640,6 +736,20 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['lastMessage', 'lastMessageAt', 'messageCount',
                       'typing', 'typingAt', 'lastRead', 'participantHandles'])
+        // lastMessage / lastMessageAt are flat strings, not per-uid maps,
+        // so they can't be slot-guarded the way messageCount/typing/etc.
+        // are. Without binding their writes to the caller, either
+        // participant could spoof a fake "alice: i love you" preview that
+        // the other participant sees in MessagesListView. Require any
+        // lastMessage* update to be bundled with the caller's own
+        // messageCount increment — the existing per-uid guard below
+        // already enforces "only the caller's slot, +1 only", so this
+        // ties the preview write to "the caller actually just sent a
+        // message." A standalone preview-spoof update gets denied.
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastMessage', 'lastMessageAt'])
+          || request.resource.data.diff(resource.data).affectedKeys().hasAny(['messageCount'])
+        )
         && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['messageCount'])
           || (
@@ -701,6 +811,7 @@ service cloud.firestore {
           // matching transactional increment in ConversationView.sendMessage.
           && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt', 'clientCountedV1'])
           && request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt', 'clientCountedV1'])
+          && request.resource.data.createdAt == request.time
           && request.resource.data.clientCountedV1 == true
           && request.auth.uid in get(/databases/$(database)/documents/conversations/$(convoId)).data.participants
           && get(/databases/$(database)/documents/conversations/$(convoId)).data.get('messageCount', {}).get(request.auth.uid, 0) < 5

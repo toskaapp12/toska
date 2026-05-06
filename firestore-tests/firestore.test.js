@@ -162,7 +162,11 @@ describe("baseline sanity", () => {
         authorId: "alice",
         authorHandle: "alice123",
         text: "hello world",
-        createdAt: new Date(),
+        // createdAt is pinned to request.time on the server. A client-side
+        // `new Date()` does not equal request.time once the write reaches
+        // the emulator, so the rule rejects it. Every happy-path post create
+        // test in this file must use serverTimestamp().
+        createdAt: serverTimestamp(),
         likeCount: 0,
         repostCount: 0,
         replyCount: 0,
@@ -461,7 +465,7 @@ describe("Finding 3: blocked user cannot create save notification", () => {
           fromUserId: "bob",
           postId: "p1",
           isRead: false,
-          createdAt: new Date(),
+          createdAt: serverTimestamp(),
         })
     );
   });
@@ -523,7 +527,7 @@ describe("fromHandle is pinned to caller's actual handle on notification create"
           fromHandle: "handle_bob", // matches setUserDoc default
           postId: "p1",
           isRead: false,
-          createdAt: new Date(),
+          createdAt: serverTimestamp(),
         })
     );
   });
@@ -603,7 +607,7 @@ describe("fromHandle is pinned to caller's actual handle on notification create"
           fromUserId: "bob",
           postId: "p1",
           isRead: false,
-          createdAt: new Date(),
+          createdAt: serverTimestamp(),
         })
     );
   });
@@ -749,7 +753,7 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
         authorId: "alice",
         authorHandle: "alice123",
         text: "hello",
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         likeCount: 0,
         repostCount: 0,
         replyCount: 0,
@@ -1111,35 +1115,59 @@ describe("reflections subcollection is reflection-author-or-post-author scoped",
     );
   });
 
-  it("allows a legitimate reflection create", async () => {
-    const b = env.authenticatedContext("bob").firestore();
+  it("allows a legitimate reflection create by the post author", async () => {
+    // Reflections are AnniversaryCardView's own-post anniversary thoughts.
+    // The rule restricts create to the post author so a tampered client
+    // can't spam reflections into another user's post — alice owns p1
+    // (per the beforeEach), so alice writing a reflection on p1 is the
+    // legitimate happy path.
+    const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
+      a.collection("posts").doc("p1").collection("reflections").doc("alice").set({
+        authorId: "alice",
+        text: "thinking about this again",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("rejects reflection create when caller is not the post author", async () => {
+    // The rule fix: previously any auth user could write a reflection
+    // on anyone's post (read was post-author-or-reflection-author scoped,
+    // but write was wide open). Bob writing a reflection under alice's
+    // post is exactly the harassment vector this closes.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
       b.collection("posts").doc("p1").collection("reflections").doc("bob").set({
         authorId: "bob",
         text: "thinking about this again",
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       })
     );
   });
 
   it("rejects reflection create with text > 500 chars", async () => {
-    const b = env.authenticatedContext("bob").firestore();
+    // Use alice (post author) so we test the length check in isolation
+    // rather than the post-author check.
+    const a = env.authenticatedContext("alice").firestore();
     await assertFails(
-      b.collection("posts").doc("p1").collection("reflections").doc("bob").set({
-        authorId: "bob",
+      a.collection("posts").doc("p1").collection("reflections").doc("alice").set({
+        authorId: "alice",
         text: "x".repeat(501),
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       })
     );
   });
 
   it("rejects reflection create with extra unlisted field", async () => {
-    const b = env.authenticatedContext("bob").firestore();
+    // Use alice (post author) so the post-author check passes and the
+    // hasOnly schema lockdown is the rule that does the rejection.
+    const a = env.authenticatedContext("alice").firestore();
     await assertFails(
-      b.collection("posts").doc("p1").collection("reflections").doc("bob").set({
-        authorId: "bob",
+      a.collection("posts").doc("p1").collection("reflections").doc("alice").set({
+        authorId: "alice",
         text: "ok",
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         flagged: false,
       })
     );
@@ -1224,6 +1252,664 @@ describe("drafts subcollection — owner-only rehearsal space", () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("users").doc("alice").collection("drafts").doc("d1").delete()
+    );
+  });
+});
+
+// =====================================================================
+// security audit fixes — Tier A
+//
+// The describe blocks below pin every rule branch added or tightened in
+// the security-audit Tier A pass. Each test exercises one concrete vector
+// from the audit so a future rule edit that re-opens the gap fails CI
+// with a named, recognizable test rather than a generic "rules changed."
+// =====================================================================
+
+describe("user doc read: block-aware + legacy-PII guard (audit P0/P1)", () => {
+  it("allows a non-owner to read a clean post-migration profile", async () => {
+    // Baseline: setUserDoc seeds only public fields (handle, *Count,
+    // confirmedAdult), so the noLegacyPIIVisible() guard passes and a
+    // non-blocked authenticated user can load the public projection.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(b.collection("users").doc("alice").get());
+  });
+
+  it("rejects a blocked user from reading the blocker's profile", async () => {
+    // Block-aware delivery vector: without this, bob can still load
+    // OtherProfileView for alice after she blocked him, observing handle/
+    // follower counts to fuel a sock-puppet attack.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setBlock("alice", "bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(b.collection("users").doc("alice").get());
+  });
+
+  it("still allows the owner to read their own profile when blocked-by-flag is set", async () => {
+    // Owner branch must keep working — alice's ProfileView depends on
+    // reading her own user doc and the block exists() check is meant
+    // for non-owners only.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setBlock("alice", "bob");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("users").doc("alice").get());
+  });
+
+  it("rejects a non-owner read when legacy PII (email) is still on the main doc", async () => {
+    // P0: pre-migration accounts that still carry email on the main user
+    // doc must not leak it to other authenticated users. Whole-doc deny
+    // is the only granularity rules support — OtherProfileView shows
+    // "loading…" until functions/scrubLegacyPII.js scrubs the field.
+    await setUserDoc("alice", { email: "alice@example.com" });
+    await setUserDoc("bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(b.collection("users").doc("alice").get());
+  });
+
+  it("rejects a non-owner read when legacy notify* prefs are still on the main doc", async () => {
+    // Belt-and-suspenders: a different legacy field should also block.
+    await setUserDoc("alice", { notifyLikes: true });
+    await setUserDoc("bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(b.collection("users").doc("alice").get());
+  });
+
+  it("still allows the owner to read their own profile even when legacy PII is present", async () => {
+    // Pre-migration owner can still load their own settings — that's
+    // how the SettingsView scrub path opportunistically deletes legacy
+    // fields on save.
+    await setUserDoc("alice", { email: "alice@example.com" });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("users").doc("alice").get());
+  });
+});
+
+describe("notification create: schema lockdown (audit P1)", () => {
+  it("rejects notification create with extra unlisted field", async () => {
+    // Without keys().hasOnly, a tampered client could attach
+    // `flagged: false` or `trustedByAdmin: true` and let a future
+    // trigger trust the value.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          postId: "p1",
+          isRead: false,
+          createdAt: serverTimestamp(),
+          flagged: false,
+        })
+    );
+  });
+
+  it("rejects notification create with isRead == true (no pre-read decoy)", async () => {
+    // A "pre-read" notification doc would hide itself from the recipient's
+    // unread badge while still firing sendPushNotification — useful for
+    // a stalker probing a victim's device without leaving in-app
+    // breadcrumbs.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          postId: "p1",
+          isRead: true,
+          createdAt: serverTimestamp(),
+        })
+    );
+  });
+
+  it("rejects notification create with backdated createdAt", async () => {
+    // request.time pin: notification createdAt must equal server time so
+    // a tampered client can't predate a notification (e.g., to land
+    // before sendPushNotification's badge-count query).
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          postId: "p1",
+          isRead: false,
+          createdAt: new Date("2025-01-01"),
+        })
+    );
+  });
+
+  it("rejects notification create missing isRead", async () => {
+    // hasAll requires isRead. Skipping it would let a client write a
+    // notification doc whose unread state is undefined-ish (and the
+    // recipient's badge query treats undefined as "never read").
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: new Date() });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("like_p1_bob")
+        .set({
+          type: "like",
+          fromUserId: "bob",
+          postId: "p1",
+          createdAt: serverTimestamp(),
+        })
+    );
+  });
+});
+
+describe("post create: createdAt pinned to request.time (audit P2)", () => {
+  it("rejects post create with backdated createdAt", async () => {
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "alice123",
+        text: "hello",
+        createdAt: new Date("2025-01-01"),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+});
+
+describe("reply create: schema lockdown + createdAt pin (audit P2)", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+  });
+
+  it("allows a legitimate reply create with valid shape", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "responding",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        parentPostText: "hello",
+        parentPostHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects reply create with extra unlisted field", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        authorId: "bob",
+        text: "responding",
+        createdAt: serverTimestamp(),
+        flagged: false,
+      })
+    );
+  });
+
+  it("rejects reply create with backdated createdAt", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        authorId: "bob",
+        text: "responding",
+        createdAt: new Date("2025-01-01"),
+      })
+    );
+  });
+
+  it("rejects reply create with pre-inflated likeCount", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        authorId: "bob",
+        text: "responding",
+        createdAt: serverTimestamp(),
+        likeCount: 999,
+      })
+    );
+  });
+});
+
+describe("conversation message create: createdAt pinned (audit P2)", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      });
+    });
+  });
+
+  it("rejects message create with backdated createdAt", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1")
+        .collection("messages").doc("m1")
+        .set({
+          senderId: "alice",
+          text: "hi",
+          createdAt: new Date("2025-01-01"),
+          clientCountedV1: true,
+        })
+    );
+  });
+});
+
+describe("conversation update: lastMessage must bundle with caller's messageCount (audit P2)", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      });
+    });
+  });
+
+  it("rejects standalone lastMessage update (preview spoofing)", async () => {
+    // Bob trying to plant "alice: i love you" in the conversation
+    // preview without alice having sent it. Without the bundle requirement,
+    // both participants see this fake preview in MessagesListView until
+    // a real message arrives.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("conversations").doc("c1").update({
+        lastMessage: "alice: i love you",
+        lastMessageAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows lastMessage update bundled with caller's messageCount increment", async () => {
+    // The legitimate sendMessage path: caller writes their own message,
+    // increments messageCount.{auth.uid}, and updates lastMessage* in
+    // the same update operation.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("conversations").doc("c1").update({
+        lastMessage: "bob: hi",
+        lastMessageAt: serverTimestamp(),
+        "messageCount.bob": 1,
+      })
+    );
+  });
+
+  it("rejects lastMessage bundled with the OTHER participant's messageCount", async () => {
+    // Defense-in-depth: the existing per-uid map guard should already
+    // deny this via the messageCount slot check, but the bundling rule
+    // must not accidentally relax that constraint.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("conversations").doc("c1").update({
+        lastMessage: "alice: i love you",
+        lastMessageAt: serverTimestamp(),
+        "messageCount.alice": 1,
+      })
+    );
+  });
+});
+
+// =====================================================================
+// pre-existing coverage gaps — Tier A baseline (audit P3 #27)
+// Pins rule branches that were live-but-untested before this audit.
+// =====================================================================
+
+describe("private subcollection: owner-only", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+  });
+
+  it("allows the owner to write their private/data doc", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice")
+        .collection("private").doc("data")
+        .set({ email: "alice@example.com", selectedMood: "ok" })
+    );
+  });
+
+  it("rejects another user from reading someone else's private data", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("alice")
+        .collection("private").doc("data")
+        .set({ email: "alice@example.com", fcmToken: "abc123" });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("private").doc("data").get()
+    );
+  });
+
+  it("rejects another user from writing into someone else's private subcollection", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("private").doc("data")
+        .set({ email: "attacker@example.com" })
+    );
+  });
+});
+
+describe("post delete: author or admin only", () => {
+  it("allows the post author to delete their own post", async () => {
+    await setUserDoc("alice");
+    await setPost("p1", "alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("posts").doc("p1").delete());
+  });
+
+  it("rejects an unrelated user from deleting someone else's post", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(b.collection("posts").doc("p1").delete());
+  });
+});
+
+describe("reply update + delete", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p1")
+        .collection("replies").doc("r1")
+        .set({
+          authorId: "bob",
+          text: "original",
+          createdAt: new Date(),
+          likeCount: 0,
+        });
+    });
+  });
+
+  it("allows reply author to update their own text", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1")
+        .collection("replies").doc("r1")
+        .update({ text: "edited" })
+    );
+  });
+
+  it("rejects another user from updating someone else's reply", async () => {
+    await setUserDoc("carol");
+    const c = env.authenticatedContext("carol").firestore();
+    await assertFails(
+      c.collection("posts").doc("p1")
+        .collection("replies").doc("r1")
+        .update({ text: "tampered" })
+    );
+  });
+
+  it("rejects reply update that exceeds the 500-char cap", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1")
+        .collection("replies").doc("r1")
+        .update({ text: "x".repeat(501) })
+    );
+  });
+
+  it("allows reply author to delete their own reply", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1")
+        .collection("replies").doc("r1").delete()
+    );
+  });
+
+  it("allows post author to delete a reply on their post (moderation cleanup)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1")
+        .collection("replies").doc("r1").delete()
+    );
+  });
+
+  it("rejects an unrelated user from deleting someone else's reply", async () => {
+    await setUserDoc("carol");
+    const c = env.authenticatedContext("carol").firestore();
+    await assertFails(
+      c.collection("posts").doc("p1")
+        .collection("replies").doc("r1").delete()
+    );
+  });
+});
+
+describe("follow mirrors: create + delete", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+  });
+
+  it("allows alice to add herself to bob's followers (and to her own following)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .set({ createdAt: serverTimestamp() })
+    );
+    await assertSucceeds(
+      a.collection("users").doc("alice")
+        .collection("following").doc("bob")
+        .set({ createdAt: serverTimestamp() })
+    );
+  });
+
+  it("rejects self-follow on /following/", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice")
+        .collection("following").doc("alice")
+        .set({ createdAt: serverTimestamp() })
+    );
+  });
+
+  it("rejects self-follow on /followers/", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice")
+        .collection("followers").doc("alice")
+        .set({ createdAt: serverTimestamp() })
+    );
+  });
+
+  it("rejects a blocked user from creating a follower mirror doc", async () => {
+    await setBlock("bob", "alice"); // bob blocks alice
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .set({ createdAt: serverTimestamp() })
+    );
+  });
+
+  it("allows alice to remove her own follower entry under bob", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .set({ createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("bob")
+        .collection("followers").doc("alice").delete()
+    );
+  });
+});
+
+describe("notRestricted(): time-expiry leg", () => {
+  it("allows a post create when restrictedUntil is in the past", async () => {
+    // System auto-restrictions set restrictedUntil = now + 48h. Once
+    // that timestamp is in the past, notRestricted() returns true again
+    // even if `restricted: true` is still on the doc — the time-expiry
+    // leg of the predicate. Without this branch, expired auto-restrictions
+    // would persist forever (admin-set restrictions intentionally have
+    // no expiry).
+    await setUserDoc("alice", {
+      restricted: true,
+      restrictedUntil: new Date(Date.now() - 60 * 1000), // 1 minute ago
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "handle_alice",
+        text: "back online",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("rejects a post create when restrictedUntil is still in the future", async () => {
+    await setUserDoc("alice", {
+      restricted: true,
+      restrictedUntil: new Date(Date.now() + 60 * 60 * 1000), // 1h ahead
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "handle_alice",
+        text: "still under restriction",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+});
+
+describe("like create: blocked by post author", () => {
+  it("rejects a like from a user the post author has blocked", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    await setBlock("alice", "bob"); // alice blocked bob
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: serverTimestamp() })
+    );
+  });
+
+  it("allows a like from a non-blocked user", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1")
+        .collection("likes").doc("bob")
+        .set({ createdAt: serverTimestamp() })
+    );
+  });
+});
+
+describe("legacy PII immutability: reject re-introduction on update", () => {
+  // legacyPIIFieldsImmutable() permits deletes (so SettingsView can scrub)
+  // and unchanged values (so updates on pre-migration docs don't fail
+  // wholesale), but rejects any add/modify of the field set. Each test
+  // covers a different field so a future reordering of the predicate
+  // chain doesn't silently drop a check.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+  });
+
+  it("rejects re-introducing email via update", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        email: "alice@example.com",
+      })
+    );
+  });
+
+  it("rejects re-introducing selectedMood via update", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        selectedMood: "still in it",
+      })
+    );
+  });
+
+  it("rejects re-introducing notifyLikes via update", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        notifyLikes: true,
+      })
+    );
+  });
+
+  it("rejects re-introducing pushEnabled via update", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        pushEnabled: false,
+      })
     );
   });
 });

@@ -281,6 +281,89 @@ async function cleanupReflectionsForUid(uid, maxIterations) {
   return { totalDeleted, capHit: batchCount >= maxIterations };
 }
 
+// Paginated deletion of replies authored by a deleted user under OTHER
+// users' posts. Replies on the deleted user's own posts are gone with
+// the post (cleanupPostsForUid deletes the replies subcollection before
+// deleting the parent). What's left are this user's replies elsewhere —
+// which still render with `authorHandle: "@<deletedHandle>"` to the
+// post author and any reader. If a new account later claims the same
+// handle, every surviving reply by the deleted user reads as bylined
+// to the new account: byline-impersonation across reply threads.
+//
+// Same shape as cleanupNotificationsForUid: collectionGroup query on
+// `authorId`, paginate, return capHit. The replies/(authorId ASC,
+// createdAt DESC) collection-group index already exists in
+// firestore.indexes.json (used elsewhere). Each delete fires
+// onReplyDeletedUpdateCount which legitimately decrements the parent
+// post's replyCount — correct: the reply genuinely no longer exists.
+async function cleanupRepliesForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const snap = await db.collectionGroup("replies")
+      .where("authorId", "==", uid)
+      .limit(500)
+      .get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Paginated cleanup of conversations where a deleted user is a participant.
+// Per-convo work: deleteCollection(messages), then scrub the deleted user's
+// slot from participantHandles so the surviving participant's UI doesn't
+// show a tombstoned handle.
+//
+// The previous shape did `where(participants array-contains uid).get()` with
+// no pagination — for a heavy DM user (10K+ convos) that single get() risked
+// OOM/timeout on the cascade. This helper walks the same query in 50-doc
+// pages with __name__ ordering for stable cursoring across invocations.
+//
+// Idempotency on resume: this helper does NOT mark convos as "processed."
+// On resume, we restart from the beginning of the participants-contains-uid
+// query and re-walk pages we already finished. Because deleteCollection on
+// an empty messages subcollection is a single read and FieldValue.delete on
+// an absent key is a no-op, re-processing is correct, just wasteful — fine
+// for the tail-end resume case where we'd otherwise need a separate
+// "processed" marker collection. Power-users with >2.5K convos pay a few
+// extra reads per resume; that's the trade.
+async function cleanupUserConversationsForUid(uid, maxIterations) {
+  let pageCount = 0;
+  let totalProcessed = 0;
+  let cursor = null;
+  while (pageCount < maxIterations) {
+    let q = db.collection("conversations")
+      .where("participants", "array-contains", uid)
+      .orderBy("__name__")
+      .limit(50);
+    if (cursor) q = q.startAfter(cursor);
+    const snap = await q.get();
+    if (snap.empty) break;
+    for (const convoDoc of snap.docs) {
+      try {
+        await deleteCollection(convoDoc.ref.collection("messages"));
+        await convoDoc.ref.update({
+          [`participantHandles.${uid}`]: FieldValue.delete(),
+        });
+      } catch (err) {
+        // Don't abort the page for a single convo — log and move on.
+        console.warn(`convo cleanup failed for ${convoDoc.id}:`, err.message);
+      }
+    }
+    totalProcessed += snap.size;
+    pageCount++;
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < 50) break;
+  }
+  return { totalDeleted: totalProcessed, capHit: pageCount >= maxIterations };
+}
+
 // Paginated deletion of pending reports filed by a deleted user. Reports
 // filed *against* this user must persist (moderation history survives
 // deletion); reports they themselves filed are cleaned up so the queue
@@ -303,6 +386,87 @@ async function cleanupSubmittedReportsForUid(uid, maxIterations) {
     if (snap.size < 500) break;
   }
   return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
+// Structured-log a single-write counter trigger that failed AFTER its
+// dedup claim was set. Single-write triggers (reply, repost, tag, stage,
+// message) claim the eventId BEFORE writing the counter; if the write
+// then fails (rule denial, invariant violation, transient unavailable),
+// Eventarc redelivery will see the claim already set and skip the
+// retry — the counter silently drifts off by one and there's no
+// recovery path.
+//
+// The fix here is an alert hook, not a re-architecture: emit a JSON log
+// entry with a recognizable `tag` so a Cloud Monitoring policy can fire
+// on `jsonPayload.tag = "counter_drift"` and surface the drift to the
+// on-call instead of letting it accumulate silently. The previous
+// console.warn shape was indistinguishable from benign warnings.
+//
+// The structural fix (move single-write counters to claimedTransaction
+// + retry: true so a failed write retries cleanly) is deferred — it
+// requires unwinding the per-counter dedup-key shape and is bigger than
+// a security-audit pass. This logging closes the silence gap until
+// then.
+function logCounterDrift(triggerName, eventId, err, extras = {}) {
+  console.error(JSON.stringify({
+    severity: "ERROR",
+    tag: "counter_drift",
+    trigger: triggerName,
+    eventId,
+    errorMessage: err?.message || String(err),
+    ...extras,
+  }));
+}
+
+// Randomized delay before a moderation-driven delete, sized to overlap with
+// the typical "happy-path" trigger-completion envelope so a client probing
+// the identifying-info detector can't infer "flagged vs not" from how
+// quickly their post disappears. Without this, name-containing posts get
+// deleted by validatePost in ~50ms while published posts only stop being
+// observable on the client ~1-3s later (post-trigger indexing); the
+// difference is a measurable timing oracle that lets an evasion-tuner
+// figure out which spellings trip the detector.
+//
+// Applied only to the identifying-info / name-detection delete path. The
+// blank / over-length / repost-mismatch deletes don't need this — those
+// shapes are trivially self-checkable from client code (a tampered client
+// already knows whether they wrote a blank or 5KB text), so masking the
+// server's response timing offers no privacy.
+async function moderationDeleteJitter() {
+  const ms = 1500 + Math.floor(Math.random() * 1500);
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Symmetric helper-runner for the onUserDocDeleted cascade. Every cleanup
+// helper goes through this so the audit's asymmetric-resume gap is closed:
+// previously cleanupReflectionsForUid was the only helper that queued resume
+// on a thrown error; the others (notifications, circle messages, submitted
+// reports, follows, reposts, replies, convos) silently dropped on transient
+// failures and lost data forever — a GDPR Art. 17 risk that compounds with
+// scale. With this wrapper, every helper:
+//   - queues a resume continuation on capHit (the bounded-progress case)
+//   - queues a resume continuation on catch (the transient-failure case)
+//   - logs a recognizable message in either case
+//   - never re-throws (the parent `try` in onUserDocDeleted already bails
+//     on top-level errors; in-helper failures should not abort siblings)
+async function runWithResume(uid, type, helperFn, friendlyLabel) {
+  try {
+    const result = await helperFn(uid, 50);
+    if ((result?.totalDeleted || 0) > 0) {
+      console.log(`Deleted ${result.totalDeleted} ${friendlyLabel} for user ${uid}`);
+    }
+    if (result?.capHit) {
+      await queueUserCleanupContinuation(uid, type, result.totalDeleted || 0);
+      console.warn(`${friendlyLabel} cleanup cap hit for ${uid}; queued for resume.`);
+    }
+  } catch (err) {
+    console.warn(`${friendlyLabel} cleanup failed for ${uid}:`, err.message);
+    try {
+      await queueUserCleanupContinuation(uid, type, 0);
+    } catch (queueErr) {
+      console.warn(`Failed to queue ${type} resume for ${uid}:`, queueErr.message);
+    }
+  }
 }
 
 // Write a continuation marker that resumeUserCleanup picks up. Keyed by
@@ -449,7 +613,25 @@ async function claimedTransaction(eventId, subKey, transactionFn) {
 // Writes to a collection no client can touch (the catch-all fallthrough
 // rule denies everything not explicitly allowed).
 // ============================================================
+// Allow-list of endpoint identifiers so a future caller that parameterizes
+// the endpoint string can't bypass the bucket by varying case, whitespace,
+// or unicode confusables. Today the only callers are confirmAdult,
+// giphyProxy, and reconcileMyCounts; extend this list when a new endpoint
+// adds rate limiting. An unknown endpoint throws — better to crash the
+// invocation than to silently route into a fresh, isolated bucket that
+// gives the caller infinite capacity.
+const RATE_LIMIT_ALLOWED_ENDPOINTS = new Set([
+  "confirmAdult",
+  "giphyProxy",
+  "reconcileMyCounts",
+  "report",  // per-reporter cap
+  "report_target",  // per-target cap (audit P1: report flooding)
+]);
+
 async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds) {
+  if (!RATE_LIMIT_ALLOWED_ENDPOINTS.has(endpoint)) {
+    throw new Error(`checkRateLimit: unknown endpoint "${endpoint}"`);
+  }
   const docRef = db.collection("rateLimits").doc(`${uid}_${endpoint}`);
   const now = Date.now();
   const windowMs = windowSeconds * 1000;
@@ -544,27 +726,38 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // completing. The helper deletes both sides (peer mirror + uid's local
     // edge) in batched commits, so we drop "following"/"followers" from the
     // generic subs loop below — they're already empty by the time we get
-    // there. If the cap is hit, resumeUserCleanup drains the rest hourly.
-    try {
-      const followsResult = await cleanupMirrorFollowsForUid(uid, 50);
-      if (followsResult.totalDeleted > 0) {
-        console.log(`Deleted ${followsResult.totalDeleted} follow edges for user ${uid}`);
-      }
-      if (followsResult.capHit) {
-        await queueUserCleanupContinuation(uid, "follows", followsResult.totalDeleted);
-        console.warn(`Follow-edge cleanup cap hit for ${uid}; queued for resume.`);
-      }
-    } catch (err) {
-      console.warn("Follow-edge cleanup failed:", err.message);
-    }
+    // there.
+    await runWithResume(uid, "follows", cleanupMirrorFollowsForUid, "follow edges");
 
     // `drafts` is included so a user's pre-publish rehearsal text doesn't
     // survive their account delete. Without it, drafts persist forever
     // (rules deny reads to anyone but the now-deleted owner — orphaned
     // tombstones with no GC path).
+    //
+    // capHit handling: deleteCollection caps at 100 batches × 499 ≈ 50K
+    // docs per call. For a typical user every subcollection is well under
+    // that cap, but a heavy user (a moderator's `notifications`, an abuse
+    // account's `liked`, a power-user's `drafts`) could hit it. Without
+    // queuing a resume, the cap silently drops everything past 50K. We
+    // queue per-(uid, sub) so resumeUserCleanup drains the remainder
+    // hourly until each subcollection is empty.
     const subs = ["saved", "liked", "notifications", "blocked", "presence", "private", "drafts"];
     for (const sub of subs) {
-      await deleteCollection(db.collection("users").doc(uid).collection(sub));
+      try {
+        const result = await deleteCollection(db.collection("users").doc(uid).collection(sub));
+        if (result?.capHit) {
+          await queueUserCleanupContinuation(uid, `sub_${sub}`, result.totalDeleted || 0);
+          console.warn(`Subcollection cleanup cap hit for ${uid}/${sub}; queued for resume.`);
+        }
+      } catch (err) {
+        console.warn(`Subcollection cleanup failed for ${uid}/${sub}:`, err.message);
+        // Queue resume so a transient failure doesn't strand the cleanup.
+        try {
+          await queueUserCleanupContinuation(uid, `sub_${sub}`, 0);
+        } catch (queueErr) {
+          console.warn(`Failed to queue ${sub} resume for ${uid}:`, queueErr.message);
+        }
+      }
     }
 
     // Best-effort: pendingDeletions may already be gone if the cascade was
@@ -578,111 +771,26 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
       }
     }
 
-    const convoSnap = await db.collection("conversations")
-      .where("participants", "array-contains", uid)
-      .get();
-    for (const convoDoc of convoSnap.docs) {
-      await deleteCollection(convoDoc.ref.collection("messages"));
-      try {
-        await convoDoc.ref.update({
-          [`participantHandles.${uid}`]: FieldValue.delete(),
-        });
-      } catch (err) {
-        // Don't abort the cascade for a single convo update miss, but log
-        // so persistent rule/quota issues surface in logs instead of
-        // silently leaving orphaned participant handles.
-        console.warn(`participantHandle scrub for convo ${convoDoc.id} failed:`, err.message);
-      }
-    }
-
-    // Cross-user notifications, feeling-circle messages, and pending
-    // reports the deleted user filed. Each helper paginates with a
-    // 50-iteration cap (≈25K docs); if more remain, queue a
-    // continuation entry that resumeUserCleanup drains across hourly
-    // sweeps. Without the continuation, heavy users could leave
-    // orphaned data — fine for typical v1.0 scale but a GDPR Art. 17
-    // gap that compounds over time.
-    try {
-      const notifResult = await cleanupNotificationsForUid(uid, 50);
-      if (notifResult.totalDeleted > 0) {
-        console.log(`Deleted ${notifResult.totalDeleted} orphaned notifications for user ${uid}`);
-      }
-      if (notifResult.capHit) {
-        await queueUserCleanupContinuation(uid, "notifications", notifResult.totalDeleted);
-        console.warn(`Notifications cleanup cap hit for ${uid}; queued for resume.`);
-      }
-    } catch (err) {
-      console.warn("Orphaned notification cleanup failed:", err.message);
-    }
-
-    try {
-      const circleResult = await cleanupCircleMessagesForUid(uid, 50);
-      if (circleResult.totalDeleted > 0) {
-        console.log(`Deleted ${circleResult.totalDeleted} feeling-circle messages for user ${uid}`);
-      }
-      if (circleResult.capHit) {
-        await queueUserCleanupContinuation(uid, "circleMessages", circleResult.totalDeleted);
-        console.warn(`Circle-message cleanup cap hit for ${uid}; queued for resume.`);
-      }
-    } catch (err) {
-      console.warn("Feeling-circle message cleanup failed:", err.message);
-    }
-
-    try {
-      const reportResult = await cleanupSubmittedReportsForUid(uid, 50);
-      if (reportResult.totalDeleted > 0) {
-        console.log(`Deleted ${reportResult.totalDeleted} pending reports filed by user ${uid}`);
-      }
-      if (reportResult.capHit) {
-        await queueUserCleanupContinuation(uid, "reports", reportResult.totalDeleted);
-        console.warn(`Pending-report cleanup cap hit for ${uid}; queued for resume.`);
-      }
-    } catch (err) {
-      console.warn("Pending-report cleanup failed:", err.message);
-    }
-
-    // Reflections this user wrote on other users' posts. Reflections under
-    // the deleted user's own posts are already handled by cleanupPostsForUid.
-    // The helper depends on the reflections.authorId collection-group index
-    // (firestore.indexes.json). If the index is missing or still backfilling
-    // at deploy time, the query throws FAILED_PRECONDITION; queue a resume
-    // continuation in that case so the hourly sweep retries once the index
-    // is ready, instead of silently dropping cross-user reflection cleanup.
-    try {
-      const reflectionResult = await cleanupReflectionsForUid(uid, 50);
-      if (reflectionResult.totalDeleted > 0) {
-        console.log(`Deleted ${reflectionResult.totalDeleted} cross-user reflections by user ${uid}`);
-      }
-      if (reflectionResult.capHit) {
-        await queueUserCleanupContinuation(uid, "reflections", reflectionResult.totalDeleted);
-        console.warn(`Reflection cleanup cap hit for ${uid}; queued for resume.`);
-      }
-    } catch (err) {
-      console.warn("Cross-user reflection cleanup failed:", err.message);
-      try {
-        await queueUserCleanupContinuation(uid, "reflections", 0);
-      } catch (queueErr) {
-        console.warn("Failed to queue reflection-cleanup resume:", queueErr.message);
-      }
-    }
-
-    // Reposts of this user's content by other accounts. These don't show up
-    // in the authorId==uid sweep above (different field) and previously
-    // orphaned indefinitely — third-party profiles kept showing the deleted
-    // user's @handle as the repost byline forever. Same 50-iter cap and
-    // queue-for-resume shape as the helpers above.
-    try {
-      const repostResult = await cleanupRepostsForUid(uid, 50);
-      if (repostResult.totalDeleted > 0) {
-        console.log(`Deleted ${repostResult.totalDeleted} third-party reposts of user ${uid}`);
-      }
-      if (repostResult.capHit) {
-        await queueUserCleanupContinuation(uid, "reposts", repostResult.totalDeleted);
-        console.warn(`Repost cleanup cap hit for ${uid}; queued for resume.`);
-      }
-    } catch (err) {
-      console.warn("Repost cleanup failed:", err.message);
-    }
+    // Cross-user cleanup helpers. Each runs through `runWithResume` so
+    // capHit AND transient errors both queue a resume continuation —
+    // previously only `reflections` symmetrized this. Order is roughly
+    // "highest visibility leak first" so a partial cascade run still
+    // closes the most-visible identity-impersonation surfaces:
+    //   convos       — DM message bodies + participant-handle slots
+    //   notifications— cross-user inbox docs with the deleted handle
+    //   replies      — byline-impersonation gap (audit P1-4): replies
+    //                  authored by uid under other users' posts
+    //   reposts      — third-party reposts referencing the deleted user
+    //   reflections  — uid's reflections under other users' posts
+    //   circleMessages — feeling-circle messages by uid
+    //   reports      — pending reports uid filed (kept-against-uid persist)
+    await runWithResume(uid, "convos", cleanupUserConversationsForUid, "DM conversations");
+    await runWithResume(uid, "notifications", cleanupNotificationsForUid, "orphaned notifications");
+    await runWithResume(uid, "replies", cleanupRepliesForUid, "cross-user replies");
+    await runWithResume(uid, "reposts", cleanupRepostsForUid, "third-party reposts");
+    await runWithResume(uid, "reflections", cleanupReflectionsForUid, "cross-user reflections");
+    await runWithResume(uid, "circleMessages", cleanupCircleMessagesForUid, "feeling-circle messages");
+    await runWithResume(uid, "reports", cleanupSubmittedReportsForUid, "pending reports filed");
 
     console.log("Cleanup complete for user:", uid);
   } catch (error) {
@@ -821,26 +929,45 @@ exports.sendPushNotification = onDocumentCreated(
     // device's notification logs (lock screen photos, notification
     // history extensions, etc.). Tap-through surfaces the content
     // in-app where the user has full control.
+    // Lock-screen privacy. The previous copy interpolated ${fromHandle} into
+    // every push title/body, surfacing the sender's anonymous handle on the
+    // recipient's lock screen. For an anonymity-first app the *handle* is
+    // the identifier — a co-resident attacker (shared iPad, mirrored Apple
+    // Watch, iCloud-synced notifications on a shared Mac) reading "@stalker
+    // replied" on the victim's device confirms (a) the victim is on Toska,
+    // (b) the attacker's own probe handle reached the victim, and (c) over
+    // time, builds a map of which handles interact with the victim.
+    //
+    // The fix: server-authored copy that names no one. The `fromUserId`
+    // routing ID is still in the data payload below so the in-app render
+    // (post-unlock, where the victim has full control) can resolve handles
+    // and avatars normally. Milestone is server-authored count copy that
+    // already names no one.
+    //
+    // fromHandle is no longer read for any title/body field, but
+    // sendPushNotification still resolves it from the sender's user doc
+    // earlier in this function so future server-authored copy that *needs*
+    // a handle (e.g., admin announcements) can still use it explicitly.
     switch (type) {
       case "reply":
-        title = `${fromHandle} replied`;
+        title = "someone replied";
         body = "tap to read what they said";
         break;
       case "like":
         title = "someone felt your post";
-        body = `${fromHandle} felt what you said`;
+        body = "tap to read what they said";
         break;
       case "follow":
         title = "new follower";
-        body = `${fromHandle} followed you`;
+        body = "someone is following you";
         break;
       case "repost":
         title = "your words are spreading";
-        body = `${fromHandle} reposted your words`;
+        body = "someone reposted your words";
         break;
       case "save":
         title = "someone saved your post";
-        body = `${fromHandle} kept your words`;
+        body = "tap to see who kept your words";
         break;
       case "milestone":
         // Server-authored milestone copy ("your post reached 25 feels") is
@@ -848,8 +975,8 @@ exports.sendPushNotification = onDocumentCreated(
         body = message || "your post hit a milestone";
         break;
       case "message":
-        title = `${fromHandle}`;
-        body = "sent you a message";
+        title = "new message";
+        body = "tap to read";
         break;
       default:
         body = "you have a new notification";
@@ -1098,7 +1225,7 @@ exports.onReplyCreatedUpdateCount = onDocumentCreated(
         replyCount: FieldValue.increment(1),
       });
     } catch (err) {
-      console.warn("onReplyCreatedUpdateCount failed:", err.message);
+      logCounterDrift("onReplyCreatedUpdateCount", event.id, err, { postId });
     }
   }
 );
@@ -1126,7 +1253,7 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
         replyCount: FieldValue.increment(-1),
       });
     } catch (err) {
-      console.warn("onReplyDeletedUpdateCount failed:", err.message);
+      logCounterDrift("onReplyDeletedUpdateCount", event.id, err, { postId });
     }
   }
 );
@@ -1152,7 +1279,7 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
         repostCount: FieldValue.increment(1),
       });
     } catch (err) {
-      console.warn("onRepostCreatedUpdateCount failed:", err.message);
+      logCounterDrift("onRepostCreatedUpdateCount", event.id, err, { originalPostId });
     }
   }
 );
@@ -1180,7 +1307,7 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
         repostCount: FieldValue.increment(-1),
       });
     } catch (err) {
-      console.warn("onRepostDeletedUpdateCount failed:", err.message);
+      logCounterDrift("onRepostDeletedUpdateCount", event.id, err, { originalPostId });
     }
   }
 );
@@ -1397,7 +1524,8 @@ exports.onBreakupStageChanged = onDocumentWritten(
     try {
       await ref.set(updates, { merge: true });
     } catch (err) {
-      console.warn("onBreakupStageChanged set failed:", err.message);
+      logCounterDrift("onBreakupStageChanged", event.id, err,
+        { beforeStage, afterStage });
     }
   }
 );
@@ -1423,7 +1551,7 @@ exports.onPostCreatedUpdateTagCounts = onDocumentCreated("posts/{postId}", async
       { merge: true }
     );
   } catch (err) {
-    console.warn("onPostCreatedUpdateTagCounts failed:", err.message);
+    logCounterDrift("onPostCreatedUpdateTagCounts", event.id, err, { tag });
   }
 });
 
@@ -1448,7 +1576,7 @@ exports.onPostDeletedUpdateTagCounts = onDocumentDeleted("posts/{postId}", async
       { merge: true }
     );
   } catch (err) {
-    console.warn("onPostDeletedUpdateTagCounts failed:", err.message);
+    logCounterDrift("onPostDeletedUpdateTagCounts", event.id, err, { tag });
   }
 });
 
@@ -1537,6 +1665,7 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // post is gone before any reader could see it.
   if (containsNameOrIdentifyingInfo(text)) {
     console.warn(`Deleting post ${postId} — server-side identifying-info detector tripped`);
+    await moderationDeleteJitter();
     await db.collection("posts").doc(postId).delete();
     return;
   }
@@ -1584,6 +1713,7 @@ exports.validateReply = onDocumentCreated(
     // cases never reach a reader.
     if (containsNameOrIdentifyingInfo(text)) {
       console.warn(`Deleting reply ${replyId} on post ${postId} — server-side identifying-info detector tripped`);
+      await moderationDeleteJitter();
       await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
       return;
     }
@@ -2258,12 +2388,23 @@ exports.rateLimitNotifications = onDocumentCreated(
   }
 );
 
-// Caps a uid to 20 reports per hour. Without this, a malicious account can
-// flood the moderation queue, drowning legitimate reports and degrading the
-// admin.html dashboard. Mirrors rateLimitNotifications: query recent docs
-// by reportedBy in a sliding window, delete the offending doc if the cap is
-// exceeded. Index requirement: reports/(reportedBy ASC, createdAt DESC) —
-// added to firestore.indexes.json.
+// Two-tiered rate limit on reports.
+//
+// Tier 1 (per-reporter, 20/hour): caps a single uid from flooding the
+// moderation queue solo. Mirrors rateLimitNotifications.
+//
+// Tier 2 (per-target, 10/hour): caps the total reports filed against any
+// one user/post/conversation by ANY source in a rolling hour. Without this,
+// 10–20 coordinated sock-puppet accounts can each post 1 report against
+// the same victim, sail past Tier 1, and burn admin attention. Tier 2 is
+// the audit-finding fix; the threshold is intentionally low (10) because
+// legitimate reports against one target are rare and a flagged target
+// already sits in the admin queue once — additional reports just inflate
+// the noise.
+//
+// Index requirement: reports/(reportedBy ASC, createdAt DESC) and
+// reports/(reportedUserId ASC, createdAt DESC) — both added to
+// firestore.indexes.json.
 exports.rateLimitReports = onDocumentCreated(
   "reports/{reportId}",
   async (event) => {
@@ -2273,15 +2414,34 @@ exports.rateLimitReports = onDocumentCreated(
     if (!reportedBy) return;
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const since = Timestamp.fromDate(oneHourAgo);
+
+    // Tier 1: per-reporter cap.
     const recentSnap = await db.collection("reports")
       .where("reportedBy", "==", reportedBy)
-      .where("createdAt", ">", Timestamp.fromDate(oneHourAgo))
+      .where("createdAt", ">", since)
       .orderBy("createdAt", "desc")
       .limit(25)
       .get();
-
     if (recentSnap.size > 20) {
-      console.log("Report rate limit exceeded for:", reportedBy);
+      console.log("Report rate limit exceeded for reporter:", reportedBy);
+      await db.collection("reports").doc(event.params.reportId).delete();
+      return;
+    }
+
+    // Tier 2: per-target cap. Skip when reportedUserId is absent (older
+    // clients, edge cases) — the per-reporter cap still applies.
+    const reportedUserId = reportData.reportedUserId;
+    if (!reportedUserId) return;
+    const recentByTargetSnap = await db.collection("reports")
+      .where("reportedUserId", "==", reportedUserId)
+      .where("createdAt", ">", since)
+      .orderBy("createdAt", "desc")
+      .limit(15)
+      .get();
+    if (recentByTargetSnap.size > 10) {
+      console.log("Report rate limit exceeded for target:", reportedUserId,
+        "from", reportedBy);
       await db.collection("reports").doc(event.params.reportId).delete();
     }
   }
@@ -2316,7 +2476,8 @@ exports.onMessageCreatedUpdateCount = onDocumentCreated(
         [`messageCount.${senderId}`]: FieldValue.increment(1),
       });
     } catch (err) {
-      console.warn("onMessageCreatedUpdateCount failed:", err.message);
+      logCounterDrift("onMessageCreatedUpdateCount", event.id, err,
+        { convoId, senderId });
     }
   }
 );
@@ -2401,10 +2562,49 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     reposts: cleanupRepostsForUid,
     follows: cleanupMirrorFollowsForUid,
     reflections: cleanupReflectionsForUid,
+    replies: cleanupRepliesForUid,
+    convos: cleanupUserConversationsForUid,
   };
+
+  // sub_* types resume the owner-only subcollection cleanup that the main
+  // cascade does inline (saved, liked, notifications, blocked, presence,
+  // private, drafts). Each suffix maps to a fixed collection path; we use
+  // a separate dispatcher rather than passing arbitrary paths through the
+  // queue doc to keep a closed allow-list of subcollections.
+  const ALLOWED_SUB_RESUME = new Set([
+    "saved", "liked", "notifications", "blocked", "presence", "private", "drafts",
+  ]);
 
   for (const doc of queueSnap.docs) {
     const { uid, type } = doc.data();
+
+    // sub_* continuation: deleteCollection until empty, returning capHit.
+    if (typeof type === "string" && type.startsWith("sub_")) {
+      const sub = type.substring("sub_".length);
+      if (!ALLOWED_SUB_RESUME.has(sub)) {
+        console.warn(`Unknown sub-cleanup target ${sub} for ${uid}; dropping queue entry.`);
+        await doc.ref.delete();
+        continue;
+      }
+      try {
+        const result = await deleteCollection(db.collection("users").doc(uid).collection(sub));
+        if (result?.capHit) {
+          await doc.ref.update({
+            lastResumedAt: FieldValue.serverTimestamp(),
+            cumulativeDeleted: FieldValue.increment(result.totalDeleted || 0),
+          });
+          console.log(`Partial sub cleanup for ${uid}/${sub}: +${result?.totalDeleted || 0}, staying in queue.`);
+        } else {
+          console.log(`Completed sub cleanup for ${uid}/${sub}: +${result?.totalDeleted || 0} this pass.`);
+          await doc.ref.delete();
+        }
+      } catch (err) {
+        console.error(`resumeUserCleanup sub_${sub} failed for ${uid}:`, err.message);
+        // Leave in queue; next invocation will retry.
+      }
+      continue;
+    }
+
     const handler = dispatch[type];
     if (!handler) {
       console.warn(`Unknown cleanup type ${type} for ${uid}; dropping queue entry.`);

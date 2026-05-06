@@ -156,9 +156,52 @@ const NAME_LEET_MAP = {
 // Normalization helpers — mirror of canonicalize / aggressiveNormalizeForNameMatch.
 // ============================================================
 
+// Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF) cover bold, italic,
+// script, fraktur, and double-struck letterforms that render as visually
+// indistinguishable Latin letters but ship as different code points so
+// they slip past the name detector. The block is contiguous and folds
+// modularly: each 26-letter run starts at one of the offsets below.
+// Enumerating all known starting offsets here is more reliable than NFKC
+// (which is invasive and has unwanted side effects on emoji + symbols).
+//
+// Offsets cover: bold, italic, bold-italic, script, bold-script, fraktur,
+// double-struck, bold-fraktur, sans-serif, sans-serif bold, sans-serif
+// italic, sans-serif bold-italic, monospace — both upper and lower case.
+const MATH_ALPHA_UPPER_OFFSETS = [
+  0x1D400, 0x1D434, 0x1D468, 0x1D49C, 0x1D4D0, 0x1D504, 0x1D538,
+  0x1D56C, 0x1D5A0, 0x1D5D4, 0x1D608, 0x1D63C, 0x1D670,
+];
+const MATH_ALPHA_LOWER_OFFSETS = [
+  0x1D41A, 0x1D44E, 0x1D482, 0x1D4B6, 0x1D4EA, 0x1D51E, 0x1D552,
+  0x1D586, 0x1D5BA, 0x1D5EE, 0x1D622, 0x1D656, 0x1D68A,
+];
+
+// Bidi controls + invisible separators that render-as-nothing but split
+// tokens. Stripping them BEFORE NFD decompose prevents an attacker from
+// fragmenting a flagged name with `J​ohn` (zero-width space splits
+// the token before tokenizeAlphanumeric runs) or reversing it with U+202E
+// (RTL override flips visual order without changing codepoint sequence).
+// U+FEFF (zero-width no-break space / BOM) and U+2060 (word joiner) round
+// out the common evasion set.
+const STRIP_INVISIBLE_RE = /[​-‏‪-‮⁠⁦-⁩﻿]/g;
+
+function foldMathAlpha(cp) {
+  for (const start of MATH_ALPHA_UPPER_OFFSETS) {
+    if (cp >= start && cp <= start + 25) return String.fromCharCode(0x41 + (cp - start));
+  }
+  for (const start of MATH_ALPHA_LOWER_OFFSETS) {
+    if (cp >= start && cp <= start + 25) return String.fromCharCode(0x61 + (cp - start));
+  }
+  return null;
+}
+
 function canonicalize(text) {
   if (!text) return "";
-  const decomposed = text.normalize("NFD");
+  // Strip invisible separators + bidi controls before normalization so
+  // an evader can't fragment tokens or reverse visual order to slip past
+  // the detector.
+  const stripped = text.replace(STRIP_INVISIBLE_RE, "");
+  const decomposed = stripped.normalize("NFD");
   let result = "";
   // Iterate code points (handles surrogate pairs correctly).
   for (const ch of decomposed) {
@@ -174,6 +217,18 @@ function canonicalize(text) {
     if (cp >= 0xFF41 && cp <= 0xFF5A) {
       result += String.fromCodePoint(cp - 0xFEE0);
       continue;
+    }
+    // Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF) → ASCII letter.
+    // Covers bold/italic/script/fraktur/double-struck/sans-serif/monospace
+    // letterforms that look identical to Latin but ship as separate code
+    // points (e.g. `𝐉𝐨𝐡𝐧` renders as "John" but bypasses the name match
+    // without folding).
+    if (cp >= 0x1D400 && cp <= 0x1D7FF) {
+      const folded = foldMathAlpha(cp);
+      if (folded) {
+        result += folded;
+        continue;
+      }
     }
     if (NAME_CONFUSABLE_MAP[ch]) {
       result += NAME_CONFUSABLE_MAP[ch];

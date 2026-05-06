@@ -62,6 +62,18 @@ class RateLimiter {
     func lastLikeTime(for postId: String) -> Date? { lastLikeByPost[postId] }
     func recordLike(for postId: String) { lastLikeByPost[postId] = Date() }
 
+    // In-flight like guard. The 0.8s rate-limit window is enough to debounce
+    // a quick double-tap, but a slow transaction that runs longer than 0.8s
+    // could let a second tap fire while the first is still committing — both
+    // optimistic updates land, both rollbacks (or one rollback + one success)
+    // race, and the UI flips state visibly. Tracking in-flight transactions
+    // explicitly closes that gap. Caller marks at toggleLike entry, unmarks
+    // in the completion handler regardless of success/failure.
+    private var inFlightLikes: Set<String> = []
+    func isLikeInFlight(_ postId: String) -> Bool { inFlightLikes.contains(postId) }
+    func markLikeInFlight(_ postId: String) { inFlightLikes.insert(postId) }
+    func markLikeComplete(_ postId: String) { inFlightLikes.remove(postId) }
+
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
     func recordSave(for postId: String) { lastSaveByPost[postId] = Date() }
 

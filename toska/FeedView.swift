@@ -1433,8 +1433,63 @@ private let nameLeetMap: [Character: Character] = [
 /// numbers ("3 months ago" must NOT become "e months ago" for the general
 /// prose checks). Leet lives in `aggressiveNormalizeForNameMatch`, which is
 /// only consulted by the curated-name lookup.
+// Mathematical Alphanumeric Symbols (U+1D400..U+1D7FF) cover bold/italic/
+// script/fraktur/double-struck/sans-serif/monospace letterforms that render
+// visually identical to Latin but ship as separate codepoints. Without
+// folding, "𝐉𝐨𝐡𝐧" looks like "John" but the name match never fires.
+// Each 26-letter run starts at one of these offsets — enumerating them
+// is more reliable than NFKC, which is invasive on emoji + symbols.
+//
+// Mirror of MATH_ALPHA_*_OFFSETS in functions/moderation.js. Keep in sync
+// when adding new style ranges.
+private let mathAlphaUpperOffsets: [UInt32] = [
+    0x1D400, 0x1D434, 0x1D468, 0x1D49C, 0x1D4D0, 0x1D504, 0x1D538,
+    0x1D56C, 0x1D5A0, 0x1D5D4, 0x1D608, 0x1D63C, 0x1D670,
+]
+private let mathAlphaLowerOffsets: [UInt32] = [
+    0x1D41A, 0x1D44E, 0x1D482, 0x1D4B6, 0x1D4EA, 0x1D51E, 0x1D552,
+    0x1D586, 0x1D5BA, 0x1D5EE, 0x1D622, 0x1D656, 0x1D68A,
+]
+
+private func foldMathAlpha(_ value: UInt32) -> Unicode.Scalar? {
+    for start in mathAlphaUpperOffsets where value >= start && value <= start + 25 {
+        return Unicode.Scalar(0x41 + (value - start))
+    }
+    for start in mathAlphaLowerOffsets where value >= start && value <= start + 25 {
+        return Unicode.Scalar(0x61 + (value - start))
+    }
+    return nil
+}
+
+/// Strip-set: invisible separators + bidi controls that fragment tokens or
+/// reverse visual order without changing the codepoint sequence the
+/// detector sees. Removed BEFORE NFD decompose so e.g. "Sa​rah" (with a
+/// zero-width space splitting Sa | rah) collapses to "sarah" instead of
+/// tokenizing into ["sa", "rah"] — the latter never matches a name.
+///
+/// Covers: U+200B-D (zero-width space/joiner/non-joiner), U+2060 (word
+/// joiner), U+202A-E (LRE/RLE/PDF/LRO/RLO bidi controls), U+2066-9
+/// (LRI/RLI/FSI/PDI bidi isolates), U+FEFF (BOM / zero-width no-break).
+///
+/// Mirror of STRIP_INVISIBLE_RE in functions/moderation.js.
+private func stripInvisibleSeparators(_ text: String) -> String {
+    var out = ""
+    out.reserveCapacity(text.count)
+    for scalar in text.unicodeScalars {
+        let v = scalar.value
+        if (v >= 0x200B && v <= 0x200D) { continue }
+        if v == 0x2060 { continue }
+        if (v >= 0x202A && v <= 0x202E) { continue }
+        if (v >= 0x2066 && v <= 0x2069) { continue }
+        if v == 0xFEFF { continue }
+        out.unicodeScalars.append(scalar)
+    }
+    return out
+}
+
 private func canonicalize(_ text: String) -> String {
-    let decomposed = text.decomposedStringWithCanonicalMapping
+    let stripped = stripInvisibleSeparators(text)
+    let decomposed = stripped.decomposedStringWithCanonicalMapping
     var result = ""
     result.reserveCapacity(decomposed.count)
     for scalar in decomposed.unicodeScalars {
@@ -1450,6 +1505,13 @@ private func canonicalize(_ text: String) -> String {
         if value >= 0xFF41 && value <= 0xFF5A {
             result.unicodeScalars.append(Unicode.Scalar(value - 0xFEE0)!)
             continue
+        }
+        // Mathematical Alphanumeric Symbols → ASCII letter.
+        if value >= 0x1D400 && value <= 0x1D7FF {
+            if let folded = foldMathAlpha(value) {
+                result.unicodeScalars.append(folded)
+                continue
+            }
         }
         let ch = Character(scalar)
         if let mapped = nameConfusableMap[ch] {

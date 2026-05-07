@@ -512,16 +512,36 @@ service cloud.firestore {
         // resurface old content in recency-sorted feed queries or to predate
         // a post before a moderation restriction took effect.
         && request.resource.data.createdAt == request.time
-        // Block enforcement on reposts: if this is a repost of someone
-        // else's content (isRepost == true with an originalAuthorId), the
-        // original author can't have blocked the reposter. For original
-        // posts (no isRepost or no originalAuthorId), the check short-
-        // circuits via the ternary so it doesn't add a get() cost.
+        // Repost lockdown. If this is a repost (isRepost=true with a non-empty
+        // originalAuthorId), the rule must:
+        //   1. block-check: original author can't have blocked the reposter
+        //   2. originalPostId is present and points to a real, non-repost post
+        //   3. originalAuthorId matches the original's authorId — defeats the
+        //      previous attack where a tampered client wrote a repost
+        //      attributing real text to a forged byline. Cloud Function
+        //      validatePost already deletes mismatches, but only after the
+        //      doc is publicly readable for the trigger latency window
+        //      (~hundreds of ms). Closing at the rule layer eliminates that
+        //      visibility window entirely.
+        //   4. text equals original.text — same rationale; a tampered repost
+        //      that shipped different text would briefly fabricate a quote.
+        // For original posts (no isRepost or no originalAuthorId), the check
+        // short-circuits via the ternary so non-reposts pay zero get() cost.
+        // Rules cache get()/exists() within a single evaluation, so the
+        // repost branch's three get() calls all resolve the same cached doc.
         && (
           !(request.resource.data.get('isRepost', false) == true
             && request.resource.data.get('originalAuthorId', '') is string
             && request.resource.data.originalAuthorId.size() > 0)
-          || !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+          || (
+               request.resource.data.get('originalPostId', '') is string
+            && request.resource.data.originalPostId.size() > 0
+            && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId))
+            && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.authorId == request.resource.data.originalAuthorId
+            && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.text == request.resource.data.text
+            && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isRepost', false) != true
+            && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+          )
         );
       // Post author can edit text/editedAt etc., but cannot directly write
       // counter fields — those are owned by Cloud Functions (Admin SDK
@@ -898,13 +918,24 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read: if isAuth()
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
+        // Schema lockdown + createdAt pin. Without these, a tampered client
+        // in the circle could inject scratch fields ('flagged: false',
+        // 'trustedByAdmin: true') that future triggers might trust, or
+        // backdate createdAt to evade a moderation review window. Matches
+        // the lockdown shape on every other write surface.
         allow create: if isAuth()
           && notRestricted()
           && hasConfirmedAdult()
+          && request.resource.data.keys().hasOnly(['authorId', 'authorHandle', 'text', 'createdAt'])
+          && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time
+          && (!('authorHandle' in request.resource.data.keys())
+              || (request.resource.data.authorHandle is string
+                  && request.resource.data.authorHandle.size() <= 30))
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
         allow update, delete: if false;
       }

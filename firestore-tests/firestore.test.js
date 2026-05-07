@@ -737,7 +737,7 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
         authorId: "alice",
         authorHandle: "alice123",
         text: "feeling lonely",
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       })
     );
   });
@@ -1061,6 +1061,82 @@ describe("feelingCircles create is constrained to caller-only participants", () 
         createdAt: serverTimestamp(),
         expiresAt: tomorrowMidnight(),
         flagged: false,
+      })
+    );
+  });
+});
+
+describe("feelingCircles message create lockdown", () => {
+  // The 2026-05-07 audit closed two gaps on this surface:
+  //   1. no keys().hasOnly([...]) → tampered client could inject scratch
+  //      fields (flagged / trustedByAdmin) that future triggers might trust
+  //   2. no createdAt == request.time pin → message could be backdated
+  // Each test below pins one of those gates as a regression.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
+        tag: "lonely",
+        participants: ["alice"],
+        createdAt: new Date(),
+      });
+    });
+  });
+
+  it("allows a well-formed message create", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        authorHandle: "alice123",
+        text: "feeling lonely",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("rejects a message with an extra scratch field", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        text: "feeling lonely",
+        createdAt: serverTimestamp(),
+        flagged: false,
+      })
+    );
+  });
+
+  it("rejects a message with a client-supplied past createdAt", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    const yesterday = new Date(Date.now() - 86_400_000);
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        text: "backdated",
+        createdAt: yesterday,
+      })
+    );
+  });
+
+  it("rejects a message missing createdAt entirely", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        text: "no timestamp",
+      })
+    );
+  });
+
+  it("rejects a message with non-string authorHandle", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        authorHandle: 12345,
+        text: "type-confused handle",
+        createdAt: serverTimestamp(),
       })
     );
   });
@@ -1909,6 +1985,149 @@ describe("legacy PII immutability: reject re-introduction on update", () => {
     await assertFails(
       a.collection("users").doc("alice").update({
         pushEnabled: false,
+      })
+    );
+  });
+});
+
+describe("repost create: rule-layer forgery check (audit P2)", () => {
+  // Closes the visibility window where validatePost (Cloud Function) used
+  // to delete forged reposts only after the doc was created and briefly
+  // queryable. Rules now reject the create entirely if originalAuthorId
+  // or text don't match the original post.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setUserDoc("carol");
+    await setPost("p_orig", "alice", { text: "alice's words" });
+  });
+
+  it("allows a faithful repost", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects a repost with a forged originalAuthorId", async () => {
+    // Attacker tries to attribute alice's real text to carol's byline.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "carol",
+        originalHandle: "handle_carol",
+      })
+    );
+  });
+
+  it("rejects a repost with text that doesn't match the original", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "fabricated quote",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects a repost pointing at a non-existent original", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "does_not_exist",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects reposting a repost", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("posts").doc("p_first_repost").set({
+        authorId: "carol",
+        authorHandle: "handle_carol",
+        text: "alice's words",
+        createdAt: new Date(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "alice",
+      });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_first_repost",
+        originalAuthorId: "carol",
+        originalHandle: "handle_carol",
+      })
+    );
+  });
+
+  it("rejects repost when original author has blocked the reposter", async () => {
+    await setBlock("alice", "bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
       })
     );
   });

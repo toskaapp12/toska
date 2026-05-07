@@ -338,7 +338,18 @@ enum Telemetry {
             redactPII(error.localizedDescription),
             forKey: "errorMessage"
         )
-        Crashlytics.crashlytics().record(error: error)
+        // Pass a sanitized proxy NSError, not the original. Firestore SDK errors
+        // can carry doc paths and uids in userInfo (e.g. NSLocalizedFailureReason
+        // referencing /users/{uid}/posts/{postId}); record(error:) serialises
+        // userInfo verbatim, which would land identifying data in Crashlytics
+        // and contradict the "Crash Data: not linked to user" privacy label.
+        let ns = error as NSError
+        let sanitized = NSError(
+            domain: ns.domain,
+            code: ns.code,
+            userInfo: [NSLocalizedDescriptionKey: redactPII(ns.localizedDescription)]
+        )
+        Crashlytics.crashlytics().record(error: sanitized)
         #if DEBUG
         let suffix = context.map { " [\($0)]" } ?? ""
         print("💥 non-fatal\(suffix): \(error)")
@@ -385,7 +396,9 @@ enum Telemetry {
         }
         // Firebase Auth uid shape: ~28 char alphanumeric run. Conservative
         // 20+ to avoid scrubbing common base64 fragments under that length.
-        if let re = try? NSRegularExpression(pattern: "[A-Za-z0-9]{20,}") {
+        // Includes `_` and `-` so deterministic IDs ({uid}_repost_{postId},
+        // {tag}_{date}, Apple Hide-My-Email relay locals) also scrub cleanly.
+        if let re = try? NSRegularExpression(pattern: "[A-Za-z0-9_-]{20,}") {
             s = re.stringByReplacingMatches(
                 in: s, range: NSRange(s.startIndex..., in: s),
                 withTemplate: "<uid>"

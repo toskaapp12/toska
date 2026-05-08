@@ -2388,6 +2388,103 @@ exports.rateLimitNotifications = onDocumentCreated(
   }
 );
 
+// Reply notifications: server-only `message` backfill.
+//
+// The notification create rule was previously permissive about the `message`
+// field — any authenticated user could write a notification doc with type
+// 'reply' (no `exists()` check on a real reply doc, only postId existence
+// + recipient-is-author + deterministic notifId) and stuff arbitrary text
+// into a `message` field that NotificationsView rendered as a preview
+// ("@handle replied: \"…\""). That was a free-text targeted-abuse channel
+// that bypassed validateReply moderation entirely and could carry
+// deanonymizing payloads to a victim.
+//
+// The fix is two-layered:
+//   1. The rule now drops `message` from the client-writable schema for
+//      notification creates. A client write that includes the field is
+//      rejected.
+//   2. This trigger backfills `message` from the actual reply doc via the
+//      Admin SDK (which bypasses rules) so the legitimate UX still works:
+//      the recipient's NotificationsView listener delivers an empty-message
+//      notification first ("@handle replied to your post" fallback) and a
+//      second snapshot once the trigger updates the field.
+//
+// If no reply doc exists for (fromUserId, postId), the notification is
+// bogus — the actor never replied. Delete it.
+exports.enrichReplyNotification = onDocumentCreated(
+  "users/{userId}/notifications/{notifId}",
+  async (event) => {
+    const userId = event.params.userId;
+    const notifId = event.params.notifId;
+    const notifData = event.data.data();
+    if (!notifData) return;
+    if (notifData.type !== "reply") return;
+
+    const fromUserId = notifData.fromUserId;
+    const postId = notifData.postId;
+    const notifRef = event.data.ref;
+
+    if (!fromUserId || !postId) {
+      console.log("Reply notification missing fromUserId/postId; deleting:", notifRef.path);
+      try {
+        await notifRef.delete();
+      } catch (err) {
+        console.warn("enrichReplyNotification delete-bogus failed:", err.message);
+      }
+      return;
+    }
+
+    // Most-recent reply by this actor on this post. Subcollection-scoped query;
+    // backed by the (authorId asc, createdAt desc) COLLECTION-scoped index in
+    // firestore.indexes.json. Bounded at 1 doc — any reply by this actor on
+    // this post is sufficient proof the notification is real; we use the
+    // newest one's text for preview.
+    let replyText = "";
+    try {
+      const replySnap = await db.collection("posts").doc(postId)
+        .collection("replies")
+        .where("authorId", "==", fromUserId)
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+
+      if (replySnap.empty) {
+        console.log(
+          "Reply notification has no backing reply doc; deleting:",
+          notifRef.path,
+          { postId, fromUserId }
+        );
+        try {
+          await notifRef.delete();
+        } catch (err) {
+          console.warn("enrichReplyNotification delete-no-reply failed:", err.message);
+        }
+        return;
+      }
+
+      replyText = replySnap.docs[0].data().text || "";
+    } catch (err) {
+      console.warn("enrichReplyNotification reply lookup failed:", err.message);
+      // On query failure, leave the notification with no message field. The
+      // NotificationsView renderer falls back to "@handle replied to your
+      // post" when message is empty, which is the safe default.
+      return;
+    }
+
+    // 200-char cap matches the prior PostInteractionManager.sendNotification
+    // truncation. NotificationsView shows prefix(80) of this; the larger
+    // server cap absorbs any future renderer change without re-deploying.
+    const truncated = replyText.slice(0, 200).trim();
+    if (truncated.length === 0) return;
+
+    try {
+      await notifRef.update({ message: truncated });
+    } catch (err) {
+      console.warn("enrichReplyNotification message update failed:", err.message);
+    }
+  }
+);
+
 // Two-tiered rate limit on reports.
 //
 // Tier 1 (per-reporter, 20/hour): caps a single uid from flooding the

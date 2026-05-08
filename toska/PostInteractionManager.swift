@@ -450,27 +450,25 @@ class PostInteractionManager {
             docId = "\(type)_\(postId)_\(uid)"
         }
 
-        // FIX #9: The "reply" case previously hardcoded "replied to your post",
-        // discarding the actual reply text passed via `message`. NotificationsView
-        // reads this field to build the preview shown in the notification row
-        // ("\(handle) replied: \"...\""). Passing the actual text through makes
-        // notifications useful. The 200-char truncation prevents oversized documents.
-        let safeMessage: String
-        switch type {
-        case "reply":
-            let truncated = String(message.prefix(200))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            safeMessage = truncated.isEmpty ? "replied to your post" : truncated
-        case "message":
-            safeMessage = "sent you a message"
-        default:
-            safeMessage = message
-        }
+        // `message` is intentionally NOT written here. The notification create
+        // rule no longer accepts the field — the previous shape let any
+        // authenticated user plant arbitrary 200-char text into a victim's
+        // NotificationsView (the rule allows reply-type notifications without
+        // requiring a real reply doc to exist), bypassing validateReply
+        // moderation. The Cloud Function `enrichReplyNotification` now
+        // backfills `message` via Admin SDK after looking up the actual reply
+        // doc, or deletes the notification if no real reply exists.
+        // NotificationsView's empty-message branch ("\(handle) replied to your
+        // post") is what renders in the brief window before the backfill
+        // listener-snapshot lands. The `message` parameter is kept on this
+        // helper for callsite stability but ignored. Remove on next signature
+        // bump if it's still unused.
+        _ = message
 
         Firestore.firestore().collection("users").document(toUserId)
             .collection("notifications").document(docId).setData([
                 "type": type, "fromHandle": notifHandle, "fromUserId": uid,
-                "message": safeMessage, "postId": postId, "isRead": false,
+                "postId": postId, "isRead": false,
                 "createdAt": FieldValue.serverTimestamp()
             ], merge: false) { error in
                 // Without this completion handler the previous shape silently

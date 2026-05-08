@@ -801,12 +801,17 @@ struct ConversationView: View {
                         // error is acceptable.
                     }
                     do {
+                        // `message` is no longer written here — the
+                        // notification create rule rejects the field. The
+                        // message-type render in NotificationsView ignores
+                        // the field anyway (fixed copy "@handle sent you a
+                        // message"), so removing it is purely a rule-
+                        // alignment.
                         try await db.collection("users").document(otherUid)
                             .collection("notifications").document(docId).setData([
                                 "type": "message",
                                 "fromHandle": myHandle,
                                 "fromUserId": uid,
-                                "message": "sent you a message",
                                 "postId": "",
                                 "conversationId": convoId,
                                 "isRead": false,

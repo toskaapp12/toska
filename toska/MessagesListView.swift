@@ -11,7 +11,13 @@ struct MessagesListView: View {
     @State private var listener: ListenerRegistration? = nil
     
     var body: some View {
-            NavigationStack {
+            // Presented as a navigation push from ProfileView (not a sheet),
+            // so this view does NOT wrap itself in a NavigationStack — the
+            // outer stack handles the push, and `dismiss()` on the back
+            // chevron pops back to the profile. Wrapping in our own
+            // NavigationStack here would create a nested stack and the
+            // selectedConversation push would land inside the inner one,
+            // making the swipe-back gesture inconsistent.
             ZStack {
             LateNightTheme.background.ignoresSafeArea()
             
@@ -148,9 +154,8 @@ struct MessagesListView: View {
                         .navigationBarHidden(true)
                     }
                     .navigationBarHidden(true)
-                    }
     }
-    
+
     func startListening() {
         guard let uid = Auth.auth().currentUser?.uid else {
             isLoading = false

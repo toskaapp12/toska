@@ -312,11 +312,26 @@ service cloud.firestore {
         // createdAt is pinned to request.time; isRead must be false on
         // create so an attacker can't write a "pre-read" decoy that hides
         // itself from the recipient's unread badge.
+        //
+        // `message` is intentionally NOT in this allow-list. The reply-
+        // notification rule below requires only that the post exists and
+        // that the recipient is its author — it does NOT require the actor
+        // to have actually written a reply doc. With `message` previously
+        // client-writable, that combination let any authenticated user
+        // plant a 200-char free-text payload into any victim's
+        // NotificationsView (rendered as `"@handle replied: \"...\""`),
+        // bypassing validateReply moderation entirely. The fix moves the
+        // message field to server-only: enrichReplyNotification (Cloud
+        // Function trigger, Admin SDK bypass) backfills the field from the
+        // actual reply doc's text after looking it up by (postId,
+        // fromUserId), or deletes the notification if no real reply exists.
+        // Other notification types (like/save/follow/repost/message) don't
+        // render `message` in NotificationsView; milestone is server-written.
         allow create: if isAuth()
           && request.resource.data.fromUserId == request.auth.uid
           && request.resource.data.type is string
           && request.resource.data.keys().hasOnly([
-               'type', 'fromUserId', 'fromHandle', 'message',
+               'type', 'fromUserId', 'fromHandle',
                'postId', 'conversationId', 'isRead', 'createdAt'
              ])
           && request.resource.data.keys().hasAll([
@@ -512,6 +527,17 @@ service cloud.firestore {
         // resurface old content in recency-sorted feed queries or to predate
         // a post before a moderation restriction took effect.
         && request.resource.data.createdAt == request.time
+        // authorHandle (when present) pinned to the caller's canonical
+        // user-doc handle. Without this, an author could write a post with
+        // their real authorId but a spoofed authorHandle ("@victim_handle"),
+        // and every reader's feed would render the post under that
+        // misattributed byline. authorId stays correct (rule pins it to
+        // auth.uid) so backend traces resolve to the real actor — but the
+        // feed UI is what readers see. Mirrors the originalHandle pin on
+        // reposts and the authorHandle pin on circle messages.
+        && (!('authorHandle' in request.resource.data.keys())
+            || request.resource.data.authorHandle ==
+                 get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle)
         // Repost lockdown. If this is a repost (isRepost=true with a non-empty
         // originalAuthorId), the rule must:
         //   1. block-check: original author can't have blocked the reposter
@@ -525,10 +551,20 @@ service cloud.firestore {
         //      visibility window entirely.
         //   4. text equals original.text — same rationale; a tampered repost
         //      that shipped different text would briefly fabricate a quote.
+        //   5. originalHandle (when present) matches the canonical handle
+        //      on the original author's user doc. Without this, a tampered
+        //      client could write a real-text repost with byline
+        //      `originalHandle: "@victim_handle"`, falsely attributing the
+        //      quote to any user. The post's own authorHandle field is not
+        //      a trustworthy source here (post-create itself doesn't pin
+        //      authorHandle to the user doc), so we read the user doc
+        //      directly. originalHandle is optional: a repost that omits
+        //      it just doesn't render an "originally by" byline.
         // For original posts (no isRepost or no originalAuthorId), the check
         // short-circuits via the ternary so non-reposts pay zero get() cost.
         // Rules cache get()/exists() within a single evaluation, so the
-        // repost branch's three get() calls all resolve the same cached doc.
+        // repost branch's get() calls on the original post all resolve the
+        // same cached doc; the user-doc lookup is one extra read.
         && (
           !(request.resource.data.get('isRepost', false) == true
             && request.resource.data.get('originalAuthorId', '') is string
@@ -541,6 +577,11 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.text == request.resource.data.text
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isRepost', false) != true
             && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+            && (
+                 !('originalHandle' in request.resource.data.keys())
+              || request.resource.data.originalHandle ==
+                   get(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)).data.handle
+            )
           )
         );
       // Post author can edit text/editedAt etc., but cannot directly write
@@ -604,6 +645,15 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time
           && (!('likeCount' in request.resource.data.keys())
               || request.resource.data.likeCount == 0)
+          // authorHandle (when present) pinned to the caller's canonical
+          // user-doc handle. Mirrors the post-create authorHandle pin —
+          // without it, a reply could be written with a spoofed byline
+          // ("@victim_handle replied: …") that the post author and other
+          // readers see under threads. authorId stays correct so backend
+          // traces resolve to the real actor.
+          && (!('authorHandle' in request.resource.data.keys())
+              || request.resource.data.authorHandle ==
+                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle)
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         // Text-size cap mirrored from create. Without it, an author could
         // edit a 500-char reply into multi-KB content and bypass both the
@@ -725,6 +775,21 @@ service cloud.firestore {
           || request.resource.data.messageCount.size() == 0
           || request.resource.data.messageCount.values().hasOnly([0])
         )
+        // participantHandles[auth.uid] (when present) pinned to caller's
+        // canonical user-doc handle. Without this, the conversation's
+        // creator could pre-seed their own slot with a spoofed handle
+        // ("@victim_handle") that the OTHER participant sees in
+        // MessagesListView's row for this conversation. The peer's slot
+        // is intentionally unconstrained here — only the slot the caller
+        // owns is the spoof surface (it's the value the peer sees about
+        // them); the peer-slot value is what the caller themselves sees,
+        // and self-spoof has no security impact.
+        && (
+          !('participantHandles' in request.resource.data.keys())
+          || !(request.auth.uid in request.resource.data.participantHandles)
+          || request.resource.data.participantHandles[request.auth.uid] ==
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle
+        )
         && !exists(/databases/$(database)/documents/users/$(
           request.resource.data.participants[0] == request.auth.uid
             ? request.resource.data.participants[1]
@@ -802,7 +867,19 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['participantHandles'])
           || (request.resource.data.participantHandles is map
               && request.resource.data.participantHandles.diff(resource.data.get('participantHandles', {}))
-                   .affectedKeys().hasOnly([request.auth.uid]))
+                   .affectedKeys().hasOnly([request.auth.uid])
+              // The caller's own slot value (when present after the update)
+              // must match their canonical user-doc handle. Without this,
+              // a participant could refresh their slot to any spoofed
+              // string visible in the peer's MessagesListView row — same
+              // shape as the create-rule pin above, repeated here because
+              // OtherProfileView.startConversation refreshes the slot on
+              // every conversation open.
+              && (
+                !(request.auth.uid in request.resource.data.participantHandles)
+                || request.resource.data.participantHandles[request.auth.uid] ==
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle
+              ))
         );
       allow delete: if false;
 
@@ -923,6 +1000,14 @@ service cloud.firestore {
         // 'trustedByAdmin: true') that future triggers might trust, or
         // backdate createdAt to evade a moderation review window. Matches
         // the lockdown shape on every other write surface.
+        //
+        // authorHandle (when present) is pinned to the caller's canonical
+        // user-doc handle, mirroring the notification fromHandle pin. Without
+        // this, a circle member could write a message with
+        // `authorHandle: "@victim_handle"` and the in-circle UI would
+        // render the message under that spoofed byline. authorId is
+        // pinned to auth.uid so any backend trace resolves to the real
+        // actor, but the in-circle render is what other participants see.
         allow create: if isAuth()
           && notRestricted()
           && hasConfirmedAdult()
@@ -935,7 +1020,9 @@ service cloud.firestore {
           && request.resource.data.createdAt == request.time
           && (!('authorHandle' in request.resource.data.keys())
               || (request.resource.data.authorHandle is string
-                  && request.resource.data.authorHandle.size() <= 30))
+                  && request.resource.data.authorHandle.size() <= 30
+                  && request.resource.data.authorHandle ==
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle))
           && request.auth.uid in get(/databases/$(database)/documents/feelingCircles/$(circleId)).data.participants;
         allow update, delete: if false;
       }

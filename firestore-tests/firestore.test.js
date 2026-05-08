@@ -144,7 +144,7 @@ describe("baseline sanity", () => {
     await assertFails(
       a.collection("posts").doc("p1").set({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "x".repeat(2001),
         createdAt: new Date(),
         likeCount: 0,
@@ -160,7 +160,7 @@ describe("baseline sanity", () => {
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "hello world",
         // createdAt is pinned to request.time on the server. A client-side
         // `new Date()` does not equal request.time once the write reaches
@@ -674,7 +674,7 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
     await assertFails(
       a.collection("posts").doc("p1").set({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "hello",
         createdAt: new Date(),
         likeCount: 0,
@@ -735,7 +735,7 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
     await assertFails(
       a.collection("feelingCircles").doc("fc1").collection("messages").add({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "feeling lonely",
         createdAt: serverTimestamp(),
       })
@@ -751,7 +751,7 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "hello",
         createdAt: serverTimestamp(),
         likeCount: 0,
@@ -872,7 +872,7 @@ describe("regression: prior audit fixes (2026-04-26)", () => {
     await assertFails(
       a.collection("posts").doc("p1").set({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "hello",
         createdAt: new Date(),
         likeCount: 0,
@@ -885,6 +885,10 @@ describe("regression: prior audit fixes (2026-04-26)", () => {
 
 describe("conversations update is schema-locked to allow-listed fields", () => {
   async function seedConvo(extra = {}) {
+    // User docs are required so the participantHandles-slot pin (which
+    // reads the caller's user-doc handle) has something to resolve to.
+    await setUserDoc("alice");
+    await setUserDoc("bob");
     await env.withSecurityRulesDisabled(async (ctx) => {
       await ctx.firestore().collection("conversations").doc("c1").set({
         participants: ["alice", "bob"],
@@ -892,7 +896,7 @@ describe("conversations update is schema-locked to allow-listed fields", () => {
         typing: { alice: false, bob: false },
         typingAt: {},
         lastRead: {},
-        participantHandles: { alice: "alice", bob: "bob" },
+        participantHandles: { alice: "handle_alice", bob: "handle_bob" },
         createdAt: new Date(),
         ...extra,
       });
@@ -921,12 +925,26 @@ describe("conversations update is schema-locked to allow-listed fields", () => {
     );
   });
 
-  it("allows refreshing own participantHandles slot", async () => {
+  it("allows refreshing own participantHandles slot to canonical handle", async () => {
     await seedConvo();
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("conversations").doc("c1").update({
-        "participantHandles.alice": "alice_new",
+        "participantHandles.alice": "handle_alice",
+      })
+    );
+  });
+
+  it("rejects refreshing own participantHandles slot to a spoofed value", async () => {
+    // The slot value must match the caller's canonical user-doc handle.
+    // Without this pin, a participant could write any string into their
+    // own slot and the peer would see that spoofed handle in their
+    // MessagesListView row for this conversation.
+    await seedConvo();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").update({
+        "participantHandles.alice": "@victim_lookalike",
       })
     );
   });
@@ -1088,7 +1106,7 @@ describe("feelingCircles message create lockdown", () => {
     await assertSucceeds(
       a.collection("feelingCircles").doc("fc1").collection("messages").add({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice", // matches setUserDoc default
         text: "feeling lonely",
         createdAt: serverTimestamp(),
       })
@@ -1136,6 +1154,43 @@ describe("feelingCircles message create lockdown", () => {
         authorId: "alice",
         authorHandle: 12345,
         text: "type-confused handle",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("rejects a message with authorHandle spoofed to another user's handle", async () => {
+    // Without the user-doc handle pin, a circle member could write a message
+    // with authorHandle="@victim_handle" and the in-circle UI would render
+    // the message under that spoofed byline. authorId stays correct (rule
+    // pins it to auth.uid) so backend traces resolve to the real actor —
+    // but the in-circle display is what other participants see.
+    await setUserDoc("bob");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("feelingCircles").doc("fc1").update({
+        participants: ["alice", "bob"],
+      });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "bob",
+        authorHandle: "handle_alice", // spoofed — bob's real handle is handle_bob
+        text: "looks like alice typed this",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows a message with authorHandle omitted entirely", async () => {
+    // Omission is the legitimate fallback for callers that don't render an
+    // in-circle handle. Schema lockdown gates the pin on 'authorHandle' in
+    // keys() so absent is accepted.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice",
+        text: "no byline",
         createdAt: serverTimestamp(),
       })
     );
@@ -1521,7 +1576,7 @@ describe("post create: createdAt pinned to request.time (audit P2)", () => {
     await assertFails(
       a.collection("posts").doc("p1").set({
         authorId: "alice",
-        authorHandle: "alice123",
+        authorHandle: "handle_alice",
         text: "hello",
         createdAt: new Date("2025-01-01"),
         likeCount: 0,
@@ -2128,6 +2183,293 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
         originalPostId: "p_orig",
         originalAuthorId: "alice",
         originalHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects a repost with a forged originalHandle (real text + author, spoofed byline)", async () => {
+    // Closes the byline-spoof gap left by the prior fix. text and
+    // originalAuthorId both match alice's real post, but originalHandle is
+    // set to carol's handle. Without the user-doc handle pin the repost
+    // would render as "originally by @carol" while quoting alice's words —
+    // a misattribution shape that escapes the text/authorId equality
+    // checks.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "alice",
+        originalHandle: "handle_carol",
+      })
+    );
+  });
+
+  it("allows a repost with originalHandle omitted entirely", async () => {
+    // Omission is the legitimate fallback for clients that don't render
+    // an "originally by" byline. The pin is gated on 'originalHandle' in
+    // keys() so absent is accepted.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "alice's words",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalAuthorId: "alice",
+      })
+    );
+  });
+});
+
+describe("notification create: message field is server-only (audit P1 2026-05-08)", () => {
+  // The reply-type notification rule does not require an actual reply doc
+  // to exist, only that postId points at a post owned by the recipient.
+  // Combined with a previously client-writable `message` field, that let
+  // any authenticated user plant a free-text payload into any victim's
+  // NotificationsView (rendered as `"@handle replied: \"...\""`),
+  // bypassing validateReply moderation. The fix drops `message` from the
+  // schema lockdown; enrichReplyNotification (Cloud Function) backfills
+  // the field from the actual reply doc via Admin SDK.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p1", "alice");
+  });
+
+  it("rejects notification create with a client-supplied message field", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("reply_p1_bob")
+        .set({
+          type: "reply",
+          fromUserId: "bob",
+          fromHandle: "handle_bob",
+          message: "alex from school knows you are @victim_handle",
+          postId: "p1",
+          isRead: false,
+          createdAt: serverTimestamp(),
+        })
+    );
+  });
+
+  it("allows reply notification create when message field is omitted", async () => {
+    // The legitimate iOS write path no longer includes `message`. The Cloud
+    // Function backfill populates it post-create via Admin SDK.
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("reply_p1_bob")
+        .set({
+          type: "reply",
+          fromUserId: "bob",
+          fromHandle: "handle_bob",
+          postId: "p1",
+          isRead: false,
+          createdAt: serverTimestamp(),
+        })
+    );
+  });
+
+  it("rejects message-type notification create with a client-supplied message field", async () => {
+    // Defense-in-depth: even though message-type notifications never
+    // rendered the `message` field in NotificationsView, the schema
+    // lockdown now uniformly rejects the field across all types. Closes
+    // the future-trigger-trusts-the-field shape generally.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        createdAt: new Date(),
+      });
+    });
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice")
+        .collection("notifications").doc("message_c1_bob")
+        .set({
+          type: "message",
+          fromUserId: "bob",
+          fromHandle: "handle_bob",
+          message: "anything",
+          conversationId: "c1",
+          isRead: false,
+          createdAt: serverTimestamp(),
+        })
+    );
+  });
+});
+
+describe("authorHandle pin (post + reply): byline must match user-doc handle", () => {
+  // Closes the byline-spoof gap on top-level publishing surfaces. Without
+  // these pins, a user could write their own post / reply with a spoofed
+  // authorHandle ("@victim_handle"), and every reader's feed / thread UI
+  // would render the content under that misattributed byline. authorId
+  // stays correct (rule pins it to auth.uid) so backend traces resolve to
+  // the real actor — but the in-app render is what determines the social
+  // shape.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+  });
+
+  it("rejects post create with authorHandle spoofed to another user's handle", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "handle_bob", // spoofed
+        text: "hello",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("rejects post create with a fully fabricated authorHandle", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "@victim_lookalike",
+        text: "hello",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("allows post create when authorHandle matches caller's user-doc handle", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        authorHandle: "handle_alice",
+        text: "hello",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("allows post create when authorHandle is omitted entirely", async () => {
+    // Omission is the legitimate fallback — the pin is gated on the field
+    // being present in keys().
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("posts").doc("p1").set({
+        authorId: "alice",
+        text: "hello",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+      })
+    );
+  });
+
+  it("rejects reply create with authorHandle spoofed to another user's handle", async () => {
+    await setPost("p1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        authorId: "bob",
+        authorHandle: "handle_alice", // spoofed
+        text: "responding",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows reply create when authorHandle matches caller's user-doc handle", async () => {
+    await setPost("p1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "responding",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+});
+
+describe("conversation create: participantHandles slot pin", () => {
+  // Pin closes the spoof gap on convo creation. The convo creator could
+  // pre-seed their own slot with an arbitrary handle string ("@victim_handle")
+  // visible in the OTHER participant's MessagesListView row. Same shape as
+  // the participantHandles update-rule pin and the post / reply / circle-
+  // message authorHandle pins.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+  });
+
+  it("allows convo create with participantHandles caller-slot matching canonical handle", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        participantHandles: { alice: "handle_alice", bob: "handle_bob" },
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects convo create with caller-slot spoofed to peer's handle", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        participantHandles: { alice: "handle_bob", bob: "handle_bob" }, // alice slot spoofed
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects convo create with caller-slot fabricated string", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        participantHandles: { alice: "@victim_lookalike", bob: "handle_bob" },
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("allows convo create when participantHandles is omitted entirely", async () => {
+    // OtherProfileView always writes participantHandles, but the rule
+    // gates the pin on the field being present so older legacy paths
+    // and admin-SDK writes that omit it continue to work.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+        messageCount: { alice: 0, bob: 0 },
+        createdAt: new Date(),
       })
     );
   });

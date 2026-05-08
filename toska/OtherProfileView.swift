@@ -472,11 +472,14 @@ struct OtherProfileView: View {
                     }
                     // Counter increments handled by Cloud Function on follow doc create.
                     // Send follow notification
+                    // `message` is no longer written — the notification rule
+                    // rejects the field. NotificationsView's follow case uses
+                    // fixed copy ("@handle followed you") and never read it.
                     db.collection("users").document(self.userId).collection("notifications")
                         .document("follow_\(uid)")
                         .setData([
                             "type": "follow", "fromHandle": myHandle, "fromUserId": uid,
-                            "message": "", "postId": "", "isRead": false,
+                            "postId": "", "isRead": false,
                             "createdAt": FieldValue.serverTimestamp()
                         ], merge: false)
                 }

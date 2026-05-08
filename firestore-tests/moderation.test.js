@@ -225,14 +225,18 @@ describe("evasion: bidi controls + invisible separators (audit P2)", () => {
     "her name is Sa​rah and i miss her"
   );
 
-  // RTL-reversed name evasion (`‮nhoJ‬` rendering as "John" backwards) is
-  // intentionally NOT in the regression set: even after stripping bidi
-  // controls, the canonical codepoints remain "nhoJ" → "nhoj" which isn't
-  // a name. The realistic threat from U+202E is moderator confusion when
-  // viewing flagged content (display-time reversal), not automated detector
-  // bypass. Stripping the controls in canonicalize closes the display-time
-  // hazard — sufficient for v1 — and the name detector path is unaffected
-  // either way.
+  // Layer 4.5 (added 2026-05-08) closes the literal-reversal evasion that
+  // bidi-stripping alone can't catch: an attacker writes "nhoJ" or "haraS"
+  // as plain ASCII (no bidi controls at all), and prior layers all miss
+  // because the forward token isn't a name. The new layer reverses each
+  // canonicalized token and rechecks the name set with the same length
+  // floor + ambiguous/safe filters so common-fragment collisions
+  // ("rae" → "ear", "ana" → "ana" palindrome) don't false-positive.
+  flag("RTL-reversed name in plain ASCII flags", "i miss haraS so much");
+  flag("RTL-reversed name with bidi-control wrapper still flags", "i miss ‮haraS‬ so much");
+  flag("longer reversed last name flags", "thinking about htimS again");
+  noFlag("short token reversed to a name fragment doesn't flag", "the rae of light");
+  noFlag("ambiguous reversed word doesn't flag", "the day was so long");
 });
 
 describe("evasion: Mathematical Alphanumeric Symbols (audit P2)", () => {

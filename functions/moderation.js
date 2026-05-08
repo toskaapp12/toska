@@ -413,6 +413,30 @@ function containsNameOrIdentifyingInfo(text) {
     return true;
   }
 
+  // Layer 4.5: Reversed-token name lookup. The canonicalize step strips
+  // bidi-override characters (so a render-time visual flip can't slip
+  // through), but doesn't try a literal codepoint reversal — an attacker
+  // who writes "haraS" as plain ASCII (no bidi codepoints) sails through
+  // every prior layer because the forward token doesn't match any name.
+  // Reverse each canonicalized token and re-check against the name sets.
+  // Length floor of 4 keeps the false-positive budget tight: short names
+  // reversed (e.g. "ana" → "ana", "rae" → "ear") collide with common
+  // English fragments. Palindromes are skipped since the forward layers
+  // would have already had a chance. Ambiguous / safe lists apply to the
+  // reversed form too — if the reversed string is a common word, it's
+  // more likely an incidental collision than evasion.
+  for (const word of words) {
+    const canonWord = canonicalize(word);
+    if (canonWord.length < 4) continue;
+    const reversed = [...canonWord].reverse().join("");
+    if (reversed === canonWord) continue; // palindrome — forward layers cover
+    if (AMBIGUOUS_WORDS.has(reversed)) continue;
+    if (SAFE_CAPITALIZED_WORDS.has(reversed)) continue;
+    const isFirstRev = COMMON_NAMES.has(reversed);
+    const isLastRev = COMMON_LAST_NAMES.has(reversed) && reversed.length >= 3;
+    if (isFirstRev || isLastRev) return true;
+  }
+
   // Layer 5: Whole-text aggressive normalization.
   const aggressive = aggressiveNormalizeForNameMatch(text);
   const canonicalTokens = new Set(tokenizeAlphanumeric(canonical));

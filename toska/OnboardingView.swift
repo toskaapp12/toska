@@ -288,10 +288,22 @@ struct OnboardingView: View {
         .fullScreenCover(isPresented: $showPolicyAcceptance) {
             PolicyAcceptanceView(
                 onAccept: {
-                    if let uid = Auth.auth().currentUser?.uid {
-                        recordPolicyAcceptance(for: uid)
+                    Task { @MainActor in
+                        guard let uid = Auth.auth().currentUser?.uid else {
+                            showPolicyAcceptance = false
+                            return
+                        }
+                        do {
+                            try await recordPolicyAcceptance(for: uid)
+                            showPolicyAcceptance = false
+                        } catch {
+                            print("⚠️ recordPolicyAcceptance failed: \(error)")
+                            Telemetry.recordError(error, context: "recordPolicyAcceptance.signup.v\(currentPolicyVersion)")
+                            // Leave the modal up; user can retry. The user
+                            // is mid-signup, so re-prompting on next launch
+                            // would mean seeing this modal twice.
+                        }
                     }
-                    showPolicyAcceptance = false
                 },
                 onDecline: {
                     Telemetry.policyDeclined(version: currentPolicyVersion, atSignup: true)

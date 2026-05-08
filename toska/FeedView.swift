@@ -1850,6 +1850,27 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         return true
     }
 
+    // Layer 4.5: Reversed-token name lookup. Mirror of the server-side
+    // moderation.js Layer 4.5. canonicalize strips bidi-override codepoints
+    // (so a render-time visual flip can't slip through), but doesn't try
+    // a literal reversal — "haraS" written in plain ASCII passes every
+    // prior layer because the forward token isn't in the name set. We
+    // reverse each canonicalized token and re-check. Length floor of 4
+    // keeps false positives down (short reversed strings hit too many
+    // common English fragments); palindromes are skipped because the
+    // forward layers would have already had a chance.
+    for word in originalTokens {
+        let canonWord = canonicalize(word)
+        if canonWord.count < 4 { continue }
+        let reversed = String(canonWord.reversed())
+        if reversed == canonWord { continue }
+        if ambiguousWords.contains(reversed) { continue }
+        if safeCapitalizedWords.contains(reversed) { continue }
+        let isFirstRev = commonNames.contains(reversed)
+        let isLastRev = commonLastNames.contains(reversed) && reversed.count >= 3
+        if isFirstRev || isLastRev { return true }
+    }
+
     // Layer 5: Whole-text aggressive normalization.
     // Catches separator chains (j.o.h.n, j o h n) and leet (j0hn, 5arah)
     // collapsing to a known first or last name. Only flags when the

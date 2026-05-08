@@ -277,7 +277,7 @@ struct ProfileView: View {
             }
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
-        .sheet(isPresented: $showMessagesList) { MessagesListView() }
+        .navigationDestination(isPresented: $showMessagesList) { MessagesListView() }
         .fullScreenCover(isPresented: $showWeeklyRecap) { WeeklyRecapView() }
         .sheet(isPresented: $showFollowers) { FollowListView(title: "followers") }
         .sheet(isPresented: $showFollowing) { FollowListView(title: "following") }

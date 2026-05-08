@@ -92,10 +92,22 @@ struct ContentView: View {
                     // not touched here (existing users were already
                     // adult-confirmed at signup; new policy versions are
                     // about ToS changes, not the age gate).
-                    if let uid = Auth.auth().currentUser?.uid {
-                        recordPolicyAcceptance(for: uid)
+                    Task { @MainActor in
+                        guard let uid = Auth.auth().currentUser?.uid else {
+                            showPolicyUpdate = false
+                            return
+                        }
+                        do {
+                            try await recordPolicyAcceptance(for: uid)
+                            showPolicyUpdate = false
+                        } catch {
+                            print("⚠️ recordPolicyAcceptance failed: \(error)")
+                            Telemetry.recordError(error, context: "recordPolicyAcceptance.bump.v\(currentPolicyVersion)")
+                            // Leave the modal up so the user can retry. The
+                            // next-launch acceptedPolicyVersion check is a
+                            // backstop if they dismiss the app instead.
+                        }
                     }
-                    showPolicyUpdate = false
                 },
                 onDecline: {
                     Telemetry.policyDeclined(version: currentPolicyVersion, atSignup: false)

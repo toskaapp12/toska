@@ -2269,6 +2269,67 @@ exports.rateLimitReplies = onDocumentCreated(
 // a project (staging fresh-start, ops oversight) this scheduled sweep
 // keeps the collection from growing unbounded. Daily cadence is plenty —
 // each entry already lives 7 days for in-flight Eventarc retries to land.
+// 24h SLA tripwire on the moderation queue. The in-app + App Store description
+// promise that "reports are reviewed within 24 hours" — but until now there
+// was no automated overdue signal beyond the dashboard badge, so a forgotten
+// queue could quietly miss the SLA. This scheduled function queries pending
+// reports older than 24h and emits a structured log per overdue report
+// (capped to avoid log spam during a sustained backlog). The companion
+// log-based metric `reports_aged_24h` plus an alert policy on it
+// (count > 0 for 30 min → Toska Alerts) page someone before the SLA breaks
+// in user-visible ways. RUNBOOK section "24h SLA — concrete wiring" has the
+// gcloud commands to wire the metric + alert policy.
+//
+// Index requirement: reports (status asc, createdAt desc) — already in
+// firestore.indexes.json from the original moderation-queue queries.
+//
+// Cap of 100 log entries/run prevents a sustained backlog from emitting
+// thousands of log entries per hour. The summary line is always emitted so
+// the metric tracks the true overdue count even when the per-report cap
+// kicks in.
+exports.checkReportSLA = onSchedule("every 60 minutes", async () => {
+  const cutoff = Timestamp.fromDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const PER_REPORT_LOG_CAP = 100;
+
+  let snap;
+  try {
+    snap = await db.collection("reports")
+      .where("status", "==", "pending")
+      .where("createdAt", "<", cutoff)
+      .orderBy("createdAt", "asc")
+      .limit(500)
+      .get();
+  } catch (err) {
+    console.warn("checkReportSLA query failed:", err.message);
+    return;
+  }
+
+  const overdueCount = snap.size;
+  if (overdueCount === 0) return;
+
+  // One structured log per overdue report so triage can link directly.
+  // Capped — the summary line below is the source of truth for the metric.
+  for (let i = 0; i < Math.min(overdueCount, PER_REPORT_LOG_CAP); i++) {
+    const doc = snap.docs[i];
+    const data = doc.data();
+    console.log(JSON.stringify({
+      tag: "report_aged_24h",
+      reportId: doc.id,
+      ageHours: Math.round((Date.now() - (data.createdAt?.toMillis?.() || Date.now())) / (60 * 60 * 1000)),
+      reportedBy: data.reportedBy || null,
+      status: data.status || null,
+    }));
+  }
+
+  // Always emit a summary so the metric reflects the true count even when
+  // per-report logging is capped.
+  console.log(JSON.stringify({
+    tag: "report_aged_24h_summary",
+    overdueCount,
+    capReached: overdueCount > PER_REPORT_LOG_CAP,
+  }));
+});
+
 exports.cleanupProcessedTriggerEvents = onSchedule("every 24 hours", async () => {
   const now = Timestamp.now();
   let totalDeleted = 0;
@@ -2778,71 +2839,43 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
 // existing JSON parsing keeps working without changes to its data model.
 // ============================================================
 
-exports.giphyProxy = onRequest(
-  // App Check enforcement is gated manually below because the
-  // `enforceAppCheck` option only takes effect on onCall callables —
-  // `HttpsOptions` (used by onRequest) explicitly omits it. Confirmed in
-  // node_modules/firebase-functions/lib/v2/providers/https.d.ts:14.
-  { secrets: [GIPHY_KEY], cors: false },
-  async (req, res) => {
-    if (req.method !== "GET") {
-      res.status(405).json({ error: "method not allowed" });
-      return;
+// Migrated from onRequest to onCall on 2026-05-08. The previous shape
+// manually verified an App Check header + a Bearer ID token because
+// `enforceAppCheck` only applies to onCall. The callable shape moves both
+// checks into the framework — `enforceAppCheck: true` rejects unattested
+// callers before the handler runs, and `request.auth` is auto-populated
+// from the caller's Firebase ID token (no manual verifyIdToken). Net:
+// fewer hand-rolled boundary checks, identical security properties, and
+// the iOS callsite drops ~30 lines of token-fetching boilerplate (it now
+// uses Functions().httpsCallable). Old onRequest-shape iOS binaries will
+// fail to call this — acceptable because the same TestFlight cut that
+// gets the rule-tightening also gets the new callable.
+exports.giphyProxy = onCall(
+  { secrets: [GIPHY_KEY], enforceAppCheck: true },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "sign-in required");
     }
-
-    // App Check: validate the X-Firebase-AppCheck header against the
-    // Admin SDK. Restricts callers to a Toska binary attested by App
-    // Attest (release) or the debug provider (dev). Without this, anyone
-    // with a Firebase ID token from any client app pointed at our
-    // project can hit the proxy and burn the Giphy quota.
-    const appCheckToken = req.get("X-Firebase-AppCheck");
-    if (!appCheckToken) {
-      res.status(401).json({ error: "missing app check token" });
-      return;
-    }
-    try {
-      await getAppCheck().verifyToken(appCheckToken);
-    } catch (err) {
-      res.status(401).json({ error: "invalid app check token" });
-      return;
-    }
-
-    // Verify Firebase ID token. Without this, the endpoint is a free
-    // anonymous proxy that anyone with the URL can hammer.
-    const authHeader = req.get("Authorization") || "";
-    const match = authHeader.match(/^Bearer\s+(.+)$/);
-    if (!match) {
-      res.status(401).json({ error: "missing bearer token" });
-      return;
-    }
-    let giphyUid;
-    try {
-      const decoded = await getAuth().verifyIdToken(match[1]);
-      giphyUid = decoded.uid;
-    } catch (err) {
-      res.status(401).json({ error: "invalid token" });
-      return;
-    }
+    const uid = request.auth.uid;
 
     // 60 GIF picker calls per minute per uid is comfortably above legitimate
     // browsing (one search + a few page loads) but well below what a tampered
     // client would need to exhaust the Giphy free-tier quota in a day.
-    const allowed = await checkRateLimit(giphyUid, "giphyProxy", 60, 60);
+    const allowed = await checkRateLimit(uid, "giphyProxy", 60, 60);
     if (!allowed) {
-      res.status(429).json({ error: "rate limit exceeded" });
-      return;
+      throw new HttpsError("resource-exhausted", "rate limit exceeded");
     }
 
-    const mode = req.query.mode === "search" ? "search" : "trending";
-    const limit = Math.min(parseInt(req.query.limit, 10) || 30, 50);
+    const data = request.data || {};
+    const mode = data.mode === "search" ? "search" : "trending";
+    const limit = Math.min(parseInt(data.limit, 10) || 30, 50);
     const rating = "pg-13";
 
     let upstream;
     if (mode === "search") {
-      const q = (req.query.q || "").toString().slice(0, 100);
+      const q = (data.q || "").toString().slice(0, 100);
       if (!q.trim()) {
-        res.status(400).json({ error: "missing q for search mode" });
-        return;
+        throw new HttpsError("invalid-argument", "missing q for search mode");
       }
       upstream = `https://api.giphy.com/v1/gifs/search?api_key=${encodeURIComponent(GIPHY_KEY.value())}&q=${encodeURIComponent(q)}&limit=${limit}&rating=${rating}`;
     } else {
@@ -2859,8 +2892,7 @@ exports.giphyProxy = onRequest(
         // (it's already obvious from CSP / network logs but no need to
         // hand it to a casual probe).
         console.warn(`giphyProxy upstream ${r.status}`);
-        res.status(502).json({ error: "upstream unavailable" });
-        return;
+        throw new HttpsError("unavailable", "upstream unavailable");
       }
       // Defend against an upstream returning a runaway payload (compromised
       // upstream, DNS hijack, mistaken API change). Real Giphy responses for
@@ -2869,33 +2901,25 @@ exports.giphyProxy = onRequest(
       const text = await r.text();
       if (text.length > 500_000) {
         console.warn(`giphyProxy oversized response: ${text.length} bytes`);
-        res.status(502).json({ error: "upstream response too large" });
-        return;
+        throw new HttpsError("unavailable", "upstream response too large");
       }
-      let json;
       try {
-        json = JSON.parse(text);
+        return JSON.parse(text);
       } catch (parseErr) {
         console.warn("giphyProxy upstream returned non-JSON");
-        res.status(502).json({ error: "upstream malformed" });
-        return;
+        throw new HttpsError("unavailable", "upstream malformed");
       }
-      // Cache the trending feed for a minute at the edge. Search results
-      // are user-specific enough that caching them risks cross-user
-      // pollution, so they go uncached.
-      if (mode === "trending") {
-        res.set("Cache-Control", "public, max-age=60");
-      }
-      res.json(json);
     } catch (err) {
+      // Re-throw HttpsErrors as-is; they're already shape-correct and don't
+      // contain api_key=… in their messages.
+      if (err instanceof HttpsError) throw err;
       // Defense in depth: Node fetch can include the request URL in error
       // messages (DNS failures, abort traces, etc.) which would log the
       // GIPHY_KEY query parameter to Cloud Logging. Strip api_key=...
-      // before any error message reaches console. Also strips it from
-      // the .stack field for the same reason.
+      // before any error message reaches console.
       const sanitize = (s) => (s || "").replace(/api_key=[^&\s"]*/g, "api_key=***");
       console.warn("giphyProxy failed:", sanitize(err.message));
-      res.status(502).json({ error: "upstream failure" });
+      throw new HttpsError("unavailable", "upstream failure");
     }
   }
 );

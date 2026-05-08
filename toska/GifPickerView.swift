@@ -1,6 +1,6 @@
 import SwiftUI
 import FirebaseAuth
-import FirebaseAppCheck
+import FirebaseFunctions
 
 @MainActor
 struct GifPickerView: View {
@@ -14,10 +14,11 @@ struct GifPickerView: View {
     // so the empty grid doesn't get confused with a genuine zero-result query.
     @State private var fetchError: String? = nil
 
-    // Giphy is proxied through our giphyProxy Cloud Function (functions/index.js).
-    // The previous build hardcoded the Giphy API key here; rotating it now
-    // requires updating only the GIPHY_KEY secret on the Functions side.
-    private let proxyBaseURL = "https://us-central1-toska-4ebf4.cloudfunctions.net/giphyProxy"
+    // Giphy is proxied through the giphyProxy Cloud Function (functions/index.js).
+    // Migrated from onRequest URL fetch to onCall callable on 2026-05-08 — the
+    // Functions SDK now handles App Check token attachment + Firebase ID token
+    // authentication, so this view dropped ~30 lines of manual token plumbing.
+    // The GIPHY_KEY upstream secret stays server-side via Secret Manager.
     
     var body: some View {
                 VStack(spacing: 0) {
@@ -189,94 +190,67 @@ struct GifPickerView: View {
     }
 
     func fetchGifs(mode: String, query: String?) {
-        var components = URLComponents(string: proxyBaseURL)
-        var items: [URLQueryItem] = [
-            URLQueryItem(name: "mode", value: mode),
-            URLQueryItem(name: "limit", value: "30")
+        // Build the callable payload. The server reads `mode`, `limit`, and
+        // (when mode=="search") `q`. App Check + Firebase ID token are
+        // attached by Functions().httpsCallable automatically — no manual
+        // header plumbing.
+        var payload: [String: Any] = [
+            "mode": mode,
+            "limit": 30,
         ]
-        if let query = query { items.append(URLQueryItem(name: "q", value: query)) }
-        components?.queryItems = items
-        guard let url = components?.url else { return }
+        if let query = query { payload["q"] = query }
 
         Task { @MainActor in
             fetchError = nil
+            let callable = Functions.functions().httpsCallable("giphyProxy")
+            let result: HTTPSCallableResult
             do {
-                // The proxy now enforces both an App Check token (proves
-                // the call is coming from a signed/attested Toska binary)
-                // and a Firebase ID token (proves there is a logged-in
-                // user). Either failure is surfaced as the same generic
-                // copy so we don't leak auth state to the user — but we
-                // do log the root cause (offline vs auth expired vs
-                // malformed token) to Crashlytics so fixes don't need to
-                // chase blind reports of "GIFs don't work".
-                let token: String
-                do {
-                    guard let t = try await Auth.auth().currentUser?.getIDToken() else {
-                        print("⚠️ giphy: no currentUser for getIDToken")
-                        isLoading = false
-                        fetchError = "couldn't load GIFs — try again."
-                        return
-                    }
-                    token = t
-                } catch {
-                    print("⚠️ giphy: getIDToken failed: \(error)")
-                    Telemetry.recordError(error, context: "Giphy.getIDToken")
-                    isLoading = false
-                    fetchError = "couldn't load GIFs — try again."
-                    return
-                }
-                let appCheckToken: String?
-                do {
-                    appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false).token
-                } catch {
-                    print("⚠️ giphyProxy app check token fetch failed: \(error)")
-                    isLoading = false
-                    fetchError = "couldn't load GIFs — try again."
-                    return
-                }
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 15
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                if let appCheckToken {
-                    request.setValue(appCheckToken, forHTTPHeaderField: "X-Firebase-AppCheck")
-                }
-                let (data, _) = try await URLSession.shared.data(for: request)
-                guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let dataArray = json["data"] as? [[String: Any]] else {
-                    isLoading = false
-                    fetchError = "couldn't load GIFs. try again in a bit."
-                    return
-                }
-                gifs = dataArray.compactMap { item in
-                    guard let id = item["id"] as? String,
-                          let images = item["images"] as? [String: Any] else { return nil }
-
-                    let fullUrl: String
-                    if let downsized = images["downsized_medium"] as? [String: Any],
-                       let url = downsized["url"] as? String {
-                        fullUrl = url
-                    } else if let original = images["original"] as? [String: Any],
-                              let url = original["url"] as? String {
-                        fullUrl = url
-                    } else {
-                        return nil
-                    }
-
-                    let previewUrl: String
-                    if let preview = images["fixed_width"] as? [String: Any],
-                       let url = preview["url"] as? String {
-                        previewUrl = url
-                    } else {
-                        previewUrl = fullUrl
-                    }
-
-                    return GifItem(id: id, url: fullUrl, previewUrl: previewUrl)
-                }
+                result = try await callable.call(payload)
+            } catch let error as NSError {
+                // FunctionsErrorDomain mapping. We surface a single generic
+                // copy so we don't leak the difference between auth/network/
+                // upstream failures to the user, but log the root cause to
+                // Crashlytics so fixes don't have to chase blind reports of
+                // "GIFs don't work."
+                print("⚠️ giphyProxy callable failed: \(error.localizedDescription)")
+                Telemetry.recordError(error, context: "Giphy.callable.\(mode)")
                 isLoading = false
-            } catch {
-                isLoading = false
-                fetchError = "couldn't load GIFs — check your connection."
+                fetchError = "couldn't load GIFs — try again."
+                return
             }
+
+            guard let json = result.data as? [String: Any],
+                  let dataArray = json["data"] as? [[String: Any]] else {
+                isLoading = false
+                fetchError = "couldn't load GIFs. try again in a bit."
+                return
+            }
+            gifs = dataArray.compactMap { item in
+                guard let id = item["id"] as? String,
+                      let images = item["images"] as? [String: Any] else { return nil }
+
+                let fullUrl: String
+                if let downsized = images["downsized_medium"] as? [String: Any],
+                   let url = downsized["url"] as? String {
+                    fullUrl = url
+                } else if let original = images["original"] as? [String: Any],
+                          let url = original["url"] as? String {
+                    fullUrl = url
+                } else {
+                    return nil
+                }
+
+                let previewUrl: String
+                if let preview = images["fixed_width"] as? [String: Any],
+                   let url = preview["url"] as? String {
+                    previewUrl = url
+                } else {
+                    previewUrl = fullUrl
+                }
+
+                return GifItem(id: id, url: fullUrl, previewUrl: previewUrl)
+            }
+            isLoading = false
         }
     }
 }

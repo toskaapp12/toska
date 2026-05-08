@@ -1028,18 +1028,22 @@ struct PolicyAcceptanceView: View {
 // `confirmAdultServerSide(uid:)` after the iOS age gate passes; that helper
 // invokes the confirmAdult Cloud Function which writes via the Admin SDK.
 
+// async/throws is the primary shape so callsites can wait for the write to
+// land before dismissing the policy modal. The previous fire-and-forget
+// version dismissed the modal regardless of whether the write succeeded; on
+// failure the user thought they'd accepted but acceptedPolicyVersion was
+// still behind currentPolicyVersion, so the modal re-appeared on next launch
+// — confusing ("I just accepted this"). Awaiting lets callers leave the
+// modal up on failure so the user can retry. ContentView's next-launch
+// re-check is the backstop if the user does dismiss anyway.
 @MainActor
-func recordPolicyAcceptance(for uid: String) {
+func recordPolicyAcceptance(for uid: String) async throws {
     let data: [String: Any] = [
         "acceptedPolicyVersion": currentPolicyVersion,
         "acceptedPolicyAt": FieldValue.serverTimestamp(),
     ]
-    Firestore.firestore().collection("users").document(uid).setData(data, merge: true) { error in
-        if let error = error {
-            print("⚠️ recordPolicyAcceptance write failed: \(error)")
-            Telemetry.recordError(error, context: "recordPolicyAcceptance")
-        }
-    }
+    try await Firestore.firestore().collection("users").document(uid)
+        .setData(data, merge: true)
 }
 
 // MARK: - Adult-Confirmation Server Call

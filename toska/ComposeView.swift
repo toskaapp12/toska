@@ -936,14 +936,20 @@ struct ComposeView: View {
                         // draft still in their list and can delete it
                         // manually from DraftsView.
                         if let id = self.editingDraftId {
-                            Firestore.firestore()
+                            let draftRef = Firestore.firestore()
                                 .collection("users").document(uid)
                                 .collection("drafts").document(id)
-                                .delete { err in
-                                    if let err = err {
-                                        print("⚠️ ComposeView post-success draft delete failed: \(err)")
-                                    }
+                            // Fire-and-forget via inner Task so the success
+                            // path returns immediately. Async variant of
+                            // DocumentReference.delete silences the Swift 6
+                            // "consider asynchronous alternative" warning.
+                            Task {
+                                do {
+                                    try await draftRef.delete()
+                                } catch {
+                                    print("⚠️ ComposeView post-success draft delete failed: \(error)")
                                 }
+                            }
                         }
                         NotificationCenter.default.post(name: .newPostCreated, object: nil)
                         if let onPostSuccess = self.onPostSuccess {

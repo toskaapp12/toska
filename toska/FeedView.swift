@@ -1487,6 +1487,27 @@ private func stripInvisibleSeparators(_ text: String) -> String {
     return out
 }
 
+/// Strips invisible separators + combining marks but preserves case, and
+/// does NOT fold confusables / fullwidth / math-alpha. Used to tokenize
+/// text in Layers 4 / 4.5: an attacker who inserts standalone combining
+/// marks (e.g. `S̶arah` = S + U+0336 + arah) fragments the token under
+/// the default `CharacterSet.alphanumerics.inverted` split because
+/// combining marks are Mn category. Stripping them first re-merges the
+/// token so the name lookup sees `Sarah` as one capitalized word.
+/// Mirror of stripCombiningMarksKeepCase in functions/moderation.js.
+private func stripCombiningMarksKeepCase(_ text: String) -> String {
+    let stripped = stripInvisibleSeparators(text)
+    let decomposed = stripped.decomposedStringWithCanonicalMapping
+    var result = ""
+    result.reserveCapacity(decomposed.count)
+    for scalar in decomposed.unicodeScalars {
+        let value = scalar.value
+        if value >= 0x0300 && value <= 0x036F { continue }
+        result.unicodeScalars.append(scalar)
+    }
+    return result
+}
+
 private func canonicalize(_ text: String) -> String {
     let stripped = stripInvisibleSeparators(text)
     let decomposed = stripped.decomposedStringWithCanonicalMapping
@@ -1655,6 +1676,14 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     ]
     let lowered = text.lowercased()
     for pattern in identifyingPatterns { if lowered.contains(pattern) { return true } }
+
+    // Two-letter social-platform shorthand (ig:/sc:/fb: with optional space).
+    // Word-boundary anchored so "dig: deeper", "fab.", "abs-" don't flag.
+    // Mirror of SOCIAL_SHORTHAND_RE in functions/moderation.js.
+    if text.range(of: "\\b(ig|sc|fb)\\b\\s*[:.\\-]", options: [.regularExpression, .caseInsensitive]) != nil {
+        return true
+    }
+
     if text.range(of: "@[a-zA-Z]", options: .regularExpression) != nil { return true }
 
     // Possessive name pattern: "Jessica's", "Mike's" — a capitalized word followed by 's
@@ -1739,6 +1768,14 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     for number in crisisNumbers {
         digitStripped = digitStripped.replacingOccurrences(of: number, with: "")
     }
+    // Collapse phone-format separators between digits so a formatted phone
+    // like `(555) 123-4567` survives the date/year/small-number strips
+    // below. Without this, `\b\d{1,3}\b` peels `555`/`123` and
+    // `\b\d{4,5}\b` peels `4567` because parens/space/dash sit at word
+    // boundaries around each chunk — total digit count goes to zero.
+    // Mirror of the JS fix in functions/moderation.js.
+    digitStripped = digitStripped
+            .replacingOccurrences(of: "(\\d)[-.\\s()]+(?=\\d)", with: "$1", options: .regularExpression)
     digitStripped = digitStripped
             .replacingOccurrences(of: "\\d{1,2}[:/]\\d{2}", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\\b\\d{4,5}\\b", with: "", options: .regularExpression)
@@ -1822,6 +1859,9 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     // the canonicalized token must not be a sentence-starter in the
     // canonicalized text — same false-positive guards the existing
     // first-name loop applies.
+    // Tokenize the COMBINING-MARK-STRIPPED form so an attacker writing
+    // `S̶arah` doesn't fragment to ['S', 'arah']. Mirror of the JS Layer
+    // 4 fix in functions/moderation.js.
     let canonical = canonicalize(text)
     let canonicalSentenceStarters: Set<String> = Set(
         canonical.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
@@ -1829,7 +1869,9 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
             .filter { !$0.isEmpty }
             .compactMap { $0.components(separatedBy: CharacterSet.alphanumerics.inverted).first(where: { !$0.isEmpty }) }
     )
-    let originalTokens = text.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+    let originalTokens = stripCombiningMarksKeepCase(text)
+        .components(separatedBy: CharacterSet.alphanumerics.inverted)
+        .filter { !$0.isEmpty }
     for word in originalTokens {
         let canonWord = canonicalize(word)
         if canonWord.count < 2 { continue }

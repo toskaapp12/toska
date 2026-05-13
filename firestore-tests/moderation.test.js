@@ -239,6 +239,77 @@ describe("evasion: bidi controls + invisible separators (audit P2)", () => {
   noFlag("ambiguous reversed word doesn't flag", "the day was so long");
 });
 
+describe("phone number detection — formatted variants (audit 2026-05-13 M-1)", () => {
+  // The prior digit-strip chain peeled `\b\d{1,3}\b` and `\b\d{4,5}\b` off
+  // formatted phones because parens/space/dash all sit at word boundaries
+  // around each digit chunk, leaving zero digits in the count. The fix
+  // collapses `(\d)[-.\s()]+(?=\d)` runs first so a formatted phone
+  // becomes a contiguous 10-digit run before the date/year/small-number
+  // strips run.
+  flag("US phone with parens + space + dash", "(555) 123-4567");
+  flag("US phone with parens no space", "(555)123-4567");
+  flag("US phone all dashes", "555-123-4567");
+  flag("US phone all dots", "555.123.4567");
+  flag("US phone with spaces", "555 123 4567");
+  flag("international phone with country code + spaces", "+44 20 7946 0958");
+  flag("phone embedded in prose", "her number is (555) 867-5309 if you want");
+
+  noFlag(
+    "date with slashes is not a phone",
+    "the breakup was on 5/4/2024 if you must know"
+  );
+  noFlag(
+    "time 12:30 is not a phone",
+    "we usually talked at 12:30 every night"
+  );
+  noFlag(
+    "few small numbers in prose don't flag",
+    "it was 3 months and 4 weeks and 5 days ago"
+  );
+});
+
+describe("evasion: combining-mark fragmentation (audit 2026-05-13 L-1)", () => {
+  // U+0300-U+036F combining marks are Mn category, which the default
+  // `\p{L}\p{N}` token split treats as separators. Without combining-
+  // mark-aware tokenization, `S̶arah` fragments to ['S', 'arah'] and
+  // neither piece matches a name. The fix tokenizes the combining-mark-
+  // stripped form (case-preserving) in Layers 4 / 4.5.
+  flag(
+    "name with combining stroke mid-sentence",
+    "i still miss S̶arah every single day"
+  );
+  flag(
+    "last name with combining stroke",
+    "i bumped into S̶mith from work yesterday"
+  );
+  flag(
+    "name with multiple combining marks",
+    "she goes by Sa̶r̶a̶h̶ now"
+  );
+  noFlag(
+    "lowercase combining-mark name does NOT flag (capitalization gate)",
+    "i miss s̶arah every day"
+  );
+});
+
+describe("social shorthand: ig:/sc:/fb: (audit 2026-05-13 L-2)", () => {
+  // Two-letter platform shorthand is too generic ("dig", "fab", "abs") to
+  // substring-match like the full keywords (instagram/snapchat/facebook).
+  // Word-boundary anchored regex requires the literal label syntax
+  // (trailing colon/period/dash) to flag.
+  flag("ig: with name", "ig: sarahreal");
+  flag("ig:no-space", "ig:sarahreal_lol");
+  flag("IG. uppercase variant", "IG. realname123");
+  flag("sc: with name", "sc: snapchat_user");
+  flag("fb: with name", "fb: real.name");
+  flag("ig - with name", "ig - sarahreal");
+
+  noFlag("dig: is not social shorthand", "dig: deeper into yourself");
+  noFlag("fab. is not social shorthand", "fab. things to remember");
+  noFlag("abs- is not social shorthand", "abs- olutely not");
+  noFlag("plain ig in the middle of a word", "he was a big talker");
+});
+
 describe("evasion: Mathematical Alphanumeric Symbols (audit P2)", () => {
   // U+1D400-U+1D7FF block: bold/italic/script/fraktur/double-struck/sans-
   // serif/monospace letterforms render visually identical to Latin but

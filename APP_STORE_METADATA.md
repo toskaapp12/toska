@@ -336,6 +336,14 @@ The description above mentions "in-app subscription, optional" — if that's asp
 
 In order:
 
+- [ ] **Enable Email Enumeration Protection** in both projects (Firebase
+      console → Authentication → Settings → User actions → "Email
+      enumeration protection" → on). This collapses the wire-level
+      response for sign-in errors so an attacker can't probe whether an
+      email is registered. Toska's UI text already collapses 17009/17011
+      to a neutral message as defense in depth, but this toggle is the
+      authoritative fix. Required for `toska-4ebf4` (prod); also flip
+      `toskastaging` for parity.
 - [ ] Run prod scrub `--apply` (or skip — current count is 0)
 - [ ] Deploy prod indexes (`firebase deploy --only firestore:indexes --project prod`)
 - [ ] Wait for prod indexes to flip Enabled (Firestore Console → Indexes)

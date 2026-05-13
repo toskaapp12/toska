@@ -189,18 +189,23 @@ const BUDDY_POSTS = [
 
 // ---------- helpers ----------
 
+// Returns { uid, created }. `created` is true only when this run actually
+// minted the auth user — used by the credentials-print block at the end so
+// we never claim the supplied password is live when we silently reused an
+// existing account from a prior run (the prior password is the live one
+// and we don't have it).
 async function ensureAuthUser(email, password, displayName) {
   let user;
   try {
     user = await auth.getUserByEmail(email);
     plan("auth.reuse", `auth/${email}`, { uid: user.uid });
-    return user.uid;
+    return { uid: user.uid, created: false };
   } catch (err) {
     if (err.code !== "auth/user-not-found") throw err;
   }
   if (!APPLY) {
     plan("auth.create", `auth/${email}`, { displayName, password: "<redacted>" });
-    return `<dry-run-uid-for-${email}>`;
+    return { uid: `<dry-run-uid-for-${email}>`, created: true };
   }
   const created = await auth.createUser({
     email,
@@ -209,7 +214,7 @@ async function ensureAuthUser(email, password, displayName) {
     emailVerified: true,
   });
   plan("auth.create", `auth/${email}`, { uid: created.uid, displayName });
-  return created.uid;
+  return { uid: created.uid, created: true };
 }
 
 async function setUserDoc(uid, handle, breakupStage) {
@@ -382,14 +387,17 @@ async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
   console.log(`Demo email: ${DEMO_EMAIL}`);
   console.log("");
 
-  const demoUid = await ensureAuthUser(DEMO_EMAIL, DEMO_PASSWORD, DEMO_HANDLE);
+  const { uid: demoUid, created: demoCreated } = await ensureAuthUser(DEMO_EMAIL, DEMO_PASSWORD, DEMO_HANDLE);
   await setUserDoc(demoUid, DEMO_HANDLE, "months in");
 
   const buddyUids = [];
+  const buddyCreds = [];
   for (const buddy of BUDDIES) {
-    const uid = await ensureAuthUser(buddy.email, generatePassword(), buddy.handle);
+    const password = generatePassword();
+    const { uid, created } = await ensureAuthUser(buddy.email, password, buddy.handle);
     await setUserDoc(uid, buddy.handle, buddy.breakupStage);
     buddyUids.push(uid);
+    buddyCreds.push({ email: buddy.email, handle: buddy.handle, uid, password, created });
   }
   const softUid = buddyUids[0];
 
@@ -430,12 +438,31 @@ async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
 
   if (APPLY) {
     console.log("---- credentials ----");
-    console.log(`  email:    ${DEMO_EMAIL}`);
-    console.log(`  password: ${DEMO_PASSWORD}`);
-    console.log(`  handle:   ${DEMO_HANDLE}`);
-    console.log(`  uid:      ${demoUid}`);
+    console.log(`  demo (paste into App Store Connect → App Review → Demo Account):`);
+    console.log(`    email:    ${DEMO_EMAIL}`);
+    if (demoCreated) {
+      console.log(`    password: ${DEMO_PASSWORD}`);
+    } else {
+      console.log(`    password: <unchanged — account existed before this run, password was NOT reset>`);
+      console.log(`              if you don't have it, use Firebase console → Auth → reset.`);
+    }
+    console.log(`    handle:   ${DEMO_HANDLE}`);
+    console.log(`    uid:      ${demoUid}`);
+
+    for (const c of buddyCreds) {
+      console.log("");
+      console.log(`  buddy ${c.handle}:`);
+      console.log(`    email:    ${c.email}`);
+      if (c.created) {
+        console.log(`    password: ${c.password}`);
+      } else {
+        console.log(`    password: <unchanged — account existed before this run, password was NOT reset>`);
+      }
+      console.log(`    uid:      ${c.uid}`);
+    }
+
     console.log("");
-    console.log("Save these to 1Password now — the password is shown ONCE.");
+    console.log("Save these to 1Password now — newly-minted passwords are shown ONCE.");
   } else {
     console.log("Dry run complete. Re-run with --apply to commit.");
   }

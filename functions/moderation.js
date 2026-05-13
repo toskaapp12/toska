@@ -108,6 +108,14 @@ const IDENTIFYING_PATTERNS = [
   "threads", "bluesky", "reddit",
 ];
 
+// Two-letter social-platform shorthand (ig:, sc:, fb:) — word-boundary
+// anchored so generic English ("dig:", "fab:", "abs.") doesn't false-
+// positive. The full names (instagram, snapchat, facebook) are in
+// IDENTIFYING_PATTERNS above; this catches the very common shortcut
+// syntax `ig: sarahreal` that the keyword list misses because "ig"
+// alone is too generic to substring-match.
+const SOCIAL_SHORTHAND_RE = /\b(ig|sc|fb)\b\s*[:.\-]/i;
+
 const RELATIONSHIP_PREFIXES = [
   "my ex ", "my friend ", "my bf ", "my gf ",
   "my boyfriend ", "my girlfriend ", "my sister ", "my brother ",
@@ -239,6 +247,26 @@ function canonicalize(text) {
   return result.toLowerCase();
 }
 
+// Same combining-mark + invisible-separator strip as canonicalize, but
+// preserves case and does NOT fold confusables / fullwidth / math-alpha.
+// Used to tokenize text in Layers 4 / 4.5: an attacker who inserts
+// standalone combining marks (e.g. `S̶arah` = S + U+0336 + arah) fragments
+// the token under the default `\p{L}\p{N}` split because combining marks
+// are Mn category. Stripping them first re-merges the token so the name
+// lookup sees `Sarah` as a single capitalized word.
+function stripCombiningMarksKeepCase(text) {
+  if (!text) return "";
+  const stripped = text.replace(STRIP_INVISIBLE_RE, "");
+  const decomposed = stripped.normalize("NFD");
+  let result = "";
+  for (const ch of decomposed) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0x0300 && cp <= 0x036F) continue;
+    result += ch;
+  }
+  return result;
+}
+
 function aggressiveNormalizeForNameMatch(text) {
   const canon = canonicalize(text);
   let deLeet = "";
@@ -295,6 +323,11 @@ function containsNameOrIdentifyingInfo(text) {
   for (const pattern of IDENTIFYING_PATTERNS) {
     if (lowered.includes(pattern)) return true;
   }
+
+  // Social-shorthand label syntax (ig: / sc: / fb: with optional space +
+  // colon/period/dash). Word-boundary anchored so "dig: deeper", "abs.",
+  // "fab-" don't false-positive.
+  if (SOCIAL_SHORTHAND_RE.test(text)) return true;
 
   // @handle
   if (/@[a-zA-Z]/.test(text)) return true;
@@ -356,6 +389,16 @@ function containsNameOrIdentifyingInfo(text) {
   for (const num of CRISIS_NUMBERS) {
     digitStripped = digitStripped.split(num).join("");
   }
+  // Collapse phone-format separators between digits so a formatted phone
+  // like `(555) 123-4567` survives the date/year/small-number strips
+  // below. Without this, `\b\d{1,3}\b` peels `555`, `123` and `\b\d{4,5}\b`
+  // peels `4567` because parens/space/dash sit at word boundaries around
+  // each digit chunk — total digit count goes to zero. Lookahead-anchored
+  // so a separator at end of text (e.g., trailing `.`) doesn't gobble.
+  // Plain whitespace IS included in the class because users write phones
+  // as `555 123 4567`; the false-positive risk (a sentence with 10+ digits
+  // separated only by single spaces) is acceptable on a heartbreak app.
+  digitStripped = digitStripped.replace(/(\d)[-.\s()]+(?=\d)/g, "$1");
   digitStripped = digitStripped
     .replace(/\d{1,2}[:/]\d{2}/g, "")
     .replace(/\b\d{4,5}\b/g, "")
@@ -391,9 +434,19 @@ function containsNameOrIdentifyingInfo(text) {
   }
 
   // Layer 4: Per-token canonicalize-then-name-lookup.
+  // Tokenize the COMBINING-MARK-STRIPPED form of the text, not the raw
+  // text. Standalone combining marks (U+0300-U+036F) are Mn category and
+  // get treated as token separators under `\p{L}\p{N}` split — an
+  // attacker writing `S̶arah` (= S + U+0336 + arah) fragments the token
+  // into ['S', 'arah'] under raw tokenization, and neither piece matches
+  // a name. Stripping combining marks (case-preserving) before split
+  // collapses the token to `Sarah` so the name lookup sees it.
   const canonical = canonicalize(text);
   const canonStarters = sentenceStarters(canonical);
-  for (const word of words) {
+  const layer4Words = stripCombiningMarksKeepCase(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((w) => w.length > 0);
+  for (const word of layer4Words) {
     const canonWord = canonicalize(word);
     if (canonWord.length < 2) continue;
     if (AMBIGUOUS_WORDS.has(canonWord)) continue;
@@ -425,7 +478,9 @@ function containsNameOrIdentifyingInfo(text) {
   // would have already had a chance. Ambiguous / safe lists apply to the
   // reversed form too — if the reversed string is a common word, it's
   // more likely an incidental collision than evasion.
-  for (const word of words) {
+  // Uses the same combining-mark-stripped tokenization as Layer 4 so
+  // `S̶mith` (combining-mark fragmentation) is reversed as `htimS`.
+  for (const word of layer4Words) {
     const canonWord = canonicalize(word);
     if (canonWord.length < 4) continue;
     const reversed = [...canonWord].reverse().join("");

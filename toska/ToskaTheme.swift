@@ -508,9 +508,16 @@ func friendlyAuthErrorMessage(_ error: Error) -> String {
     switch nsError.code {
     case 17007: return String(localized: "an account with this email already exists. try signing in.")
     case 17008: return String(localized: "that email doesn't look right. check the format.")
-    case 17009: return String(localized: "wrong password. try again or reset it.")
+    // 17009 (wrong password) and 17011 (no account for this email) collapse
+    // to one neutral message so the UI doesn't help an attacker confirm
+    // whether a given email is registered. Why: anonymity is the brand
+    // wedge; even a low-value enumeration vector (email → "X uses toska")
+    // narrows a motivated stalker's search. The wire-level Firebase codes
+    // still differ — the authoritative fix is enabling Email Enumeration
+    // Protection in Firebase Auth project settings (see APP_STORE_METADATA
+    // pre-submission checklist); this UI collapse is defense in depth.
+    case 17009, 17011: return String(localized: "that email or password doesn't match. try again or reset your password.")
     case 17010: return String(localized: "too many tries. wait a minute and try again.")
-    case 17011: return String(localized: "we couldn't find an account with that email.")
     case 17012: return String(localized: "this email is linked to a different sign-in method.")
     case 17014: return String(localized: "for security, please sign out and sign back in, then try again.")
     case 17020: return String(localized: "youre offline. check your connection and try again.")

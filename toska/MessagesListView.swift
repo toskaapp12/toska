@@ -145,6 +145,17 @@ struct MessagesListView: View {
                     .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                         startListening()
                     }
+                    // Block fired while this view is on-screen: the snapshot
+                    // listener only re-derives on Firestore document changes,
+                    // so a freshly-blocked user's conversation lingered in
+                    // the list until the user left and came back. Strip the
+                    // blocked user's row locally to match what BlockedUsersCache
+                    // already filters at startListening time.
+                    .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+                        if let blockedUid = notif.userInfo?["userId"] as? String {
+                            conversations.removeAll { $0.otherUserId == blockedUid }
+                        }
+                    }
                     .navigationDestination(item: $selectedConversation) { convo in
                         ConversationView(
                             conversationId: convo.id,

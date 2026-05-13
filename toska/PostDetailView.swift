@@ -832,10 +832,17 @@ struct PostDetailView: View {
         func fetchReplies() {
             guard !postId.isEmpty else { return }
             replyListener?.remove()
+            // Capture uid so the snapshot callback can verify it's still
+            // serving the same account before writing replyList. Mirrors
+            // startLiveListener above; without this, a sign-out + sign-in
+            // to a different account can let a delayed snapshot land the
+            // previous user's reply thread into the new user's view.
+            let capturedUid = Auth.auth().currentUser?.uid
             replyListener = Firestore.firestore().collection("posts").document(postId).collection("replies")
                 .order(by: "createdAt", descending: false)
                 .addSnapshotListener { snapshot, _ in
                 Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     guard let documents = snapshot?.documents else { return }
                     let flat = documents.compactMap { doc -> ThreadedReply? in
                         let data = doc.data()

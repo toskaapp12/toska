@@ -51,13 +51,37 @@ class PushNotificationManager: NSObject {
         }
 
     func clearFCMToken() {
+        // 1. Invalidate the token at the FCM service level first. This is
+        //    the load-bearing step for cross-account safety on shared
+        //    devices: it forces FCM to issue a fresh token on the next
+        //    saveFCMToken call, so a different user signing in on this
+        //    device can't receive pushes destined for the previous user's
+        //    (now stale) token entry. Even if the Firestore wipe below
+        //    fails, the server-side self-healing in sendPushNotification
+        //    will reap the stale entry the first time it tries to use it
+        //    and gets an invalid-token error from FCM.
+        Messaging.messaging().deleteToken { error in
+            if let error = error {
+                print("⚠️ FCM deleteToken failed: \(error)")
+                Telemetry.recordError(error, context: "PushNotificationManager.deleteToken")
+            }
+        }
+
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // 2. Wipe our copy of the token from the user's private doc.
+        //    Surface failures via Telemetry so we notice if the cleanup
+        //    contract is silently regressing.
         Firestore.firestore()
             .collection("users").document(uid)
             .collection("private").document("data")
             .updateData([
                 "fcmToken": FieldValue.delete()
-            ])
+            ]) { error in
+                if let error = error {
+                    print("⚠️ clearFCMToken Firestore wipe failed: \(error)")
+                    Telemetry.recordError(error, context: "PushNotificationManager.clearFCMToken")
+                }
+            }
         // Stale legacy fcmToken on the main user doc is cleaned up server-side:
         // sendPushNotification deletes it from both locations the first time
         // it sees an invalid-token error from FCM. We can't delete it from the

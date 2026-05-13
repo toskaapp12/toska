@@ -46,32 +46,31 @@ struct SettingsView: View {
     @State private var exportError: String? = nil
     
     var body: some View {
-        // SettingsView keeps its custom centered-title header. NavigationStack
-        // wraps the whole thing only so NavigationLinks (drafts, blocked
-        // users) actually push — without this, those rows had been silently
-        // no-op'ing because there was no nav hierarchy in scope. Hidden
-        // toolbar leaves the custom header intact at this level; child views
-        // (DraftsView, BlockedUsersListView) reveal the system bar so the
-        // back button shows on push.
-        NavigationStack {
+        // Presented as a navigation push from ProfileView (not a sheet),
+        // so this view does NOT wrap itself in a NavigationStack — the
+        // outer stack handles the push, and `dismiss()` on the back
+        // chevron pops back to the profile. Wrapping in our own stack
+        // here would land child pushes (DraftsView, BlockedUsersListView)
+        // on the inner stack and break swipe-back. Mirrors the change
+        // commit 4453eb7 made for MessagesListView.
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(Color.toskaTextLight)
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .light))
+                            .foregroundColor(Color.toskaBlue)
                     }
-                    .accessibilityLabel("close settings")
+                    .accessibilityLabel("Back")
                     Spacer()
                     Text("settings")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(Color.toskaTextDark)
                     Spacer()
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13))
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14))
                         .foregroundColor(.clear)
                         .accessibilityHidden(true)
                 }
@@ -397,9 +396,8 @@ struct SettingsView: View {
             )
         }
         .toolbar(.hidden, for: .navigationBar)
-        }
     }
-    
+
     // MARK: - Components
     
     func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {

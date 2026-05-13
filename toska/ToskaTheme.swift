@@ -786,6 +786,8 @@ we'll update these rules as toska evolves. when we make material changes, we'll 
 10. contact
 questions, appeals, or anything else: \(toskaSupportEmail). we read every message.
 
+toska is published by SALTE DEVELOPMENT LLC.
+
 by tapping "i agree and continue" you confirm you are 17 or older, you understand these rules, and you accept them.
 """
 

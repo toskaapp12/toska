@@ -295,6 +295,20 @@ is enabled in our Firebase project. push notifications require a
 real device — they will not deliver to the simulator.
 ```
 
+### Legal entity
+
+Paste into App Store Connect → App Information → General Information (and
+Apple Developer account → Membership) at submission time:
+
+| Field | Value |
+|---|---|
+| Legal entity name | SALTE DEVELOPMENT LLC |
+| D-U-N-S number | 145757765 |
+
+Use the same legal entity name on the marketing site footer (`docs/*.html`)
+and in the in-app Privacy Policy / Terms of Service publisher line so all
+three surfaces agree at review time.
+
 ---
 
 ## 13. Content rights

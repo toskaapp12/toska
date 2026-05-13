@@ -149,25 +149,33 @@ class BlockedUsersCache {
             }
     }
 
-    func unblock(_ userId: String) {
+    /// Returns true on successful Firestore write, false if it failed (in
+    /// which case the cache reverts its optimistic removal). Async so the
+    /// caller — e.g. BlockedUsersListView — can revert its own local view
+    /// state on failure instead of leaving the row removed in the UI while
+    /// the cache silently reinserts behind it. Also silences the Swift 6
+    /// "consider asynchronous alternative" warning that the callback-based
+    /// DocumentReference.delete triggered.
+    @discardableResult
+    func unblock(_ userId: String) async -> Bool {
         guard !userId.isEmpty,
-              let uid = Auth.auth().currentUser?.uid else { return }
+              let uid = Auth.auth().currentUser?.uid else { return false }
 
         // 1. Optimistic local update.
         removeLocal(userId)
 
         // 2. Persist to Firestore.
-        Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("blocked").document(userId)
-            .delete { [weak self] error in
-                Task { @MainActor [weak self] in
-                    if let error = error {
-                        // 3. Revert if the write failed.
-                        print("⚠️ BlockedUsersCache.unblock failed: \(error)")
-                        self?.insertLocal(userId)
-                    }
-                }
-            }
+        do {
+            try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("blocked").document(userId)
+                .delete()
+            return true
+        } catch {
+            // 3. Revert if the write failed.
+            print("⚠️ BlockedUsersCache.unblock failed: \(error)")
+            insertLocal(userId)
+            return false
+        }
     }
 }

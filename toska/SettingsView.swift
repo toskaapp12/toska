@@ -44,6 +44,10 @@ struct SettingsView: View {
     // before presenting iOS share sheet.
     @State private var isExporting = false
     @State private var exportError: String? = nil
+    // Surfaced when the user flips pushEnabled on but iOS has notifications
+    // denied at the OS level — without this, the toggle looks like it took
+    // effect but pushes silently never arrive.
+    @State private var showOSPushDeniedAlert = false
     
     var body: some View {
         // Presented as a navigation push from ProfileView (not a sheet),
@@ -332,14 +336,24 @@ struct SettingsView: View {
                     loadSettings()
                 }
         .onDisappear {
-            // Cancel any in-flight debounced save when the settings sheet
-            // is dismissed. The 500ms wait inside debounceSave can otherwise
-            // outlive the view and fire saveSettings() on a torn-down state
-            // container — wasted Firestore write at best, stale-state race
-            // at worst (if the user toggled, then dismissed before the
-            // debounce elapsed, then opened again before the Task resolved).
-            saveTask?.cancel()
-            saveTask = nil
+            // If a debounced save is still pending, flush it now instead of
+            // dropping it. Pre-nav-push (when SettingsView was a sheet) the
+            // 500ms debounce + pull-down-to-dismiss race was theoretical;
+            // post-nav-push, back-swipe-from-edge fires inside the same
+            // window much more easily, so a quick toggle + immediate
+            // swipe-back was silently discarding the user's change.
+            // Cancelling the Task here is still correct (we don't want the
+            // delayed Task firing later on a torn-down view) — we just want
+            // to make sure the pending save isn't lost. saveSettings()
+            // launches its own Task that captures the current `settings`
+            // by value, so it completes safely after the view disappears.
+            if saveTask != nil {
+                saveTask?.cancel()
+                saveTask = nil
+                if isLoaded {
+                    saveSettings()
+                }
+            }
         }
         .onChange(of: settings) { oldValue, newValue in
             if isLoaded && oldValue != newValue {
@@ -361,6 +375,16 @@ struct SettingsView: View {
             Button("delete", role: .destructive) { deleteAccount() }
         } message: {
             Text("this is permanent. everything you said here goes with it.")
+        }
+        .alert("push is off in iOS settings", isPresented: $showOSPushDeniedAlert) {
+            Button("open settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("not now", role: .cancel) {}
+        } message: {
+            Text("you've enabled push in toska, but iOS has notifications turned off for this app. open settings to allow.")
         }
         .alert("sign in again to delete", isPresented: $showReauthAlert) {
             Button("sign out") {
@@ -533,11 +557,13 @@ struct SettingsView: View {
                     PushNotificationManager.shared.requestPermission()
                 case .denied:
                     // Previously denied at the OS level — iOS doesn't let us
-                    // re-prompt from code. The user has to go to Settings.app
-                    // to change it. The Firestore pref is still updated; if
-                    // they later flip the OS-level switch the existing
-                    // FCM/push pipeline picks back up.
-                    print("⚠️ Push enabled in app but denied at OS level — user must change it in Settings.app")
+                    // re-prompt from code. Surface an alert that deep-links
+                    // to Settings.app via UIApplication.openSettingsURLString
+                    // so the toggle going "on" matches what the user can
+                    // realistically do. The Firestore pref is still updated;
+                    // if they later flip the OS-level switch the existing
+                    // FCM/push pipeline picks back up automatically.
+                    showOSPushDeniedAlert = true
                 case .authorized, .provisional, .ephemeral:
                     // Already granted — the pushEnabled=true Firestore pref is
                     // all that was needed.
@@ -855,6 +881,11 @@ struct ChangeEmailView: View {
     @State private var isSaving = false
     @State private var message = ""
     @State private var isError = false
+    // Mirrors the deleteAccount reauth flow so all three Auth-modifying
+    // surfaces (change email / change password / delete account) hand the
+    // user the same "sign out and back in" affordance on requiresRecentLogin
+    // instead of dumping a raw Firebase error message into the UI.
+    @State private var showReauthAlert = false
     
     var isValidEmail: Bool {
         newEmail.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil
@@ -924,12 +955,23 @@ struct ChangeEmailView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
-                
+
                 Spacer()
             }
         }
+        .alert("sign in again to update", isPresented: $showReauthAlert) {
+            Button("sign out") {
+                PushNotificationManager.shared.clearFCMToken()
+                try? Auth.auth().signOut()
+                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                dismiss()
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("sign out and back in first. then try changing your email again.")
+        }
     }
-    
+
     func updateEmail() {
         let trimmed = newEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard trimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {
@@ -945,11 +987,11 @@ struct ChangeEmailView: View {
                 if let error = error {
                     let nsError = error as NSError
                     if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
-                        message = "please sign out and sign back in, then try again"
+                        showReauthAlert = true
                     } else {
                         message = error.localizedDescription
+                        isError = true
                     }
-                    isError = true
                 } else {
                     message = "verification email sent — check your inbox"
                     isError = false
@@ -970,6 +1012,10 @@ struct ChangePasswordView: View {
     @State private var message = ""
     @State private var isError = false
     @State private var dismissTask: Task<Void, Never>? = nil
+    // Mirror of ChangeEmailView + deleteAccount reauth flow — see those for
+    // rationale. Without this, requiresRecentLogin surfaced as opaque
+    // Firebase error text instead of an actionable sign-out affordance.
+    @State private var showReauthAlert = false
 
     var body: some View {
         ZStack {
@@ -1040,12 +1086,23 @@ struct ChangePasswordView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
-                
+
                 Spacer()
             }
         }
+        .alert("sign in again to update", isPresented: $showReauthAlert) {
+            Button("sign out") {
+                PushNotificationManager.shared.clearFCMToken()
+                try? Auth.auth().signOut()
+                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                dismiss()
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("sign out and back in first. then try changing your password again.")
+        }
     }
-    
+
     func updatePassword() {
         guard newPassword.count >= 8 else {
             message = "password must be at least 8 characters"
@@ -1063,8 +1120,13 @@ struct ChangePasswordView: View {
             Task { @MainActor in
                 isSaving = false
                 if let error = error {
-                    message = error.localizedDescription
-                    isError = true
+                    let nsError = error as NSError
+                    if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                        showReauthAlert = true
+                    } else {
+                        message = error.localizedDescription
+                        isError = true
+                    }
                 } else {
                     newPassword = ""
                     confirmPassword = ""
@@ -1206,11 +1268,21 @@ struct BlockedUsersListView: View {
     }
 
     func unblock(_ row: BlockedUserRow) {
-        // Optimistically remove from the list so the row disappears immediately.
-        // The cache's unblock() writes to Firestore and reverts on error, so
-        // in the rare failure case the row will reappear on next load.
+        // Optimistically remove from the list so the row disappears
+        // immediately. Snapshot the row first so we can re-insert in the
+        // original sorted slot if the Firestore write fails — without
+        // this, the cache reverts its own state but the view's local
+        // `blocked` array would stay (incorrectly) empty until the user
+        // navigated away and back.
+        let removed = row
         blocked.removeAll { $0.id == row.id }
-        BlockedUsersCache.shared.unblock(row.id)
+        Task { @MainActor in
+            let succeeded = await BlockedUsersCache.shared.unblock(row.id)
+            if !succeeded {
+                blocked.append(removed)
+                blocked.sort { $0.blockedAt > $1.blockedAt }
+            }
+        }
     }
 }
 

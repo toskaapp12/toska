@@ -261,6 +261,23 @@ struct PostDetailView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                // Swipe-down on the header dismisses back to the feed, in
+                // addition to the back chevron and the system swipe-from-
+                // left-edge. Bound to the header (not the whole view) so the
+                // reply ScrollView keeps its native vertical scroll without
+                // contention. contentShape(.rect) makes the empty space
+                // between the buttons drag-eligible; minimumDistance: 20
+                // keeps the gesture from stealing taps on the chevron /
+                // ellipsis buttons.
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 20)
+                        .onEnded { value in
+                            if value.translation.height > 80 && abs(value.translation.width) < 60 {
+                                dismiss()
+                            }
+                        }
+                )
 
                 Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 

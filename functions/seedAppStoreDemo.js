@@ -187,6 +187,67 @@ const BUDDY_POSTS = [
   },
 ];
 
+// Replies backing the BUDDY_POSTS replyCount values above. Without these,
+// the post detail view shows "X replies" in the header but renders the
+// "be the first to reply" empty state — looks broken to anyone (Apple
+// reviewer included) tapping into a buddy post. authorIdx -1 means the
+// demo user; 0 = soft_evening_42; 1 = late_oak_88. Counts on each
+// BUDDY_POSTS entry MUST equal the number of replies aimed at that post
+// id below — otherwise the header re-introduces the same drift.
+const BUDDY_REPLIES = [
+  // demo_buddy_soft_post_1 (replyCount: 2)
+  {
+    postId: "demo_buddy_soft_post_1",
+    id: "demo_buddy_soft_post_1_reply_1",
+    authorIdx: -1, // demo
+    text: "this hits. some days carrying it is lighter than others.",
+  },
+  {
+    postId: "demo_buddy_soft_post_1",
+    id: "demo_buddy_soft_post_1_reply_2",
+    authorIdx: 1, // late_oak_88
+    text: "yeah. and the days you forget you're carrying it at all count too.",
+  },
+  // demo_buddy_soft_post_2 (replyCount: 1)
+  {
+    postId: "demo_buddy_soft_post_2",
+    id: "demo_buddy_soft_post_2_reply_1",
+    authorIdx: -1, // demo
+    text: "the small acts count more than people realize. tea counts.",
+  },
+  // demo_buddy_late_post_1 (replyCount: 5)
+  {
+    postId: "demo_buddy_late_post_1",
+    id: "demo_buddy_late_post_1_reply_1",
+    authorIdx: 0, // soft_evening_42
+    text: "needed to hear this today. one year feels impossible from where i am.",
+  },
+  {
+    postId: "demo_buddy_late_post_1",
+    id: "demo_buddy_late_post_1_reply_2",
+    authorIdx: -1, // demo
+    text: "saving this so i can come back to it on a hard week.",
+  },
+  {
+    postId: "demo_buddy_late_post_1",
+    id: "demo_buddy_late_post_1_reply_3",
+    authorIdx: 0,
+    text: "the unimaginable-in-month-one part is what i needed.",
+  },
+  {
+    postId: "demo_buddy_late_post_1",
+    id: "demo_buddy_late_post_1_reply_4",
+    authorIdx: -1,
+    text: "this is the kind of post i open the app for.",
+  },
+  {
+    postId: "demo_buddy_late_post_1",
+    id: "demo_buddy_late_post_1_reply_5",
+    authorIdx: 0,
+    text: "sending you something gentle from earlier in it.",
+  },
+];
+
 // ---------- helpers ----------
 
 // Returns { uid, created }. `created` is true only when this run actually
@@ -419,6 +480,17 @@ async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
     BUDDIES[0].handle,
     "this. the version of you that comes back is different but real."
   );
+
+  // Back the BUDDY_POSTS replyCount values with actual reply docs. Without
+  // these, tapping a buddy post in the demo account shows the empty-state
+  // ("be the first to reply") under a header that promises N replies.
+  // authorIdx -1 = demo (so the demo user appears in the threaded view),
+  // 0 = soft_evening_42, 1 = late_oak_88.
+  for (const reply of BUDDY_REPLIES) {
+    const authorUid = reply.authorIdx === -1 ? demoUid : buddyUids[reply.authorIdx];
+    const authorHandle = reply.authorIdx === -1 ? DEMO_HANDLE : BUDDIES[reply.authorIdx].handle;
+    await setReply(reply.postId, reply.id, authorUid, authorHandle, reply.text);
+  }
 
   // mutual follow between demo and soft.
   await setFollow(demoUid, softUid);

@@ -311,10 +311,6 @@ struct SettingsView: View {
                                                         .multilineTextAlignment(.center)
                                                         .padding(.horizontal, 24)
                                                     
-                                                    Text("— tess")
-                                                        .font(.custom("Georgia-Italic", size: 11))
-                                                        .foregroundColor(Color.toskaTimestamp)
-                                                    
                                                     VStack(spacing: 2) {
                                                         Text("toska v1.0")
                                                             .font(.system(size: 9))

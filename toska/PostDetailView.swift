@@ -857,7 +857,19 @@ struct PostDetailView: View {
             let capturedUid = Auth.auth().currentUser?.uid
             replyListener = Firestore.firestore().collection("posts").document(postId).collection("replies")
                 .order(by: "createdAt", descending: false)
-                .addSnapshotListener { snapshot, _ in
+                .addSnapshotListener { snapshot, error in
+                // Surface listener errors instead of swallowing them. Without
+                // this, a permission-denied / missing-index / App Check
+                // attestation failure leaves replyList empty with no signal —
+                // the UI shows "be the first to reply" under a header that
+                // promises N replies and there's no way to debug it without
+                // attaching Xcode. console output is visible in the device
+                // console via Console.app (filter on "fetchReplies").
+                if let error = error {
+                    print("⚠️ fetchReplies listener error for post \(postId): \(error)")
+                    Telemetry.recordError(error, context: "PostDetailView.fetchReplies")
+                    return
+                }
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     guard let documents = snapshot?.documents else { return }
@@ -877,6 +889,7 @@ struct PostDetailView: View {
                             children: []
                         )
                     }
+                    print("ℹ️ fetchReplies snapshot for post \(postId): \(documents.count) raw docs → \(flat.count) after block filter")
                     replyList = buildThreadedReplies(from: flat)
                 }
             }

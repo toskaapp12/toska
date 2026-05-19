@@ -112,6 +112,19 @@ struct SavedReply: Identifiable {
     let replyHandle: String
     let savedAt: Date
 }
+
+/// Mirror of SavedReply for the "liked" tab in ProfileView. Same shape
+/// because both reverse indices (users/{uid}/likedReplies +
+/// users/{uid}/savedReplies) snapshot the same fields at write time. Kept
+/// as a separate type for semantic clarity at call sites — same row UI
+/// (ReplyEngagementRow) renders both.
+struct LikedReply: Identifiable {
+    let id: String
+    let postId: String
+    let replyText: String
+    let replyHandle: String
+    let likedAt: Date
+}
 /// Used in FeelingCircleView for temporary group chat messages
 struct CircleMessage: Identifiable {
     let id: String

@@ -22,6 +22,7 @@ struct ProfileView: View {
     @State private var savedReplies: [SavedReply] = []
     @State private var myReplies: [MyReply] = []
     @State private var likedPosts: [SavedPost] = []
+    @State private var likedReplies: [LikedReply] = []
     @State private var selectedPostId: String? = nil
     @State private var selectedPostData: PostDetailData? = nil
     @State private var showPost = false
@@ -224,18 +225,27 @@ struct ProfileView: View {
                                                                         }
                                                                     }
                                                                 case 1:
-                                                                    if likedPosts.isEmpty {
+                                                                    let likedItems = mergedLikedItems
+                                                                    if likedItems.isEmpty {
                                                                         emptyState(icon: "heart", title: "nothing felt yet.", subtitle: "youll know it when you see it.")
                                                                     } else {
                                                                         LazyVStack(spacing: 0) {
-                                                                            ForEach(likedPosts) { post in
-                                                                                Button { openSavedPost(post) } label: {
-                                                                                    FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id)
+                                                                            ForEach(likedItems) { item in
+                                                                                switch item {
+                                                                                case .post(let post):
+                                                                                    Button { openSavedPost(post) } label: {
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
+                                                                                case .reply(let liked):
+                                                                                    Button { openLikedReply(liked) } label: {
+                                                                                        ReplyEngagementRow(handle: liked.replyHandle, text: liked.replyText, time: liked.likedAt)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
                                                                                 }
-                                                                                .buttonStyle(.plain)
                                                                             }
-                                                                            if likedPosts.count >= 50 {
-                                                                                Text("showing your 50 most recent likes")
+                                                                            if likedItems.count >= 100 {
+                                                                                Text("showing your most recent likes")
                                                                                     .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
@@ -256,7 +266,7 @@ struct ProfileView: View {
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let saved):
                                                                                     Button { openSavedReply(saved) } label: {
-                                                                                        SavedReplyRow(saved: saved)
+                                                                                        ReplyEngagementRow(handle: saved.replyHandle, text: saved.replyText, time: saved.savedAt)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 }
@@ -278,7 +288,9 @@ struct ProfileView: View {
                                     loadProfile()
                                     switch selectedTab {
                                     case 0: loadMyPosts()
-                                    case 1: loadLikedPosts()
+                                    case 1:
+                                        loadLikedPosts()
+                                        loadLikedReplies()
                                     case 2:
                                         loadSavedPosts()
                                         loadSavedReplies()
@@ -335,6 +347,7 @@ struct ProfileView: View {
                         hasFetchedInitial = true
                                                 loadMyPosts()
                                                 loadLikedPosts()
+                                                loadLikedReplies()
                                                 loadSavedPosts()
                                                 loadSavedReplies()
                         ensurePresenceThenLoadStreak()
@@ -354,6 +367,7 @@ struct ProfileView: View {
             hasFetchedInitial = false
             myPosts = []
             likedPosts = []
+            likedReplies = []
             savedPosts = []
             savedReplies = []
             myReplies = []
@@ -858,7 +872,6 @@ struct ProfileView: View {
             savedReplies = results.sorted { $0.savedAt > $1.savedAt }
         }
     }
-
     /// Sortable union of saved posts and saved replies for the "saved" tab.
     /// Each variant carries its own createdAt for the merge sort. Tap
     /// behavior diverges: posts use the existing openSavedPost path; replies
@@ -906,6 +919,91 @@ struct ProfileView: View {
             }
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
             selectedPostId = saved.postId
+            selectedPostData = PostDetailData(
+                handle: data["authorHandle"] as? String ?? "anonymous",
+                text: data["text"] as? String ?? "",
+                tag: data["tag"] as? String,
+                likes: data["likeCount"] as? Int ?? 0,
+                reposts: data["repostCount"] as? Int ?? 0,
+                replies: data["replyCount"] as? Int ?? 0,
+                time: ToskaFormatters.timeAgo(from: createdAt),
+                authorId: data["authorId"] as? String ?? "",
+                isShareable: data["isShareable"] as? Bool ?? true
+            )
+            showPost = true
+        }
+    }
+
+    // Liked replies — same shape + same trade-offs as saved replies.
+    // Single query against the reverse index (users/{uid}/likedReplies),
+    // each doc carries a save-time snapshot of replyText + replyHandle so
+    // the liked tab renders without per-reply fetches.
+    func loadLikedReplies() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        Task {
+            guard let snap = try? await db.collection("users").document(uid).collection("likedReplies")
+                .order(by: "createdAt", descending: true)
+                .limit(to: 50)
+                .getDocumentsAsync() else { return }
+            guard Auth.auth().currentUser?.uid == uid else { return }
+            let results: [LikedReply] = snap.documents.compactMap { doc in
+                let data = doc.data()
+                guard let postId = data["postId"] as? String, !postId.isEmpty else { return nil }
+                let likedAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                return LikedReply(
+                    id: doc.documentID,
+                    postId: postId,
+                    replyText: data["replyText"] as? String ?? "",
+                    replyHandle: data["replyHandle"] as? String ?? "anonymous",
+                    likedAt: likedAt
+                )
+            }
+            likedReplies = results.sorted { $0.likedAt > $1.likedAt }
+        }
+    }
+
+    /// Sortable union for the "liked" tab. Mirrors SavedItem.
+    enum LikedItem: Identifiable {
+        case post(SavedPost)
+        case reply(LikedReply)
+        var id: String {
+            switch self {
+            case .post(let p): return "post:\(p.id)"
+            case .reply(let r): return "reply:\(r.id)"
+            }
+        }
+        var createdAt: Date {
+            switch self {
+            case .post(let p): return p.createdAt
+            case .reply(let r): return r.likedAt
+            }
+        }
+    }
+
+    var mergedLikedItems: [LikedItem] {
+        let posts = likedPosts.map { LikedItem.post($0) }
+        let replies = likedReplies.map { LikedItem.reply($0) }
+        return (posts + replies).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    // Tap handler for a liked-reply row. Same self-healing on stale data
+    // as openSavedReply: if the parent post is gone, clean up the orphan
+    // likedReplies entry + remove from local array.
+    func openLikedReply(_ liked: LikedReply) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        Task { @MainActor in
+            guard let snap = try? await db.collection("posts").document(liked.postId).getDocumentAsync(),
+                  let data = snap.data(),
+                  data["text"] != nil else {
+                try? await db.collection("users").document(uid)
+                    .collection("likedReplies").document(liked.id).delete()
+                likedReplies.removeAll { $0.id == liked.id }
+                return
+            }
+            let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+            selectedPostId = liked.postId
             selectedPostData = PostDetailData(
                 handle: data["authorHandle"] as? String ?? "anonymous",
                 text: data["text"] as? String ?? "",
@@ -976,15 +1074,19 @@ struct ProfileView: View {
     // here, restore this function and the populated myReplies state.
 }
 
-// MARK: - Saved Reply Row
+// MARK: - Reply Engagement Row
 //
-// Renders a saved reply in the profile's "saved" tab. Visually
-// distinguished from FeedPostRow with a leading reply-glyph + dimmer
-// chrome so the user can tell at a glance that this entry is a reply,
-// not a top-level post. Tap navigates to the parent post (handled in
-// the enclosing ProfileView via openSavedReply).
-struct SavedReplyRow: View {
-    let saved: SavedReply
+// Renders a reply that the user has either saved or liked, in their
+// profile's "saved" / "liked" tabs. Visually distinguished from
+// FeedPostRow with a leading reply-glyph + dimmer chrome so the user
+// can tell at a glance that this entry is a reply, not a top-level
+// post. Tap navigates to the parent post (handled in the enclosing
+// ProfileView via openSavedReply / openLikedReply). Generic over the
+// reply data so both SavedReply and LikedReply call sites reuse it.
+struct ReplyEngagementRow: View {
+    let handle: String
+    let text: String
+    let time: Date
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "arrowshape.turn.up.left")
@@ -993,18 +1095,18 @@ struct SavedReplyRow: View {
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(saved.replyHandle)
+                    Text(handle)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(Color.toskaBlue)
                     Text("· reply")
                         .font(.system(size: 9))
                         .foregroundColor(Color.toskaTimestamp)
                     Spacer()
-                    Text(ToskaFormatters.timeAgo(from: saved.savedAt))
+                    Text(ToskaFormatters.timeAgo(from: time))
                         .font(.system(size: 9, weight: .light))
                         .foregroundColor(Color(hex: "c8c8c8"))
                 }
-                Text(saved.replyText)
+                Text(text)
                     .font(.custom("Georgia", size: 13))
                     .foregroundColor(Color.toskaTextDark)
                     .lineSpacing(3)

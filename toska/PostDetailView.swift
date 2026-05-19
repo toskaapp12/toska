@@ -978,6 +978,8 @@ struct PostDetailView: View {
         PostInteractionManager.toggleReplyLike(
             postId: postId,
             replyId: reply.id,
+            replyText: reply.text,
+            replyHandle: reply.handle,
             replyAuthorId: reply.authorId,
             currentlyLiked: currentlyLiked,
             currentCount: currentCount

@@ -6,11 +6,22 @@ struct ThreadedReply: Identifiable {
     let id: String
     let handle: String
     let text: String
-    let likes: Int
+    var likes: Int
     let time: String
     let authorId: String
     let parentReplyId: String?
     var children: [ThreadedReply]
+    // Per-user interaction state — stamped during fetchReplies by
+    // intersecting the snapshot's reply ids with the current user's
+    // likedReplies / savedReplies / own reposts. Mutable so the toggle
+    // handlers in SwipeToReplyRow can update optimistically without
+    // rebuilding the whole list. Default false so newly-arriving
+    // replies in the listener delta render as un-interacted until the
+    // post-snapshot state-load fills them in.
+    var isLiked: Bool = false
+    var isSaved: Bool = false
+    var isReposted: Bool = false
+    var repostCount: Int = 0
 }
 
 @MainActor
@@ -305,11 +316,19 @@ struct PostDetailView: View {
                                 let flat = flattenReplies(replyList)
                                 ForEach(Array(flat.enumerated()), id: \.element.id) { index, item in
                                     let indent = CGFloat(item.depth) * 24
-                                    SwipeToReplyRow(item: item, indent: indent, onReply: {
-                                        replyingToId = item.reply.id
-                                        replyingToHandle = item.reply.handle
-                                        replyFocused = true
-                                    }, postId: postId)
+                                    SwipeToReplyRow(
+                                        item: item,
+                                        indent: indent,
+                                        onReply: {
+                                            replyingToId = item.reply.id
+                                            replyingToHandle = item.reply.handle
+                                            replyFocused = true
+                                        },
+                                        postId: postId,
+                                        onToggleLike: { toggleReplyLikeAt(replyId: item.reply.id) },
+                                        onToggleSave: { toggleReplySaveAt(replyId: item.reply.id) },
+                                        onRepost: { repostReplyAt(replyId: item.reply.id) }
+                                    )
                                     if index < flat.count - 1 {
                                         Rectangle()
                                             .fill(Color(hex: "e4e6ea").opacity(item.depth > 0 ? 0.3 : 0.5))
@@ -873,7 +892,7 @@ struct PostDetailView: View {
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     guard let documents = snapshot?.documents else { return }
-                    let flat = documents.compactMap { doc -> ThreadedReply? in
+                    var flat = documents.compactMap { doc -> ThreadedReply? in
                         let data = doc.data()
                         let authorId = data["authorId"] as? String ?? ""
                         if BlockedUsersCache.shared.isBlocked(authorId) { return nil }
@@ -886,13 +905,185 @@ struct PostDetailView: View {
                             time: FeedView.timeAgoString(from: createdAt),
                             authorId: authorId,
                             parentReplyId: data["parentReplyId"] as? String,
-                            children: []
+                            children: [],
+                            isLiked: false,
+                            isSaved: false,
+                            isReposted: false,
+                            repostCount: data["repostCount"] as? Int ?? 0
                         )
                     }
                     print("ℹ️ fetchReplies snapshot for post \(postId): \(documents.count) raw docs → \(flat.count) after block filter")
+                    // Stamp per-user interaction state. Three parallel one-shot
+                    // queries against the user's reverse indices + the posts
+                    // collection (for own reposts). Cheaper than per-reply
+                    // gets and avoids N additional listeners. Result is the
+                    // current snapshot's intersection with the user's history
+                    // — listener delta updates re-run this stamping.
+                    if let uid = Auth.auth().currentUser?.uid, !flat.isEmpty {
+                        let replyIds = flat.map { $0.id }
+                        let db = Firestore.firestore()
+                        let stamped = await Self.stampReplyInteractionState(
+                            replies: flat,
+                            replyIds: replyIds,
+                            uid: uid,
+                            db: db
+                        )
+                        flat = stamped
+                    }
                     replyList = buildThreadedReplies(from: flat)
                 }
             }
+    }
+
+    // Walks the threaded replyList recursively, mutating the first reply
+    // whose id matches. Returns true on hit so the recursion short-circuits
+    // up the stack. Used by the per-reply toggle handlers below to apply
+    // optimistic UI updates + final reconciled state without rebuilding
+    // the whole tree from scratch.
+    @discardableResult
+    private func mutateReplyInTree(replyId: String, mutate: (inout ThreadedReply) -> Void) -> Bool {
+        func walk(_ replies: inout [ThreadedReply]) -> Bool {
+            for i in replies.indices {
+                if replies[i].id == replyId {
+                    mutate(&replies[i])
+                    return true
+                }
+                if walk(&replies[i].children) { return true }
+            }
+            return false
+        }
+        return walk(&replyList)
+    }
+
+    // Looks up the current state of a reply by id without mutating. Used
+    // by the toggle handlers to read the latest (post-optimistic) state
+    // before passing into PostInteractionManager.
+    private func findReplyInTree(replyId: String) -> ThreadedReply? {
+        func walk(_ replies: [ThreadedReply]) -> ThreadedReply? {
+            for r in replies {
+                if r.id == replyId { return r }
+                if let found = walk(r.children) { return found }
+            }
+            return nil
+        }
+        return walk(replyList)
+    }
+
+    // MARK: - Reply interaction handlers
+
+    private func toggleReplyLikeAt(replyId: String) {
+        guard let reply = findReplyInTree(replyId: replyId) else { return }
+        let currentlyLiked = reply.isLiked
+        let currentCount = reply.likes
+        PostInteractionManager.toggleReplyLike(
+            postId: postId,
+            replyId: reply.id,
+            replyAuthorId: reply.authorId,
+            currentlyLiked: currentlyLiked,
+            currentCount: currentCount
+        ) { result in
+            mutateReplyInTree(replyId: replyId) { r in
+                r.isLiked = result.isLiked
+                r.likes = result.newCount
+            }
+        }
+    }
+
+    private func toggleReplySaveAt(replyId: String) {
+        guard let reply = findReplyInTree(replyId: replyId) else { return }
+        let currentlySaved = reply.isSaved
+        PostInteractionManager.toggleReplySave(
+            postId: postId,
+            replyId: reply.id,
+            currentlySaved: currentlySaved
+        ) { newSaved in
+            mutateReplyInTree(replyId: replyId) { r in
+                r.isSaved = newSaved
+            }
+        }
+    }
+
+    private func repostReplyAt(replyId: String) {
+        guard let reply = findReplyInTree(replyId: replyId) else { return }
+        if reply.isReposted { return } // idempotent — already reposted
+        let currentCount = reply.repostCount
+        PostInteractionManager.repostReply(
+            postId: postId,
+            replyId: reply.id,
+            replyText: reply.text,
+            replyAuthorId: reply.authorId,
+            replyAuthorHandle: reply.handle,
+            currentCount: currentCount
+        ) { result in
+            mutateReplyInTree(replyId: replyId) { r in
+                r.isReposted = result.isReposted
+                r.repostCount = result.newCount
+            }
+        }
+    }
+
+    // Stamps isLiked / isSaved / isReposted on each reply in `replies` by
+    // intersecting the snapshot's reply ids with the user's reverse indices
+    // (likedReplies, savedReplies) and the user's own reply-reposts
+    // (looked up via deterministic doc ids: posts/{uid}_replyrepost_{replyId}).
+    //
+    // Firestore's `whereField(FieldPath.documentID(), in:)` is capped at 30
+    // values per query, so reply ids get batched into 30-sized chunks.
+    // Repost existence uses N parallel getDocument calls rather than a
+    // single composite query — keeps us from needing a new index on
+    // (authorId, originalReplyId) for this v1.0 path. If repost-state
+    // checks ever become a hot path, swap to the indexed query.
+    private static func stampReplyInteractionState(
+        replies: [ThreadedReply],
+        replyIds: [String],
+        uid: String,
+        db: Firestore
+    ) async -> [ThreadedReply] {
+        let chunks = stride(from: 0, to: replyIds.count, by: 30).map {
+            Array(replyIds[$0..<min($0 + 30, replyIds.count)])
+        }
+
+        var likedSet: Set<String> = []
+        var savedSet: Set<String> = []
+        var repostedSet: Set<String> = []
+
+        for chunk in chunks {
+            async let likedSnap = try? db.collection("users").document(uid)
+                .collection("likedReplies")
+                .whereField(FieldPath.documentID(), in: chunk)
+                .getDocumentsAsync()
+            async let savedSnap = try? db.collection("users").document(uid)
+                .collection("savedReplies")
+                .whereField(FieldPath.documentID(), in: chunk)
+                .getDocumentsAsync()
+            if let docs = await likedSnap?.documents {
+                for d in docs { likedSet.insert(d.documentID) }
+            }
+            if let docs = await savedSnap?.documents {
+                for d in docs { savedSet.insert(d.documentID) }
+            }
+        }
+
+        await withTaskGroup(of: String?.self) { group in
+            for replyId in replyIds {
+                group.addTask {
+                    let docId = "\(uid)_replyrepost_\(replyId)"
+                    let snap = try? await db.collection("posts").document(docId).getDocumentAsync()
+                    return (snap?.exists == true) ? replyId : nil
+                }
+            }
+            for await result in group {
+                if let id = result { repostedSet.insert(id) }
+            }
+        }
+
+        return replies.map { reply in
+            var r = reply
+            r.isLiked = likedSet.contains(reply.id)
+            r.isSaved = savedSet.contains(reply.id)
+            r.isReposted = repostedSet.contains(reply.id)
+            return r
+        }
     }
 
     func buildThreadedReplies(from flat: [ThreadedReply]) -> [ThreadedReply] {
@@ -1257,6 +1448,13 @@ struct SwipeToReplyRow: View {
     /// Parent post ID — needed so the report payload knows which post this
     /// reply belongs to. Empty string disables the report/block menu.
     var postId: String = ""
+    /// Per-reply interaction handlers — closures that PostDetailView
+    /// wires to PostInteractionManager + replyList mutation. Optional so
+    /// other call sites (none today, but kept future-proof) can render the
+    /// row read-only by passing nil. When nil, the action row is hidden.
+    var onToggleLike: (() -> Void)? = nil
+    var onToggleSave: (() -> Void)? = nil
+    var onRepost: (() -> Void)? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var hasTriggered = false
     @State private var showReportSheet = false
@@ -1311,12 +1509,70 @@ struct SwipeToReplyRow: View {
                     }
                 }
                 Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
-                if item.reply.likes > 0 {
-                    HStack(spacing: 3) {
-                        Image(systemName: "heart").font(.system(size: 9, weight: .light))
-                        Text("\(item.reply.likes)").font(.system(size: 9))
+                // Interactive action row — like, save, repost. Matches the
+                // affordances on a top-level post. Each icon is hidden when
+                // the corresponding handler isn't wired (defensive — current
+                // PostDetailView always wires all three; older call sites or
+                // future read-only renders pass nil). Hides the repost icon
+                // on the user's own reply since reposting yourself doesn't
+                // make sense and the PostInteractionManager.repostReply guard
+                // would reject it anyway.
+                if onToggleLike != nil || onToggleSave != nil || onRepost != nil {
+                    HStack(spacing: 18) {
+                        if let onToggleLike = onToggleLike {
+                            Button {
+                                onToggleLike()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
+                                        .font(.system(size: 11, weight: .light))
+                                        .foregroundColor(item.reply.isLiked ? Color(hex: "c45c5c") : Color(hex: "b0b0b0"))
+                                    if item.reply.likes > 0 {
+                                        Text("\(item.reply.likes)")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(Color(hex: "999999"))
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
+                        }
+                        if let onRepost = onRepost,
+                           item.reply.authorId != Auth.auth().currentUser?.uid {
+                            Button {
+                                onRepost()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: item.reply.isReposted ? "arrow.2.squarepath" : "arrow.2.squarepath")
+                                        .font(.system(size: 11, weight: item.reply.isReposted ? .semibold : .light))
+                                        .foregroundColor(item.reply.isReposted ? Color.toskaBlue : Color(hex: "b0b0b0"))
+                                    if item.reply.repostCount > 0 {
+                                        Text("\(item.reply.repostCount)")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(Color(hex: "999999"))
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.reply.isReposted ? "Already reposted" : "Repost reply")
+                        }
+                        if let onToggleSave = onToggleSave {
+                            Button {
+                                onToggleSave()
+                            } label: {
+                                Image(systemName: item.reply.isSaved ? "bookmark.fill" : "bookmark")
+                                    .font(.system(size: 11, weight: .light))
+                                    .foregroundColor(item.reply.isSaved ? Color.toskaBlue : Color(hex: "b0b0b0"))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.reply.isSaved ? "Unsave reply" : "Save reply")
+                        }
+                        Spacer()
                     }
-                    .foregroundColor(Color(hex: "d8d8d8")).padding(.top, 2)
+                    .padding(.top, 4)
                 }
             }
             .padding(.leading, 18 + indent).padding(.trailing, 18).padding(.vertical, 10)

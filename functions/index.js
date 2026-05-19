@@ -1259,6 +1259,52 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
 );
 
 // ============================================================
+// Counter: reply-like count (server-side only)
+//
+// Full parity with post-like counters (onLikeCreatedUpdateCount /
+// onLikeDeletedUpdateCount). When a user likes a reply, the like doc
+// lands at posts/{postId}/replies/{replyId}/likes/{likeUserId} (firestore.
+// rules permits this nested write). These triggers maintain the
+// `likeCount` field on the parent reply doc so the iOS UI doesn't have
+// to count likes by listing the subcollection on every render.
+//
+// Same atomic increment / decrement pattern as post-like counters —
+// FieldValue.increment commutes under concurrent create + delete races
+// without the upward-drift bug safeDecrement caused. Idempotent via
+// claimTriggerEvent.
+// ============================================================
+
+exports.onReplyLikeCreatedUpdateCount = onDocumentCreated(
+  "posts/{postId}/replies/{replyId}/likes/{likeUserId}",
+  async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
+    const { postId, replyId } = event.params;
+    try {
+      await db.collection("posts").doc(postId)
+        .collection("replies").doc(replyId)
+        .update({ likeCount: FieldValue.increment(1) });
+    } catch (err) {
+      logCounterDrift("onReplyLikeCreatedUpdateCount", event.id, err, { postId, replyId });
+    }
+  }
+);
+
+exports.onReplyLikeDeletedUpdateCount = onDocumentDeleted(
+  "posts/{postId}/replies/{replyId}/likes/{likeUserId}",
+  async (event) => {
+    if (!await claimTriggerEvent(event.id)) return;
+    const { postId, replyId } = event.params;
+    try {
+      await db.collection("posts").doc(postId)
+        .collection("replies").doc(replyId)
+        .update({ likeCount: FieldValue.increment(-1) });
+    } catch (err) {
+      logCounterDrift("onReplyLikeDeletedUpdateCount", event.id, err, { postId, replyId });
+    }
+  }
+);
+
+// ============================================================
 // Counter: repost count (server-side only)
 // ============================================================
 
@@ -1268,6 +1314,12 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
     const postData = event.data.data();
     if (!postData) return;
     if (postData.isRepost !== true) return;
+    // Reply-repost path is handled by onReplyRepostCreatedUpdateCount —
+    // increment goes to the reply doc's repostCount, not the parent post's.
+    // Without this guard, a reply-repost would bump BOTH the reply AND the
+    // parent post's repostCount, double-counting.
+    if (postData.originalReplyId && typeof postData.originalReplyId === "string"
+        && postData.originalReplyId.length > 0) return;
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
     // Claim is gated on the isRepost guards above so non-repost create
@@ -1298,6 +1350,11 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
     const postData = event.data.data();
     if (!postData) return;
     if (postData.isRepost !== true) return;
+    // Same exclusion as onRepostCreatedUpdateCount — reply-repost deletes
+    // decrement the reply doc's repostCount via onReplyRepostDeletedUpdateCount,
+    // not the parent post's.
+    if (postData.originalReplyId && typeof postData.originalReplyId === "string"
+        && postData.originalReplyId.length > 0) return;
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
     if (!await claimTriggerEvent(event.id)) return;
@@ -1308,6 +1365,60 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
       });
     } catch (err) {
       logCounterDrift("onRepostDeletedUpdateCount", event.id, err, { originalPostId });
+    }
+  }
+);
+
+// ============================================================
+// Counter: reply-repost count (server-side only)
+//
+// When a user reposts a REPLY (not a post), the new top-level post doc
+// carries isRepost: true + originalReplyId: <replyId> + originalPostId:
+// <parentPostId>. These triggers maintain `repostCount` on the reply doc.
+// The existing onRepostCreated/DeletedUpdateCount triggers skip these
+// events (originalReplyId guard) to avoid double-counting.
+// ============================================================
+
+exports.onReplyRepostCreatedUpdateCount = onDocumentCreated(
+  "posts/{postId}",
+  async (event) => {
+    const postData = event.data.data();
+    if (!postData) return;
+    if (postData.isRepost !== true) return;
+    const originalReplyId = postData.originalReplyId;
+    const originalPostId = postData.originalPostId;
+    if (!originalReplyId || typeof originalReplyId !== "string" || originalReplyId.length === 0) return;
+    if (!originalPostId || typeof originalPostId !== "string") return;
+    if (!await claimTriggerEvent(event.id)) return;
+
+    try {
+      await db.collection("posts").doc(originalPostId)
+        .collection("replies").doc(originalReplyId)
+        .update({ repostCount: FieldValue.increment(1) });
+    } catch (err) {
+      logCounterDrift("onReplyRepostCreatedUpdateCount", event.id, err, { originalPostId, originalReplyId });
+    }
+  }
+);
+
+exports.onReplyRepostDeletedUpdateCount = onDocumentDeleted(
+  "posts/{postId}",
+  async (event) => {
+    const postData = event.data.data();
+    if (!postData) return;
+    if (postData.isRepost !== true) return;
+    const originalReplyId = postData.originalReplyId;
+    const originalPostId = postData.originalPostId;
+    if (!originalReplyId || typeof originalReplyId !== "string" || originalReplyId.length === 0) return;
+    if (!originalPostId || typeof originalPostId !== "string") return;
+    if (!await claimTriggerEvent(event.id)) return;
+
+    try {
+      await db.collection("posts").doc(originalPostId)
+        .collection("replies").doc(originalReplyId)
+        .update({ repostCount: FieldValue.increment(-1) });
+    } catch (err) {
+      logCounterDrift("onReplyRepostDeletedUpdateCount", event.id, err, { originalPostId, originalReplyId });
     }
   }
 );
@@ -1604,7 +1715,43 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // delete here ends up net-zero on the original's repostCount regardless
   // of which trigger lands first.
   if (postData.isRepost === true) {
+    // Reply-repost path: when originalReplyId is set, this post is a
+    // repost of a REPLY, not of a top-level post. The rule layer (firestore.
+    // rules) defers full text/authorId validation to this function for
+    // reply-reposts to keep its get() count bounded; here we do the
+    // existence + text + authorId match check that the rule would have
+    // done. Same delete-on-mismatch policy as the post-repost branch.
+    const originalReplyId = postData.originalReplyId;
     const originalPostId = postData.originalPostId;
+    if (typeof originalReplyId === "string" && originalReplyId.length > 0) {
+      if (typeof originalPostId !== "string" || !originalPostId) {
+        console.warn(`Deleting reply-repost ${postId} — missing originalPostId`);
+        await db.collection("posts").doc(postId).delete();
+        return;
+      }
+      const replySnap = await db.collection("posts").doc(originalPostId)
+        .collection("replies").doc(originalReplyId).get();
+      if (!replySnap.exists) {
+        console.warn(`Deleting reply-repost ${postId} — original reply ${originalReplyId} not found under post ${originalPostId}`);
+        await db.collection("posts").doc(postId).delete();
+        return;
+      }
+      const replyData = replySnap.data();
+      if (postData.text !== replyData.text) {
+        console.warn(`Deleting reply-repost ${postId} — text mismatch with original reply`);
+        await db.collection("posts").doc(postId).delete();
+        return;
+      }
+      if (postData.originalAuthorId !== replyData.authorId) {
+        console.warn(`Deleting reply-repost ${postId} — originalAuthorId mismatch with reply.authorId`);
+        await db.collection("posts").doc(postId).delete();
+        return;
+      }
+      // originalHandle intentionally not equality-checked — same rationale
+      // as the post-repost branch (handle may have rotated since fetch).
+      return;
+    }
+
     if (typeof originalPostId !== "string" || !originalPostId) {
       console.warn(`Deleting repost ${postId} — missing originalPostId`);
       await db.collection("posts").doc(postId).delete();

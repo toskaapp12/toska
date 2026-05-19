@@ -1549,37 +1549,31 @@ struct SwipeToReplyRow: View {
                 // make sense and the PostInteractionManager.repostReply guard
                 // would reject it anyway.
                 if onToggleLike != nil || onToggleSave != nil || onRepost != nil || onComment != nil || onShare != nil {
-                    HStack(spacing: 18) {
-                        if let onToggleLike = onToggleLike {
-                            Button {
-                                onToggleLike()
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
-                                        .font(.system(size: 11, weight: .light))
-                                        .foregroundColor(item.reply.isLiked ? Color(hex: "c45c5c") : Color(hex: "b0b0b0"))
-                                    if item.reply.likes > 0 {
-                                        Text("\(item.reply.likes)")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(Color(hex: "999999"))
-                                    }
-                                }
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
-                        }
-                        // Comment / reply-to-reply tap target. Same handler
-                        // as the swipe-from-right gesture; this gives users
-                        // who don't discover the swipe an explicit affordance.
+                    // Layout mirrors FeedPostRow's action bar (FeedView.swift:790)
+                    // exactly: comment / repost / bookmark / share clustered on the
+                    // left at 28pt spacing, then Spacer, then heart on the right
+                    // with its count. Same icon sizes (14pt for the count-bearing
+                    // icons, 16pt for plain ones), same active colors (5a9e8f
+                    // for repost-active, c47a8a for like-active). The only thing
+                    // that differs from a top-level post is the absence of a
+                    // "context-menu on long-press" — kept tight to the canonical
+                    // tap-row for reply density.
+                    HStack(spacing: 28) {
                         if let onComment = onComment {
                             Button {
                                 onComment()
                             } label: {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 11, weight: .light))
-                                    .foregroundColor(Color(hex: "b0b0b0"))
-                                    .contentShape(Rectangle())
+                                HStack(spacing: 4) {
+                                    Image(systemName: "bubble.left")
+                                        .font(.system(size: 14, weight: .light))
+                                    // Reply count for a reply (nested replies)
+                                    // isn't currently tracked at the rule layer
+                                    // — children render inline below, so no
+                                    // count badge here. Same shape as the post
+                                    // version when the count is zero.
+                                }
+                                .foregroundColor(Color.toskaDivider)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Reply to this reply")
@@ -1590,15 +1584,14 @@ struct SwipeToReplyRow: View {
                                 onRepost()
                             } label: {
                                 HStack(spacing: 4) {
-                                    Image(systemName: item.reply.isReposted ? "arrow.2.squarepath" : "arrow.2.squarepath")
-                                        .font(.system(size: 11, weight: item.reply.isReposted ? .semibold : .light))
-                                        .foregroundColor(item.reply.isReposted ? Color.toskaBlue : Color(hex: "b0b0b0"))
+                                    Image(systemName: "arrow.2.squarepath")
+                                        .font(.system(size: 14, weight: .light))
                                     if item.reply.repostCount > 0 {
                                         Text("\(item.reply.repostCount)")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(Color(hex: "999999"))
+                                            .font(.system(size: 11))
                                     }
                                 }
+                                .foregroundColor(item.reply.isReposted ? Color(hex: "5a9e8f") : Color.toskaDivider)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -1609,35 +1602,46 @@ struct SwipeToReplyRow: View {
                                 onToggleSave()
                             } label: {
                                 Image(systemName: item.reply.isSaved ? "bookmark.fill" : "bookmark")
-                                    .font(.system(size: 11, weight: .light))
-                                    .foregroundColor(item.reply.isSaved ? Color.toskaBlue : Color(hex: "b0b0b0"))
+                                    .font(.system(size: 16, weight: .light))
+                                    .foregroundColor(item.reply.isSaved ? Color.toskaBlue : Color.toskaDivider)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(item.reply.isSaved ? "Unsave reply" : "Save reply")
                         }
-                        // External share — mirrors the post-level share
-                        // icon. Opens ShareCardView with the reply's text +
-                        // handle so the user can export a branded image
-                        // for off-platform sharing. Hidden if the reply's
-                        // parent post had isShareable: false (inherited
-                        // privacy intent) — that's enforced upstream in
-                        // PostDetailView via the onShare closure being nil.
                         if let onShare = onShare {
                             Button {
                                 onShare()
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 11, weight: .light))
-                                    .foregroundColor(Color(hex: "b0b0b0"))
+                                    .font(.system(size: 16, weight: .light))
+                                    .foregroundColor(Color.toskaDivider)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Share reply")
                         }
                         Spacer()
+                        if let onToggleLike = onToggleLike {
+                            Button {
+                                onToggleLike()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
+                                        .font(.system(size: 14, weight: .light))
+                                    if item.reply.likes > 0 {
+                                        Text("\(item.reply.likes)")
+                                            .font(.system(size: 11))
+                                    }
+                                }
+                                .foregroundColor(item.reply.isLiked ? Color(hex: "c47a8a") : Color.toskaDivider)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
+                        }
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 6)
                 }
             }
             .padding(.leading, 18 + indent).padding(.trailing, 18).padding(.vertical, 10)

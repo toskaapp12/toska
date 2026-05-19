@@ -995,6 +995,8 @@ struct PostDetailView: View {
         PostInteractionManager.toggleReplySave(
             postId: postId,
             replyId: reply.id,
+            replyText: reply.text,
+            replyHandle: reply.handle,
             currentlySaved: currentlySaved
         ) { newSaved in
             mutateReplyInTree(replyId: replyId) { r in

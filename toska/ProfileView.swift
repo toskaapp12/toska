@@ -19,6 +19,7 @@ struct ProfileView: View {
     @State private var joinedDate = ""
     @State private var myPosts: [MyPost] = []
     @State private var savedPosts: [SavedPost] = []
+    @State private var savedReplies: [SavedReply] = []
     @State private var myReplies: [MyReply] = []
     @State private var likedPosts: [SavedPost] = []
     @State private var selectedPostId: String? = nil
@@ -241,18 +242,27 @@ struct ProfileView: View {
                                                                         }
                                                                     }
                                                                 case 2:
-                                                                    if savedPosts.isEmpty {
+                                                                    let items = mergedSavedItems
+                                                                    if items.isEmpty {
                                                                         emptyState(icon: "bookmark", title: "nothing saved.", subtitle: "some things are worth keeping.")
                                                                     } else {
                                                                         LazyVStack(spacing: 0) {
-                                                                            ForEach(savedPosts) { post in
-                                                                                Button { openSavedPost(post) } label: {
-                                                                                    FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id)
+                                                                            ForEach(items) { item in
+                                                                                switch item {
+                                                                                case .post(let post):
+                                                                                    Button { openSavedPost(post) } label: {
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
+                                                                                case .reply(let saved):
+                                                                                    Button { openSavedReply(saved) } label: {
+                                                                                        SavedReplyRow(saved: saved)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
                                                                                 }
-                                                                                .buttonStyle(.plain)
                                                                             }
-                                                                            if savedPosts.count >= 50 {
-                                                                                Text("showing your 50 most recent saves")
+                                                                            if items.count >= 100 {
+                                                                                Text("showing your most recent saves")
                                                                                     .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
@@ -269,7 +279,9 @@ struct ProfileView: View {
                                     switch selectedTab {
                                     case 0: loadMyPosts()
                                     case 1: loadLikedPosts()
-                                    case 2: loadSavedPosts()
+                                    case 2:
+                                        loadSavedPosts()
+                                        loadSavedReplies()
                                     default: break
                                     }
                                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -324,6 +336,7 @@ struct ProfileView: View {
                                                 loadMyPosts()
                                                 loadLikedPosts()
                                                 loadSavedPosts()
+                                                loadSavedReplies()
                         ensurePresenceThenLoadStreak()
                         Task {
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -342,6 +355,7 @@ struct ProfileView: View {
             myPosts = []
             likedPosts = []
             savedPosts = []
+            savedReplies = []
             myReplies = []
             postCount = 0
             followerCount = 0
@@ -812,7 +826,101 @@ struct ProfileView: View {
             savedPosts = allResults.sorted { $0.createdAt > $1.createdAt }
         }
     }
-    
+
+    // Saved replies live in users/{uid}/savedReplies — each doc is keyed by
+    // the reply id and carries a save-time snapshot of {postId, replyText,
+    // replyHandle, createdAt}. Loading them is a single query: we don't
+    // re-fetch the actual reply or parent post on display because the snapshot
+    // captures everything the saved-tab row needs. The trade-off is that a
+    // reply edit or parent-post delete doesn't propagate here — accepted for
+    // v1.0 (edits are rare, deletes self-heal on tap when fetchParent fails).
+    func loadSavedReplies() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        Task {
+            guard let snap = try? await db.collection("users").document(uid).collection("savedReplies")
+                .order(by: "createdAt", descending: true)
+                .limit(to: 50)
+                .getDocumentsAsync() else { return }
+            guard Auth.auth().currentUser?.uid == uid else { return }
+            let results: [SavedReply] = snap.documents.compactMap { doc in
+                let data = doc.data()
+                guard let postId = data["postId"] as? String, !postId.isEmpty else { return nil }
+                let savedAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                return SavedReply(
+                    id: doc.documentID,
+                    postId: postId,
+                    replyText: data["replyText"] as? String ?? "",
+                    replyHandle: data["replyHandle"] as? String ?? "anonymous",
+                    savedAt: savedAt
+                )
+            }
+            savedReplies = results.sorted { $0.savedAt > $1.savedAt }
+        }
+    }
+
+    /// Sortable union of saved posts and saved replies for the "saved" tab.
+    /// Each variant carries its own createdAt for the merge sort. Tap
+    /// behavior diverges: posts use the existing openSavedPost path; replies
+    /// fetch the parent post async then open PostDetailView pointing at it.
+    enum SavedItem: Identifiable {
+        case post(SavedPost)
+        case reply(SavedReply)
+        var id: String {
+            switch self {
+            case .post(let p): return "post:\(p.id)"
+            case .reply(let r): return "reply:\(r.id)"
+            }
+        }
+        var createdAt: Date {
+            switch self {
+            case .post(let p): return p.createdAt
+            case .reply(let r): return r.savedAt
+            }
+        }
+    }
+
+    var mergedSavedItems: [SavedItem] {
+        let posts = savedPosts.map { SavedItem.post($0) }
+        let replies = savedReplies.map { SavedItem.reply($0) }
+        return (posts + replies).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    // Tap handler for a saved-reply row. Fetches the parent post (one read)
+    // and navigates to PostDetailView showing the thread that contains the
+    // reply. If the parent post no longer exists (edge case after delete),
+    // clean up the orphaned savedReplies entry so the row stops appearing
+    // — same self-healing pattern loadSavedPosts uses for missing posts.
+    func openSavedReply(_ saved: SavedReply) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        Task { @MainActor in
+            guard let snap = try? await db.collection("posts").document(saved.postId).getDocumentAsync(),
+                  let data = snap.data(),
+                  data["text"] != nil else {
+                // Parent gone — clean up the stale saved-reply entry.
+                try? await db.collection("users").document(uid)
+                    .collection("savedReplies").document(saved.id).delete()
+                savedReplies.removeAll { $0.id == saved.id }
+                return
+            }
+            let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+            selectedPostId = saved.postId
+            selectedPostData = PostDetailData(
+                handle: data["authorHandle"] as? String ?? "anonymous",
+                text: data["text"] as? String ?? "",
+                tag: data["tag"] as? String,
+                likes: data["likeCount"] as? Int ?? 0,
+                reposts: data["repostCount"] as? Int ?? 0,
+                replies: data["replyCount"] as? Int ?? 0,
+                time: ToskaFormatters.timeAgo(from: createdAt),
+                authorId: data["authorId"] as? String ?? "",
+                isShareable: data["isShareable"] as? Bool ?? true
+            )
+            showPost = true
+        }
+    }
+
     func loadLikedPosts() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
@@ -866,6 +974,56 @@ struct ProfileView: View {
     // toskaUITests assertion in testProfileElements). OtherProfileView still
     // owns its own reply-loading path. If a replies tab is ever reintroduced
     // here, restore this function and the populated myReplies state.
+}
+
+// MARK: - Saved Reply Row
+//
+// Renders a saved reply in the profile's "saved" tab. Visually
+// distinguished from FeedPostRow with a leading reply-glyph + dimmer
+// chrome so the user can tell at a glance that this entry is a reply,
+// not a top-level post. Tap navigates to the parent post (handled in
+// the enclosing ProfileView via openSavedReply).
+struct SavedReplyRow: View {
+    let saved: SavedReply
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "arrowshape.turn.up.left")
+                .font(.system(size: 11, weight: .light))
+                .foregroundColor(Color.toskaBlue.opacity(0.7))
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(saved.replyHandle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color.toskaBlue)
+                    Text("· reply")
+                        .font(.system(size: 9))
+                        .foregroundColor(Color.toskaTimestamp)
+                    Spacer()
+                    Text(ToskaFormatters.timeAgo(from: saved.savedAt))
+                        .font(.system(size: 9, weight: .light))
+                        .foregroundColor(Color(hex: "c8c8c8"))
+                }
+                Text(saved.replyText)
+                    .font(.custom("Georgia", size: 13))
+                    .foregroundColor(Color.toskaTextDark)
+                    .lineSpacing(3)
+                    .lineLimit(5)
+                    .multilineTextAlignment(.leading)
+                Text("tap to read in thread")
+                    .font(.system(size: 9))
+                    .foregroundColor(Color.toskaDivider)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color(hex: "e4e6ea").opacity(0.5)).frame(height: 0.5)
+        }
+    }
 }
 
 // MARK: - Follow User (for sheet navigation)

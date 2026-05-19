@@ -411,12 +411,16 @@ struct SettingsView: View {
         .sheet(isPresented: $showChangePassword) { ChangePasswordView() }
         .sheet(isPresented: $showLinkBackup) { LinkBackupAuthView() }
         .fullScreenCover(isPresented: $showContentPolicy) {
-            // Read-only re-display of the policy the user accepted at signup.
-            // Both buttons just dismiss — there's no acceptance flow here
-            // (they've already accepted; this is for review only).
+            // Review-mode policy display. The user already accepted at
+            // signup, so the view renders a single "i confirm" CTA instead
+            // of the signup-flow checkbox + accept/decline pair. Both
+            // callbacks resolve to dismissing the cover — no Firestore
+            // write needed (acceptance is already persisted on the user
+            // doc; this is a re-affirmation, not a fresh acceptance).
             PolicyAcceptanceView(
                 onAccept: { showContentPolicy = false },
-                onDecline: { showContentPolicy = false }
+                onDecline: { showContentPolicy = false },
+                isReviewMode: true
             )
         }
         .toolbar(.hidden, for: .navigationBar)

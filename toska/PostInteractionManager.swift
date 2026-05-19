@@ -484,4 +484,224 @@ class PostInteractionManager {
                 }
             }
     }
+
+    // MARK: - Reply Like
+    //
+    // Full parity with toggleLike but targets a reply. Writes the like
+    // doc at posts/{postId}/replies/{replyId}/likes/{uid} (counter handled
+    // by onReplyLikeCreatedUpdateCount Cloud Function) AND a reverse-
+    // index entry at users/{uid}/likedReplies/{replyId} so the iOS side
+    // can bulk-check "did I like these replies?" without N per-reply
+    // gets. Transactional so a rapid like→unlike→like sequence converges
+    // to the latest intent. No notification on reply-like for v1.0 — the
+    // reply author sees the count update next time they revisit the post.
+    @MainActor
+    static func toggleReplyLike(
+        postId: String,
+        replyId: String,
+        replyAuthorId: String,
+        currentlyLiked: Bool,
+        currentCount: Int,
+        onUpdate: @escaping (LikeResult) -> Void
+    ) {
+        guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty, !replyId.isEmpty else {
+            if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
+            onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
+            return
+        }
+        guard NetworkMonitor.shared.isConnected else {
+            print("⚠️ toggleReplyLike — offline, skipping")
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        let db = Firestore.firestore()
+        let likeRef = db.collection("posts").document(postId)
+            .collection("replies").document(replyId)
+            .collection("likes").document(uid)
+        let userLikedReplyRef = db.collection("users").document(uid)
+            .collection("likedReplies").document(replyId)
+        let newLiked = !currentlyLiked
+        let newCount = max(0, currentCount + (newLiked ? 1 : -1))
+
+        // Optimistic update
+        onUpdate(LikeResult(isLiked: newLiked, newCount: newCount))
+
+        db.runTransaction({ transaction, errorPointer in
+            let existing: DocumentSnapshot
+            do { existing = try transaction.getDocument(likeRef) }
+            catch let e as NSError { errorPointer?.pointee = e; return nil }
+
+            if newLiked {
+                if existing.exists { return nil }
+                transaction.setData(
+                    ["createdAt": FieldValue.serverTimestamp()],
+                    forDocument: likeRef
+                )
+                transaction.setData(
+                    ["postId": postId, "createdAt": FieldValue.serverTimestamp()],
+                    forDocument: userLikedReplyRef
+                )
+            } else {
+                transaction.deleteDocument(userLikedReplyRef)
+                if existing.exists {
+                    transaction.deleteDocument(likeRef)
+                }
+            }
+            return nil
+        }, completion: { _, error in
+            Task { @MainActor in
+                if let error = error {
+                    onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
+                    print("⚠️ toggleReplyLike transaction failed: \(error)")
+                }
+            }
+        })
+        // Notification of reply author on like: intentionally deferred to
+        // v1.1. Mirroring toggleLike's notification surface here would
+        // require a new push-payload type ("reply_like") and a deep-link
+        // through PostDetailView; out of scope for the v1.0 submit batch.
+        _ = replyAuthorId
+    }
+
+    // MARK: - Reply Save
+    //
+    // Mirrors toggleSave for replies. Saved entries live at
+    // users/{uid}/savedReplies/{replyId} with a `postId` field so the
+    // ProfileView "saved" tab can navigate back to the parent post
+    // when the user taps a saved-reply row. No server-side counter
+    // (saves are per-user, not aggregated). Transactional so concurrent
+    // save↔unsave on the same reply converges.
+    @MainActor
+    static func toggleReplySave(
+        postId: String,
+        replyId: String,
+        currentlySaved: Bool,
+        onUpdate: @escaping (Bool) -> Void
+    ) {
+        guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty, !replyId.isEmpty else {
+            if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
+            return
+        }
+        guard NetworkMonitor.shared.isConnected else {
+            print("⚠️ toggleReplySave — offline, skipping")
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        let db = Firestore.firestore()
+        let saveRef = db.collection("users").document(uid)
+            .collection("savedReplies").document(replyId)
+        let newSaved = !currentlySaved
+
+        // Optimistic update
+        onUpdate(newSaved)
+
+        db.runTransaction({ transaction, errorPointer in
+            let existing: DocumentSnapshot
+            do { existing = try transaction.getDocument(saveRef) }
+            catch let e as NSError { errorPointer?.pointee = e; return nil }
+
+            if newSaved {
+                if !existing.exists {
+                    transaction.setData(
+                        ["postId": postId, "createdAt": FieldValue.serverTimestamp()],
+                        forDocument: saveRef
+                    )
+                }
+            } else {
+                if existing.exists {
+                    transaction.deleteDocument(saveRef)
+                }
+            }
+            return nil
+        }, completion: { _, error in
+            Task { @MainActor in
+                if let error = error {
+                    print("⚠️ toggleReplySave transaction failed: \(error)")
+                    onUpdate(currentlySaved)
+                }
+            }
+        })
+    }
+
+    // MARK: - Reply Repost
+    //
+    // Repost a reply by creating a new top-level POST with isRepost: true
+    // and originalReplyId: <replyId>. The new post inherits the reply's
+    // text + attribution; validatePost (Cloud Function) verifies the
+    // reply still exists and text matches, and onReplyRepostCreatedUpdateCount
+    // bumps the reply's repostCount. The new post's deterministic doc id
+    // (uid_replyrepost_replyId) makes the transaction retry-safe — duplicate
+    // retries are idempotent because setData on the same docId with the
+    // same data is a no-op. No reposting your own reply.
+    @MainActor
+    static func repostReply(
+        postId: String,
+        replyId: String,
+        replyText: String,
+        replyAuthorId: String,
+        replyAuthorHandle: String,
+        currentCount: Int,
+        onUpdate: @escaping (RepostResult) -> Void
+    ) {
+        guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty, !replyId.isEmpty else {
+            if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
+            return
+        }
+        guard uid != replyAuthorId else { return }
+        guard NetworkMonitor.shared.isConnected else {
+            print("⚠️ repostReply — offline, skipping")
+            return
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let db = Firestore.firestore()
+        let repostHandle = UserHandleCache.shared.handle
+        let newRepostRef = db.collection("posts")
+            .document("\(uid)_replyrepost_\(replyId)")
+
+        let repostData: [String: Any] = [
+            "authorId": uid,
+            "authorHandle": repostHandle,
+            "text": replyText,
+            "likeCount": 0,
+            "repostCount": 0,
+            "replyCount": 0,
+            "isShareable": true,
+            "isRepost": true,
+            "originalPostId": postId,
+            "originalReplyId": replyId,
+            "originalHandle": replyAuthorHandle,
+            "originalAuthorId": replyAuthorId,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+
+        // Optimistic update
+        onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
+
+        db.runTransaction({ transaction, errorPointer in
+            let existing: DocumentSnapshot
+            do { existing = try transaction.getDocument(newRepostRef) }
+            catch let e as NSError { errorPointer?.pointee = e; return nil }
+
+            if existing.exists { return nil } // idempotent
+            transaction.setData(repostData, forDocument: newRepostRef)
+            return nil
+        }, completion: { _, error in
+            Task { @MainActor in
+                if let error = error {
+                    print("⚠️ repostReply transaction failed: \(error)")
+                    onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                    return
+                }
+                // Counter increment + reply-author notification handled by
+                // Cloud Function (onReplyRepostCreatedUpdateCount). The
+                // notification surface for "your reply was reposted" is
+                // out-of-scope for v1.0 — falls through to the in-app
+                // count update on the parent post detail view next visit.
+                NotificationCenter.default.post(name: .newPostCreated, object: nil)
+            }
+        })
+    }
 }

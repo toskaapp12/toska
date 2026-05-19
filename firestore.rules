@@ -438,6 +438,20 @@ service cloud.firestore {
         allow read, create, delete: if isOwner(userId);
       }
 
+      // Reply-interaction reverse indices — mirror /liked and /saved but
+      // for reply targets. Doc id is the replyId; payload carries postId
+      // (parent) so the iOS side can navigate back without re-discovery.
+      // Used by PostDetailView to bulk-check "did I like / save these
+      // replies?" without N per-reply gets. Owner-only at every layer:
+      // a user's reply-engagement history is theirs and only theirs.
+      match /likedReplies/{replyId} {
+        allow read, create, delete: if isOwner(userId);
+      }
+
+      match /savedReplies/{replyId} {
+        allow read, create, delete: if isOwner(userId);
+      }
+
       match /blocked/{blockedId} {
         allow create, delete: if isOwner(userId);
         allow read: if isOwner(userId) || (isAuth() && request.auth.uid == blockedId);
@@ -516,7 +530,14 @@ service cloud.firestore {
              'tag', 'gifUrl',
              'isRepost', 'isLetter', 'isWhisper', 'isMidnightPost', 'isShareable',
              'expiresAt',
-             'originalPostId', 'originalHandle', 'originalAuthorId'
+             'originalPostId', 'originalHandle', 'originalAuthorId',
+             // Reply-repost: when a user reposts a reply (not a post), this
+             // field stores the original reply's doc id. The original post
+             // id (parent of the reply) lives in `originalPostId` and the
+             // reply's author in `originalAuthorId`. validatePost verifies
+             // the reply still exists and text matches before letting the
+             // repost land on the feed.
+             'originalReplyId'
            ])
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
@@ -570,6 +591,20 @@ service cloud.firestore {
             && request.resource.data.get('originalAuthorId', '') is string
             && request.resource.data.originalAuthorId.size() > 0)
           || (
+               // Reply-repost path: when originalReplyId is set, defer the
+               // text/authorId match check to the validatePost Cloud
+               // Function rather than nesting a second 5-get() branch into
+               // this rule. The visibility window (~200ms between create
+               // and Cloud Function delete on mismatch) is an accepted
+               // trade-off — keeps the rule's get() count bounded and
+               // avoids duplicating the reply-existence check structure.
+               // Block check on the original author still runs at the rule
+               // layer below, so the most important anonymity defense
+               // (blocked user can't repost the blocker) is rule-enforced.
+               (request.resource.data.get('originalReplyId', '') is string
+                && request.resource.data.originalReplyId.size() > 0
+                && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid)))
+            || (
                request.resource.data.get('originalPostId', '') is string
             && request.resource.data.originalPostId.size() > 0
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId))
@@ -583,7 +618,7 @@ service cloud.firestore {
                    get(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)).data.handle
             )
           )
-        );
+        ));
       // Post author can edit text/editedAt etc., but cannot directly write
       // counter fields — those are owned by Cloud Functions (Admin SDK
       // bypasses these rules). Without this guard, the author could
@@ -668,6 +703,24 @@ service cloud.firestore {
         allow delete: if isAuth()
           && (resource.data.authorId == request.auth.uid
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+
+        // Reply likes — full parity with post likes (firestore.rules:673).
+        // Schema: a single doc keyed by likeUserId with `createdAt` only;
+        // counter (likeCount on the reply doc) is updated by Cloud Function
+        // (onReplyLikeCreatedUpdateCount / onReplyLikeDeletedUpdateCount).
+        // Block enforcement targets the REPLY author (more specific than
+        // the post author) since the like is an interaction with the reply.
+        match /likes/{likeUserId} {
+          allow read: if isAuth();
+          allow create: if isAuth() && request.auth.uid == likeUserId
+            && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)/blocked/$(request.auth.uid))
+            && request.resource.data.keys().hasOnly(['createdAt'])
+            && request.resource.data.createdAt == request.time;
+          allow delete: if isAuth()
+            && (request.auth.uid == likeUserId
+                || get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId == request.auth.uid
+                || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+        }
       }
 
       match /likes/{likeUserId} {

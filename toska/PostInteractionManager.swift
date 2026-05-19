@@ -499,6 +499,8 @@ class PostInteractionManager {
     static func toggleReplyLike(
         postId: String,
         replyId: String,
+        replyText: String,
+        replyHandle: String,
         replyAuthorId: String,
         currentlyLiked: Bool,
         currentCount: Int,
@@ -524,6 +526,18 @@ class PostInteractionManager {
         let newLiked = !currentlyLiked
         let newCount = max(0, currentCount + (newLiked ? 1 : -1))
 
+        // Save-time snapshot of the reply's text + handle so ProfileView's
+        // "liked" tab can render the row without re-fetching the reply doc.
+        // Same trade-off as toggleReplySave — stale on reply edit, acceptable
+        // for v1.0. The tap path fetches fresh parent-post data so the
+        // thread view always reflects current state.
+        let likedReplyPayload: [String: Any] = [
+            "postId": postId,
+            "replyText": replyText,
+            "replyHandle": replyHandle,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+
         // Optimistic update
         onUpdate(LikeResult(isLiked: newLiked, newCount: newCount))
 
@@ -538,10 +552,7 @@ class PostInteractionManager {
                     ["createdAt": FieldValue.serverTimestamp()],
                     forDocument: likeRef
                 )
-                transaction.setData(
-                    ["postId": postId, "createdAt": FieldValue.serverTimestamp()],
-                    forDocument: userLikedReplyRef
-                )
+                transaction.setData(likedReplyPayload, forDocument: userLikedReplyRef)
             } else {
                 transaction.deleteDocument(userLikedReplyRef)
                 if existing.exists {

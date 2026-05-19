@@ -187,6 +187,27 @@ const BUDDY_POSTS = [
   },
 ];
 
+// Sample notifications for the demo's inbox. Apple's reviewer opens the
+// notifications tab and currently sees an empty state — these populate
+// it with the kinds of events a normal user would have a few days in.
+// fromIdx: 0 = soft_evening_42, 1 = late_oak_88, -1 = no actor (system /
+// milestone). minutesAgo controls the createdAt offset so the inbox has
+// a natural recency ordering. Notification ids are deterministic so re-
+// running the seeder is idempotent.
+const SAMPLE_NOTIFICATIONS = [
+  // Recent activity at the top of the inbox.
+  { id: "n_like_p1_soft", type: "like", fromIdx: 0, postId: "demo_post_1", isRead: false, minutesAgo: 35 },
+  { id: "n_reply_p2_soft", type: "reply", fromIdx: 0, postId: "demo_post_2", isRead: false, minutesAgo: 90,
+    message: "this. the version of you that comes back is different but real." },
+  { id: "n_like_p2_late", type: "like", fromIdx: 1, postId: "demo_post_2", isRead: false, minutesAgo: 180 },
+  { id: "n_follow_soft", type: "follow", fromIdx: 0, postId: "", isRead: false, minutesAgo: 240 },
+  // Older + read — populate the "earlier" section of the inbox.
+  { id: "n_save_p2_late", type: "save", fromIdx: 1, postId: "demo_post_2", isRead: true, minutesAgo: 600 },
+  { id: "n_repost_p3_soft", type: "repost", fromIdx: 0, postId: "demo_post_3", isRead: true, minutesAgo: 900 },
+  { id: "n_milestone_p2", type: "milestone", fromIdx: -1, postId: "demo_post_2", isRead: true, minutesAgo: 1320,
+    message: "your post reached 10 felts" },
+];
+
 // Replies backing the BUDDY_POSTS replyCount values above. Without these,
 // the post detail view shows "X replies" in the header but renders the
 // "be the first to reply" empty state — looks broken to anyone (Apple
@@ -366,6 +387,29 @@ async function setReply(postId, replyId, authorUid, authorHandle, text) {
   });
 }
 
+// Writes a notification doc under the demo's inbox so the App Store
+// reviewer sees a populated notifications tab on first open. Uses
+// Admin SDK, so the rule's schema lockdown (which excludes the
+// `message` field for client writes) doesn't apply — we can include
+// the reply preview and milestone copy that the in-app renderer
+// uses. `minutesAgo` becomes the createdAt offset so the inbox has
+// a believable time ordering.
+async function setNotification(recipientUid, notifId, type, fromUid, fromHandle, postId, isRead, minutesAgo, message) {
+  const path = `users/${recipientUid}/notifications/${notifId}`;
+  const data = {
+    type,
+    fromHandle,
+    fromUserId: fromUid,
+    postId: postId || "",
+    isRead,
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  };
+  if (message) data.message = message;
+  plan("set", path, { type, from: fromHandle, postId, isRead, minutesAgo });
+  if (!APPLY) return;
+  await db.doc(path).set(data);
+}
+
 async function setFollow(followerUid, followingUid) {
   const followingPath = `users/${followerUid}/following/${followingUid}`;
   const followerPath = `users/${followingUid}/followers/${followerUid}`;
@@ -490,6 +534,26 @@ async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
     const authorUid = reply.authorIdx === -1 ? demoUid : buddyUids[reply.authorIdx];
     const authorHandle = reply.authorIdx === -1 ? DEMO_HANDLE : BUDDIES[reply.authorIdx].handle;
     await setReply(reply.postId, reply.id, authorUid, authorHandle, reply.text);
+  }
+
+  // Seed sample notifications into the demo's inbox so the reviewer's
+  // notifications tab opens populated (likes/reply/follow/save/repost/
+  // milestone). fromIdx -1 means a system-generated notification (only
+  // used for milestone), no fromUserId or fromHandle resolves.
+  for (const notif of SAMPLE_NOTIFICATIONS) {
+    const fromUid = notif.fromIdx === -1 ? "" : buddyUids[notif.fromIdx];
+    const fromHandle = notif.fromIdx === -1 ? "toska" : BUDDIES[notif.fromIdx].handle;
+    await setNotification(
+      demoUid,
+      notif.id,
+      notif.type,
+      fromUid,
+      fromHandle,
+      notif.postId,
+      notif.isRead,
+      notif.minutesAgo,
+      notif.message
+    );
   }
 
   // mutual follow between demo and soft.

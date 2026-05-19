@@ -935,11 +935,22 @@ struct AgeGateView: View {
 
 @MainActor
 struct PolicyAcceptanceView: View {
-    /// Fired when the user checks the box and taps continue.
+    /// Fired when the user checks the box and taps continue. In review mode,
+    /// fired by the single "i confirm" button (no checkbox required, since the
+    /// user already accepted at signup and this is a re-affirmation).
     let onAccept: () -> Void
     /// Fired if the user declines. Parent decides what to do (sign out for
-    /// existing users, pop the signup flow for new ones).
+    /// existing users, pop the signup flow for new ones). Ignored in review
+    /// mode — the decline button is hidden because there's no logical "I
+    /// don't agree" path for a user who already accepted at signup.
     let onDecline: () -> Void
+    /// When true, renders as a read-only review of an already-accepted policy:
+    /// hides the checkbox + "i don't agree" link, replaces the "i agree and
+    /// continue" CTA with a single "i confirm" button that just dismisses.
+    /// Used from SettingsView's "view content policy" row, where any user
+    /// reaching it has already accepted at signup. Defaults to false so the
+    /// signup / version-bump call sites are unchanged.
+    var isReviewMode: Bool = false
 
     @State private var agreed = false
 
@@ -974,44 +985,67 @@ struct PolicyAcceptanceView: View {
 
                 Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
 
-                // Checkbox + buttons
+                // Checkbox + buttons. Review mode renders only the single
+                // "i confirm" CTA (no checkbox, no decline link) because the
+                // user already accepted at signup and there's no logical
+                // decline path from Settings.
                 VStack(spacing: 12) {
-                    Button {
-                        agreed.toggle()
-                    } label: {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: agreed ? "checkmark.square.fill" : "square")
-                                .font(.system(size: 18))
-                                .foregroundColor(agreed ? Color.toskaBlue : .white.opacity(0.3))
-                            Text("i confirm i am 17 or older and i agree to the terms and content policy above.")
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.7))
-                                .multilineTextAlignment(.leading)
-                                .lineSpacing(2)
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        if agreed { onAccept() }
-                    } label: {
-                        Text("i agree and continue")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(agreed ? Color(hex: "0a0908") : .white.opacity(0.3))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(agreed ? Color.white : Color.white.opacity(0.08))
-                            .cornerRadius(12)
-                    }
-                    .disabled(!agreed)
-
-                    Button {
-                        onDecline()
-                    } label: {
-                        Text("i don't agree")
+                    if isReviewMode {
+                        Text("you accepted this when you signed up. tap to confirm and close.")
                             .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.35))
+                            .foregroundColor(.white.opacity(0.45))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 4)
+
+                        Button {
+                            onAccept()
+                        } label: {
+                            Text("i confirm")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color(hex: "0a0908"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                        }
+                    } else {
+                        Button {
+                            agreed.toggle()
+                        } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: agreed ? "checkmark.square.fill" : "square")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(agreed ? Color.toskaBlue : .white.opacity(0.3))
+                                Text("i confirm i am 17 or older and i agree to the terms and content policy above.")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .multilineTextAlignment(.leading)
+                                    .lineSpacing(2)
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            if agreed { onAccept() }
+                        } label: {
+                            Text("i agree and continue")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(agreed ? Color(hex: "0a0908") : .white.opacity(0.3))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(agreed ? Color.white : Color.white.opacity(0.08))
+                                .cornerRadius(12)
+                        }
+                        .disabled(!agreed)
+
+                        Button {
+                            onDecline()
+                        } label: {
+                            Text("i don't agree")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.35))
+                        }
                     }
                 }
                 .padding(.horizontal, 20)

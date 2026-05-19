@@ -576,6 +576,8 @@ class PostInteractionManager {
     static func toggleReplySave(
         postId: String,
         replyId: String,
+        replyText: String,
+        replyHandle: String,
         currentlySaved: Bool,
         onUpdate: @escaping (Bool) -> Void
     ) {
@@ -597,6 +599,18 @@ class PostInteractionManager {
         // Optimistic update
         onUpdate(newSaved)
 
+        // Save-time snapshot of the reply's text + handle so the saved
+        // tab in ProfileView can render the row without re-fetching the
+        // reply doc. Stale-on-edit is an accepted trade-off for v1.0 —
+        // the alternative (fetch the reply on every saved-tab load) is
+        // ~N extra reads per visit and reply text edits are rare.
+        let savePayload: [String: Any] = [
+            "postId": postId,
+            "replyText": replyText,
+            "replyHandle": replyHandle,
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+
         db.runTransaction({ transaction, errorPointer in
             let existing: DocumentSnapshot
             do { existing = try transaction.getDocument(saveRef) }
@@ -604,10 +618,7 @@ class PostInteractionManager {
 
             if newSaved {
                 if !existing.exists {
-                    transaction.setData(
-                        ["postId": postId, "createdAt": FieldValue.serverTimestamp()],
-                        forDocument: saveRef
-                    )
+                    transaction.setData(savePayload, forDocument: saveRef)
                 }
             } else {
                 if existing.exists {

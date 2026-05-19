@@ -100,6 +100,18 @@ struct MyReply: Identifiable {
     let parentPostId: String
     let createdAt: Date
 }
+
+/// Used in ProfileView's saved tab for saved replies. Bookmark target is
+/// the reply itself; tap navigates to the parent post (where the reply
+/// renders inline). Text + handle snapshotted at save time — see
+/// PostInteractionManager.toggleReplySave for the stale-on-edit trade-off.
+struct SavedReply: Identifiable {
+    let id: String          // reply doc id
+    let postId: String      // parent post id (for navigation on tap)
+    let replyText: String
+    let replyHandle: String
+    let savedAt: Date
+}
 /// Used in FeelingCircleView for temporary group chat messages
 struct CircleMessage: Identifiable {
     let id: String

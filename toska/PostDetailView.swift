@@ -69,6 +69,11 @@ struct PostDetailView: View {
     @State private var replyingToHandle: String? = nil
     @State private var showReport = false
     @State private var showShareCard = false
+    // Per-reply share — set when the user taps the share icon on a reply
+    // row; presents a ShareCardView for the reply's text + handle. Uses
+    // sheet(item:) so SwiftUI auto-binds the dismiss + presentation to
+    // the optional state without a separate Bool flag.
+    @State private var shareReply: ThreadedReply? = nil
     @State private var showOtherProfile = false
     @State private var authorUserId = ""
     @State private var isAuthorIdLoading = true
@@ -233,6 +238,14 @@ struct PostDetailView: View {
             .sheet(isPresented: $showShareCard) {
                 ShareCardView(text: postText, handle: handle, feltCount: likeCount, tag: tag)
             }
+            .sheet(item: $shareReply) { reply in
+                // Reply share — same ShareCardView component as post share,
+                // parameterized with reply fields. tag is nil because
+                // replies don't carry tags; the card renders without the
+                // tag chip in that case (ShareCardView already handles
+                // optional tag).
+                ShareCardView(text: reply.text, handle: reply.handle, feltCount: reply.likes, tag: nil)
+            }
             .sheet(isPresented: $showOtherProfile) {
                             OtherProfileView(userId: authorUserId, handle: handle)
                         }
@@ -327,7 +340,13 @@ struct PostDetailView: View {
                                         postId: postId,
                                         onToggleLike: { toggleReplyLikeAt(replyId: item.reply.id) },
                                         onToggleSave: { toggleReplySaveAt(replyId: item.reply.id) },
-                                        onRepost: { repostReplyAt(replyId: item.reply.id) }
+                                        onRepost: { repostReplyAt(replyId: item.reply.id) },
+                                        onComment: {
+                                            replyingToId = item.reply.id
+                                            replyingToHandle = item.reply.handle
+                                            replyFocused = true
+                                        },
+                                        onShare: { shareReply = item.reply }
                                     )
                                     if index < flat.count - 1 {
                                         Rectangle()
@@ -1459,6 +1478,14 @@ struct SwipeToReplyRow: View {
     var onToggleLike: (() -> Void)? = nil
     var onToggleSave: (() -> Void)? = nil
     var onRepost: (() -> Void)? = nil
+    /// Mirror of onReply but bound to the chat-bubble icon (vs the
+    /// swipe-from-right gesture). Same action, different affordance —
+    /// the icon is a tap target for users who don't discover the swipe.
+    var onComment: (() -> Void)? = nil
+    /// Opens a ShareCardView sheet for the reply text — same external-
+    /// share path posts use. Implemented in PostDetailView, which owns
+    /// the sheet presentation state.
+    var onShare: (() -> Void)? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var hasTriggered = false
     @State private var showReportSheet = false
@@ -1521,7 +1548,7 @@ struct SwipeToReplyRow: View {
                 // on the user's own reply since reposting yourself doesn't
                 // make sense and the PostInteractionManager.repostReply guard
                 // would reject it anyway.
-                if onToggleLike != nil || onToggleSave != nil || onRepost != nil {
+                if onToggleLike != nil || onToggleSave != nil || onRepost != nil || onComment != nil || onShare != nil {
                     HStack(spacing: 18) {
                         if let onToggleLike = onToggleLike {
                             Button {
@@ -1541,6 +1568,21 @@ struct SwipeToReplyRow: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
+                        }
+                        // Comment / reply-to-reply tap target. Same handler
+                        // as the swipe-from-right gesture; this gives users
+                        // who don't discover the swipe an explicit affordance.
+                        if let onComment = onComment {
+                            Button {
+                                onComment()
+                            } label: {
+                                Image(systemName: "bubble.left")
+                                    .font(.system(size: 11, weight: .light))
+                                    .foregroundColor(Color(hex: "b0b0b0"))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Reply to this reply")
                         }
                         if let onRepost = onRepost,
                            item.reply.authorId != Auth.auth().currentUser?.uid {
@@ -1573,6 +1615,25 @@ struct SwipeToReplyRow: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(item.reply.isSaved ? "Unsave reply" : "Save reply")
+                        }
+                        // External share — mirrors the post-level share
+                        // icon. Opens ShareCardView with the reply's text +
+                        // handle so the user can export a branded image
+                        // for off-platform sharing. Hidden if the reply's
+                        // parent post had isShareable: false (inherited
+                        // privacy intent) — that's enforced upstream in
+                        // PostDetailView via the onShare closure being nil.
+                        if let onShare = onShare {
+                            Button {
+                                onShare()
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 11, weight: .light))
+                                    .foregroundColor(Color(hex: "b0b0b0"))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Share reply")
                         }
                         Spacer()
                     }

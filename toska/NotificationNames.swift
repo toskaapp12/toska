@@ -30,4 +30,11 @@ extension NSNotification.Name {
         // vanishes immediately — without this, the feed kept rendering the
         // blocked author's posts until the next refresh.
         static let userBlocked = NSNotification.Name("UserBlocked")
+        // Posted by MainTabView when the user taps the bell tab while
+        // already on the notifications tab. NotificationsView listens and
+        // pops any pushed destinations (selectedPost, selectedFollowUser,
+        // selectedConversation) back to the root inbox list. Same pattern
+        // every major iOS social app uses (Twitter, Instagram, etc.):
+        // tapping the active tab returns you to its root.
+        static let popNotificationsTabToRoot = NSNotification.Name("PopNotificationsTabToRoot")
     }

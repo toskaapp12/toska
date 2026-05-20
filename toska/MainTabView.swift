@@ -113,8 +113,16 @@ struct MainTabView: View {
                     // Notifications with badge
                     Button {
                         HapticManager.play(.tabSwitch)
-                        NotificationCenter.default.post(name: .dismissAllSheets, object: nil)
-                        withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .notifications }
+                        // Active-tab re-tap pops the notifications nav stack
+                        // back to the inbox root (standard iOS pattern from
+                        // Twitter/Instagram). If we're on a different tab,
+                        // dismissAllSheets + tab switch behaves as before.
+                        if selectedTab == .notifications {
+                            NotificationCenter.default.post(name: .popNotificationsTabToRoot, object: nil)
+                        } else {
+                            NotificationCenter.default.post(name: .dismissAllSheets, object: nil)
+                            withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .notifications }
+                        }
                     } label: {
                         ZStack(alignment: .topTrailing) {
                             Image(systemName: selectedTab == .notifications ? "bell.fill" : "bell")

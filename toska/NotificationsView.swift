@@ -202,6 +202,18 @@ struct NotificationsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showConversation = false
                 }
+        // Tap-active-bell-to-pop-to-root. MainTabView posts this when the
+        // bell is tapped while .notifications is already the selected tab.
+        // Reset every push / sheet binding here so the user lands back on
+        // the inbox list regardless of which destination they'd opened.
+        .onReceive(NotificationCenter.default.publisher(for: .popNotificationsTabToRoot)) { _ in
+            showPost = false
+            selectedPostId = nil
+            selectedPostData = nil
+            selectedFollowUser = nil
+            showConversation = false
+            selectedConversation = nil
+        }
         .navigationDestination(isPresented: $showPost) {
                                     if let post = selectedPostData, let postId = selectedPostId {
                                         PostDetailView(

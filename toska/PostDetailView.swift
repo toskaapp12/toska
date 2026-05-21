@@ -1665,6 +1665,57 @@ struct SwipeToReplyRow: View {
                     }
             )
         }
+        // Long-press context menu — mirror of FeedPostRow's context menu so
+        // every reply gets the same like / save / repost / share / reply
+        // action surface as a post does. The tap-row at the top of the
+        // reply already exposes these as buttons; this is the discoverable
+        // quick-access surface for users who reach for long-press.
+        .contextMenu {
+            if let onToggleLike = onToggleLike {
+                Button { onToggleLike() } label: {
+                    Label(
+                        item.reply.isLiked ? "unlike" : "felt this",
+                        systemImage: item.reply.isLiked ? "heart.slash" : "heart"
+                    )
+                }
+            }
+            if let onToggleSave = onToggleSave {
+                Button { onToggleSave() } label: {
+                    Label(
+                        item.reply.isSaved ? "unsave" : "save",
+                        systemImage: item.reply.isSaved ? "bookmark.slash" : "bookmark"
+                    )
+                }
+            }
+            if let onRepost = onRepost,
+               item.reply.authorId != Auth.auth().currentUser?.uid,
+               !item.reply.isReposted {
+                Button { onRepost() } label: {
+                    Label("repost", systemImage: "arrow.2.squarepath")
+                }
+            }
+            if let onShare = onShare {
+                Button { onShare() } label: {
+                    Label("share", systemImage: "square.and.arrow.up")
+                }
+            }
+            if let onComment = onComment {
+                Button { onComment() } label: {
+                    Label("reply", systemImage: "bubble.left")
+                }
+            }
+            if !postId.isEmpty,
+               !item.reply.authorId.isEmpty,
+               item.reply.authorId != Auth.auth().currentUser?.uid {
+                Divider()
+                Button { showReportSheet = true } label: {
+                    Label("report", systemImage: "flag")
+                }
+                Button(role: .destructive) { showBlockConfirm = true } label: {
+                    Label("block \(item.reply.handle)", systemImage: "person.slash")
+                }
+            }
+        }
         .sheet(isPresented: $showReportSheet) {
             ReportSheet(target: .reply(
                 postId: postId,

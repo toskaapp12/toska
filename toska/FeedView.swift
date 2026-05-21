@@ -638,6 +638,13 @@ struct FeedView: View {
                 }
         .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { _ in
             vm.handleNewPostCreated()
+            // The local user just created a post — auto-scroll to top so
+            // they see it land, and resync the new-posts baseline so the
+            // banner doesn't pop "1 new post" referring to their own
+            // freshly-published content.
+            NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
+            newPostsBadgeCount = 0
+            previousPostCount = -1 // re-baseline on next .onChange tick
         }
         .onChange(of: vm.posts.count) { _, newValue in
             // "X new posts available" delta tracking. previousPostCount

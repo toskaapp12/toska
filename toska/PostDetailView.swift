@@ -65,6 +65,12 @@ struct PostDetailView: View {
     @State private var likeCount: Int = 0
     @State private var localRepostCount: Int = 0
     @State private var replyList: [ThreadedReply] = []
+    // Reply ids whose collapsed deep-thread subtree the user has expanded
+    // via the "show N more replies" stub. Persists across listener
+    // re-renders within the lifetime of this PostDetailView (new push of
+    // PostDetailView resets to empty). Set semantics so expanding the
+    // same thread twice is idempotent.
+    @State private var expandedDeepThreads: Set<String> = []
     @State private var replyingToId: String? = nil
     @State private var replyingToHandle: String? = nil
     @State private var showReport = false
@@ -329,6 +335,34 @@ struct PostDetailView: View {
                                 let flat = flattenReplies(replyList)
                                 ForEach(Array(flat.enumerated()), id: \.element.id) { index, item in
                                     let indent = CGFloat(item.depth) * 24
+                                    if item.hiddenChildren > 0 {
+                                        // Show-more stub for a collapsed
+                                        // deep-thread subtree. Tap expands.
+                                        Button {
+                                            expandedDeepThreads.insert(item.reply.id)
+                                        } label: {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "arrow.turn.down.right")
+                                                    .font(.system(size: 10, weight: .light))
+                                                Text(item.hiddenChildren == 1
+                                                     ? "show 1 more reply"
+                                                     : "show \(item.hiddenChildren) more replies")
+                                                    .font(.system(size: 11, weight: .medium))
+                                            }
+                                            .foregroundColor(Color.toskaBlue)
+                                            .padding(.leading, 18 + indent + 18)
+                                            .padding(.vertical, 8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                        if index < flat.count - 1 {
+                                            Rectangle()
+                                                .fill(Color(hex: "e4e6ea").opacity(0.3))
+                                                .frame(height: 0.5)
+                                                .padding(.leading, 18 + indent)
+                                        }
+                                    } else {
                                     SwipeToReplyRow(
                                         item: item,
                                         indent: indent,
@@ -354,6 +388,7 @@ struct PostDetailView: View {
                                             .frame(height: 0.5)
                                             .padding(.leading, 18 + indent)
                                     }
+                                    } // end else (regular row branch)
                                 }
                             }
                         }
@@ -591,16 +626,43 @@ struct PostDetailView: View {
         let id: String
         let reply: ThreadedReply
         let depth: Int
+        // > 0 indicates this row is a "show N more replies" stub for a
+        // collapsed deep-thread subtree, not a real reply. The render
+        // branches on this to surface a tappable expansion affordance.
+        var hiddenChildren: Int = 0
     }
 
     func flattenReplies(_ replies: [ThreadedReply], depth: Int = 0, maxDepth: Int = 3) -> [FlatReply] {
             var result: [FlatReply] = []
             var seen: Set<String> = []
+            func countDescendants(_ nodes: [ThreadedReply]) -> Int {
+                var n = 0
+                for c in nodes { n += 1 + countDescendants(c.children) }
+                return n
+            }
             func walk(_ nodes: [ThreadedReply], d: Int) {
                 for reply in nodes {
                     guard !seen.contains(reply.id) else { continue }
                     seen.insert(reply.id)
                     result.append(FlatReply(id: reply.id, reply: reply, depth: d))
+                    // At the deepest visible depth: if the reply has
+                    // children AND the user hasn't expanded this subtree
+                    // yet, append a stub row carrying the descendant
+                    // count and skip recursion. Tapping the stub adds
+                    // this reply's id to expandedDeepThreads, which
+                    // re-runs flatten and includes the full subtree.
+                    if d == maxDepth && !reply.children.isEmpty {
+                        if !expandedDeepThreads.contains(reply.id) {
+                            let n = countDescendants(reply.children)
+                            result.append(FlatReply(
+                                id: "\(reply.id)_stub",
+                                reply: reply,
+                                depth: d,
+                                hiddenChildren: n
+                            ))
+                            continue
+                        }
+                    }
                     let childDepth = d < maxDepth ? d + 1 : d
                     walk(reply.children, d: childDepth)
                 }

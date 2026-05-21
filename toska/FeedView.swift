@@ -48,6 +48,13 @@ struct FeedView: View {
     // onDisappear so tabbing away resets the timer cleanly.
     @State private var takeBreakBannerShown = false
     @State private var takeBreakTask: Task<Void, Never>? = nil
+    // "X new posts" Twitter-style banner. Increments when the Firestore
+    // listener delivers more posts than were previously in vm.posts.
+    // Tapping scrolls to top + clears the badge. Initialized to -1 so the
+    // first snapshot (cold-load) doesn't false-trigger the banner against
+    // an empty initial state.
+    @State private var newPostsBadgeCount = 0
+    @State private var previousPostCount = -1
     @FocusState private var searchFocused: Bool
 
     /// True when post matches the current search query (or no query is set).
@@ -113,6 +120,38 @@ struct FeedView: View {
                     .background(Color(hex: "6ba58e").opacity(0.08))
                     .cornerRadius(10)
                     .padding(.horizontal, 14)
+                    .padding(.bottom, 4)
+                }
+                .buttonStyle(.plain)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            // MARK: - New posts available banner
+            //
+            // Twitter-style affordance — when the snapshot listener delivers
+            // new posts while the user is on the feed, surface a small pill
+            // that scrolls to top + clears on tap. Hidden when count is 0.
+            if newPostsBadgeCount > 0 {
+                Button {
+                    NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        newPostsBadgeCount = 0
+                    }
+                    HapticManager.play(.tabSwitch)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 12))
+                        Text(newPostsBadgeCount == 1
+                             ? "1 new post · tap to see"
+                             : "\(newPostsBadgeCount) new posts · tap to see")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Color.toskaBlue)
+                    .clipShape(Capsule())
                     .padding(.bottom, 4)
                 }
                 .buttonStyle(.plain)
@@ -599,6 +638,25 @@ struct FeedView: View {
                 }
         .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { _ in
             vm.handleNewPostCreated()
+        }
+        .onChange(of: vm.posts.count) { _, newValue in
+            // "X new posts available" delta tracking. previousPostCount
+            // initializes to -1 so the first snapshot (cold-load) doesn't
+            // false-trigger the banner against an empty starting state.
+            // Subsequent positive deltas (listener delivers new docs)
+            // increment the badge; the user dismisses with a tap.
+            if previousPostCount == -1 {
+                previousPostCount = newValue
+            } else if newValue > previousPostCount {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    newPostsBadgeCount += (newValue - previousPostCount)
+                }
+                previousPostCount = newValue
+            } else if newValue < previousPostCount {
+                // List shrunk (block + filter, refresh, etc.) — re-sync
+                // baseline without bumping the badge.
+                previousPostCount = newValue
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
                     if let info = notif.userInfo {

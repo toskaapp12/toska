@@ -40,6 +40,14 @@ struct FeedView: View {
     // query. No Firestore round-trip — searches only what's already
     // loaded. Cleared text returns to the unfiltered feed.
     @State private var searchText = ""
+    // Take-a-break gentle reminder. After 15 minutes of continuous time on
+    // the feed, a soft banner appears at the top — non-modal, dismissable
+    // with a tap. Specific to a mental-health-adjacent app: heartbreak
+    // doomscrolling is real and the brand wedge is that we don't pretend
+    // engagement is universally good. Task arms on onAppear, cancels on
+    // onDisappear so tabbing away resets the timer cleanly.
+    @State private var takeBreakBannerShown = false
+    @State private var takeBreakTask: Task<Void, Never>? = nil
     @FocusState private var searchFocused: Bool
 
     /// True when post matches the current search query (or no query is set).
@@ -71,7 +79,46 @@ struct FeedView: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-            
+
+            // MARK: - Take-a-break banner
+            //
+            // Soft, non-modal. Shows after 15 minutes of continuous time on
+            // the feed; tap dismisses. Specific to the mental-health-
+            // adjacent brand: heartbreak doomscrolling is real and the
+            // wedge is that we don't pretend engagement is universally
+            // good. The banner doesn't gate anything — just a gentle ask.
+            if takeBreakBannerShown {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        takeBreakBannerShown = false
+                    }
+                    HapticManager.play(.tabSwitch)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "leaf")
+                            .font(.system(size: 12, weight: .light))
+                            .foregroundColor(Color(hex: "6ba58e"))
+                        Text("you've been here a while. take a breath if you need.")
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundColor(Color.toskaTextDark)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(Color.toskaDivider)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "6ba58e").opacity(0.08))
+                    .cornerRadius(10)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 4)
+                }
+                .buttonStyle(.plain)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // MARK: - Tab bar
             HStack(spacing: 6) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
@@ -496,6 +543,24 @@ struct FeedView: View {
                                                  } else {
                                                      print("⚡️ FeedView onAppear — skipped, hasLoadedOnce already true")
                                                  }
+                                                 // Arm the take-a-break gentle reminder. 15 minutes
+                                                 // of continuous feed time → soft banner. Each fresh
+                                                 // onAppear cycle resets the clock, so tabbing
+                                                 // away + back gives the user a clean break.
+                                                 takeBreakTask?.cancel()
+                                                 if !takeBreakBannerShown {
+                                                     takeBreakTask = Task { @MainActor in
+                                                         try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
+                                                         guard !Task.isCancelled else { return }
+                                                         withAnimation(.easeInOut(duration: 0.3)) {
+                                                             takeBreakBannerShown = true
+                                                         }
+                                                     }
+                                                 }
+                                             }
+                                             .onDisappear {
+                                                 takeBreakTask?.cancel()
+                                                 takeBreakTask = nil
                                              }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
                                                  print("⚡️ AuthDidVerify received in FeedView — hasLoadedOnce: \(vm.hasLoadedOnce), posts.count: \(vm.posts.count)")

@@ -102,7 +102,13 @@ struct ProfileView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
+                ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
+                                    // Top-of-list anchor — used by the
+                                    // tap-active-tab-to-scroll-to-top pattern
+                                    // (MainTabView posts scrollProfileToTop
+                                    // when the user re-taps the profile tab).
+                                    Color.clear.frame(height: 0).id("top")
                                     VStack(alignment: .leading, spacing: 0) {
                                         // Compact profile info
                                         VStack(alignment: .leading, spacing: 8) {
@@ -298,6 +304,12 @@ struct ProfileView: View {
                                     }
                                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                                 }
+                .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        proxy.scrollTo("top", anchor: .top)
+                    }
+                }
+                } // end ScrollViewReader
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }

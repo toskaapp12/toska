@@ -37,4 +37,13 @@ extension NSNotification.Name {
         // every major iOS social app uses (Twitter, Instagram, etc.):
         // tapping the active tab returns you to its root.
         static let popNotificationsTabToRoot = NSNotification.Name("PopNotificationsTabToRoot")
+        // Tap-active-tab-to-scroll-to-top notifications. Universal iOS
+        // pattern (Twitter, Reddit, every social app). MainTabView posts
+        // the matching name when the user taps a tab icon that's already
+        // selected; each tab's view listens and snaps its ScrollView to
+        // the top via a ScrollViewReader anchor.
+        static let scrollTopTabToTop  = NSNotification.Name("ScrollTopTabToTop")
+        static let scrollProfileToTop = NSNotification.Name("ScrollProfileToTop")
+        // (scrollFeedToTop already exists above — added to the same family
+        // of behaviors when the feed's scroll-up affordance was wired.)
     }

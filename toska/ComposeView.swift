@@ -259,6 +259,26 @@ struct ComposeView: View {
                                     // words. Cleared when the post succeeds.
                                     draftText = newValue
                                 }
+                            // Char counter — shows remaining chars as the user
+                            // types, switches to a soft warning color at <100
+                            // remaining so the boundary doesn't surprise them.
+                            // utf16.count matches the Firestore rule's size()
+                            // check + the onChange truncation above.
+                            HStack {
+                                Spacer()
+                                Text("\(activeCharLimit - text.utf16.count)")
+                                    .font(.system(size: 10, weight: .light, design: .monospaced))
+                                    .foregroundColor(
+                                        text.utf16.count >= activeCharLimit
+                                            ? Color(hex: "c45c5c")
+                                            : (activeCharLimit - text.utf16.count < 100
+                                                ? Color(hex: "c47a8a")
+                                                : Color.toskaDivider)
+                                    )
+                                    .monospacedDigit()
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.top, 2)
                         }
 
                         // Selected GIF preview

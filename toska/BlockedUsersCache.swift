@@ -121,11 +121,17 @@ class BlockedUsersCache {
         // Broadcast to ViewModels so they can strip the blocked user's
         // posts from in-memory state. Without this, FeedViewModel.posts
         // (already populated) kept rendering the blocked author's content
-        // until the next refresh.
+        // until the next refresh. Handle is included when available so
+        // MainTabView's undo-toast can address the blocked user by name
+        // ("blocked sarah_evening_42 · undo") instead of a generic message.
+        var userInfo: [String: Any] = ["userId": userId]
+        if let handle = handle, !handle.isEmpty {
+            userInfo["handle"] = handle
+        }
         NotificationCenter.default.post(
             name: .userBlocked,
             object: nil,
-            userInfo: ["userId": userId]
+            userInfo: userInfo
         )
 
         // 2. Persist to Firestore. Include the handle when the caller has it

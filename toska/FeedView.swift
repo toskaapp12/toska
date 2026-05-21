@@ -430,6 +430,17 @@ struct FeedView: View {
                                                                                 // and avoids the blank-feed-on-launch regression.
                                                                             }
                                                                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                                            // Pull-to-refresh on the feed. fetchPosts
+                                                                            // isn't async / completion-bearing so we
+                                                                            // mirror ProfileView's pattern: fire the
+                                                                            // fetch then sleep ~1.5s so the spinner
+                                                                            // stays visible long enough to feel like
+                                                                            // a real refresh. The underlying listener
+                                                                            // delivers the actual data update.
+                                                                            .refreshable {
+                                                                                vm.fetchPosts()
+                                                                                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                                                            }
                                                                                 .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
                                                         proxy.scrollTo("feedTop", anchor: .top)
                                                     }

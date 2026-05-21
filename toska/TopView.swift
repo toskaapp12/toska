@@ -40,7 +40,13 @@ struct TopView: View {
                         ProgressView().tint(Color.toskaBlue)
                         Spacer()
                     } else {
+                        ScrollViewReader { proxy in
                         ScrollView(showsIndicators: false) {
+                            // Top-of-list anchor — used by the tap-active-
+                            // tab-to-scroll-to-top pattern (MainTabView posts
+                            // scrollTopTabToTop when the user re-taps the
+                            // already-active top tab).
+                            Color.clear.frame(height: 0).id("top")
                             if rankedPosts.isEmpty {
                                                             VStack(spacing: 8) {
                                                                 Image(systemName: "chart.line.uptrend.xyaxis")
@@ -124,6 +130,12 @@ struct TopView: View {
                                                         fetchTopPosts(onComplete: { continuation.resume() })
                                                     }
                                                 }
+                        .onReceive(NotificationCenter.default.publisher(for: .scrollTopTabToTop)) { _ in
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                proxy.scrollTo("top", anchor: .top)
+                            }
+                        }
+                        } // end ScrollViewReader
                     }
                 }
             }

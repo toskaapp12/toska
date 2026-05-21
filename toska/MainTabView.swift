@@ -26,6 +26,18 @@ struct MainTabView: View {
     // to this set the first time the user selects them, then kept alive so
     // scroll position and state are preserved on subsequent visits.
     @State private var loadedTabs: Set<Tab> = [.feed]
+    // Undo-block toast state. Populated when .userBlocked fires; cleared
+    // either when the user taps "undo" or after 4 seconds elapsed. The
+    // BlockedUserToast inner struct identifies a specific block event so
+    // a fresh block during an active toast properly replaces the prior
+    // one (rather than queueing or stacking).
+    @State private var pendingUndoBlock: BlockedUserToast? = nil
+    @State private var undoToastDismissTask: Task<Void, Never>? = nil
+    struct BlockedUserToast: Identifiable, Equatable {
+        let id = UUID()
+        let userId: String
+        let handle: String
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -160,8 +172,70 @@ struct MainTabView: View {
                     }
                 )
             }
+
+            // Undo-block toast — overlays the tab bar with a "blocked X · undo"
+            // pill that auto-dismisses after 4s or on tap of "undo". The
+            // 4s window matches iOS Mail's undo-send affordance: long enough
+            // for a misclick recovery, short enough not to linger after the
+            // user has moved on. Positioned just above the tab bar (offset)
+            // via padding(.bottom) so it doesn't collide with the icons.
+            if let toast = pendingUndoBlock {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Text("blocked \(toast.handle)")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white)
+                        Spacer()
+                        Button {
+                            Task {
+                                _ = await BlockedUsersCache.shared.unblock(toast.userId)
+                            }
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                pendingUndoBlock = nil
+                            }
+                            undoToastDismissTask?.cancel()
+                            undoToastDismissTask = nil
+                            HapticManager.play(.tabSwitch)
+                        } label: {
+                            Text("undo")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Color(hex: "f5c97a"))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 88) // above the tab bar
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .ignoresSafeArea(.all, edges: .bottom)
+        .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+            // Show the undo toast on every block emitted by BlockedUsersCache.
+            // userInfo carries `userId` always and `handle` when the caller
+            // had it (most do — block surfaces in PostDetailView, OtherProfileView,
+            // and SwipeToReplyRow all pass handle). Skip the toast if handle
+            // is missing — without a name to address, the "undo" affordance
+            // is confusing.
+            guard let userId = notif.userInfo?["userId"] as? String,
+                  let handle = notif.userInfo?["handle"] as? String,
+                  !handle.isEmpty else { return }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                pendingUndoBlock = BlockedUserToast(userId: userId, handle: handle)
+            }
+            undoToastDismissTask?.cancel()
+            undoToastDismissTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    pendingUndoBlock = nil
+                }
+            }
+        }
         .fullScreenCover(isPresented: $showCompose) {
             ComposeView()
         }
@@ -302,8 +376,23 @@ struct MainTabView: View {
     func tabIcon(icon: String, activeIcon: String, tab: Tab) -> some View {
         Button {
             HapticManager.play(.tabSwitch)
-            NotificationCenter.default.post(name: .dismissAllSheets, object: nil)
-            withAnimation(.easeInOut(duration: 0.15)) { selectedTab = tab }
+            // Active-tab re-tap → scroll-to-top within that tab. Universal
+            // iOS pattern. Feed already had a scrollFeedToTop notification
+            // for its empty-state CTA; top + profile got dedicated names
+            // when this pattern was generalized. Notifications has its own
+            // pop-to-root path on the bell button (different button site
+            // since it carries the unread badge layout).
+            if selectedTab == tab {
+                switch tab {
+                case .feed:    NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
+                case .top:     NotificationCenter.default.post(name: .scrollTopTabToTop, object: nil)
+                case .profile: NotificationCenter.default.post(name: .scrollProfileToTop, object: nil)
+                case .notifications: break // handled by the bell button site, not via tabIcon
+                }
+            } else {
+                NotificationCenter.default.post(name: .dismissAllSheets, object: nil)
+                withAnimation(.easeInOut(duration: 0.15)) { selectedTab = tab }
+            }
         } label: {
             Image(systemName: selectedTab == tab ? activeIcon : icon)
                 .font(.system(size: 20, weight: selectedTab == tab ? .medium : .light))

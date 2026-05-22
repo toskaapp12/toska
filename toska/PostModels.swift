@@ -14,6 +14,13 @@ struct FeedPost: Identifiable, Equatable {
     let time: String
     let authorId: String
     let isShareable: Bool
+    // Original author's handle when this post is a repost (isRepost: true
+    // on the Firestore doc). Populated from data["originalHandle"] in
+    // FeedView.feedPost(from:). FeedPostRow uses it to render a
+    // "@reposter reposted" provenance line above the post body so the
+    // reader can tell at a glance that the visible handle is the
+    // reposter, not the original author. nil for non-repost posts.
+    var originalHandle: String? = nil
 }
 
 /// Used in ProfileView for selectedPostData, NotificationsView, TopView

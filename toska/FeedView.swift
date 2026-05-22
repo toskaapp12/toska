@@ -430,7 +430,7 @@ struct FeedView: View {
                                                                                                                                             )
                                                                                                                                         } else {
                                                                                                                                             FeedPostRow(
-                                                                                                                                                handle: post.handle,
+                                                                                                                                                handle: post.originalHandle ?? post.handle,
                                                                                                                                                 text: post.text,
                                                                                                                                                 tag: post.tag,
                                                                                                                                                 likes: post.likes,
@@ -449,7 +449,8 @@ struct FeedView: View {
                                                                                                                                                 isRepostPost: vm.repostPostIds.contains(post.id),
                                                                                                                                                 isWhisperPost: vm.whisperPostIds.contains(post.id),
                                                                                                                                                 isLetterExpanded: vm.expandedLetterIds.contains(post.id),
-                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) }
+                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
+                                                                                                                                                reposterHandle: post.originalHandle != nil ? post.handle : nil
                                                                                                                                                                                                                                                                                             )
                                                                                                                                                                                                                                                                                             .id(post.id)
                                                                                                                                                                                                                                                                                             .onAppear {
@@ -722,7 +723,8 @@ struct FeedView: View {
                 replies: data["replyCount"] as? Int ?? 0,
                 time: Self.timeAgoString(from: createdAt),
                 authorId: data["authorId"] as? String ?? "",
-                isShareable: data["isShareable"] as? Bool ?? true
+                isShareable: data["isShareable"] as? Bool ?? true,
+                originalHandle: data["originalHandle"] as? String
             )
         }
     
@@ -757,6 +759,10 @@ struct FeedPostRow: View {
             var isWhisperPost: Bool = false
         var isLetterExpanded: Bool = false
         var onLetterExpand: (() -> Void)? = nil
+        // Reposter's handle when this row is a repost — populated by
+        // FeedView when post.originalHandle is set. Drives the
+        // "@handle reposted" provenance row at the top of the cell.
+        var reposterHandle: String? = nil
         
         @State private var isSaved = false
         @State private var isLiked = false
@@ -769,6 +775,19 @@ struct FeedPostRow: View {
             @State private var showPostDetail = false
             @State private var likePulseTask: Task<Void, Never>? = nil
             @State private var repostPulseTask: Task<Void, Never>? = nil
+            // Heart burst overlay state — drives a brief expanding+fading
+            // heart that overlays the like icon when the user taps to like.
+            // Combined with the existing likePulse scale, the burst makes
+            // a like feel rewarding rather than transactional. Both reset
+            // automatically and don't compose with anything else.
+            @State private var likeBurstScale: CGFloat = 1.0
+            @State private var likeBurstOpacity: Double = 0.0
+            // Press-state tint for the whole row — @GestureState so the
+            // value resets the moment the user lifts/cancels, no manual
+            // teardown. LongPressGesture(minimumDuration: 0.01) fires
+            // immediately on touch and tracks pressing via .updating;
+            // doesn't block the existing onTapGesture or context menu.
+            @GestureState private var rowIsPressed: Bool = false
             @State private var showShareCard = false
         @State private var showReportSheet = false
         @State private var showBlockConfirm = false
@@ -776,6 +795,24 @@ struct FeedPostRow: View {
 
     var body: some View {
                 VStack(alignment: .leading, spacing: 0) {
+                // Repost provenance — small "@reposter reposted" line above
+                // the handle row when this post is a repost. Without this,
+                // reposts looked identical to original posts and readers had
+                // no way to tell the visible handle was the reposter rather
+                // than the original author. Only renders when reposterHandle
+                // is set (FeedView passes it for reposts; other call sites
+                // pass nil so this row is hidden there).
+                if let reposter = reposterHandle, !reposter.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.2.squarepath")
+                            .font(.system(size: 10, weight: .regular))
+                        Text("\(reposter) reposted")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(Color.toskaTimestamp)
+                    .padding(.bottom, 6)
+                }
+
                 // Handle row — Threads-ish: bigger handle for stronger
                 // visual anchor, slightly bigger time for legibility, the
                 // separator dot and ellipsis bumped to match.
@@ -888,16 +925,25 @@ struct FeedPostRow: View {
                                         
                                         // Tag pill — slightly bigger so it
                                         // reads as a real chip, not a footnote.
+                                        // Now includes the tag's SF Symbol
+                                        // alongside the name (icon defined in
+                                        // sharedTags); matches how Compose and
+                                        // Explore render the same chips so the
+                                        // visual vocabulary is consistent.
                                         if let tag = tag {
-                                            Text(tag)
-                                                .font(.system(size: 11, weight: .medium))
-                                                .foregroundColor(tagColor(for: tag).opacity(0.75))
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 4)
-                                                .background(tagColor(for: tag).opacity(0.08))
-                                                .cornerRadius(12)
-                                                .padding(.bottom, 10)
-                                                                                        }
+                                            HStack(spacing: 4) {
+                                                Image(systemName: sharedTags.first(where: { $0.name == tag })?.icon ?? "tag")
+                                                    .font(.system(size: 9, weight: .medium))
+                                                Text(tag)
+                                                    .font(.system(size: 11, weight: .medium))
+                                            }
+                                            .foregroundColor(tagColor(for: tag).opacity(0.8))
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
+                                            .background(tagColor(for: tag).opacity(0.08))
+                                            .cornerRadius(12)
+                                            .padding(.bottom, 10)
+                                        }
                                         
                                         // GIF
                 if let gifUrl = gifUrl, let url = URL(string: gifUrl) {
@@ -988,7 +1034,21 @@ struct FeedPostRow: View {
                                                                                    Spacer()
 
                                                                                    Button { toggleLike() } label: {
-                                                                                       actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                                                                       ZStack {
+                                                                                           actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                                                                           // Burst overlay — only visible mid-animation
+                                                                                           // (opacity > 0). Positioned over the heart icon
+                                                                                           // and allowsHitTesting(false) so taps still go
+                                                                                           // to the button. Aligned to leading so it
+                                                                                           // pops from the icon, not the count.
+                                                                                           Image(systemName: "heart.fill")
+                                                                                               .font(.system(size: 17, weight: .regular))
+                                                                                               .foregroundColor(Color(hex: "c47a8a"))
+                                                                                               .scaleEffect(likeBurstScale)
+                                                                                               .opacity(likeBurstOpacity)
+                                                                                               .allowsHitTesting(false)
+                                                                                               .alignmentGuide(.leading) { $0[.leading] }
+                                                                                       }
                                                                                    }
                                                                                    .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
                                                                                    .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
@@ -1002,8 +1062,31 @@ struct FeedPostRow: View {
                                             .padding(.horizontal, 16)
                                             .padding(.top, 18)
                                             .padding(.bottom, 16)
-                                            .background(LateNightTheme.background)
+                                            // Layered background: base color +
+                                            // press-state tint that fades in
+                                            // when the user touches the row.
+                                            // The tint via @GestureState clears
+                                            // automatically on lift / cancel,
+                                            // and the LongPressGesture's tiny
+                                            // minimumDuration fires the press
+                                            // state immediately without
+                                            // blocking the existing tap or
+                                            // context menu (those use
+                                            // independent gesture systems).
+                                            .background(
+                                                ZStack {
+                                                    LateNightTheme.background
+                                                    if rowIsPressed {
+                                                        Color.toskaDivider.opacity(0.18)
+                                                    }
+                                                }
+                                            )
                                             .contentShape(Rectangle())
+                                            .simultaneousGesture(
+                                                LongPressGesture(minimumDuration: 0.01, maximumDistance: 50)
+                                                    .updating($rowIsPressed) { _, state, _ in state = true }
+                                            )
+                                            .animation(.easeInOut(duration: 0.12), value: rowIsPressed)
                                             .onTapGesture {
                                                                             if !postId.isEmpty {
                                                                                 NotificationCenter.default.post(
@@ -1159,6 +1242,19 @@ struct FeedPostRow: View {
                                         try? await Task.sleep(nanoseconds: 600_000_000)
                                         guard !Task.isCancelled else { return }
                                         likePulse = false
+                                    }
+                                    // Burst: reset to start state, then animate
+                                    // out. easeOut over 0.55s makes the heart
+                                    // pop quickly then trail off — feels lively
+                                    // without being chaotic. Skipped under
+                                    // accessibility reduce-motion.
+                                    if !reduceMotion {
+                                        likeBurstScale = 1.0
+                                        likeBurstOpacity = 0.85
+                                        withAnimation(.easeOut(duration: 0.55)) {
+                                            likeBurstScale = 2.6
+                                            likeBurstOpacity = 0.0
+                                        }
                                     }
                                 }
             }

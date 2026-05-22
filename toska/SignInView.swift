@@ -12,6 +12,14 @@ struct SignInView: View {
     @State private var showReset = false
     
     var body: some View {
+        // NavigationStack so showReset can push PasswordResetView instead
+        // of sheet-presenting it (consistency with the rest of the app's
+        // navigation flow). dismiss() at the root level still dismisses
+        // the fullScreenCover from SplashView because @Environment(\.dismiss)
+        // is captured at SignInView's level (above the NavigationStack);
+        // dismiss() inside PasswordResetView (a child view) captures its
+        // own @Environment(\.dismiss) and pops the navigation stack.
+        NavigationStack {
         ZStack {
             Color(hex: "faf8f5").ignoresSafeArea()
             
@@ -138,11 +146,12 @@ struct SignInView: View {
             }
             .padding(.horizontal, 24)
         }
-        .sheet(isPresented: $showReset) {
-            PasswordResetView()
+        .navigationDestination(isPresented: $showReset) {
+            PasswordResetView().navigationBarHidden(true)
+        }
         }
     }
-    
+
     func signIn() {
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard trimmedEmail.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {

@@ -22,27 +22,8 @@ struct MessagesListView: View {
             LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color.toskaBlue)
-                    }
-                    .accessibilityLabel("Back")
-                    Spacer()
-                    Text("messages")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.toskaTextDark)
-                    Spacer()
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14))
-                        .foregroundColor(.clear)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                
-                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
-                
+                ToskaHeader(title: "messages", onBack: { dismiss() })
+
                 if isLoading {
                     SkeletonFeed(kind: .conversation, count: 4)
                     Spacer()

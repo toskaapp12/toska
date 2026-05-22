@@ -131,6 +131,62 @@ struct UserSelection: Identifiable {
     let handle: String
 }
 
+// MARK: - Shared Page Header
+//
+// Modern (Threads-style) page header used across the app: large bold
+// left-aligned title with an optional leading back chevron and an
+// optional trailing view. Replaces the legacy centered-title pattern
+// (X / title / invisible-X mirror) that several screens rolled their
+// own copy of and that read as dated at v1.0 polish review.
+//
+// - title: the screen name in lowercase (matches the rest of the app's
+//   copy convention)
+// - onBack: pass nil for root-tab screens (Feed/Notifications/Profile);
+//   pass dismiss for pushed/sheet screens
+// - trailing: optional ViewBuilder for an extra control (e.g., gear
+//   icon on Profile)
+//
+// No bottom divider — Threads relies on whitespace to separate header
+// from content. Screens that genuinely need a hairline can add their
+// own under the header (rare; most don't).
+@MainActor
+struct ToskaHeader<Trailing: View>: View {
+    let title: String
+    let onBack: (() -> Void)?
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            if let onBack = onBack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundColor(Color.toskaTextDark)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Back")
+            }
+            Text(title)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(Color.toskaTextDark)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+    }
+}
+
+// Convenience initializer for callers that don't need a trailing slot.
+extension ToskaHeader where Trailing == EmptyView {
+    init(title: String, onBack: (() -> Void)? = nil) {
+        self.title = title
+        self.onBack = onBack
+        self.trailing = { EmptyView() }
+    }
+}
+
 // MARK: - Shared Share Sheet Helper
 
 @MainActor

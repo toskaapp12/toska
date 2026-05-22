@@ -34,34 +34,20 @@ struct OtherProfileView: View {
             LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color.toskaBlue)
-                    }
-                    Spacer()
-                    Text(handle)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.toskaBlue)
-                    Spacer()
+                ToskaHeader(
+                    title: handle,
+                    onBack: { dismiss() }
+                ) {
                     if !isOwnProfile {
                         Button { showReport = true } label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 14, weight: .light))
+                                .font(.system(size: 17, weight: .regular))
                                 .foregroundColor(Color.toskaTimestamp)
                         }
                         .accessibilityLabel("Report or block \(handle)")
-                    } else {
-                        Image(systemName: "ellipsis").font(.system(size: 14)).foregroundColor(.clear)
-                            .accessibilityHidden(true)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
-                
+
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         VStack(spacing: 10) {

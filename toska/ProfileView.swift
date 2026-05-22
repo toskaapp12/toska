@@ -1176,19 +1176,7 @@ struct FollowListView: View {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: "999999"))
-                    }
-                    Spacer()
-                    Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                    Spacer()
-                    // Invisible mirror of the back button so the title stays
-                    // optically centered without a custom layout.
-                    Image(systemName: "chevron.left").font(.system(size: 14)).foregroundColor(.clear)
-                }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                ToskaHeader(title: title, onBack: { dismiss() })
                     if isLoading {
                         Spacer(); ProgressView().tint(Color.toskaBlue); Spacer()
                     } else if users.isEmpty {

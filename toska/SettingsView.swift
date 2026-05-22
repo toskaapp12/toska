@@ -61,26 +61,8 @@ struct SettingsView: View {
             LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color.toskaBlue)
-                    }
-                    .accessibilityLabel("Back")
-                    Spacer()
-                    Text("settings")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color.toskaTextDark)
-                    Spacer()
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 14))
-                        .foregroundColor(.clear)
-                        .accessibilityHidden(true)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                
+                ToskaHeader(title: "settings", onBack: { dismiss() })
+
                 if let banner = saveErrorBanner {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle")

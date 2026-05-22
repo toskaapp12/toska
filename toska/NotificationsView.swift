@@ -64,18 +64,8 @@ struct NotificationsView: View {
             LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // MARK: - Header
-                HStack {
-                    Text("notifications")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(Color.toskaTextDark)
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
-
-                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                // Root tab — no back chevron.
+                ToskaHeader(title: "notifications")
 
                 // MARK: - Content
                 if isLoading {

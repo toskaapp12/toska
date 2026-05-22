@@ -234,13 +234,14 @@ struct NotificationsView: View {
                     OtherProfileView(userId: user.id, handle: user.handle)
                         .navigationBarHidden(true)
                 }
-        .sheet(isPresented: $showConversation) {
+        .navigationDestination(isPresented: $showConversation) {
             if let convo = selectedConversation {
                 ConversationView(
                     conversationId: convo.id,
                     otherHandle: convo.handle,
                     otherUserId: convo.userId
                 )
+                .navigationBarHidden(true)
             }
         }
         .alert("post deleted", isPresented: $showDeletedPostAlert) {

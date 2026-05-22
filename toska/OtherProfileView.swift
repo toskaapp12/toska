@@ -280,13 +280,14 @@ struct OtherProfileView: View {
         } message: {
             Text("something went wrong on our end. try again in a moment.")
         }
-        .sheet(isPresented: $showMessages) {
+        .navigationDestination(isPresented: $showMessages) {
             if !activeConversationId.isEmpty {
                 ConversationView(
                     conversationId: activeConversationId,
                     otherHandle: handle,
                     otherUserId: userId
                 )
+                .navigationBarHidden(true)
             }
         }
     }

@@ -403,9 +403,9 @@ struct SettingsView: View {
                         }
                     }
 
-        .sheet(isPresented: $showChangeEmail) { ChangeEmailView() }
-        .sheet(isPresented: $showChangePassword) { ChangePasswordView() }
-        .sheet(isPresented: $showLinkBackup) { LinkBackupAuthView() }
+        .navigationDestination(isPresented: $showChangeEmail) { ChangeEmailView().navigationBarHidden(true) }
+        .navigationDestination(isPresented: $showChangePassword) { ChangePasswordView().navigationBarHidden(true) }
+        .navigationDestination(isPresented: $showLinkBackup) { LinkBackupAuthView().navigationBarHidden(true) }
         .fullScreenCover(isPresented: $showContentPolicy) {
             // Review-mode policy display. The user already accepted at
             // signup, so the view renders a single "i confirm" CTA instead

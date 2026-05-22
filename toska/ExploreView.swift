@@ -431,12 +431,13 @@ struct ExploreView: View {
         }
         
             
-        .sheet(item: $activeConversation) { convo in
+        .navigationDestination(item: $activeConversation) { convo in
                     ConversationView(
                         conversationId: convo.id,
                         otherHandle: convo.handle,
                         otherUserId: convo.userId
                     )
+                    .navigationBarHidden(true)
                 }
     }
     

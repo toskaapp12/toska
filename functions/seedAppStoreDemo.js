@@ -136,7 +136,7 @@ const DEMO_POSTS = [
     text: "the silence in the kitchen at night is the loudest thing now.",
     tag: "lonely",
     likeCount: 7,
-    replyCount: 1,
+    replyCount: 0,
     repostCount: 0,
   },
   {
@@ -144,8 +144,8 @@ const DEMO_POSTS = [
     text: "i forgot how to be the version of me that existed before them. starting over from scratch is also kind of freeing.",
     tag: "rebuilding",
     likeCount: 12,
-    replyCount: 0,
-    repostCount: 1,
+    replyCount: 1,
+    repostCount: 0,
   },
   {
     id: "demo_post_3",

@@ -110,7 +110,11 @@ struct TagSelection: Identifiable {
     var tag: String { id }
 }
 
-struct ConversationSelection: Identifiable {
+// Hashable conformance is required for navigationDestination(item:) —
+// SwiftUI uses the value as a navigation-path identity (vs. .sheet(item:)
+// which only needs Identifiable). All three fields are String which is
+// already Hashable, so the synthesized conformance is enough.
+struct ConversationSelection: Identifiable, Hashable {
     let id: String
     let handle: String
     let userId: String

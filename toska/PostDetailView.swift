@@ -272,35 +272,23 @@ struct PostDetailView: View {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
             VStack(spacing: 0) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color.toskaBlue)
-                    }
-                    Spacer()
-                    Text("post")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color.toskaTextDark)
-                    Spacer()
+                // Header — ToskaHeader with the ellipsis menu in the trailing
+                // slot. The swipe-down-to-dismiss gesture is preserved on the
+                // header bounds (legacy from when PostDetailView was a sheet;
+                // still works as a redundant gesture alongside the system
+                // swipe-from-left and the back chevron).
+                ToskaHeader(
+                    title: "post",
+                    onBack: { dismiss() }
+                ) {
                     Button { showReport = true } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .light))
+                            .font(.system(size: 17, weight: .regular))
                             .foregroundColor(Color.toskaTimestamp)
                     }
                     .opacity(isAuthorIdLoading ? 0 : 1)
                     .accessibilityLabel(isOwnPost ? "Edit or delete post" : "Report or block")
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                // Swipe-down on the header dismisses back to the feed, in
-                // addition to the back chevron and the system swipe-from-
-                // left-edge. Bound to the header (not the whole view) so the
-                // reply ScrollView keeps its native vertical scroll without
-                // contention. contentShape(.rect) makes the empty space
-                // between the buttons drag-eligible; minimumDistance: 20
-                // keeps the gesture from stealing taps on the chevron /
-                // ellipsis buttons.
                 .contentShape(Rectangle())
                 .gesture(
                     DragGesture(minimumDistance: 20)
@@ -310,8 +298,6 @@ struct PostDetailView: View {
                             }
                         }
                 )
-
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {

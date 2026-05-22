@@ -772,31 +772,33 @@ struct FeedPostRow: View {
 
     var body: some View {
                 VStack(alignment: .leading, spacing: 0) {
-                // Handle row
-                    HStack(spacing: 4) {
+                // Handle row — Threads-ish: bigger handle for stronger
+                // visual anchor, slightly bigger time for legibility, the
+                // separator dot and ellipsis bumped to match.
+                    HStack(spacing: 6) {
                                             Text(handle)
-                                                .font(.system(size: 11, weight: .medium))
+                                                .font(.system(size: 14, weight: .semibold))
                                                 .foregroundColor(Color.toskaBlue)
-                                            
+
                                             Text("·")
-                                                .font(.system(size: 9))
-                                                .foregroundColor(Color.toskaDivider)
-                                            
-                                            Text(time)
                                                 .font(.system(size: 11))
+                                                .foregroundColor(Color.toskaDivider)
+
+                                            Text(time)
+                                                .font(.system(size: 12))
                                                 .foregroundColor(Color.toskaTimestamp)
-                                            
+
                                             Spacer()
-                                            
+
                                             if isMidnightPost {
                                                 Image(systemName: "moon.fill")
-                                                    .font(.system(size: 8))
+                                                    .font(.system(size: 9))
                                                     .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
                                             }
-                                            
+
                                             if isWhisperPost {
                                                 Image(systemName: "eye.slash")
-                                                    .font(.system(size: 8))
+                                                    .font(.system(size: 9))
                                                     .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
                                             }
 
@@ -817,16 +819,16 @@ struct FeedPostRow: View {
                                                     }
                                                 } label: {
                                                     Image(systemName: "ellipsis")
-                                                        .font(.system(size: 11))
+                                                        .font(.system(size: 13))
                                                         .foregroundColor(Color.toskaTimestamp)
                                                         .padding(.horizontal, 6)
-                                                        .padding(.vertical, 2)
+                                                        .padding(.vertical, 4)
                                                         .contentShape(Rectangle())
                                                 }
                                                 .accessibilityLabel("More options for \(handle)'s post")
                                             }
                                         }
-                                        .padding(.bottom, 8)
+                                        .padding(.bottom, 10)
                 
                 // Post text
                 if !text.isEmpty {
@@ -880,16 +882,17 @@ struct FeedPostRow: View {
                                             }
                                         }
                                         
-                                        // Tag pill
+                                        // Tag pill — slightly bigger so it
+                                        // reads as a real chip, not a footnote.
                                         if let tag = tag {
                                             Text(tag)
-                                                .font(.system(size: 10, weight: .medium))
-                                                .foregroundColor(tagColor(for: tag).opacity(0.7))
-                                                .padding(.horizontal, 8)
-                                                .padding(.vertical, 3)
-                                                .background(tagColor(for: tag).opacity(0.06))
-                                                .cornerRadius(10)
-                                                .padding(.bottom, 8)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(tagColor(for: tag).opacity(0.75))
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 4)
+                                                .background(tagColor(for: tag).opacity(0.08))
+                                                .cornerRadius(12)
+                                                .padding(.bottom, 10)
                                                                                         }
                                         
                                         // GIF
@@ -933,9 +936,10 @@ struct FeedPostRow: View {
                     }
                 }
                 
-                    // Action bar
+                    // Action bar — larger icons + a bit tighter spacing so
+                                    // the row feels more substantial without crowding.
                                     if !postId.isEmpty {
-                                        HStack(spacing: 28) {
+                                        HStack(spacing: 24) {
                                                                                    Button {
                                                                                        NotificationCenter.default.post(
                                                                                            name: .saveFeedScrollPosition,
@@ -961,7 +965,7 @@ struct FeedPostRow: View {
 
                                                                                    Button { toggleSave() } label: {
                                                                                        Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                                                           .font(.system(size: 16, weight: .light))
+                                                                                           .font(.system(size: 17, weight: .regular))
                                                                                            .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
                                                                                    }
                                                                                    .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
@@ -970,7 +974,7 @@ struct FeedPostRow: View {
                                                                                    if isShareable {
                                                                                        Button { showShareCard = true } label: {
                                                                                            Image(systemName: "square.and.arrow.up")
-                                                                                               .font(.system(size: 16, weight: .light))
+                                                                                               .font(.system(size: 17, weight: .regular))
                                                                                                .foregroundColor(Color.toskaDivider)
                                                                                        }
                                                                                        .accessibilityLabel("Share post")
@@ -988,12 +992,12 @@ struct FeedPostRow: View {
                                                                                    .scaleEffect(likePulse ? 1.15 : 1.0)
                                                                                    .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                                                                }
-                                        .padding(.top, 12)
+                                        .padding(.top, 16)
                                     }
                                 }
                                             .padding(.horizontal, 16)
-                                            .padding(.top, 14)
-                                            .padding(.bottom, 12)
+                                            .padding(.top, 18)
+                                            .padding(.bottom, 16)
                                             .background(LateNightTheme.background)
                                             .contentShape(Rectangle())
                                             .onTapGesture {
@@ -1120,12 +1124,12 @@ struct FeedPostRow: View {
     // MARK: - Action Label
     
     func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "9198a8") -> some View {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .light))
+                    .font(.system(size: 17, weight: .regular))
                 if count > 0 {
                     Text(formatCount(count))
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                 }
             }
             .foregroundColor(isActive ? Color(hex: activeColor) : Color.toskaDivider)

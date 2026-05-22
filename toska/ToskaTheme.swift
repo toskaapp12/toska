@@ -151,7 +151,7 @@ struct UserSelection: Identifiable {
 // in the spirit of "don't fight UIKit," we ONLY restore the gesture —
 // we don't try to suppress it under specific conditions, which is
 // where override misbehavior usually starts.
-extension UINavigationController: UIGestureRecognizerDelegate {
+extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     override open func viewDidLoad() {
         super.viewDidLoad()
         interactivePopGestureRecognizer?.delegate = self

@@ -1077,24 +1077,22 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
-                .fullScreenCover(isPresented: $showPostDetail) {
-                                                    NavigationStack {
-                                                        PostDetailView(
-                                                            postId: postId,
-                                                            handle: handle,
-                                                            text: text,
-                                                            tag: tag,
-                                                            likes: localLikeCount,
-                                                            reposts: localRepostCount,
-                                                            replies: replies,
-                                                            time: time,
-                                                            authorId: authorId,
-                                                            isAlreadyLiked: isLiked,
-                                                            isAlreadySaved: isSaved,
-                                                            isAlreadyReposted: isReposted
-                                                        )
-                                                        .navigationBarHidden(true)
-                                                    }
+                .navigationDestination(isPresented: $showPostDetail) {
+                                                    PostDetailView(
+                                                        postId: postId,
+                                                        handle: handle,
+                                                        text: text,
+                                                        tag: tag,
+                                                        likes: localLikeCount,
+                                                        reposts: localRepostCount,
+                                                        replies: replies,
+                                                        time: time,
+                                                        authorId: authorId,
+                                                        isAlreadyLiked: isLiked,
+                                                        isAlreadySaved: isSaved,
+                                                        isAlreadyReposted: isReposted
+                                                    )
+                                                    .navigationBarHidden(true)
                                                 }
                                 .sheet(isPresented: $showShareCard) {
                                     ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)

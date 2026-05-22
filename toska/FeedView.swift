@@ -583,9 +583,15 @@ struct FeedView: View {
                                                      print("⚡️ FeedView onAppear — skipped, hasLoadedOnce already true")
                                                  }
                                                  // Arm the take-a-break gentle reminder. 15 minutes
-                                                 // of continuous feed time → soft banner. Each fresh
-                                                 // onAppear cycle resets the clock, so tabbing
-                                                 // away + back gives the user a clean break.
+                                                 // of session time → soft banner. MainTabView keeps
+                                                 // FeedView alive across tab switches via .opacity,
+                                                 // so onAppear here only fires on first feed mount
+                                                 // (cold launch or post-sign-in) — the timer keeps
+                                                 // ticking when the user is on other tabs, which
+                                                 // matches the "you've been here a while" intent
+                                                 // better than a per-tab-visit reset would. Sign-out
+                                                 // tears down MainTabView entirely, firing
+                                                 // onDisappear below and cancelling cleanly.
                                                  takeBreakTask?.cancel()
                                                  if !takeBreakBannerShown {
                                                      takeBreakTask = Task { @MainActor in

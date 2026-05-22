@@ -75,40 +75,47 @@ struct ConversationView: View {
             LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                HStack {
+                // Header — Threads-y: large bold handle as the title (via
+                // a manual HStack here rather than ToskaHeader because we
+                // need the messages-remaining / sealed sub-line under the
+                // title, which the shared component doesn't model). Back
+                // chevron + ellipsis sized to match the rest of the app.
+                HStack(alignment: .center, spacing: 14) {
                     Button { dismiss() } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(Color.toskaBlue)
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(Color.toskaTextDark)
+                            .contentShape(Rectangle())
                     }
-                    Spacer()
-                    VStack(spacing: 1) {
+                    .accessibilityLabel("Back")
+
+                    VStack(alignment: .leading, spacing: 1) {
                         Text(otherHandle)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundColor(Color.toskaTextDark)
                         if isSealed {
                             Text("conversation sealed")
-                                .font(.system(size: 9))
+                                .font(.system(size: 11))
                                 .foregroundColor(Color.toskaTimestamp)
                         } else {
                             Text("\(messagesRemaining) messages left")
-                                .font(.system(size: 9))
+                                .font(.system(size: 11))
                                 .foregroundColor(Color.toskaBlue)
                         }
                     }
+
                     Spacer()
+
                     Button { showBlockAlert = true } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .light))
+                            .font(.system(size: 17, weight: .regular))
                             .foregroundColor(Color.toskaTimestamp)
                     }
                     .accessibilityLabel("Report or block")
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-
-                Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
 
                 // FIX: show a retry state when checkIfBlocked fails due to a
                 // network error instead of leaving the user on a blank screen.

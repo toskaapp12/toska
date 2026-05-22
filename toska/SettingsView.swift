@@ -144,34 +144,34 @@ struct SettingsView: View {
                                 Divider().padding(.leading, 14)
                                 NavigationLink(destination: DraftsView()) {
                                     HStack(alignment: .top) {
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: 3) {
                                             Text("drafts")
-                                                .font(.system(size: 14))
+                                                .font(.system(size: 15, weight: .medium))
                                                 .foregroundColor(Color.toskaTextDark)
                                             Text("things you wrote but didnt share")
-                                                .font(.system(size: 11))
+                                                .font(.system(size: 12))
                                                 .foregroundColor(Color.toskaTextLight)
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 10, weight: .light))
+                                            .font(.system(size: 12, weight: .regular))
                                             .foregroundColor(Color.toskaDivider)
                                     }
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, 14)
                                     .padding(.horizontal, 14)
                                 }
                                 Divider().padding(.leading, 14)
                                 NavigationLink(destination: BlockedUsersListView()) {
                                     HStack {
                                         Text("blocked users")
-                                            .font(.system(size: 14))
+                                            .font(.system(size: 15, weight: .medium))
                                             .foregroundColor(Color.toskaTextDark)
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 10, weight: .light))
+                                            .font(.system(size: 12, weight: .regular))
                                             .foregroundColor(Color.toskaDivider)
                                     }
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, 14)
                                     .padding(.horizontal, 14)
                                 }
                             }
@@ -410,69 +410,69 @@ struct SettingsView: View {
     // MARK: - Components
     
     func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             content()
         }
         .padding(.horizontal, 16)
     }
-    
+
     func groupHeader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundColor(Color.toskaTextLight)
             .padding(.leading, 4)
     }
-    
+
     func toggleRow(_ title: String, subtitle: String? = nil, isOn: Binding<Bool>) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.system(size: 14))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(Color.toskaTextDark)
                 if let sub = subtitle {
                     Text(sub)
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundColor(Color.toskaTimestamp)
+                        .lineSpacing(1)
                 }
             }
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(Color.toskaBlue)
-                .scaleEffect(0.8)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 13)
         .padding(.horizontal, 14)
     }
-    
+
     func miniToggle(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack {
             Text(title)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .foregroundColor(Color(hex: "555555"))
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(Color.toskaBlue)
-                .scaleEffect(0.7)
+                .scaleEffect(0.85)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .padding(.horizontal, 14)
         .padding(.leading, 14)
     }
-    
+
     func actionRow(_ title: String, action: @escaping () -> Void) -> some View {
         Button { action() } label: {
             HStack {
                 Text(title)
-                    .font(.system(size: 14))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(Color.toskaTextDark)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .light))
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Color.toskaDivider)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
             .padding(.horizontal, 14)
         }
     }

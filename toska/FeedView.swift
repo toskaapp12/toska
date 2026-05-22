@@ -788,6 +788,17 @@ struct FeedPostRow: View {
             // immediately on touch and tracks pressing via .updating;
             // doesn't block the existing onTapGesture or context menu.
             @GestureState private var rowIsPressed: Bool = false
+            // Inline reply preview — fetched lazily on row appear when
+            // replies > 0, cached for the row's lifetime so scrolling
+            // back doesn't refetch. Threads-defining feature: makes the
+            // feed feel alive vs. static by surfacing the conversation
+            // happening underneath each post without making the user
+            // tap in. Tap on the preview opens PostDetailView (same
+            // destination as tapping the row body).
+            @State private var topReplyHandle: String = ""
+            @State private var topReplyText: String = ""
+            @State private var topReplyLoaded: Bool = false
+            @State private var topReplyFetchTask: Task<Void, Never>? = nil
             @State private var showShareCard = false
         @State private var showReportSheet = false
         @State private var showBlockConfirm = false
@@ -985,7 +996,52 @@ struct FeedPostRow: View {
                         if !postId.isEmpty { showPostDetail = true }
                     }
                 }
-                
+
+                // Inline reply preview — Threads-style: surfaces the
+                // conversation happening under the post without requiring
+                // the user to tap in. Renders only when the lazy fetch
+                // succeeded (topReplyLoaded=true) and the reply has
+                // content. Indented with a left rule to read as a quoted
+                // child of the post. Tapping the whole block opens the
+                // detail view (same destination as tapping the row).
+                if topReplyLoaded && !topReplyText.isEmpty {
+                    Button {
+                        if !postId.isEmpty {
+                            NotificationCenter.default.post(
+                                name: .saveFeedScrollPosition,
+                                object: nil,
+                                userInfo: ["postId": postId]
+                            )
+                            showPostDetail = true
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            Rectangle()
+                                .fill(Color.toskaDivider.opacity(0.55))
+                                .frame(width: 2)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(topReplyHandle)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(Color.toskaBlue)
+                                Text(topReplyText)
+                                    .font(.custom("Georgia", size: 13))
+                                    .foregroundColor(LateNightTheme.primaryText.opacity(0.78))
+                                    .lineSpacing(3)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                if replies > 1 {
+                                    Text("view \(replies) replies")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                        .padding(.top, 2)
+                                }
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 10)
+                }
+
                     // Action bar — larger icons + a bit tighter spacing so
                                     // the row feels more substantial without crowding.
                                     if !postId.isEmpty {
@@ -1150,10 +1206,24 @@ struct FeedPostRow: View {
                                                         isSaved = isAlreadySaved
                                                         isReposted = isAlreadyReposted
                                                     }
+                                                    // Lazy-fetch the top reply for this post — only
+                                                    // when reply count is > 0, the row is real (has a
+                                                    // postId), and we haven't already loaded it.
+                                                    // 250ms debounce so fast scrolling doesn't fire
+                                                    // a fetch on rows the user is just flicking past.
+                                                    if !topReplyLoaded && replies > 0 && !postId.isEmpty {
+                                                        topReplyFetchTask?.cancel()
+                                                        topReplyFetchTask = Task { @MainActor in
+                                                            try? await Task.sleep(nanoseconds: 250_000_000)
+                                                            guard !Task.isCancelled else { return }
+                                                            await fetchTopReply()
+                                                        }
+                                                    }
                                                 }
                                 .onDisappear {
                                     likePulseTask?.cancel()
                                     repostPulseTask?.cancel()
+                                    topReplyFetchTask?.cancel()
                                 }
                 .onChange(of: isAlreadyLiked) { _, newValue in
                     if !postId.isEmpty { isLiked = newValue }
@@ -1210,8 +1280,39 @@ struct FeedPostRow: View {
                                 }
     }
     
+    // MARK: - Top Reply Preview Fetch
+    //
+    // One-shot fetch of the first reply on this post — used for the
+    // inline preview that surfaces under the post body. Ordering by
+    // createdAt asc returns the earliest reply (the conversation
+    // starter), which tends to be the most-engaged-with one in v1.0.
+    // Skips replies authored by blocked users so the preview never
+    // contains content the user has chosen not to see; future-tense
+    // (a blocked-by-this-user reply at position 0 means we just show
+    // no preview, accepting the trade-off for v1.0 simplicity).
+    @MainActor
+    func fetchTopReply() async {
+        guard !postId.isEmpty, replies > 0 else { return }
+        let db = Firestore.firestore()
+        guard let snap = try? await db.collection("posts").document(postId)
+            .collection("replies")
+            .order(by: "createdAt", descending: false)
+            .limit(to: 1)
+            .getDocumentsAsync(),
+              let doc = snap.documents.first else { return }
+        let data = doc.data()
+        let replyAuthorId = data["authorId"] as? String ?? ""
+        if BlockedUsersCache.shared.isBlocked(replyAuthorId) { return }
+        let handle = data["authorHandle"] as? String ?? "anonymous"
+        let text = data["text"] as? String ?? ""
+        guard !text.isEmpty else { return }
+        topReplyHandle = handle
+        topReplyText = text
+        topReplyLoaded = true
+    }
+
     // MARK: - Action Label
-    
+
     func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "9198a8") -> some View {
             HStack(spacing: 5) {
                 Image(systemName: icon)

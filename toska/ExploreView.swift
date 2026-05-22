@@ -168,36 +168,51 @@ struct ExploreView: View {
 
                                 // Tag pills
                                 if !hasSearched && selectedTag == nil {
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 8) {
-                                            ForEach(tags, id: \.name) { tag in
-                                                Button {
-                                                    selectedTag = tag.name
-                                                    fetchPostsForTag(tag.name)
-                                                    fetchPeopleFeelingThis(tag: tag.name)
-                                                } label: {
-                                                    HStack(spacing: 4) {
-                                                        Image(systemName: tag.icon)
-                                                            .font(.system(size: 10))
-                                                        Text(tag.name)
-                                                            .font(.system(size: 11, weight: .medium))
-                                                        if let count = tagCounts[tag.name], count > 0 {
-                                                            Text("·")
-                                                                .font(.system(size: 8))
-                                                                .foregroundColor(Color(hex: tag.colorHex).opacity(0.4))
-                                                            Text("\(count)")
+                                    // ScrollViewReader + .scrollTo on appear so the
+                                    // rail always opens anchored to the first tag
+                                    // ("longing"), matching ComposeView's tag picker
+                                    // which renders fresh each time. Without this,
+                                    // a previous mid-scroll position can persist
+                                    // and make the rail look like it's showing a
+                                    // different tag list than compose.
+                                    ScrollViewReader { proxy in
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            HStack(spacing: 8) {
+                                                ForEach(tags, id: \.name) { tag in
+                                                    Button {
+                                                        selectedTag = tag.name
+                                                        fetchPostsForTag(tag.name)
+                                                        fetchPeopleFeelingThis(tag: tag.name)
+                                                    } label: {
+                                                        HStack(spacing: 4) {
+                                                            Image(systemName: tag.icon)
                                                                 .font(.system(size: 10))
+                                                            Text(tag.name)
+                                                                .font(.system(size: 11, weight: .medium))
+                                                            if let count = tagCounts[tag.name], count > 0 {
+                                                                Text("·")
+                                                                    .font(.system(size: 8))
+                                                                    .foregroundColor(Color(hex: tag.colorHex).opacity(0.4))
+                                                                Text("\(count)")
+                                                                    .font(.system(size: 10))
+                                                            }
                                                         }
+                                                        .foregroundColor(Color(hex: tag.colorHex))
+                                                        .padding(.horizontal, 10)
+                                                        .padding(.vertical, 6)
+                                                        .background(Color(hex: tag.colorHex).opacity(0.06))
+                                                        .cornerRadius(16)
                                                     }
-                                                    .foregroundColor(Color(hex: tag.colorHex))
-                                                    .padding(.horizontal, 10)
-                                                    .padding(.vertical, 6)
-                                                    .background(Color(hex: tag.colorHex).opacity(0.06))
-                                                    .cornerRadius(16)
+                                                    .id(tag.name)
                                                 }
                                             }
+                                            .padding(.horizontal, 16)
                                         }
-                                        .padding(.horizontal, 16)
+                                        .onAppear {
+                                            if let first = tags.first {
+                                                proxy.scrollTo(first.name, anchor: .leading)
+                                            }
+                                        }
                                     }
                                     .padding(.bottom, 8)
                                 }

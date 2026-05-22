@@ -136,24 +136,27 @@ struct MainTabView: View {
                             withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .notifications }
                         }
                     } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: selectedTab == .notifications ? "bell.fill" : "bell")
-                                .font(.system(size: 20, weight: selectedTab == .notifications ? .medium : .light))
-                                .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : Color.toskaTimestamp)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                            if unreadCount > 0 {
-                                Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 2)
-                                    .background(Color(hex: "c47a8a"))
-                                    .clipShape(Capsule())
-                                    .offset(x: 4, y: 2)
+                        Image(systemName: selectedTab == .notifications ? "bell.fill" : "bell")
+                            .font(.system(size: 20, weight: selectedTab == .notifications ? .medium : .light))
+                            .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : Color.toskaTimestamp)
+                            .overlay(alignment: .topTrailing) {
+                                if unreadCount > 0 {
+                                    Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color(hex: "c47a8a"))
+                                        .clipShape(Capsule())
+                                        // Hug the bell's top-right corner. Overlay
+                                        // attaches to the bell's bounding box (vs.
+                                        // the prior ZStack that anchored to the
+                                        // expanded tab-slot frame, which floated
+                                        // the badge way up and out to the right).
+                                        .offset(x: 8, y: -6)
+                                }
                             }
-                        }
-                        .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .accessibilityLabel("Notifications\(unreadCount > 0 ? ", \(unreadCount) unread" : "")")
 

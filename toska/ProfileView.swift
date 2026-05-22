@@ -323,13 +323,15 @@ struct ProfileView: View {
                                     .navigationBarHidden(true)
                             }
                         }
-        .sheet(isPresented: $showEditReply) {
+        .navigationDestination(isPresented: $showEditReply) {
             EditReplyView(postId: editReplyPostId, replyId: editReplyId, replyText: $editReplyText) {
                 if let idx = myReplies.firstIndex(where: { $0.id == editReplyId }) {
                     let old = myReplies[idx]
                     myReplies[idx] = MyReply(id: old.id, replyText: editReplyText, replyTime: old.replyTime, parentText: old.parentText, parentHandle: old.parentHandle, parentPostId: old.parentPostId, createdAt: old.createdAt)
                 }
             }
+            .navigationBarHidden(true)
+            .hidesAppTabBar()
         }
         .alert("delete this reply?", isPresented: $showDeleteReplyAlert) {
             Button("cancel", role: .cancel) {}
@@ -1264,6 +1266,7 @@ struct FollowListView: View {
                 Text("you can re-follow anytime.")
             }
             .navigationBarHidden(true)
+            .hidesAppTabBar()
     }
 
     // Optimistic unfollow. Mirrors OtherProfileView.toggleFollow's unfollow

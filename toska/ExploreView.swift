@@ -454,8 +454,9 @@ struct ExploreView: View {
                     )
                     .navigationBarHidden(true)
                 }
+                .hidesAppTabBar()
     }
-    
+
     // MARK: - Parse helper
     
     func parsePosts(from documents: [QueryDocumentSnapshot]) -> [ExplorePost] {

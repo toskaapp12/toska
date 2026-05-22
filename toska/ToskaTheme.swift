@@ -131,6 +131,37 @@ struct UserSelection: Identifiable {
     let handle: String
 }
 
+// MARK: - Tab-Bar Hide On Push
+//
+// Modern iOS pattern (Threads/Twitter/Instagram): when the user drills
+// into a detail view, the bottom tab bar slides off-screen so the
+// detail view gets the full height (no overlap with composer fields,
+// action bars, or other bottom-anchored UI). The app's tab bar isn't
+// the system UITabBar — it's a custom HStack in MainTabView — so the
+// system `.toolbar(.hidden, for: .tabBar)` modifier doesn't apply.
+//
+// Mechanism: PreferenceKey bubbles up from each drill-in view through
+// the SwiftUI hierarchy to MainTabView, which observes it and toggles
+// a state that conditionally renders the tab bar with an animation.
+// OR-semantics in `reduce` means if any visible view requests the
+// tab bar hidden, the bar stays hidden — handles the transient window
+// during push/pop where two views briefly coexist in the hierarchy.
+struct HidesAppTabBarKey: PreferenceKey {
+    static var defaultValue: Bool = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+extension View {
+    /// Apply to any view that should hide MainTabView's custom tab bar
+    /// while visible. Cleans itself up automatically when the view is
+    /// removed from the hierarchy (the preference disappears with it).
+    func hidesAppTabBar(_ hidden: Bool = true) -> some View {
+        preference(key: HidesAppTabBarKey.self, value: hidden)
+    }
+}
+
 // MARK: - Shared Page Header
 //
 // Modern (Threads-style) page header used across the app: large bold

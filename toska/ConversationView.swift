@@ -447,6 +447,7 @@ struct ConversationView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: showMessageGentleCheck)
+        .hidesAppTabBar()
     }
 
     // MARK: - Block Check

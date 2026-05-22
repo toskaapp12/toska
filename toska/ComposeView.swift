@@ -111,6 +111,12 @@ struct ComposeView: View {
         }
 
     var body: some View {
+        // NavigationStack so the GIF picker can push instead of sheet-present
+        // (consistency with the rest of the app's slide-from-right pattern).
+        // dismiss() at this level still dismisses the parent fullScreenCover
+        // because @Environment(\.dismiss) is captured above the NavigationStack;
+        // dismiss() inside GifPickerView pops the navigation stack.
+        NavigationStack {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
 
@@ -727,17 +733,18 @@ struct ComposeView: View {
                     focusTask?.cancel()
                     focusTask = nil
                 }
-        .sheet(isPresented: $showGifPicker) {
+        .navigationDestination(isPresented: $showGifPicker) {
             GifPickerView { url in
                 selectedGifUrl = url
             }
-            .presentationDetents([.medium, .large])
+            .navigationBarHidden(true)
         }
         // Tab switches post .dismissAllSheets — without this observer, the
-        // GIF picker sheet stays visible behind the new tab.
+        // GIF picker stays visible behind the new tab.
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
             showGifPicker = false
         }
+        } // close NavigationStack
     }
 
     // MARK: - Warning Banner

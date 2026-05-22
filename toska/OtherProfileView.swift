@@ -276,8 +276,9 @@ struct OtherProfileView: View {
                 .navigationBarHidden(true)
             }
         }
+        .hidesAppTabBar()
     }
-    
+
     // MARK: - Check Blocked
     
     func checkIfBlocked() {

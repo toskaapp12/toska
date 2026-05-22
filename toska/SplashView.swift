@@ -149,10 +149,10 @@ struct SplashView: View {
             }
         }
         .fullScreenCover(isPresented: $showCreateAccount) {
-            CreateAccountView()
+            EdgeSwipeDismissWrapper { CreateAccountView() }
         }
         .fullScreenCover(isPresented: $showSignIn) {
-            SignInView()
+            EdgeSwipeDismissWrapper { SignInView() }
         }
     }
 

@@ -131,6 +131,94 @@ struct UserSelection: Identifiable {
     let handle: String
 }
 
+// MARK: - Restore Swipe-Back With Hidden Nav Bar
+//
+// SwiftUI NavigationStack uses UIKit's UINavigationController under the
+// hood. UINavigationController's interactivePopGestureRecognizer (the
+// left-edge swipe-back gesture) defaults to active ONLY when the native
+// navigation bar is visible — hiding the bar via .navigationBarHidden
+// (or .toolbar(.hidden, for: .navigationBar)) disables it. The app
+// hides the nav bar everywhere because every screen ships a custom
+// ToskaHeader, so the swipe-back gesture was dead everywhere.
+//
+// Fix: override the navigation controller's gesture delegate at the
+// UIKit layer so the gesture begins whenever there's something on the
+// stack to pop, regardless of nav-bar visibility. One-time hook in
+// viewDidLoad covers every NavigationStack the app creates.
+//
+// Apple has historically tolerated this pattern (it's documented in
+// dozens of community articles and shipped in apps without issue), but
+// in the spirit of "don't fight UIKit," we ONLY restore the gesture —
+// we don't try to suppress it under specific conditions, which is
+// where override misbehavior usually starts.
+extension UINavigationController: UIGestureRecognizerDelegate {
+    override open func viewDidLoad() {
+        super.viewDidLoad()
+        interactivePopGestureRecognizer?.delegate = self
+    }
+
+    public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Only begin the pop gesture when there's more than the root on
+        // the stack — otherwise it would try to pop the root view, which
+        // does nothing useful and can leave the navigation stack in a
+        // weird interim state.
+        return viewControllers.count > 1
+    }
+}
+
+// MARK: - Left-Edge Swipe To Dismiss
+//
+// fullScreenCover / sheet presentations aren't part of any
+// NavigationStack, so the system interactivePopGestureRecognizer
+// doesn't apply to them. To give them the same "swipe from the left
+// edge to go back" affordance the rest of the app has, this modifier
+// installs a DragGesture that fires dismiss() when the user drags
+// from within ~30pt of the left edge by more than ~80pt.
+//
+// Scoped to start.x < 30 so it never steals taps or scrolls from
+// content; minimumDistance keeps small accidental drags from
+// triggering. The gesture also requires a primarily-horizontal motion
+// so a near-vertical scroll near the edge doesn't dismiss.
+extension View {
+    func leftEdgeSwipeToDismiss(_ dismiss: DismissAction) -> some View {
+        self.gesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    let nearLeftEdge = value.startLocation.x < 30
+                    let movedFarRight = value.translation.width > 80
+                    let mostlyHorizontal = abs(value.translation.width) > abs(value.translation.height) * 1.5
+                    if nearLeftEdge && movedFarRight && mostlyHorizontal {
+                        dismiss()
+                    }
+                }
+        )
+    }
+}
+
+// MARK: - Edge Swipe Dismiss Wrapper
+//
+// Convenience wrapper for fullScreenCover content so each call site
+// can opt into left-edge-swipe-to-dismiss without editing every
+// content view to capture @Environment(\.dismiss). Use as:
+//
+//     .fullScreenCover(isPresented: $showCompose) {
+//         EdgeSwipeDismissWrapper { ComposeView() }
+//     }
+//
+// The wrapper captures dismiss in its own scope (which dismisses the
+// enclosing cover), then applies leftEdgeSwipeToDismiss to the
+// content. Content views don't need any awareness of the gesture.
+@MainActor
+struct EdgeSwipeDismissWrapper<Content: View>: View {
+    @Environment(\.dismiss) var dismiss
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content()
+            .leftEdgeSwipeToDismiss(dismiss)
+    }
+}
+
 // MARK: - Tab-Bar Hide On Push
 //
 // Modern iOS pattern (Threads/Twitter/Instagram): when the user drills

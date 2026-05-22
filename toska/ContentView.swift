@@ -85,6 +85,7 @@ struct ContentView: View {
             // Version-bump retro-prompt. A user declining here is signed out
             // rather than deleted — their account and content persist so they
             // can return and accept later if they change their mind.
+            EdgeSwipeDismissWrapper {
             PolicyAcceptanceView(
                 onAccept: {
                     // Version-bump retro-prompt records only the policy
@@ -117,6 +118,7 @@ struct ContentView: View {
                     NotificationCenter.default.post(name: .userDidSignOut, object: nil)
                 }
             )
+            }
         }
         .onAppear {
             #if DEBUG

@@ -85,11 +85,13 @@ struct DraftsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .fullScreenCover(item: $selectedDraft) { draft in
-                ComposeView(
-                    initialText: draft.text,
-                    onPostSuccess: nil,
-                    editingDraftId: draft.id
-                )
+                EdgeSwipeDismissWrapper {
+                    ComposeView(
+                        initialText: draft.text,
+                        onPostSuccess: nil,
+                        editingDraftId: draft.id
+                    )
+                }
             }
         .onAppear { startListening() }
         .onDisappear { stopListening() }

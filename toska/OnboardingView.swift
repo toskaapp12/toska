@@ -260,6 +260,7 @@ struct OnboardingView: View {
             checkAcceptanceStatus()
         }
         .fullScreenCover(isPresented: $showAgeGate) {
+            EdgeSwipeDismissWrapper {
             AgeGateView(
                 onConfirmAdult: {
                     // Mark the user adult-confirmed via the confirmAdult
@@ -284,8 +285,10 @@ struct OnboardingView: View {
                     declineAndSignOut()
                 }
             )
+            }
         }
         .fullScreenCover(isPresented: $showPolicyAcceptance) {
+            EdgeSwipeDismissWrapper {
             PolicyAcceptanceView(
                 onAccept: {
                     Task { @MainActor in
@@ -311,8 +314,10 @@ struct OnboardingView: View {
                     declineAndSignOut()
                 }
             )
+            }
         }
         .fullScreenCover(isPresented: $showFirstPostCompose) {
+            EdgeSwipeDismissWrapper {
             ComposeView(
                 initialText: "",
                 initialTag: selectedMood,
@@ -330,6 +335,7 @@ struct OnboardingView: View {
                     }
                 }
             )
+            }
         }
         .alert("couldnt save that", isPresented: $moodSaveError) {
             Button("try again") {}

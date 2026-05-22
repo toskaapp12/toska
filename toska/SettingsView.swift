@@ -395,11 +395,13 @@ struct SettingsView: View {
             // callbacks resolve to dismissing the cover — no Firestore
             // write needed (acceptance is already persisted on the user
             // doc; this is a re-affirmation, not a fresh acceptance).
-            PolicyAcceptanceView(
-                onAccept: { showContentPolicy = false },
-                onDecline: { showContentPolicy = false },
-                isReviewMode: true
-            )
+            EdgeSwipeDismissWrapper {
+                PolicyAcceptanceView(
+                    onAccept: { showContentPolicy = false },
+                    onDecline: { showContentPolicy = false },
+                    isReviewMode: true
+                )
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .hidesAppTabBar()

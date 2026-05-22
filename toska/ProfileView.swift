@@ -314,7 +314,7 @@ struct ProfileView: View {
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
         .navigationDestination(isPresented: $showMessagesList) { MessagesListView() }
-        .fullScreenCover(isPresented: $showWeeklyRecap) { WeeklyRecapView() }
+        .fullScreenCover(isPresented: $showWeeklyRecap) { EdgeSwipeDismissWrapper { WeeklyRecapView() } }
         .navigationDestination(isPresented: $showFollowers) { FollowListView(title: "followers").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showFollowing) { FollowListView(title: "following").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showPost) {

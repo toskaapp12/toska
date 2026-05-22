@@ -618,15 +618,19 @@ struct FeedView: View {
                    ExploreView().navigationBarHidden(true)
                }
         .fullScreenCover(isPresented: $vm.showPromptCompose) {
-                            ComposeView(
-                                initialText: "",
-                                initialTag: vm.todaysPrompt.1
-                            )
-                            .onAppear { HapticManager.play(.compose) }
+                            EdgeSwipeDismissWrapper {
+                                ComposeView(
+                                    initialText: "",
+                                    initialTag: vm.todaysPrompt.1
+                                )
+                                .onAppear { HapticManager.play(.compose) }
+                            }
         }
         .fullScreenCover(isPresented: $vm.showDailyMoment) {
-                    DailyMomentView()
-                        .onAppear { HapticManager.play(.postAppear) }
+                    EdgeSwipeDismissWrapper {
+                        DailyMomentView()
+                            .onAppear { HapticManager.play(.postAppear) }
+                    }
                 }
         .navigationDestination(isPresented: $vm.showWitnessPost) {
                     if let witness = vm.witnessPost {

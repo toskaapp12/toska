@@ -54,53 +54,48 @@ struct MessagesListView: View {
                                     HStack(spacing: 12) {
                                         ZStack {
                                             Circle()
-                                                .fill(Color.toskaBlue.opacity(0.1))
-                                                .frame(width: 40, height: 40)
+                                                .fill(Color.toskaBlue.opacity(0.12))
+                                                .frame(width: 44, height: 44)
                                             Text(String(convo.otherHandle.replacingOccurrences(of: "anonymous_", with: "").prefix(1)).uppercased())
-                                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                                .font(.system(size: 17, weight: .semibold, design: .rounded))
                                                 .foregroundColor(Color.toskaBlue)
                                         }
-                                        
-                                        VStack(alignment: .leading, spacing: 3) {
+
+                                        VStack(alignment: .leading, spacing: 4) {
                                             HStack {
                                                 Text(convo.otherHandle)
-                                                    .font(.system(size: 13, weight: .semibold))
-                                                    .foregroundColor(Color.toskaTextDark)
+                                                    .font(.system(size: 15, weight: .semibold))
+                                                    .foregroundColor(Color.toskaBlue)
                                                 Spacer()
                                                 Text(convo.timeAgo)
                                                     .font(.system(size: 11))
                                                     .foregroundColor(Color.toskaTimestamp)
                                             }
-                                            
-                                            HStack(spacing: 4) {
+
+                                            HStack(spacing: 6) {
                                                 Text(convo.lastMessage)
-                                                    .font(.system(size: 12))
-                                                    .foregroundColor(Color(hex: "999999"))
+                                                    .font(.system(size: 13))
+                                                    .foregroundColor(Color(hex: "888888"))
                                                     .lineLimit(1)
-                                                
+
                                                 Spacer()
-                                                
+
                                                 if convo.isSealed {
                                                     Text("sealed")
-                                                        .font(.system(size: 9, weight: .medium))
+                                                        .font(.system(size: 10, weight: .medium))
                                                         .foregroundColor(Color.toskaTimestamp)
-                                                        .padding(.horizontal, 6)
-                                                        .padding(.vertical, 2)
+                                                        .padding(.horizontal, 7)
+                                                        .padding(.vertical, 3)
                                                         .background(Color(hex: "dfe1e5").opacity(0.5))
-                                                        .cornerRadius(4)
+                                                        .cornerRadius(6)
                                                 }
                                             }
                                         }
                                     }
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
+                                    .padding(.vertical, 14)
                                 }
                                 .buttonStyle(.plain)
-                                
-                                Rectangle()
-                                    .fill(Color(hex: "dfe1e5"))
-                                    .frame(height: 0.5)
-                                    .padding(.leading, 68)
                             }
                         }
                     }

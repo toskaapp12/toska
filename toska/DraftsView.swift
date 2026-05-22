@@ -53,18 +53,19 @@ struct DraftsView: View {
                             Button {
                                 selectedDraft = draft
                             } label: {
-                                VStack(alignment: .leading, spacing: 4) {
+                                VStack(alignment: .leading, spacing: 6) {
                                     Text(draft.text)
-                                        .font(.custom("Georgia", size: 14))
+                                        .font(.custom("Georgia", size: 16))
                                         .foregroundColor(LateNightTheme.primaryText)
+                                        .lineSpacing(3)
                                         .lineLimit(3)
                                         .multilineTextAlignment(.leading)
                                     Text(ToskaFormatters.fullDate.string(from: draft.createdAt).lowercased())
-                                        .font(.system(size: 9))
+                                        .font(.system(size: 11))
                                         .foregroundColor(LateNightTheme.tertiaryText)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 4)
+                                .padding(.vertical, 8)
                             }
                             .buttonStyle(.plain)
                             .listRowBackground(LateNightTheme.cardBackground)

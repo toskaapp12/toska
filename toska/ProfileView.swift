@@ -79,28 +79,25 @@ struct ProfileView: View {
             LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                HStack {
-                    Text(userHandle)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color.toskaTextDark)
-                    Spacer()
-                    HStack(spacing: 16) {
+                // Profile root tab — large bold handle as the title via
+                // ToskaHeader, with messages + settings icons in the
+                // trailing slot. No back chevron (root tab).
+                ToskaHeader(title: userHandle, onBack: nil) {
+                    HStack(spacing: 18) {
                         Button { showMessagesList = true } label: {
                             Image(systemName: "envelope")
-                                .font(.system(size: 16, weight: .light))
+                                .font(.system(size: 18, weight: .regular))
                                 .foregroundColor(Color.toskaTextLight)
                         }
                         .accessibilityLabel("messages")
                         Button { showSettings = true } label: {
                             Image(systemName: "gearshape")
-                                .font(.system(size: 16, weight: .light))
+                                .font(.system(size: 18, weight: .regular))
                                 .foregroundColor(Color.toskaTextLight)
                         }
                         .accessibilityLabel("settings")
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
                 
                 ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
@@ -127,13 +124,18 @@ struct ProfileView: View {
                                                 }
                                             }
                                             
-                                            // Stats inline
-                                            HStack(spacing: 12) {
+                                            // Stats inline — bumped to 16pt bold
+                                            // numbers + roomier spacing so the
+                                            // header has real visual presence.
+                                            HStack(spacing: 18) {
                                                 statLabel(count: postCount, label: "posts")
                                                 Button { showFollowers = true } label: { statLabel(count: followerCount, label: "followers") }
+                                                    .buttonStyle(.plain)
                                                 Button { showFollowing = true } label: { statLabel(count: followingCount, label: "following") }
+                                                    .buttonStyle(.plain)
                                                 statLabel(count: totalLikes, label: "felt")
                                             }
+                                            .padding(.top, 2)
                                             
                                             if totalNights > 0 {
                                                 HStack(spacing: 8) {
@@ -472,9 +474,13 @@ struct ProfileView: View {
     }
     
     func statLabel(count: Int, label: String) -> some View {
-        HStack(spacing: 4) {
-            Text("\(formatCount(count))").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-            Text(label).font(.system(size: 13)).foregroundColor(Color.toskaTextLight)
+        HStack(spacing: 5) {
+            Text("\(formatCount(count))")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(Color.toskaTextDark)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(Color.toskaTextLight)
         }
     }
     

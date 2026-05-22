@@ -50,67 +50,70 @@ struct OtherProfileView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
-                        VStack(spacing: 10) {
-                                                    Text(handle)
-                                                        .font(.system(size: 14, weight: .semibold))
-                                                        .foregroundColor(Color.toskaBlue)
-                            
+                        // Profile info — Threads-y treatment: handle was
+                        // already shown big in the ToskaHeader above; this
+                        // section is the secondary info (join date, stats,
+                        // primary follow + message CTAs). Bumped sizes:
+                        // counts 13pt → 16pt bold, labels 9pt → 12pt;
+                        // calendar/join 8-9pt → 11pt; follow button text
+                        // 12pt → 14pt with bigger pill.
+                        VStack(alignment: .leading, spacing: 14) {
                             if !joinedDate.isEmpty {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "calendar").font(.system(size: 8))
-                                    Text("joined \(joinedDate)").font(.system(size: 9))
+                                    Image(systemName: "calendar").font(.system(size: 10))
+                                    Text("joined \(joinedDate)").font(.system(size: 11))
                                 }
                                 .foregroundColor(Color.toskaTimestamp)
                             }
-                            
+
                             if showFollowerCount {
-                                HStack(spacing: 20) {
-                                    VStack(spacing: 1) {
-                                        Text("\(followerCount)").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("followers").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                                HStack(spacing: 22) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(followerCount)").font(.system(size: 16, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("followers").font(.system(size: 12)).foregroundColor(Color.toskaTimestamp)
                                     }
-                                    VStack(spacing: 1) {
-                                        Text("\(followingCount)").font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("following").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(followingCount)").font(.system(size: 16, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("following").font(.system(size: 12)).foregroundColor(Color.toskaTimestamp)
                                     }
-                                    VStack(spacing: 1) {
-                                        Text(formatCount(totalLikes)).font(.system(size: 13, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("likes").font(.system(size: 9)).foregroundColor(Color.toskaTimestamp)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(formatCount(totalLikes)).font(.system(size: 16, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("felt").font(.system(size: 12)).foregroundColor(Color.toskaTimestamp)
                                     }
                                 }
-                                .padding(.top, 2)
                             }
-                            
+
                             if !isOwnProfile {
-                                HStack(spacing: 8) {
+                                HStack(spacing: 10) {
                                     Button { toggleFollow() } label: {
                                         Text(isFollowing ? "following" : "follow")
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(isFollowing ? Color(hex: "999999") : .white)
-                                            .frame(width: 100)
-                                            .padding(.vertical, 8)
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(isFollowing ? Color(hex: "888888") : .white)
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 11)
                                             .background(isFollowing ? Color(hex: "e4e6ea") : Color.toskaBlue)
-                                            .cornerRadius(16)
+                                            .cornerRadius(22)
                                     }
-                                    
+
                                     Button { startConversation() } label: {
                                         Image(systemName: "envelope")
-                                            .font(.system(size: 13, weight: .light))
+                                            .font(.system(size: 16, weight: .regular))
                                             .foregroundColor(Color.toskaBlue)
-                                            .frame(width: 36, height: 36)
-                                            .background(Color.toskaBlue.opacity(0.1))
-                                            .cornerRadius(18)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.toskaBlue.opacity(0.12))
+                                            .cornerRadius(22)
                                     }
                                 }
-                                .padding(.top, 4)
                             } else {
                                 Text("this is you")
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 11))
                                     .foregroundColor(Color.toskaTimestamp)
-                                    .padding(.top, 4)
                             }
                         }
-                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 18)
                         
                         HStack(spacing: 0) {
                             Button { selectedTab = 0 } label: {

@@ -252,15 +252,17 @@ struct PostDetailView: View {
                 // optional tag).
                 ShareCardView(text: reply.text, handle: reply.handle, feltCount: reply.likes, tag: nil)
             }
-            .sheet(isPresented: $showOtherProfile) {
+            .navigationDestination(isPresented: $showOtherProfile) {
                             OtherProfileView(userId: authorUserId, handle: handle)
+                                .navigationBarHidden(true)
                         }
             .sheet(isPresented: $showReplyGifPicker) {
                 GifPickerView { url in replyGifUrl = url }
                     .presentationDetents([.medium, .large])
             }
-            .sheet(item: $activeConversation) { convo in
+            .navigationDestination(item: $activeConversation) { convo in
                 ConversationView(conversationId: convo.id, otherHandle: convo.handle, otherUserId: convo.userId)
+                    .navigationBarHidden(true)
             }
     }
 

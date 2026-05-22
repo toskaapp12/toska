@@ -614,8 +614,8 @@ struct FeedView: View {
                                                      vm.loadInitialData()
                                                  }
                                              }
-               .sheet(isPresented: $vm.showExplore) {
-                   ExploreView()
+               .navigationDestination(isPresented: $vm.showExplore) {
+                   ExploreView().navigationBarHidden(true)
                }
         .fullScreenCover(isPresented: $vm.showPromptCompose) {
                             ComposeView(
@@ -628,7 +628,7 @@ struct FeedView: View {
                     DailyMomentView()
                         .onAppear { HapticManager.play(.postAppear) }
                 }
-        .sheet(isPresented: $vm.showWitnessPost) {
+        .navigationDestination(isPresented: $vm.showWitnessPost) {
                     if let witness = vm.witnessPost {
                         PostDetailView(
                             postId: witness.postId,
@@ -640,6 +640,7 @@ struct FeedView: View {
                             replies: 0,
                             time: witness.timeString
                         )
+                        .navigationBarHidden(true)
                     }
                 }
         .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { _ in

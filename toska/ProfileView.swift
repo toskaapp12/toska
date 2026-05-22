@@ -315,8 +315,8 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
         .navigationDestination(isPresented: $showMessagesList) { MessagesListView() }
         .fullScreenCover(isPresented: $showWeeklyRecap) { WeeklyRecapView() }
-        .sheet(isPresented: $showFollowers) { FollowListView(title: "followers") }
-        .sheet(isPresented: $showFollowing) { FollowListView(title: "following") }
+        .navigationDestination(isPresented: $showFollowers) { FollowListView(title: "followers").navigationBarHidden(true) }
+        .navigationDestination(isPresented: $showFollowing) { FollowListView(title: "following").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showPost) {
                             if let postData = selectedPostData, let postId = selectedPostId {
                                 PostDetailView(postId: postId, handle: postData.handle, text: postData.text, tag: postData.tag, likes: postData.likes, reposts: postData.reposts, replies: postData.replies, time: postData.time, authorId: postData.authorId)
@@ -1169,21 +1169,24 @@ struct FollowListView: View {
     private var isFollowingTab: Bool { title == "following" }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                LateNightTheme.background.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    HStack {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: "999999"))
-                        }
-                        Spacer()
-                        Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                        Spacer()
-                        // Invisible mirror of the close button so the title
-                        // stays optically centered without a custom layout.
-                        Image(systemName: "xmark").font(.system(size: 14)).foregroundColor(.clear)
+        // No inner NavigationStack — this view is pushed onto the parent's
+        // stack (ProfileView's NavigationStack via .navigationDestination).
+        // Inner-stack would nest and break .navigationDestination(item:)
+        // for the row-tap → OtherProfileView push below.
+        ZStack {
+            LateNightTheme.background.ignoresSafeArea()
+            VStack(spacing: 0) {
+                HStack {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.left").font(.system(size: 14, weight: .light)).foregroundColor(Color(hex: "999999"))
                     }
+                    Spacer()
+                    Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                    Spacer()
+                    // Invisible mirror of the back button so the title stays
+                    // optically centered without a custom layout.
+                    Image(systemName: "chevron.left").font(.system(size: 14)).foregroundColor(.clear)
+                }
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                     if isLoading {
@@ -1273,7 +1276,6 @@ struct FollowListView: View {
                 Text("you can re-follow anytime.")
             }
             .navigationBarHidden(true)
-        } // closes NavigationStack
     }
 
     // Optimistic unfollow. Mirrors OtherProfileView.toggleFollow's unfollow

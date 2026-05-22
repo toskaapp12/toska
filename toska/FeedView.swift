@@ -1094,16 +1094,20 @@ struct FeedPostRow: View {
                                                     )
                                                     .navigationBarHidden(true)
                                                 }
-                                .sheet(isPresented: $showShareCard) {
+                                .navigationDestination(isPresented: $showShareCard) {
                                     ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
+                                        .navigationBarHidden(true)
+                                        .hidesAppTabBar()
                                 }
-                                .sheet(isPresented: $showReportSheet) {
+                                .navigationDestination(isPresented: $showReportSheet) {
                                     ReportSheet(target: .post(
                                         postId: postId,
                                         authorId: authorId,
                                         authorHandle: handle,
                                         text: text
                                     ))
+                                    .navigationBarHidden(true)
+                                    .hidesAppTabBar()
                                 }
                                 .confirmationDialog(
                                     "block \(handle)?",

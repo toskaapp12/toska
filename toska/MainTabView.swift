@@ -38,6 +38,10 @@ struct MainTabView: View {
         let userId: String
         let handle: String
     }
+    // Set true by any pushed drill-in view via .hidesAppTabBar(); the tab
+    // bar slides off-screen so reply composers, action rows, and other
+    // bottom-anchored UI inside pushed detail views aren't covered.
+    @State private var tabBarHidden = false
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -86,6 +90,12 @@ struct MainTabView: View {
             }
 
             // MARK: - Tab bar
+            // Hidden when any pushed view declares `.hidesAppTabBar()`; the
+            // bar slides off-screen so drill-in views (post detail, follow
+            // list, conversation, settings, etc.) get the full height for
+            // their bottom-anchored UI (e.g., the reply composer in
+            // PostDetailView). See HidesAppTabBarKey in ToskaTheme.swift.
+            if !tabBarHidden {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     Button {
@@ -175,6 +185,8 @@ struct MainTabView: View {
                     }
                 )
             }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            } // end if !tabBarHidden
 
             // Undo-block toast — overlays the tab bar with a "blocked X · undo"
             // pill that auto-dismisses after 4s or on tap of "undo". The
@@ -217,6 +229,14 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.all, edges: .bottom)
+        .onPreferenceChange(HidesAppTabBarKey.self) { hidden in
+            // Animate the tab bar in/out. Spring matches the feel of
+            // navigation pushes so the bar's exit/entry tracks the push
+            // motion. See ToskaTheme.swift → HidesAppTabBarKey.
+            withAnimation(.easeInOut(duration: 0.22)) {
+                tabBarHidden = hidden
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
             // Show the undo toast on every block emitted by BlockedUsersCache.
             // userInfo carries `userId` always and `handle` when the caller

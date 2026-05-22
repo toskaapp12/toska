@@ -2,7 +2,11 @@ import SwiftUI
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 
-struct ThreadedReply: Identifiable {
+// Hashable conformance is required so .navigationDestination(item:) can
+// use ThreadedReply as a navigation-path identity for the reply-share
+// push. Swift synthesizes Hashable since all stored fields are Hashable
+// (String, Int, Bool, Optional<String>, recursive Array of self).
+struct ThreadedReply: Identifiable, Hashable {
     let id: String
     let handle: String
     let text: String
@@ -115,6 +119,7 @@ struct PostDetailView: View {
     var body: some View {
         mainContent
             .safeAreaInset(edge: .bottom, spacing: 0) { replyBarView }
+            .hidesAppTabBar()
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(false)
             .onAppear {
@@ -235,30 +240,34 @@ struct PostDetailView: View {
                 }
             }
             .animation(.easeOut(duration: 0.2), value: showReplyGentleCheck)
-            .sheet(isPresented: $showEditSheet) {
+            .navigationDestination(isPresented: $showEditSheet) {
                 EditPostView(postId: postId, isLetter: isLetter, currentText: $postText, editText: $editText)
-                    // Don't let an accidental swipe-down throw away an edit
-                    // mid-typing — the user has to tap Cancel/Save explicitly.
-                    .interactiveDismissDisabled(true)
+                    .navigationBarHidden(true)
+                    .hidesAppTabBar()
             }
-            .sheet(isPresented: $showShareCard) {
+            .navigationDestination(isPresented: $showShareCard) {
                 ShareCardView(text: postText, handle: handle, feltCount: likeCount, tag: tag)
+                    .navigationBarHidden(true)
+                    .hidesAppTabBar()
             }
-            .sheet(item: $shareReply) { reply in
+            .navigationDestination(item: $shareReply) { reply in
                 // Reply share — same ShareCardView component as post share,
                 // parameterized with reply fields. tag is nil because
                 // replies don't carry tags; the card renders without the
                 // tag chip in that case (ShareCardView already handles
                 // optional tag).
                 ShareCardView(text: reply.text, handle: reply.handle, feltCount: reply.likes, tag: nil)
+                    .navigationBarHidden(true)
+                    .hidesAppTabBar()
             }
             .navigationDestination(isPresented: $showOtherProfile) {
                             OtherProfileView(userId: authorUserId, handle: handle)
                                 .navigationBarHidden(true)
                         }
-            .sheet(isPresented: $showReplyGifPicker) {
+            .navigationDestination(isPresented: $showReplyGifPicker) {
                 GifPickerView { url in replyGifUrl = url }
-                    .presentationDetents([.medium, .large])
+                    .navigationBarHidden(true)
+                    .hidesAppTabBar()
             }
             .navigationDestination(item: $activeConversation) { convo in
                 ConversationView(conversationId: convo.id, otherHandle: convo.handle, otherUserId: convo.userId)
@@ -1766,7 +1775,7 @@ struct SwipeToReplyRow: View {
                 }
             }
         }
-        .sheet(isPresented: $showReportSheet) {
+        .navigationDestination(isPresented: $showReportSheet) {
             ReportSheet(target: .reply(
                 postId: postId,
                 replyId: item.reply.id,
@@ -1774,6 +1783,8 @@ struct SwipeToReplyRow: View {
                 authorHandle: item.reply.handle,
                 text: item.reply.text
             ))
+            .navigationBarHidden(true)
+            .hidesAppTabBar()
         }
         .confirmationDialog(
             "block \(item.reply.handle)?",

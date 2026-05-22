@@ -402,6 +402,7 @@ struct SettingsView: View {
             )
         }
         .toolbar(.hidden, for: .navigationBar)
+        .hidesAppTabBar()
     }
 
     // MARK: - Components

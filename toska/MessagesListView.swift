@@ -146,6 +146,7 @@ struct MessagesListView: View {
                         .navigationBarHidden(true)
                     }
                     .navigationBarHidden(true)
+                    .hidesAppTabBar()
     }
 
     func startListening() {

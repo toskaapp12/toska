@@ -16,24 +16,18 @@ struct TopView: View {
                         LateNightTheme.background.ignoresSafeArea()
                         
                         VStack(spacing: 0) {
-                    HStack {
-                        Text("felt the most")
-                                                    .font(.system(size: 18, weight: .bold))
-                                                    .foregroundColor(Color.toskaTextDark)
-                        Spacer()
-                        HStack(spacing: 4) {
+                    // Root tab header — ToskaHeader's 22pt title pattern
+                    // with the "right now" status dot in the trailing slot.
+                    ToskaHeader(title: "felt the most", onBack: nil) {
+                        HStack(spacing: 5) {
                             Circle()
                                 .fill(Color(hex: "6ba58e"))
-                                .frame(width: 5, height: 5)
+                                .frame(width: 6, height: 6)
                             Text("right now")
-                                                            .font(.system(size: 10, weight: .semibold))
-                                                            .foregroundColor(Color(hex: "6ba58e"))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(Color(hex: "6ba58e"))
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    
-                    Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
                     
                     if isLoading {
                         Spacer()
@@ -70,55 +64,57 @@ struct TopView: View {
                                                                                 } label: {
                                                                                     VStack(alignment: .leading, spacing: 0) {
                                                                                         HStack(alignment: .top, spacing: 10) {
-                                                                                            // Rank badge
+                                                                                            // Rank badge — top 3 get a bigger
+                                                                                            // weight and warm color so the
+                                                                                            // leaderboard reads at a glance.
                                                                                             Text("\(rank)")
-                                                                                                .font(.system(size: rank <= 3 ? 16 : 11, weight: .bold, design: .rounded))
+                                                                                                .font(.system(size: rank <= 3 ? 20 : 13, weight: .bold, design: .rounded))
                                                                                                 .foregroundColor(rank == 1 ? Color(hex: "c9a97a") : rank == 2 ? Color.toskaTextLight : rank == 3 ? Color(hex: "cd7f32") : Color.toskaDivider)
-                                                                                                .frame(width: 24, alignment: .center)
+                                                                                                .frame(width: 28, alignment: .center)
                                                                                                 .padding(.top, 2)
                                                                                             
-                                                                                            VStack(alignment: .leading, spacing: 6) {
-                                                                                                HStack(spacing: 4) {
+                                                                                            VStack(alignment: .leading, spacing: 8) {
+                                                                                                HStack(spacing: 6) {
                                                                                                     Text(post.handle)
-                                                                                                        .font(.system(size: 11, weight: .semibold))
+                                                                                                        .font(.system(size: 14, weight: .semibold))
                                                                                                         .foregroundColor(Color.toskaBlue)
                                                                                                     Spacer()
                                                                                                     if let tag = post.tag {
-                                                                                                        Text(tag)
-                                                                                                            .font(.system(size: 9, weight: .medium))
-                                                                                                            .foregroundColor(tagColor(for: tag).opacity(0.8))
-                                                                                                            .padding(.horizontal, 7)
-                                                                                                            .padding(.vertical, 2.5)
-                                                                                                            .background(tagColor(for: tag).opacity(0.07))
-                                                                                                            .cornerRadius(4)
+                                                                                                        HStack(spacing: 4) {
+                                                                                                            Image(systemName: sharedTags.first(where: { $0.name == tag })?.icon ?? "tag")
+                                                                                                                .font(.system(size: 9, weight: .medium))
+                                                                                                            Text(tag)
+                                                                                                                .font(.system(size: 11, weight: .medium))
+                                                                                                        }
+                                                                                                        .foregroundColor(tagColor(for: tag).opacity(0.8))
+                                                                                                        .padding(.horizontal, 10)
+                                                                                                        .padding(.vertical, 4)
+                                                                                                        .background(tagColor(for: tag).opacity(0.08))
+                                                                                                        .cornerRadius(12)
                                                                                                     }
                                                                                                 }
-                                                                                                
+
                                                                                                 Text(post.text)
-                                                                                                    .font(.custom("Georgia", size: 15))
+                                                                                                    .font(.custom("Georgia", size: 16))
                                                                                                     .foregroundColor(Color(hex: "1a1a1a"))
-                                                                                                    .lineSpacing(4)
+                                                                                                    .lineSpacing(5)
                                                                                                     .multilineTextAlignment(.leading)
                                                                                                     .fixedSize(horizontal: false, vertical: true)
-                                                                                                
-                                                                                                HStack(spacing: 3) {
+
+                                                                                                HStack(spacing: 4) {
                                                                                                     Image(systemName: "heart.fill")
-                                                                                                        .font(.system(size: 9))
+                                                                                                        .font(.system(size: 11))
                                                                                                     Text("\(formatCount(post.likes)) felt this")
-                                                                                                        .font(.system(size: 10))
+                                                                                                        .font(.system(size: 12))
                                                                                                 }
-                                                                                                .foregroundColor(Color(hex: "c47a8a").opacity(0.6))
+                                                                                                .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
                                                                                             }
                                                                                         }
                                                                                     }
                                                                                     .padding(.horizontal, 16)
-                                                                                    .padding(.vertical, 14)
+                                                                                    .padding(.vertical, 18)
                                                                                 }
                                                                                 .buttonStyle(.plain)
-                                                                                
-                                                                                Rectangle()
-                                                                                    .fill(Color(hex: "dfe1e5"))
-                                                                                    .frame(height: 0.5)
                                     }
                                     
                                     Color.clear.frame(height: 80)

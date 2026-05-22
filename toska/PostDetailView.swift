@@ -1562,15 +1562,21 @@ struct SwipeToReplyRow: View {
                     .scaleEffect(min(0.6 + (dragOffset / triggerThreshold) * 0.4, 1.0))
                     .padding(.trailing, 20)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
                     if item.depth > 0 {
                         Rectangle().fill(Color.toskaBlue.opacity(0.2))
-                            .frame(width: 2, height: 14).cornerRadius(1).padding(.trailing, 4)
+                            .frame(width: 2, height: 16).cornerRadius(1).padding(.trailing, 4)
                     }
-                    Text(item.reply.handle).font(.system(size: 10, weight: .semibold)).foregroundColor(Color.toskaBlue)
-                    Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
-                    Text(item.reply.time).font(.system(size: 9, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
+                    Text(item.reply.handle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Color.toskaBlue)
+                    Text("·")
+                        .font(.system(size: 11))
+                        .foregroundColor(Color.toskaDivider)
+                    Text(item.reply.time)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.toskaTimestamp)
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
                     // and when postId is unknown (empty string parent).
@@ -1590,15 +1596,19 @@ struct SwipeToReplyRow: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 10))
+                                .font(.system(size: 13))
                                 .foregroundColor(Color.toskaTimestamp)
-                                .padding(.horizontal, 4)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
                                 .contentShape(Rectangle())
                         }
                         .accessibilityLabel("More options for \(item.reply.handle)'s reply")
                     }
                 }
-                Text(item.reply.text).font(.custom("Georgia", size: 13)).foregroundColor(Color.toskaTextDark).lineSpacing(3)
+                Text(item.reply.text)
+                    .font(.custom("Georgia", size: 15))
+                    .foregroundColor(Color.toskaTextDark)
+                    .lineSpacing(4)
                 // Interactive action row — like, save, repost. Matches the
                 // affordances on a top-level post. Each icon is hidden when
                 // the corresponding handler isn't wired (defensive — current
@@ -1617,22 +1627,15 @@ struct SwipeToReplyRow: View {
                     // that differs from a top-level post is the absence of a
                     // "context-menu on long-press" — kept tight to the canonical
                     // tap-row for reply density.
-                    HStack(spacing: 28) {
+                    HStack(spacing: 24) {
                         if let onComment = onComment {
                             Button {
                                 onComment()
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "bubble.left")
-                                        .font(.system(size: 14, weight: .light))
-                                    // Reply count for a reply (nested replies)
-                                    // isn't currently tracked at the rule layer
-                                    // — children render inline below, so no
-                                    // count badge here. Same shape as the post
-                                    // version when the count is zero.
-                                }
-                                .foregroundColor(Color.toskaDivider)
-                                .contentShape(Rectangle())
+                                Image(systemName: "bubble.left")
+                                    .font(.system(size: 17, weight: .regular))
+                                    .foregroundColor(Color.toskaDivider)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Reply to this reply")
@@ -1642,12 +1645,12 @@ struct SwipeToReplyRow: View {
                             Button {
                                 onRepost()
                             } label: {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 5) {
                                     Image(systemName: "arrow.2.squarepath")
-                                        .font(.system(size: 14, weight: .light))
+                                        .font(.system(size: 17, weight: .regular))
                                     if item.reply.repostCount > 0 {
                                         Text("\(item.reply.repostCount)")
-                                            .font(.system(size: 11))
+                                            .font(.system(size: 12))
                                     }
                                 }
                                 .foregroundColor(item.reply.isReposted ? Color(hex: "5a9e8f") : Color.toskaDivider)
@@ -1661,7 +1664,7 @@ struct SwipeToReplyRow: View {
                                 onToggleSave()
                             } label: {
                                 Image(systemName: item.reply.isSaved ? "bookmark.fill" : "bookmark")
-                                    .font(.system(size: 16, weight: .light))
+                                    .font(.system(size: 17, weight: .regular))
                                     .foregroundColor(item.reply.isSaved ? Color.toskaBlue : Color.toskaDivider)
                                     .contentShape(Rectangle())
                             }
@@ -1673,7 +1676,7 @@ struct SwipeToReplyRow: View {
                                 onShare()
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 16, weight: .light))
+                                    .font(.system(size: 17, weight: .regular))
                                     .foregroundColor(Color.toskaDivider)
                                     .contentShape(Rectangle())
                             }
@@ -1685,12 +1688,12 @@ struct SwipeToReplyRow: View {
                             Button {
                                 onToggleLike()
                             } label: {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 5) {
                                     Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
-                                        .font(.system(size: 14, weight: .light))
+                                        .font(.system(size: 17, weight: .regular))
                                     if item.reply.likes > 0 {
                                         Text("\(item.reply.likes)")
-                                            .font(.system(size: 11))
+                                            .font(.system(size: 12))
                                     }
                                 }
                                 .foregroundColor(item.reply.isLiked ? Color(hex: "c47a8a") : Color.toskaDivider)
@@ -1700,10 +1703,12 @@ struct SwipeToReplyRow: View {
                             .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
                         }
                     }
-                    .padding(.top, 6)
+                    .padding(.top, 8)
                 }
             }
-            .padding(.leading, 18 + indent).padding(.trailing, 18).padding(.vertical, 10)
+            .padding(.leading, 18 + indent)
+            .padding(.trailing, 18)
+            .padding(.vertical, 14)
             .background(LateNightTheme.background)
             .offset(x: dragOffset)
             .gesture(

@@ -259,17 +259,24 @@ struct NotificationsView: View {
 
     func notifRow(_ notif: NotificationItem) -> some View {
             Button { handleNotifTap(notif) } label: {
-                HStack(spacing: 0) {
-                    // Type icon — small, subtle
-                    Image(systemName: notif.icon)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(iconColor(for: notif.type).opacity(0.7))
-                        .frame(width: 28)
-                    
+                HStack(spacing: 12) {
+                    // Type icon — larger and inside a soft tinted circle so
+                    // each notification class reads at a glance without
+                    // needing to parse the copy. Mirrors the bumped icon
+                    // sizing on the feed row's action bar (15pt → 17pt).
+                    ZStack {
+                        Circle()
+                            .fill(iconColor(for: notif.type).opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: notif.icon)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(iconColor(for: notif.type))
+                    }
+
                     // Text
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text(notif.displayText)
-                            .font(.system(size: 13, weight: notif.isUnread ? .medium : .regular))
+                            .font(.system(size: 14, weight: notif.isUnread ? .medium : .regular))
                             .foregroundColor(Color.toskaTextDark)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -277,24 +284,18 @@ struct NotificationsView: View {
                             .font(.system(size: 11))
                             .foregroundColor(notif.isUnread ? Color.toskaBlue : Color.toskaTimestamp)
                     }
-                    
+
                     Spacer()
-                    
+
                     if notif.isUnread {
                         Circle()
                             .fill(Color.toskaBlue)
-                            .frame(width: 6, height: 6)
+                            .frame(width: 7, height: 7)
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 11)
+                .padding(.vertical, 14)
                 .background(notif.isUnread ? Color.toskaBlue.opacity(0.04) : Color.clear)
-                .overlay(
-                    Rectangle()
-                        .fill(Color(hex: "dfe1e5").opacity(0.5))
-                        .frame(height: 0.5),
-                    alignment: .bottom
-                )
             }
             .buttonStyle(.plain)
         }

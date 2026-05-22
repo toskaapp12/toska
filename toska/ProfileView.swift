@@ -1158,7 +1158,16 @@ struct FollowListView: View {
     @State private var selectedUser: FollowUser? = nil
     @State private var hasFetchedInitial = false
     @State private var blockedUserIds: Set<String> = []
-    
+    // Unfollow flow — only meaningful on the "following" tab. Tapping the
+    // trailing "following" pill primes this state, which opens the
+    // confirmation alert below. On confirm we optimistically remove the
+    // row + fire a batch delete; on failure we restore and surface an
+    // inline auto-dismissing error toast.
+    @State private var pendingUnfollow: (id: String, handle: String)? = nil
+    @State private var unfollowError: String? = nil
+
+    private var isFollowingTab: Bool { title == "following" }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -1171,6 +1180,8 @@ struct FollowListView: View {
                         Spacer()
                         Text(title).font(.system(size: 15, weight: .bold)).foregroundColor(Color.toskaTextDark)
                         Spacer()
+                        // Invisible mirror of the close button so the title
+                        // stays optically centered without a custom layout.
                         Image(systemName: "xmark").font(.system(size: 14)).foregroundColor(.clear)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 12)
@@ -1181,25 +1192,28 @@ struct FollowListView: View {
                         Spacer()
                         VStack(spacing: 8) {
                             Text("no \(title) yet").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextLight)
-                            Text("explore and connect with others").font(.system(size: 12)).foregroundColor(Color(hex: "cccccc"))
+                            Text(isFollowingTab
+                                 ? "tap a handle on a post to follow someone"
+                                 : "keep posting — people you reach will follow")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "cccccc"))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
                         }
                         Spacer()
                     } else {
                         ScrollView(showsIndicators: false) {
                             LazyVStack(spacing: 0) {
                                 ForEach(Array(users.enumerated()), id: \.element.0) { index, user in
-                                    Button { selectedUser = FollowUser(id: user.id, handle: user.handle) } label: {
-                                                                            HStack(spacing: 12) {
-                                                                                Text(user.handle).font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
-                                                                                Spacer()
-                                                                                Image(systemName: "chevron.right").font(.system(size: 10, weight: .light)).foregroundColor(Color.toskaDivider)
-                                                                            }
-                                                                            .padding(.horizontal, 16).padding(.vertical, 10)
-                                                                        }
-                                    .buttonStyle(.plain)
+                                    FollowRow(
+                                        handle: user.handle,
+                                        showUnfollow: isFollowingTab,
+                                        onTap: { selectedUser = FollowUser(id: user.id, handle: user.handle) },
+                                        onUnfollow: { pendingUnfollow = (id: user.id, handle: user.handle) }
+                                    )
                                     if index < users.count - 1 {
-                                                                            Rectangle().fill(Color(hex: "dfe1e5").opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
-                                                                        }
+                                        Rectangle().fill(Color(hex: "dfe1e5").opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
+                                    }
                                 }
                                 if users.count >= 50 {
                                     Text("showing your first 50 \(title)")
@@ -1209,6 +1223,24 @@ struct FollowListView: View {
                             }
                         }
                     }
+                }
+
+                // Inline error toast (unfollow failure). Auto-dismisses
+                // via the 3s Task scheduled in performUnfollow; sits
+                // above the bottom edge so it doesn't conflict with the
+                // pull-to-dismiss gesture on the sheet.
+                if let err = unfollowError {
+                    VStack {
+                        Spacer()
+                        Text(err)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(Color.black.opacity(0.85))
+                            .cornerRadius(10)
+                            .padding(.bottom, 32)
+                    }
+                    .transition(.opacity)
                 }
             }
             .onAppear {
@@ -1220,8 +1252,76 @@ struct FollowListView: View {
                 OtherProfileView(userId: user.id, handle: user.handle)
                     .navigationBarHidden(true)
             }
+            // Unfollow confirmation. Two-step deliberately — unfollow is
+            // an undoable action elsewhere in the app (re-follow), but
+            // surfacing a quick confirm here prevents accidental loss of
+            // a handle the user actually wanted to keep following.
+            .alert(
+                "unfollow \(pendingUnfollow?.handle ?? "")?",
+                isPresented: Binding(
+                    get: { pendingUnfollow != nil },
+                    set: { if !$0 { pendingUnfollow = nil } }
+                ),
+                presenting: pendingUnfollow
+            ) { user in
+                Button("cancel", role: .cancel) { pendingUnfollow = nil }
+                Button("unfollow", role: .destructive) {
+                    performUnfollow(userId: user.id)
+                    pendingUnfollow = nil
+                }
+            } message: { _ in
+                Text("you can re-follow anytime.")
+            }
             .navigationBarHidden(true)
         } // closes NavigationStack
+    }
+
+    // Optimistic unfollow. Mirrors OtherProfileView.toggleFollow's unfollow
+    // branch (batch-delete both follow-graph docs; counter decrement is
+    // handled server-side by onFollowDeletedUpdateCounts). On failure we
+    // restore the local row and surface a 3s inline toast.
+    func performUnfollow(userId: String) {
+        guard let myUid = Auth.auth().currentUser?.uid else { return }
+        guard NetworkMonitor.shared.isConnected else {
+            withAnimation { unfollowError = "you're offline" }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                withAnimation { unfollowError = nil }
+            }
+            return
+        }
+        let originalUsers = users
+        withAnimation(.easeInOut(duration: 0.2)) {
+            users.removeAll { $0.id == userId }
+        }
+        HapticManager.play(.tabSwitch)
+
+        let db = Firestore.firestore()
+        let followingRef = db.collection("users").document(myUid).collection("following").document(userId)
+        let followerRef = db.collection("users").document(userId).collection("followers").document(myUid)
+        let batch = db.batch()
+        batch.deleteDocument(followingRef)
+        batch.deleteDocument(followerRef)
+        batch.commit { error in
+            Task { @MainActor in
+                // Same uid-recheck pattern as OtherProfileView.toggleFollow:
+                // sign-out (or account switch) between the tap and the
+                // callback must not mutate the new user's state.
+                guard Auth.auth().currentUser?.uid == myUid else { return }
+                if let error = error {
+                    print("⚠️ FollowListView.unfollow failed: \(error)")
+                    Telemetry.recordError(error, context: "FollowListView.performUnfollow")
+                    withAnimation {
+                        users = originalUsers
+                        unfollowError = "couldn't unfollow — try again"
+                    }
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        withAnimation { unfollowError = nil }
+                    }
+                }
+            }
+        }
     }
     
     func loadUsers() {
@@ -1270,6 +1370,57 @@ struct FollowListView: View {
             }
             isLoading = false
         }
+    }
+}
+
+// MARK: - Follow Row
+//
+// One row in FollowListView. Whole row is tappable → navigates to the
+// user's profile. On the "following" tab the trailing affordance is an
+// unfollow pill (tap → confirmation alert in the parent); on the
+// "followers" tab it's a chevron (followers control their own follow
+// doc, so no inline action is meaningful — the only thing the user can
+// do is block, which lives in OtherProfileView). The Button captures
+// taps within its bounds, so tapping the pill does NOT also trigger
+// the row's onTap.
+@MainActor
+private struct FollowRow: View {
+    let handle: String
+    let showUnfollow: Bool
+    let onTap: () -> Void
+    let onUnfollow: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(handle)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Color.toskaBlue)
+                .lineLimit(1)
+
+            Spacer()
+
+            if showUnfollow {
+                Button(action: onUnfollow) {
+                    Text("following")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(hex: "888888"))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule().stroke(Color(hex: "dfe1e5"), lineWidth: 0.5)
+                        )
+                }
+                .buttonStyle(.plain)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .light))
+                    .foregroundColor(Color.toskaDivider)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
     }
 }
 

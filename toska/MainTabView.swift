@@ -260,23 +260,25 @@ struct MainTabView: View {
             }
         }
         .fullScreenCover(isPresented: $showCompose) {
-            ComposeView()
+            EdgeSwipeDismissWrapper { ComposeView() }
         }
         // MARK: - Push notification deep link
         .fullScreenCover(item: Binding(
             get: { pushPostId.map { PostSelection(id: $0) } },
             set: { if $0 == nil { pushPostId = nil } }
         )) { selection in
-            PostDetailView(
-                postId: selection.id,
-                handle: "",
-                text: "",
-                tag: nil,
-                likes: 0,
-                reposts: 0,
-                replies: 0,
-                time: ""
-            )
+            EdgeSwipeDismissWrapper {
+                PostDetailView(
+                    postId: selection.id,
+                    handle: "",
+                    text: "",
+                    tag: nil,
+                    likes: 0,
+                    reposts: 0,
+                    replies: 0,
+                    time: ""
+                )
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openPostFromPush)) { notification in
             guard let postId = notification.userInfo?["postId"] as? String, !postId.isEmpty else { return }
@@ -312,14 +314,18 @@ struct MainTabView: View {
             showCompose = true
         }
         .fullScreenCover(item: $pushConversation) { selection in
-            ConversationView(
-                conversationId: selection.id,
-                otherHandle: selection.handle,
-                otherUserId: selection.userId
-            )
+            EdgeSwipeDismissWrapper {
+                ConversationView(
+                    conversationId: selection.id,
+                    otherHandle: selection.handle,
+                    otherUserId: selection.userId
+                )
+            }
         }
         .fullScreenCover(item: $pushProfileUser) { selection in
-            OtherProfileView(userId: selection.id, handle: selection.handle)
+            EdgeSwipeDismissWrapper {
+                OtherProfileView(userId: selection.id, handle: selection.handle)
+            }
         }
         .onAppear {
             print("⚡️ MainTabView appeared")

@@ -225,26 +225,30 @@ struct CreateAccountView: View {
             }
         }
         .fullScreenCover(isPresented: $showAgeGate) {
-            AgeGateView(
-                onConfirmAdult: {
-                    showAgeGate = false
-                    showPolicyAcceptance = true
-                },
-                onDecline: {
-                    showAgeGate = false
-                }
-            )
+            EdgeSwipeDismissWrapper {
+                AgeGateView(
+                    onConfirmAdult: {
+                        showAgeGate = false
+                        showPolicyAcceptance = true
+                    },
+                    onDecline: {
+                        showAgeGate = false
+                    }
+                )
+            }
         }
         .fullScreenCover(isPresented: $showPolicyAcceptance) {
-            PolicyAcceptanceView(
-                onAccept: {
-                    showPolicyAcceptance = false
-                    createAccount()
-                },
-                onDecline: {
-                    showPolicyAcceptance = false
-                }
-            )
+            EdgeSwipeDismissWrapper {
+                PolicyAcceptanceView(
+                    onAccept: {
+                        showPolicyAcceptance = false
+                        createAccount()
+                    },
+                    onDecline: {
+                        showPolicyAcceptance = false
+                    }
+                )
+            }
         }
     }
 

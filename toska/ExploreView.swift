@@ -442,7 +442,7 @@ struct ExploreView: View {
                     searchTask = nil
                 }
         .fullScreenCover(isPresented: $showLastSaid) {
-            LastThingSaidView()
+            EdgeSwipeDismissWrapper { LastThingSaidView() }
         }
         
             

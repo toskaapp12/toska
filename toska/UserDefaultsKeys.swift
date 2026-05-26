@@ -44,4 +44,23 @@ enum UserDefaultsKeys {
     static func replyDraft(postId: String) -> String {
         "toska_replyDraft_\(postId)"
     }
+
+    // Adult-confirmation propagation flag. CreateAccountView's age gate
+    // runs confirmAdultServerSide(uid:) to set `confirmedAdult: true` on
+    // the user doc, but that call is `try?`-swallowed because a network
+    // blip or App Check failure (common on simulator) shouldn't block
+    // signup. When the server write doesn't land before OnboardingView
+    // reads the user doc, OnboardingView's checkAcceptanceStatus saw
+    // confirmedAdult=false and re-prompted the gate — making the user
+    // confirm twice in the same signup session. This flag bridges the
+    // gap: CreateAccountView sets it the moment the user passes the
+    // local age gate, OnboardingView treats a set flag as "already
+    // confirmed in this session," and consumes (clears) the flag so a
+    // failed server confirmAdult still triggers a re-prompt on a
+    // subsequent launch — preserving the long-tail server-side gate.
+    // Keyed per-uid so a force-quit mid-flow doesn't leak the flag to
+    // a different account that signs in on the same device.
+    static func recentlyConfirmedAdult(uid: String) -> String {
+        "toska_recentlyConfirmedAdult_\(uid)"
+    }
 }

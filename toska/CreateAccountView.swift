@@ -352,6 +352,20 @@ struct CreateAccountView: View {
                     try? await db.collection("users").document(uid)
                         .collection("private").document("data")
                         .setData(["email": trimmedEmail], merge: true)
+                    // Persist a local "just confirmed adult" flag NOW —
+                    // before the server confirmAdult attempt — so that
+                    // even if the Cloud Function call below fails (network
+                    // blip, App Check rejection on simulator, etc.),
+                    // OnboardingView's checkAcceptanceStatus reads the
+                    // flag and skips the re-prompt. The flag is per-uid
+                    // and consumed (cleared) by OnboardingView so a
+                    // genuinely unconfirmed user on a later session
+                    // still hits the gate. See UserDefaultsKeys
+                    // .recentlyConfirmedAdult for the long-form rationale.
+                    UserDefaults.standard.set(
+                        true,
+                        forKey: UserDefaultsKeys.recentlyConfirmedAdult(uid: uid)
+                    )
                     // Mark the user adult-confirmed via the server before
                     // we transition to onboarding. We `try?` here so a
                     // network blip doesn't block signup — OnboardingView's

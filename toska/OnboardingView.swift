@@ -362,15 +362,32 @@ struct OnboardingView: View {
     /// gates. Users who already accepted (e.g. via CreateAccountView's gate)
     /// skip this entirely. Apple/Google new signups hit this path because
     /// AppleSignInHelper creates the user doc without acceptance fields.
+    ///
+    /// Honors the local recentlyConfirmedAdult flag — CreateAccountView
+    /// sets it the moment the user passes the local age gate, so that even
+    /// if confirmAdultServerSide fails to propagate `confirmedAdult: true`
+    /// before this read runs, we don't make the same user pass the gate
+    /// twice in a single signup session. The flag is consumed (cleared)
+    /// once read so a genuinely-unconfirmed user on a later session
+    /// (after force-quit, after a confirmAdult-failed signup, etc.) still
+    /// hits the gate.
     func checkAcceptanceStatus() {
         guard !acceptanceChecked else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        let recentFlagKey = UserDefaultsKeys.recentlyConfirmedAdult(uid: uid)
+        let recentlyConfirmedAdult = UserDefaults.standard.bool(forKey: recentFlagKey)
+        if recentlyConfirmedAdult {
+            // Consume the flag so a later session that needs the gate
+            // (e.g. confirmAdult Cloud Function never propagated) still
+            // triggers it.
+            UserDefaults.standard.removeObject(forKey: recentFlagKey)
+        }
         Task { @MainActor in
             do {
                 let snapshot = try await Firestore.firestore()
                     .collection("users").document(uid).getDocumentAsync()
                 let data = snapshot.data() ?? [:]
-                let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                let confirmedAdult = (data["confirmedAdult"] as? Bool ?? false) || recentlyConfirmedAdult
                 let acceptedVersion = data["acceptedPolicyVersion"] as? Int ?? 0
                 // Only lock acceptanceChecked to true on a successful read.
                 // If the read fails transiently, the next onAppear will

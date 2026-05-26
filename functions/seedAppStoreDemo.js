@@ -107,6 +107,16 @@ const DEMO_PASSWORD = PASSWORD_OVERRIDE || generatePassword();
 // Buddy accounts (no need to pass these to a reviewer — they exist only so
 // the demo's feed / DMs / follow lists aren't empty). Their passwords are
 // throwaway; nobody signs in as them.
+//
+// Slot conventions (referenced as authorIdx / fromIdx through the file):
+//   0: soft_evening_42 — main interlocutor, sends DMs + replies
+//   1: late_oak_88     — "a year out" voice, mostly posts wisdom
+//   2: quiet_dawn_03   — exists to populate the demo's blocked-users list
+//                        (so testing the Blocked Users settings page has
+//                        a non-empty state). Demo blocks this user, so
+//                        their content is filtered from demo's feed.
+//   3: still_water_77  — follows demo (extra row in the followers list)
+//   4: morning_glow_28 — demo follows them (extra row in the following list)
 const BUDDIES = [
   {
     email: "appreview_buddy_soft@toskaapp.com",
@@ -117,6 +127,21 @@ const BUDDIES = [
     email: "appreview_buddy_late@toskaapp.com",
     handle: "late_oak_88",
     breakupStage: "a year or more",
+  },
+  {
+    email: "appreview_buddy_quiet@toskaapp.com",
+    handle: "quiet_dawn_03",
+    breakupStage: "it just happened",
+  },
+  {
+    email: "appreview_buddy_still@toskaapp.com",
+    handle: "still_water_77",
+    breakupStage: "months in",
+  },
+  {
+    email: "appreview_buddy_morning@toskaapp.com",
+    handle: "morning_glow_28",
+    breakupStage: "they left",
   },
 ];
 
@@ -184,6 +209,57 @@ const BUDDY_POSTS = [
     likeCount: 31,
     replyCount: 5,
     repostCount: 7,
+  },
+  // ---- variant posts: exercise the special-state rendering paths ----
+  // Letter post — isLetter: true → renders with collapsed "letter"
+  // preview + "read this letter..." link in FeedPostRow.
+  {
+    authorIdx: 0, // soft_evening_42
+    id: "demo_buddy_letter_1",
+    text: "dear future me,\n\nyou felt this — all of it. the ceiling stares at 3am, the songs that suddenly meant something, the silence in the passenger seat. you survived it. so when you read this and you're scared you'll never feel anything that big again — you will. you always do. it just doesn't always have to hurt.\n\nlove, you",
+    tag: "longing",
+    likeCount: 64,
+    replyCount: 0,
+    repostCount: 11,
+    isLetter: true,
+  },
+  // Whisper post — isWhisper: true → renders with eye.slash icon in
+  // the handle row (visual marker for ephemeral/quieter posts).
+  {
+    authorIdx: 1, // late_oak_88
+    id: "demo_buddy_whisper_1",
+    text: "i don't think they ever loved me back. and i'm just now letting that be okay.",
+    tag: "acceptance",
+    likeCount: 28,
+    replyCount: 0,
+    repostCount: 3,
+    isWhisper: true,
+  },
+  // Midnight post — createdAt placed at ~2am yesterday so the
+  // late-night moon-icon rendering picks it up.
+  {
+    authorIdx: 1, // late_oak_88
+    id: "demo_buddy_midnight_1",
+    text: "the 2am thoughts are just regular thoughts wearing a different shirt.",
+    tag: "longing",
+    likeCount: 91,
+    replyCount: 0,
+    repostCount: 12,
+    createdAt: (() => { const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(2, 0, 0, 0); return d; })(),
+  },
+  // GIF post — gifUrl set so the AsyncImage branch in FeedPostRow
+  // renders the GIF inline. Uses a known stable Giphy URL; if the URL
+  // ever 404s the row falls back to the "couldn't load gif" state
+  // (also a valid path to demonstrate).
+  {
+    authorIdx: 0, // soft_evening_42
+    id: "demo_buddy_gif_1",
+    text: "this is exactly how it feels at 4pm on a tuesday",
+    tag: "lonely",
+    likeCount: 19,
+    replyCount: 0,
+    repostCount: 2,
+    gifUrl: "https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/giphy.gif",
   },
 ];
 
@@ -341,6 +417,12 @@ async function setUserDoc(uid, handle, breakupStage) {
   }, { merge: true });
 }
 
+// Post writer — supports the optional flag fields the iOS feed row
+// branches on (isLetter, isWhisper, gifUrl) and a custom createdAt so
+// the seeded "midnight" post can be placed at a real late-night
+// timestamp for the moon-icon rendering check. Falls back to server
+// timestamp when no createdAt is provided so the existing post seeds
+// don't change shape.
 async function setPost(authorUid, authorHandle, post) {
   const path = `posts/${post.id}`;
   const payload = {
@@ -351,11 +433,15 @@ async function setPost(authorUid, authorHandle, post) {
     likeCount: post.likeCount,
     replyCount: post.replyCount,
     repostCount: post.repostCount,
-    createdAt: "<server-timestamp>",
+    createdAt: post.createdAt ? "<custom-timestamp>" : "<server-timestamp>",
   };
+  if (post.isLetter) payload.isLetter = true;
+  if (post.isWhisper) payload.isWhisper = true;
+  if (post.gifUrl) payload.gifUrl = post.gifUrl;
+  if (post.isShareable !== undefined) payload.isShareable = post.isShareable;
   plan("set", path, payload);
   if (!APPLY) return;
-  await db.doc(path).set({
+  const docData = {
     authorId: authorUid,
     authorHandle,
     text: post.text,
@@ -363,8 +449,15 @@ async function setPost(authorUid, authorHandle, post) {
     likeCount: post.likeCount,
     replyCount: post.replyCount,
     repostCount: post.repostCount,
-    createdAt: FieldValue.serverTimestamp(),
-  });
+    createdAt: post.createdAt
+      ? Timestamp.fromDate(post.createdAt)
+      : FieldValue.serverTimestamp(),
+  };
+  if (post.isLetter) docData.isLetter = true;
+  if (post.isWhisper) docData.isWhisper = true;
+  if (post.gifUrl) docData.gifUrl = post.gifUrl;
+  if (post.isShareable !== undefined) docData.isShareable = post.isShareable;
+  await db.doc(path).set(docData);
 }
 
 async function setLike(postId, likerUid) {
@@ -429,6 +522,155 @@ async function bumpFollowCounts(demoUid, buddyUid) {
   if (!APPLY) return;
   await db.doc(`users/${demoUid}`).update({ followerCount: 1, followingCount: 1 });
   await db.doc(`users/${buddyUid}`).update({ followerCount: 1, followingCount: 1 });
+}
+
+// Generalized counter setter — once the additional follow-graph entries
+// land (demo follows 3 buddies, 3 buddies follow demo), the per-user
+// counts need to reflect the final graph. Use this AFTER all follow
+// writes so the trigger-driven counter math doesn't get out of sync
+// (Cloud Function increments would compound on top of the seed value
+// only on the *first* run for newly-created docs; on re-runs, the
+// triggers no-op since the follow docs already exist).
+async function setFollowCounts(uid, { followerCount, followingCount }) {
+  const payload = {};
+  if (followerCount !== undefined) payload.followerCount = followerCount;
+  if (followingCount !== undefined) payload.followingCount = followingCount;
+  plan("update", `users/${uid}`, payload);
+  if (!APPLY) return;
+  await db.doc(`users/${uid}`).update(payload);
+}
+
+// Demo's own saved posts. Doc id is the postId; iOS reads the saved
+// doc set just for IDs (createdAt drives ordering) and resolves text/
+// handle/counts by fetching the actual post doc. Per firestore.rules
+// the schema is open so any extra fields are tolerated.
+async function setSavedPost(uid, postId, minutesAgo = 60) {
+  const path = `users/${uid}/saved/${postId}`;
+  plan("set", path, { createdAt: `<${minutesAgo}m ago>` });
+  if (!APPLY) return;
+  await db.doc(path).set({
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
+}
+
+// Demo's own liked posts. Two-step: write the actual like doc (so the
+// post's likeCount counter trigger fires, matching organic behavior)
+// AND the reverse-index entry at users/{uid}/liked/{postId} that the
+// Profile "liked" tab queries.
+async function setLikedPost(uid, postId, minutesAgo = 60) {
+  await setLike(postId, uid);
+  const path = `users/${uid}/liked/${postId}`;
+  plan("set", path, { createdAt: `<${minutesAgo}m ago>` });
+  if (!APPLY) return;
+  await db.doc(path).set({
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
+}
+
+// Demo's own repost. Creates a top-level post doc with isRepost: true
+// pointing at the original. Deterministic id matches the iOS write
+// shape (PostInteractionManager.repost) — `{reposterUid}_repost_
+// {originalPostId}` — so the FeedViewModel.fetchRepostedPostIds
+// listener picks it up via the (authorId, isRepost) composite index.
+// validatePost will accept the doc because text/originalPostId/
+// originalAuthorId match the original.
+async function setRepost(reposterUid, reposterHandle, original, originalAuthorUid, originalAuthorHandle, minutesAgo = 30) {
+  const id = `${reposterUid}_repost_${original.id}`;
+  const path = `posts/${id}`;
+  const payload = {
+    authorId: reposterUid,
+    authorHandle: reposterHandle,
+    text: original.text,
+    tag: original.tag,
+    likeCount: 0,
+    repostCount: 0,
+    replyCount: 0,
+    isShareable: true,
+    isRepost: true,
+    originalPostId: original.id,
+    originalAuthorId: originalAuthorUid,
+    originalHandle: originalAuthorHandle,
+    createdAt: `<${minutesAgo}m ago>`,
+  };
+  plan("set", path, payload);
+  if (!APPLY) return;
+  await db.doc(path).set({
+    authorId: reposterUid,
+    authorHandle: reposterHandle,
+    text: original.text,
+    tag: original.tag,
+    likeCount: 0,
+    repostCount: 0,
+    replyCount: 0,
+    isShareable: true,
+    isRepost: true,
+    originalPostId: original.id,
+    originalAuthorId: originalAuthorUid,
+    originalHandle: originalAuthorHandle,
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
+}
+
+// Demo's drafts. Schema per firestore.rules:488 — text + createdAt
+// (required) + optional updatedAt. Doc id is arbitrary; iOS lists by
+// createdAt desc.
+async function setDraft(uid, draftId, text, minutesAgo = 120) {
+  const path = `users/${uid}/drafts/${draftId}`;
+  plan("set", path, { text: text.slice(0, 40) + "...", createdAt: `<${minutesAgo}m ago>` });
+  if (!APPLY) return;
+  await db.doc(path).set({
+    text,
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
+}
+
+// Demo's saved replies. Doc id is the replyId; the doc carries a
+// save-time snapshot of {postId, replyText, replyHandle, createdAt}
+// per ProfileView.loadSavedReplies, so the row renders without a
+// per-reply lookup.
+async function setSavedReply(uid, replyId, postId, replyText, replyHandle, minutesAgo = 90) {
+  const path = `users/${uid}/savedReplies/${replyId}`;
+  plan("set", path, { postId, replyHandle, createdAt: `<${minutesAgo}m ago>` });
+  if (!APPLY) return;
+  await db.doc(path).set({
+    postId,
+    replyText,
+    replyHandle,
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
+}
+
+// Demo's liked replies. Same shape as saved replies. Note: this is
+// only the reverse-index entry; the actual like doc at
+// posts/{postId}/replies/{replyId}/likes/{uid} also needs to be
+// written for the reply's likeCount to bump.
+async function setLikedReply(uid, replyId, postId, replyText, replyHandle, minutesAgo = 90) {
+  const likePath = `posts/${postId}/replies/${replyId}/likes/${uid}`;
+  plan("set", likePath, { createdAt: "<server-timestamp>" });
+  const path = `users/${uid}/likedReplies/${replyId}`;
+  plan("set", path, { postId, replyHandle, createdAt: `<${minutesAgo}m ago>` });
+  if (!APPLY) return;
+  await db.doc(likePath).set({ createdAt: FieldValue.serverTimestamp() });
+  await db.doc(path).set({
+    postId,
+    replyText,
+    replyHandle,
+    createdAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
+}
+
+// Demo's blocked-users list — populates the Settings → Blocked Users
+// page. Per BlockedUsersListView, the doc carries handle + blockedAt;
+// doc id is the blocked user's uid (also referenced by
+// BlockedUsersCache to filter content).
+async function setBlocked(blockerUid, blockedUid, blockedHandle, minutesAgo = 240) {
+  const path = `users/${blockerUid}/blocked/${blockedUid}`;
+  plan("set", path, { handle: blockedHandle, blockedAt: `<${minutesAgo}m ago>` });
+  if (!APPLY) return;
+  await db.doc(path).set({
+    handle: blockedHandle,
+    blockedAt: Timestamp.fromDate(new Date(Date.now() - minutesAgo * 60 * 1000)),
+  });
 }
 
 async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
@@ -556,11 +798,86 @@ async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
     );
   }
 
-  // mutual follow between demo and soft.
-  await setFollow(demoUid, softUid);
-  await setFollow(softUid, demoUid);
-  await bumpFollowCounts(demoUid, softUid);
+  // ---------- follow graph ----------
+  // Slot conventions (BUDDIES array):
+  //   0: soft_evening_42  — mutual with demo (interlocutor)
+  //   1: late_oak_88      — demo follows (so following list has 2)
+  //   2: quiet_dawn_03    — blocked by demo (no follow either way)
+  //   3: still_water_77   — follows demo (so followers list has 2)
+  //   4: morning_glow_28  — demo follows them too (so following has 3)
+  const lateUid    = buddyUids[1];
+  const quietUid   = buddyUids[2];
+  const stillUid   = buddyUids[3];
+  const morningUid = buddyUids[4];
 
+  // Demo follows soft, late, morning. Total following = 3.
+  await setFollow(demoUid, softUid);
+  await setFollow(demoUid, lateUid);
+  await setFollow(demoUid, morningUid);
+  // Soft + still follow demo. Total followers = 2.
+  await setFollow(softUid, demoUid);
+  await setFollow(stillUid, demoUid);
+
+  // Counter writes — set to the final graph state directly. On a first
+  // run the follow-trigger increments would land too, but on re-runs
+  // (the common case once the seed has been applied once) the triggers
+  // no-op since the follow docs already exist. Setting the final state
+  // explicitly here keeps both paths converging on the same values.
+  await setFollowCounts(demoUid,    { followerCount: 2, followingCount: 3 });
+  await setFollowCounts(softUid,    { followerCount: 1, followingCount: 1 });
+  await setFollowCounts(lateUid,    { followerCount: 1, followingCount: 0 });
+  await setFollowCounts(morningUid, { followerCount: 1, followingCount: 0 });
+  await setFollowCounts(stillUid,   { followerCount: 0, followingCount: 1 });
+
+  // ---------- demo's engagement state ----------
+  // Saved posts — demo saved two buddy posts so the Profile "saved"
+  // tab has content to render.
+  await setSavedPost(demoUid, "demo_buddy_late_post_1", 30);
+  await setSavedPost(demoUid, "demo_buddy_letter_1",    180);
+
+  // Liked posts — demo liked two buddy posts (writes the actual like
+  // doc on each so the post's likeCount trigger fires).
+  await setLikedPost(demoUid, "demo_buddy_soft_post_1", 45);
+  await setLikedPost(demoUid, "demo_buddy_midnight_1",  20);
+
+  // Demo's repost — reposts soft's first post. Picks up in the feed
+  // with the "@appreview_demo reposted" provenance row (since FeedView
+  // now passes originalHandle to FeedPostRow).
+  const softFirstPost = BUDDY_POSTS.find(p => p.id === "demo_buddy_soft_post_1");
+  await setRepost(demoUid, DEMO_HANDLE, softFirstPost, softUid, BUDDIES[0].handle, 60);
+
+  // Drafts — two saved drafts so the Drafts list isn't empty when the
+  // user taps Settings → Drafts.
+  await setDraft(demoUid, "draft_1",
+    "i keep thinking about the last thing i didn't say. maybe i should write it here.",
+    180);
+  await setDraft(demoUid, "draft_2",
+    "today felt different. not better. just different. i want to remember that.",
+    420);
+
+  // Saved + liked replies — demo saved and liked one of soft's replies
+  // from the seeded reply set. Picks up in the Profile saved/liked
+  // tabs via ReplyEngagementRow.
+  await setSavedReply(demoUid,
+    "demo_buddy_late_post_1_reply_3",  // a soft reply on late_oak's anniversary post
+    "demo_buddy_late_post_1",
+    "the unimaginable-in-month-one part is what i needed.",
+    "soft_evening_42",
+    120);
+  await setLikedReply(demoUid,
+    "demo_buddy_soft_post_1_reply_2",
+    "demo_buddy_soft_post_1",
+    "yeah. and the days you forget you're carrying it at all count too.",
+    "late_oak_88",
+    240);
+
+  // Blocked — demo blocks quiet_dawn_03 so the Settings → Blocked Users
+  // page has a row to look at. quiet has no posts in the seed so the
+  // block doesn't visibly remove any feed content (avoids surprising
+  // the reviewer when posts vanish).
+  await setBlocked(demoUid, quietUid, BUDDIES[2].handle, 480);
+
+  // Conversation between demo and soft — unchanged from before.
   await setConversation(demoUid, DEMO_HANDLE, softUid, BUDDIES[0].handle);
 
   // ---------- print summary ----------

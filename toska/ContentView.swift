@@ -81,6 +81,10 @@ struct ContentView: View {
                 SplashView()
             }
         }
+        // App-wide tap-to-dismiss-keyboard, like a normal iOS app: tapping
+        // anywhere outside a text field lowers the keyboard, without blocking
+        // taps on buttons, posts, or scrolling. See KeyboardDismiss.swift.
+        .dismissKeyboardOnTap()
         .fullScreenCover(isPresented: $showPolicyUpdate) {
             // Version-bump retro-prompt. A user declining here is signed out
             // rather than deleted — their account and content persist so they

@@ -487,18 +487,18 @@ struct FeedView: View {
                     
                     if vm.selectedTab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
                                                                 VStack(spacing: 4) {
-                                                                    Text(vm.endedDueToBlocking
-                                                                         ? "no more posts to show"
-                                                                         : "youve read everything.")
+                                                                    Text("no more posts to show")
                                                                         .font(.system(size: 10))
                                                                         .foregroundColor(LateNightTheme.tertiaryText)
-                                                                    Text(vm.endedDueToBlocking
-                                                                         ? "some posts are hidden"
-                                                                                                                                                                                                                      : LateNightTheme.isLateNight
-                                                                                                                                                                                                                         ? "try to sleep. or dont. were here either way."
-                                                                                                                                                                                                                         : "close the app. or dont. well be here.")
-                                                                        .font(.custom("Georgia-Italic", size: 10))
-                                                                        .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                                    // Only annotate when posts are hidden by blocking.
+                                                                    // The neutral end-line stands on its own otherwise —
+                                                                    // the old poetic sublines ("close the app. or dont.")
+                                                                    // read as awkward at the bottom of a real feed.
+                                                                    if vm.endedDueToBlocking {
+                                                                        Text("some posts are hidden")
+                                                                            .font(.custom("Georgia-Italic", size: 10))
+                                                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                                    }
                                                                 }
                                                                 .padding(.vertical, 20)
                                                             }
@@ -516,7 +516,15 @@ struct FeedView: View {
                                                                                 // the posts ForEach keeps the LazyVStack identity stable
                                                                                 // and avoids the blank-feed-on-launch regression.
                                                                             }
-                                                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                                            // maxWidth only — NOT maxHeight. This VStack is
+                                                                            // the direct content of the vertical ScrollView,
+                                                                            // and maxHeight: .infinity clamps it to exactly the
+                                                                            // viewport height, so the ScrollView sees no
+                                                                            // overflow and refuses to scroll. The bug stayed
+                                                                            // hidden while the feed fit on one screen; it
+                                                                            // surfaced once the seeded demo account filled the
+                                                                            // feed with enough posts to need scrolling.
+                                                                            .frame(maxWidth: .infinity)
                                                                             // Pull-to-refresh on the feed. fetchPosts
                                                                             // isn't async / completion-bearing so we
                                                                             // mirror ProfileView's pattern: fire the

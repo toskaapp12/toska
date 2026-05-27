@@ -516,26 +516,16 @@ struct FeedView: View {
                                                                                 // the posts ForEach keeps the LazyVStack identity stable
                                                                                 // and avoids the blank-feed-on-launch regression.
                                                                             }
-                                                                            // maxWidth only — NOT maxHeight. This VStack is
-                                                                            // the direct content of the vertical ScrollView,
-                                                                            // and maxHeight: .infinity clamps it to exactly the
-                                                                            // viewport height, so the ScrollView sees no
-                                                                            // overflow and refuses to scroll. The bug stayed
-                                                                            // hidden while the feed fit on one screen; it
-                                                                            // surfaced once the seeded demo account filled the
-                                                                            // feed with enough posts to need scrolling.
-                                                                            .frame(maxWidth: .infinity)
-                                                                            // Pull-to-refresh on the feed. fetchPosts
-                                                                            // isn't async / completion-bearing so we
-                                                                            // mirror ProfileView's pattern: fire the
-                                                                            // fetch then sleep ~1.5s so the spinner
-                                                                            // stays visible long enough to feel like
-                                                                            // a real refresh. The underlying listener
-                                                                            // delivers the actual data update.
-                                                                            .refreshable {
-                                                                                vm.fetchPosts()
-                                                                                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                                                            }
+                                                                            // Pin to the exact viewport width — NOT maxHeight.
+                                                                            // maxHeight: .infinity would clamp the content to the
+                                                                            // viewport height and kill vertical scrolling (that
+                                                                            // bug surfaced once the seeded feed filled past one
+                                                                            // screen). Fixing the WIDTH to geo.size.width (rather
+                                                                            // than maxWidth: .infinity, which grows to fit an
+                                                                            // oversized child) guarantees the content can never be
+                                                                            // wider than the screen, so the vertical feed can't be
+                                                                            // panned sideways even if a row's media overflows.
+                                                                            .frame(width: geo.size.width)
                                                                                 .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
                                                         proxy.scrollTo("feedTop", anchor: .top)
                                                     }
@@ -547,31 +537,20 @@ struct FeedView: View {
                 // an explicit save/restore round-trip isn't needed here.
             } // end ScrollViewReader
                                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                                        .simultaneousGesture(
-                                                                DragGesture()
-                                .onChanged { value in
-                                                                    guard value.translation.height > 0 else { return }
-                                                                    vm.dragOffset = value.translation.height
-                                                                }
-                                                        .onEnded { value in
-                                                                                                                            if value.translation.height > 80 && !vm.isRefreshing {
-                                        vm.isRefreshing = true
-                                        HapticManager.play(.tabSwitch)
-                                        Task { @MainActor in
-                                            vm.refreshAll()
-                                            try? await Task.sleep(nanoseconds: 800_000_000)
-                                            withAnimation(.easeOut(duration: 0.3)) {
-                                                vm.isRefreshing = false
-                                                vm.dragOffset = 0
-                                            }
-                                        }
-                                    } else {
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                            vm.dragOffset = 0
-                                        }
-                                    }
-                                                                    }
-                                                            )
+                                                        // Native pull-to-refresh. This replaces a custom
+                                                        // simultaneousGesture(DragGesture()) that fired on EVERY
+                                                        // downward drag — even mid-feed, not just at the top —
+                                                        // setting dragOffset and expanding the refresh header,
+                                                        // which shoved content around while scrolling and made
+                                                        // the feed feel wonky. .refreshable engages only at the
+                                                        // top and lets the scroll view own touch arbitration, so
+                                                        // normal scrolling stays seamless. refreshAll() refreshes
+                                                        // posts + header content, matching the old behavior.
+                                                        .refreshable {
+                                                            HapticManager.play(.tabSwitch)
+                                                            vm.refreshAll()
+                                                            try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                                        }
                                                 .frame(width: geo.size.width, height: geo.size.height)
                                                 }
                                             }
@@ -789,12 +768,6 @@ struct FeedPostRow: View {
             // automatically and don't compose with anything else.
             @State private var likeBurstScale: CGFloat = 1.0
             @State private var likeBurstOpacity: Double = 0.0
-            // Press-state tint for the whole row — @GestureState so the
-            // value resets the moment the user lifts/cancels, no manual
-            // teardown. LongPressGesture(minimumDuration: 0.01) fires
-            // immediately on touch and tracks pressing via .updating;
-            // doesn't block the existing onTapGesture or context menu.
-            @GestureState private var rowIsPressed: Bool = false
             @State private var showShareCard = false
         @State private var showReportSheet = false
         @State private var showBlockConfirm = false
@@ -988,7 +961,13 @@ struct FeedPostRow: View {
                             image
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
-                                .frame(maxHeight: 200)
+                                // Cap width as well as height. With only
+                                // maxHeight set, a wide GIF scaled to fit 200pt
+                                // tall could be far wider than the screen, which
+                                // pushed the feed's content wider than the
+                                // viewport and let the whole vertical feed pan
+                                // sideways. maxWidth keeps it within the row.
+                                .frame(maxWidth: .infinity, maxHeight: 200)
                                 .cornerRadius(10)
                                 .transition(.opacity)
                         case .failure:
@@ -1020,7 +999,13 @@ struct FeedPostRow: View {
                   .frame(maxWidth: .infinity, alignment: .leading)
                   .contentShape(Rectangle())
                 } // end NavigationLink label
-                .buttonStyle(.plain)
+                // Drive the press highlight from the link's ButtonStyle, not a
+                // manual gesture. The scroll view owns touch arbitration, so
+                // isPressed is only true on a deliberate press and is cancelled
+                // the instant a scroll begins — no highlight flicker while
+                // scrolling, and the link never fires on a scroll/flick
+                // (UITableView / Twitter behavior). See FeedRowPressStyle.
+                .buttonStyle(FeedRowPressStyle())
                 // Sample/placeholder posts (empty postId) aren't real and have
                 // no detail to open — disable the link so tapping them is inert.
                 .disabled(postId.isEmpty)
@@ -1119,31 +1104,16 @@ struct FeedPostRow: View {
                                             .padding(.horizontal, 16)
                                             .padding(.top, 18)
                                             .padding(.bottom, 16)
-                                            // Layered background: base color +
-                                            // press-state tint that fades in
-                                            // when the user touches the row.
-                                            // The tint via @GestureState clears
-                                            // automatically on lift / cancel,
-                                            // and the LongPressGesture's tiny
-                                            // minimumDuration fires the press
-                                            // state immediately without
-                                            // blocking the existing tap or
-                                            // context menu (those use
-                                            // independent gesture systems).
-                                            .background(
-                                                ZStack {
-                                                    LateNightTheme.background
-                                                    if rowIsPressed {
-                                                        Color.toskaDivider.opacity(0.18)
-                                                    }
-                                                }
-                                            )
+                                            // Solid row background. The press
+                                            // highlight lives in FeedRowPressStyle
+                                            // on the content link now, so there's
+                                            // no manual press gesture here — the
+                                            // old LongPressGesture fired on
+                                            // touch-down, flickered during scroll,
+                                            // and competed with the scroll view
+                                            // for taps (opening posts mid-scroll).
+                                            .background(LateNightTheme.background)
                                             .contentShape(Rectangle())
-                                            .simultaneousGesture(
-                                                LongPressGesture(minimumDuration: 0.01, maximumDistance: 50)
-                                                    .updating($rowIsPressed) { _, state, _ in state = true }
-                                            )
-                                            .animation(.easeInOut(duration: 0.12), value: rowIsPressed)
                                             .overlay(
                                 Rectangle()
                                     .fill(LateNightTheme.divider)
@@ -1331,9 +1301,25 @@ struct FeedPostRow: View {
                     isSaved = newSaved
                 }
             }
-    
-    
+
+
 }
+
+// MARK: - Feed Row Press Style
+//
+// Press highlight for the tappable post content. Driven by the link's own
+// isPressed (which the enclosing ScrollView manages) instead of a manual
+// gesture, so the highlight only shows on a deliberate press and is cancelled
+// the moment a scroll starts — matching UITableView / Twitter. No flicker
+// while scrolling, and the row's tap never fires mid-scroll.
+struct FeedRowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Color.toskaDivider.opacity(0.18) : Color.clear)
+            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Collapsible Feed Header Card
 
 @MainActor

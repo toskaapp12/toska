@@ -780,7 +780,6 @@ struct FeedPostRow: View {
     @State private var hasInitialized = false
         @State private var likePulse = false
             @State private var repostPulse = false
-            @State private var showPostDetail = false
             @State private var likePulseTask: Task<Void, Never>? = nil
             @State private var repostPulseTask: Task<Void, Never>? = nil
             // Heart burst overlay state — drives a brief expanding+fading
@@ -803,6 +802,34 @@ struct FeedPostRow: View {
 
     var body: some View {
                 VStack(alignment: .leading, spacing: 0) {
+                // Tapping the post content PUSHES PostDetailView in from the
+                // right (real navigation), not a modal pop-up. A
+                // destination-closure NavigationLink is used instead of
+                // .navigationDestination(...) because FeedPostRow renders
+                // dozens of times in an eager VStack across several screens;
+                // per-row navigationDestination declarations collide in one
+                // NavigationStack and silently stop working. Destination-closure
+                // links each carry their own destination, so there's no
+                // collision. The action bar lives OUTSIDE this link so its
+                // buttons never fight the link's tap.
+                NavigationLink {
+                    PostDetailView(
+                        postId: postId,
+                        handle: handle,
+                        text: text,
+                        tag: tag,
+                        likes: localLikeCount,
+                        reposts: localRepostCount,
+                        replies: replies,
+                        time: time,
+                        authorId: authorId,
+                        isAlreadyLiked: isLiked,
+                        isAlreadySaved: isSaved,
+                        isAlreadyReposted: isReposted
+                    )
+                    .navigationBarHidden(true)
+                } label: {
+                  VStack(alignment: .leading, spacing: 0) {
                 // Repost provenance — small "@reposter reposted" line above
                 // the handle row when this post is a repost. Without this,
                 // reposts looked identical to original posts and readers had
@@ -988,23 +1015,36 @@ struct FeedPostRow: View {
                         }
                     }
                     .padding(.bottom, 10)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if !postId.isEmpty { showPostDetail = true }
-                    }
                 }
+                  }
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
+                } // end NavigationLink label
+                .buttonStyle(.plain)
+                // Sample/placeholder posts (empty postId) aren't real and have
+                // no detail to open — disable the link so tapping them is inert.
+                .disabled(postId.isEmpty)
 
                     // Action bar — larger icons + a bit tighter spacing so
                                     // the row feels more substantial without crowding.
                                     if !postId.isEmpty {
                                         HStack(spacing: 24) {
-                                                                                   Button {
-                                                                                       NotificationCenter.default.post(
-                                                                                           name: .saveFeedScrollPosition,
-                                                                                           object: nil,
-                                                                                           userInfo: ["postId": postId]
+                                                                                   NavigationLink {
+                                                                                       PostDetailView(
+                                                                                           postId: postId,
+                                                                                           handle: handle,
+                                                                                           text: text,
+                                                                                           tag: tag,
+                                                                                           likes: localLikeCount,
+                                                                                           reposts: localRepostCount,
+                                                                                           replies: replies,
+                                                                                           time: time,
+                                                                                           authorId: authorId,
+                                                                                           isAlreadyLiked: isLiked,
+                                                                                           isAlreadySaved: isSaved,
+                                                                                           isAlreadyReposted: isReposted
                                                                                        )
-                                                                                       showPostDetail = true
+                                                                                       .navigationBarHidden(true)
                                                                                    } label: {
                                                                                        actionLabel(icon: "bubble.left", count: replies, isActive: false)
                                                                                    }
@@ -1067,6 +1107,15 @@ struct FeedPostRow: View {
                                         .padding(.top, 16)
                                     }
                                 }
+                                            // Span the full width so the whole card is one
+                                            // tap target — without this the row is only as
+                                            // wide as its widest child, so short / text-only
+                                            // posts (and the empty space beside them) had dead
+                                            // zones that didn't open the post. Combined with
+                                            // .contentShape(Rectangle()) + .onTapGesture below,
+                                            // tapping anywhere on the post opens it; the action
+                                            // buttons still capture their own taps.
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                             .padding(.horizontal, 16)
                                             .padding(.top, 18)
                                             .padding(.bottom, 16)
@@ -1095,17 +1144,7 @@ struct FeedPostRow: View {
                                                     .updating($rowIsPressed) { _, state, _ in state = true }
                                             )
                                             .animation(.easeInOut(duration: 0.12), value: rowIsPressed)
-                                            .onTapGesture {
-                                                                            if !postId.isEmpty {
-                                                                                NotificationCenter.default.post(
-                                                                                    name: .saveFeedScrollPosition,
-                                                                                    object: nil,
-                                                                                    userInfo: ["postId": postId]
-                                                                                )
-                                    showPostDetail = true
-                                }
-                            }
-                            .overlay(
+                                            .overlay(
                                 Rectangle()
                                     .fill(LateNightTheme.divider)
                                     .frame(height: 0.5),
@@ -1141,13 +1180,6 @@ struct FeedPostRow: View {
                                             }
                                         }
 
-                    Divider()
-
-                    Button {
-                        showPostDetail = true
-                    } label: {
-                        Label("open post", systemImage: "bubble.left")
-                    }
                 }
                 .onAppear {
                                                     if !hasInitialized {
@@ -1172,38 +1204,31 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
-                .navigationDestination(isPresented: $showPostDetail) {
-                                                    PostDetailView(
-                                                        postId: postId,
-                                                        handle: handle,
-                                                        text: text,
-                                                        tag: tag,
-                                                        likes: localLikeCount,
-                                                        reposts: localRepostCount,
-                                                        replies: replies,
-                                                        time: time,
-                                                        authorId: authorId,
-                                                        isAlreadyLiked: isLiked,
-                                                        isAlreadySaved: isSaved,
-                                                        isAlreadyReposted: isReposted
-                                                    )
-                                                    .navigationBarHidden(true)
-                                                }
-                                .navigationDestination(isPresented: $showShareCard) {
-                                    ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
-                                        .navigationBarHidden(true)
-                                        .hidesAppTabBar()
-                                }
-                                .navigationDestination(isPresented: $showReportSheet) {
-                                    ReportSheet(target: .post(
-                                        postId: postId,
-                                        authorId: authorId,
-                                        authorHandle: handle,
-                                        text: text
-                                    ))
-                                    .navigationBarHidden(true)
-                                    .hidesAppTabBar()
-                                }
+                // Opening the post uses push navigation (the NavigationLink
+                // wrapping the content above) so it slides in from the right.
+                // Share and report stay as modal covers — secondary leaf
+                // actions where a modal is conventional. Per-row covers don't
+                // collide the way per-row navigationDestination(isPresented:)
+                // did, which is why these two are safe to keep per-row.
+                .fullScreenCover(isPresented: $showShareCard) {
+                    EdgeSwipeDismissWrapper {
+                        ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
+                            .navigationBarHidden(true)
+                    }
+                }
+                .fullScreenCover(isPresented: $showReportSheet) {
+                    EdgeSwipeDismissWrapper {
+                        NavigationStack {
+                            ReportSheet(target: .post(
+                                postId: postId,
+                                authorId: authorId,
+                                authorHandle: handle,
+                                text: text
+                            ))
+                            .navigationBarHidden(true)
+                        }
+                    }
+                }
                                 .confirmationDialog(
                                     "block \(handle)?",
                                     isPresented: $showBlockConfirm,

@@ -55,6 +55,7 @@ struct ProfileView: View {
         ("text.document", "text.document.fill"),
         ("heart", "heart.fill"),
         ("bookmark", "bookmark.fill"),
+        ("arrowshape.turn.up.left", "arrowshape.turn.up.left.fill"),
     ]
     var avatarInitial: String {
         let cleaned = userHandle.replacingOccurrences(of: "anonymous_", with: "")
@@ -286,9 +287,24 @@ struct ProfileView: View {
                                                                             }
                                                                         }
                                                                     }
+                                                                case 3:
+                                                                    if myReplies.isEmpty {
+                                                                        emptyState(icon: "arrowshape.turn.up.left", title: "no replies yet.", subtitle: "say something back to someone who needed it.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(myReplies) { reply in
+                                                                                replyRow(reply)
+                                                                            }
+                                                                            if myReplies.count >= 30 {
+                                                                                Text("showing your most recent replies")
+                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
                                                                 default: EmptyView()
                                                                 }
-                        
+
                         Color.clear.frame(height: 80)
                     }
                 }
@@ -302,6 +318,8 @@ struct ProfileView: View {
                                     case 2:
                                         loadSavedPosts()
                                         loadSavedReplies()
+                                    case 3:
+                                        loadMyReplies()
                                     default: break
                                     }
                                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -366,6 +384,7 @@ struct ProfileView: View {
                                                 loadLikedReplies()
                                                 loadSavedPosts()
                                                 loadSavedReplies()
+                                                loadMyReplies()
                         ensurePresenceThenLoadStreak()
                         Task {
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -374,6 +393,13 @@ struct ProfileView: View {
                     }
                     loadProfile()
                 }
+        // Refresh the replies tab each time it's selected so a reply the user
+        // just posted (from a post detail elsewhere) shows up without needing a
+        // manual pull-to-refresh. onAppear only fetches once (hasFetchedInitial),
+        // so without this a new reply wouldn't appear until the next launch.
+        .onChange(of: selectedTab) { _, newValue in
+            if newValue == 3 { loadMyReplies() }
+        }
         // Reset on sign-out so any in-flight ProfileView state from the
         // previous account doesn't blend into the next user's UI when
         // MainTabView remounts. hasFetchedInitial=false re-arms the
@@ -1087,11 +1113,56 @@ struct ProfileView: View {
         }
     }
     
-    // loadMyReplies was removed — no UI surface in ProfileView renders the
-    // user's replies list (the replies tab was intentionally dropped, see the
-    // toskaUITests assertion in testProfileElements). OtherProfileView still
-    // owns its own reply-loading path. If a replies tab is ever reintroduced
-    // here, restore this function and the populated myReplies state.
+    /// Loads the current user's own replies for the "replies" profile tab.
+    /// Mirrors OtherProfileView.loadReplies, scoped to the signed-in uid.
+    /// Uses the replies collection-group index (authorId ASC, createdAt DESC)
+    /// that OtherProfileView already relies on. Denormalized parentPostText/
+    /// parentPostHandle are used when present; older replies fall back to
+    /// fetching the parent post for context.
+    func loadMyReplies() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        Task {
+            guard let replySnap = try? await db.collectionGroup("replies")
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 30)
+                .getDocumentsAsync() else { return }
+
+            var results: [MyReply] = []
+            await withTaskGroup(of: MyReply?.self) { group in
+                for doc in replySnap.documents {
+                    let data = doc.data()
+                    let replyText = data["text"] as? String ?? ""
+                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                    let replyTime = ToskaFormatters.timeAgo(from: createdAt)
+                    let replyDocId = doc.documentID
+
+                    if let parentText = data["parentPostText"] as? String {
+                        let parentHandle = data["parentPostHandle"] as? String ?? "anonymous"
+                        let parentPostId = doc.reference.parent.parent?.documentID ?? ""
+                        group.addTask {
+                            MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                        }
+                    } else {
+                        guard let parentRef = doc.reference.parent.parent else { continue }
+                        let parentPostId = parentRef.documentID
+                        group.addTask {
+                            let parentSnap = try? await parentRef.getDocumentAsync()
+                            let parentData = parentSnap?.data()
+                            let parentText = parentData?["text"] as? String ?? "deleted post"
+                            let parentHandle = parentData?["authorHandle"] as? String ?? "anonymous"
+                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                        }
+                    }
+                }
+                for await result in group {
+                    if let result = result { results.append(result) }
+                }
+            }
+            myReplies = results.sorted { $0.createdAt > $1.createdAt }
+        }
+    }
 }
 
 // MARK: - Reply Engagement Row

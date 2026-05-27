@@ -107,6 +107,15 @@ struct PostDetailView: View {
     @State private var replyGentleCheckLevel: CrisisLevel = .soft
     @State private var replyGifUrl: String? = nil
     @State private var showReplyGifPicker = false
+    // Edit / delete for the viewer's own reply, from the reply context menu.
+    // The reply snapshot listener (replyListener) reflects the change in
+    // replyList automatically, so there's no manual list mutation here.
+    @State private var editReplyId = ""
+    @State private var editReplyText = ""
+    @State private var showEditReply = false
+    @State private var deleteReplyId = ""
+    @State private var showDeleteReplyAlert = false
+    @State private var deleteReplyError: String? = nil
     @State private var activeConversation: ConversationSelection? = nil
     @State private var isLetter = false
 
@@ -269,6 +278,32 @@ struct PostDetailView: View {
                     .navigationBarHidden(true)
                     .hidesAppTabBar()
             }
+            // Edit own reply in the thread. Reuses EditReplyView (defined in
+            // ProfileView.swift). The reply snapshot listener refreshes the
+            // edited text into replyList, so no onSave mutation is needed here.
+            .navigationDestination(isPresented: $showEditReply) {
+                EditReplyView(postId: postId, replyId: editReplyId, replyText: $editReplyText) { }
+                    .navigationBarHidden(true)
+                    .hidesAppTabBar()
+            }
+            .alert("delete this reply?", isPresented: $showDeleteReplyAlert) {
+                Button("delete", role: .destructive) { deleteReply(replyId: deleteReplyId) }
+                Button("cancel", role: .cancel) {}
+            } message: {
+                Text("this can't be undone.")
+            }
+            .alert(
+                "couldn't delete",
+                isPresented: Binding(
+                    get: { deleteReplyError != nil },
+                    set: { if !$0 { deleteReplyError = nil } }
+                ),
+                presenting: deleteReplyError
+            ) { _ in
+                Button("ok", role: .cancel) { deleteReplyError = nil }
+            } message: { msg in
+                Text(msg)
+            }
             .navigationDestination(item: $activeConversation) { convo in
                 ConversationView(conversationId: convo.id, otherHandle: convo.handle, otherUserId: convo.userId)
                     .navigationBarHidden(true)
@@ -377,7 +412,16 @@ struct PostDetailView: View {
                                             replyingToHandle = item.reply.handle
                                             replyFocused = true
                                         },
-                                        onShare: { shareReply = item.reply }
+                                        onShare: { shareReply = item.reply },
+                                        onEdit: {
+                                            editReplyId = item.reply.id
+                                            editReplyText = item.reply.text
+                                            showEditReply = true
+                                        },
+                                        onDelete: {
+                                            deleteReplyId = item.reply.id
+                                            showDeleteReplyAlert = true
+                                        }
                                     )
                                     if index < flat.count - 1 {
                                         Rectangle()
@@ -1069,6 +1113,27 @@ struct PostDetailView: View {
         }
     }
 
+    /// Deletes the viewer's own reply. Plain document delete — the
+    /// onReplyDeletedUpdateCount Cloud Function decrements the post's
+    /// replyCount, and the reply snapshot listener removes it from replyList.
+    /// Mirrors ProfileView.deleteReply (the post update rule blocks client
+    /// counter writes, so a transaction here would fail permission_denied).
+    private func deleteReply(replyId: String) {
+        guard !replyId.isEmpty, !postId.isEmpty else { return }
+        Firestore.firestore()
+            .collection("posts").document(postId)
+            .collection("replies").document(replyId)
+            .delete { error in
+                Task { @MainActor in
+                    if let error = error {
+                        print("⚠️ deleteReply failed: \(error)")
+                        Telemetry.recordError(error, context: "PostDetailView.deleteReply")
+                        deleteReplyError = "couldn't delete — try again"
+                    }
+                }
+            }
+    }
+
     private func toggleReplySaveAt(replyId: String) {
         guard let reply = findReplyInTree(replyId: replyId) else { return }
         let currentlySaved = reply.isSaved
@@ -1545,6 +1610,11 @@ struct SwipeToReplyRow: View {
     /// share path posts use. Implemented in PostDetailView, which owns
     /// the sheet presentation state.
     var onShare: (() -> Void)? = nil
+    /// Edit / delete the viewer's OWN reply. Surfaced in the context menu
+    /// only when the reply's authorId matches the signed-in user.
+    /// PostDetailView owns the edit sheet + delete confirmation.
+    var onEdit: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var hasTriggered = false
     @State private var showReportSheet = false
@@ -1766,6 +1836,21 @@ struct SwipeToReplyRow: View {
             if let onComment = onComment {
                 Button { onComment() } label: {
                     Label("reply", systemImage: "bubble.left")
+                }
+            }
+            // Own reply → edit / delete. Mirrors the post author's edit/delete
+            // menu and ProfileView's reply context menu, so you can manage a
+            // reply right where you read it instead of only from your profile.
+            if let onEdit = onEdit,
+               item.reply.authorId == Auth.auth().currentUser?.uid {
+                Divider()
+                Button { onEdit() } label: {
+                    Label("edit reply", systemImage: "pencil")
+                }
+                if let onDelete = onDelete {
+                    Button(role: .destructive) { onDelete() } label: {
+                        Label("delete reply", systemImage: "trash")
+                    }
                 }
             }
             if !postId.isEmpty,

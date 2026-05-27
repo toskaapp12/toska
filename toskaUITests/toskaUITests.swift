@@ -286,10 +286,12 @@ final class ToskaUITests: XCTestCase {
         XCTAssertTrue(waitFor(myPostsTab, timeout: 5), "'my posts' tab not found")
         XCTAssertTrue(savedTab.exists, "'saved' tab not found")
         
-        // Should NOT have "replies" or "likes" tabs (we removed them)
-        let repliesTab = app.buttons["replies"]
+        // The profile tab bar is posts / liked / saved / replies (icon-only
+        // buttons). There is no text-labelled "likes" tab — the engagement tab
+        // is the heart ("liked") — so a button literally named "likes" must not
+        // exist. The replies tab was reintroduced as an icon, so it's no longer
+        // asserted absent here.
         let likesTab = app.buttons["likes"]
-        XCTAssertFalse(repliesTab.exists, "'replies' tab should not exist")
         XCTAssertFalse(likesTab.exists, "'likes' tab should not exist")
     }
     

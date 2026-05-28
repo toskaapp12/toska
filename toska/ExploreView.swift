@@ -68,8 +68,6 @@ struct ExploreView: View {
     @State private var breakupStageCounts: [String: Int] = [:]
     @State private var hasFetchedInitial = false
     @State private var feelingPeople: [FeelingPerson] = []
-    @State private var activeConversation: ConversationSelection? = nil
-    @State private var isStartingConversation = false
     @State private var hasFinalPosts = false
         @State private var searchTask: Task<Void, Never>? = nil
 
@@ -312,32 +310,16 @@ struct ExploreView: View {
                                                 .foregroundColor(Color.toskaTextLight)
                                                 .tracking(0.3)
                                             
+                                            // "Reach out" DM button removed when DMs were cut.
+                                            // The list still shows people feeling the tag as a
+                                            // soft "you're not alone" surface, just without a
+                                            // direct-message affordance.
                                             ForEach(feelingPeople) { person in
                                                 HStack(spacing: 10) {
-                                                                                                    Text(person.handle)
+                                                    Text(person.handle)
                                                         .font(.system(size: 12, weight: .medium))
                                                         .foregroundColor(Color.toskaTextDark)
-                                                    
                                                     Spacer()
-                                                    
-                                                    Button {
-                                                                                                            startConversation(with: person)
-                                                                                                        } label: {
-                                                                                                            HStack(spacing: 4) {
-                                                                                                                if isStartingConversation {
-                                                                                                                    ProgressView().scaleEffect(0.6).tint(Color.toskaBlue)
-                                                                                                                } else {
-                                                                                                                    Image(systemName: "envelope").font(.system(size: 10))
-                                                                                                                }
-                                                                                                                Text("reach out").font(.system(size: 10, weight: .medium))
-                                                                                                            }
-                                                                                                            .foregroundColor(Color.toskaBlue)
-                                                                                                            .padding(.horizontal, 10)
-                                                                                                            .padding(.vertical, 5)
-                                                                                                            .background(Color.toskaBlue.opacity(0.08))
-                                                                                                            .cornerRadius(12)
-                                                                                                        }
-                                                                                                        .disabled(isStartingConversation)
                                                 }
                                             }
                                         }
@@ -446,15 +428,7 @@ struct ExploreView: View {
         }
         
             
-        .navigationDestination(item: $activeConversation) { convo in
-                    ConversationView(
-                        conversationId: convo.id,
-                        otherHandle: convo.handle,
-                        otherUserId: convo.userId
-                    )
-                    .navigationBarHidden(true)
-                }
-                .hidesAppTabBar()
+        .hidesAppTabBar()
     }
 
     // MARK: - Parse helper
@@ -494,49 +468,11 @@ struct ExploreView: View {
           }
       }
     
-    // MARK: - Start Conversation from Explore
-    
-    func startConversation(with person: FeelingPerson) {
-                    guard let uid = Auth.auth().currentUser?.uid, uid != person.id else { return }
-                    guard !isStartingConversation else { return }
-                    guard !BlockedUsersCache.shared.isBlocked(person.id) else { return }
-                    isStartingConversation = true
-                    let db = Firestore.firestore()
-                    
-                    Task {
-                        defer { isStartingConversation = false }
-                        
-                        let blockedSnap = try? await db.collection("users").document(person.id).collection("blocked").document(uid).getDocumentAsync()
-                        if blockedSnap?.exists == true { return }
-                    
-                    let convoId = [uid, person.id].sorted().joined(separator: "_")
-                    let convoRef = db.collection("conversations").document(convoId)
-                    
-                    let convoSnap = try? await convoRef.getDocumentAsync()
-                    if convoSnap?.exists == true {
-                        activeConversation = ConversationSelection(id: convoId, handle: person.handle, userId: person.id)
-                        return
-                    }
-                    
-                    let userSnap = try? await db.collection("users").document(uid).getDocumentAsync()
-                    let myHandle = userSnap?.data()?["handle"] as? String ?? "anonymous"
-                    
-                    do {
-                                            try await convoRef.setData([
-                                                "participants": [uid, person.id],
-                                                "participantHandles": [uid: myHandle, person.id: person.handle],
-                                                "lastMessage": "",
-                                                "lastMessageAt": FieldValue.serverTimestamp(),
-                                                "messageCount": [uid: 0, person.id: 0],
-                                                "createdAt": FieldValue.serverTimestamp()
-                                            ])
-                                            activeConversation = ConversationSelection(id: convoId, handle: person.handle, userId: person.id)
-                                        } catch {
-                                            print("⚠️ startConversation setData failed: \(error)")
-                                        }
-                }
-            }
-    
+    // startConversation removed when DMs were cut. The feeling-people list
+    // still surfaces as a "you're not alone" signal in the empty-tag state,
+    // but there's no longer a "reach out" affordance to message them.
+
+
     // MARK: - Data fetching
     
     func preloadPosts() {

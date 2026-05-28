@@ -25,8 +25,6 @@ struct NotificationsView: View {
     @State private var lastFetchTime: Date? = nil
     @State private var showDeletedPostAlert = false
     @State private var markAsReadTask: Task<Void, Never>? = nil
-    @State private var selectedConversation: (id: String, handle: String, userId: String)? = nil
-    @State private var showConversation = false
     // Real-time listener for the notification feed. Replaces the earlier
     // one-shot loadNotifications/pull-to-refresh model so likes, replies,
     // follows, and messages land in the UI as the Cloud Function writes
@@ -217,9 +215,6 @@ struct NotificationsView: View {
             stopListeningToNotifications()
             notifications = []
         }
-        .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
-                    showConversation = false
-                }
         // Tap-active-bell-to-pop-to-root. MainTabView posts this when the
         // bell is tapped while .notifications is already the selected tab.
         // Reset every push / sheet binding here so the user lands back on
@@ -229,8 +224,6 @@ struct NotificationsView: View {
             selectedPostId = nil
             selectedPostData = nil
             selectedFollowUser = nil
-            showConversation = false
-            selectedConversation = nil
         }
         .navigationDestination(isPresented: $showPost) {
                                     if let post = selectedPostData, let postId = selectedPostId {
@@ -252,16 +245,10 @@ struct NotificationsView: View {
                     OtherProfileView(userId: user.id, handle: user.handle)
                         .navigationBarHidden(true)
                 }
-        .navigationDestination(isPresented: $showConversation) {
-            if let convo = selectedConversation {
-                ConversationView(
-                    conversationId: convo.id,
-                    otherHandle: convo.handle,
-                    otherUserId: convo.userId
-                )
-                .navigationBarHidden(true)
-            }
-        }
+        // Conversation destination removed when DMs were cut. Tapping a
+        // legacy message notification no longer routes anywhere; the
+        // notification row stays inert until the row-level handler is
+        // also pruned. See notifRow for where the route is suppressed.
         .alert("post deleted", isPresented: $showDeletedPostAlert) {
             Button("ok") {}
         } message: {
@@ -357,27 +344,15 @@ struct NotificationsView: View {
                     selectedFollowUser = NotifFollowUser(id: notif.fromUserId, handle: handle)
                 }
             }
-        } else if notif.type == "message" && !notif.fromUserId.isEmpty {
-            openConversation(fromUserId: notif.fromUserId)
+        } else if notif.type == "message" {
+            // DMs were cut — message notifications are inert. No-op tap.
+            // (The legacy notification row may still arrive for users on
+            // older builds; we just don't route it to ConversationView.)
         } else {
             openPost(postId: notif.postId)
         }
     }
-
-    func openConversation(fromUserId: String) {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        let db = Firestore.firestore()
-        let convoId = [uid, fromUserId].sorted().joined(separator: "_")
-        db.collection("conversations").document(convoId).getDocument { snapshot, _ in
-            Task { @MainActor in
-                guard let data = snapshot?.data() else { return }
-                let handles = data["participantHandles"] as? [String: String] ?? [:]
-                let otherHandle = handles[fromUserId] ?? "anonymous"
-                selectedConversation = (id: convoId, handle: otherHandle, userId: fromUserId)
-                showConversation = true
-            }
-        }
-    }
+    // openConversation removed when DMs were cut.
 
     func openPost(postId: String) {
         guard !postId.isEmpty else { return }

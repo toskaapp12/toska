@@ -124,7 +124,6 @@ struct PostDetailView: View {
     @State private var deleteReplyId = ""
     @State private var showDeleteReplyAlert = false
     @State private var deleteReplyError: String? = nil
-    @State private var activeConversation: ConversationSelection? = nil
     @State private var isLetter = false
 
     var isOwnPost: Bool {
@@ -311,10 +310,6 @@ struct PostDetailView: View {
                 Button("ok", role: .cancel) { deleteReplyError = nil }
             } message: { msg in
                 Text(msg)
-            }
-            .navigationDestination(item: $activeConversation) { convo in
-                ConversationView(conversationId: convo.id, otherHandle: convo.handle, otherUserId: convo.userId)
-                    .navigationBarHidden(true)
             }
     }
 
@@ -661,15 +656,7 @@ struct PostDetailView: View {
                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                            .frame(maxWidth: .infinity)
 
-                           if !isOwnPost && !isAuthorIdLoading && !authorUserId.isEmpty {
-                               Button { startConversation() } label: {
-                                   Image(systemName: "envelope")
-                                       .font(.system(size: 15, weight: .light))
-                                       .foregroundColor(Color.toskaTextLight)
-                               }
-                               .accessibilityLabel("Send message")
-                               .frame(maxWidth: .infinity)
-                           }
+                           // DM envelope removed when DMs were cut.
                        }
                        .padding(.vertical, 8)
             Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
@@ -1432,36 +1419,7 @@ struct PostDetailView: View {
         PostInteractionManager.sendNotification(postId: postId, toUserId: toUserId, type: type, message: message)
     }
 
-    // MARK: - DM Conversation
-
-    func startConversation() {
-        guard let uid = Auth.auth().currentUser?.uid, !authorUserId.isEmpty, uid != authorUserId else { return }
-        let db = Firestore.firestore()
-        let convoId = [uid, authorUserId].sorted().joined(separator: "_")
-        let convoRef = db.collection("conversations").document(convoId)
-
-        Task { @MainActor in
-            let theyBlockedMe = try? await db.collection("users").document(authorUserId).collection("blocked").document(uid).getDocumentAsync()
-            if theyBlockedMe?.exists == true { return }
-            let iBlockedThem = try? await db.collection("users").document(uid).collection("blocked").document(authorUserId).getDocumentAsync()
-            if iBlockedThem?.exists == true { return }
-
-            let myHandle = UserHandleCache.shared.handle
-            let existing = try? await convoRef.getDocumentAsync()
-            if existing?.exists == true {
-                activeConversation = ConversationSelection(id: convoId, handle: handle, userId: authorUserId)
-                return
-            }
-            try? await convoRef.setData([
-                "participants": [uid, authorUserId],
-                "participantHandles": [uid: myHandle, authorUserId: handle],
-                "lastMessage": "", "lastMessageAt": FieldValue.serverTimestamp(),
-                "messageCount": [uid: 0, authorUserId: 0],
-                "createdAt": FieldValue.serverTimestamp()
-            ])
-            activeConversation = ConversationSelection(id: convoId, handle: handle, userId: authorUserId)
-        }
-    }
+    // startConversation removed when DMs were cut.
 
     func formatFull(_ count: Int) -> String {
         ToskaFormatters.decimalNumber.string(from: NSNumber(value: count)) ?? "\(count)"

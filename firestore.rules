@@ -791,8 +791,16 @@ service cloud.firestore {
     }
 
     match /conversations/{convoId} {
+      // `resource == null` for a non-existent doc — without that leg, reading
+      // a not-yet-created conversation (e.g. OtherProfileView.startConversation
+      // checks `convoRef.getDocument()` before deciding to setData) fails with
+      // permission_denied because `resource.data.participants` can't evaluate.
+      // The client never reaches the "doc doesn't exist → create" branch, so
+      // no first message between two users ever opens. Allowing existence
+      // probes is safe: a non-existent doc returns no data; the create rule
+      // below still enforces who can write it.
       allow read: if isAuth()
-        && request.auth.uid in resource.data.participants;
+        && (resource == null || request.auth.uid in resource.data.participants);
       // messageCount is the per-user 5-message rate-limit ledger and feeds
       // the cap check in the messages create rule below. Without locking
       // it, a malicious peer could pre-set messageCount.{victim_uid} = 5

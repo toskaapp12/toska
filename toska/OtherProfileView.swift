@@ -20,10 +20,7 @@ struct OtherProfileView: View {
     @State private var showReportedAlert = false
     @State private var lastFollowTime: Date? = nil
     @State private var hasFetchedInitial = false
-    @State private var showMessages = false
-    @State private var activeConversationId = ""
     @State private var showFollowerCount = true
-    @State private var showStartConversationError = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -39,10 +36,32 @@ struct OtherProfileView: View {
                     onBack: { dismiss() }
                 ) {
                     if !isOwnProfile {
-                        Button { showReport = true } label: {
+                        // Menu (popover) instead of a .confirmationDialog so
+                        // the report/block options drop down directly under
+                        // the ⋯ button — the dialog rendered as a system
+                        // action sheet pinned to the screen bottom, which
+                        // felt disconnected from where the user tapped.
+                        Menu {
+                            Button {
+                                reportUser()
+                                showReportedAlert = true
+                            } label: {
+                                Label("report", systemImage: "flag")
+                            }
+                            Button(role: .destructive) {
+                                blockUser()
+                            } label: {
+                                Label("block", systemImage: "person.slash")
+                            }
+                        } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 17, weight: .regular))
                                 .foregroundColor(Color.toskaTimestamp)
+                                // Larger hit target so the Menu reliably
+                                // opens — the bare 17pt image was too small
+                                // to land a tap cleanly.
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .accessibilityLabel("Report or block \(handle)")
                     }
@@ -84,25 +103,18 @@ struct OtherProfileView: View {
                             }
 
                             if !isOwnProfile {
-                                HStack(spacing: 10) {
-                                    Button { toggleFollow() } label: {
-                                        Text(isFollowing ? "following" : "follow")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundColor(isFollowing ? Color(hex: "888888") : .white)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 11)
-                                            .background(isFollowing ? Color(hex: "e4e6ea") : Color.toskaBlue)
-                                            .cornerRadius(22)
-                                    }
-
-                                    Button { startConversation() } label: {
-                                        Image(systemName: "envelope")
-                                            .font(.system(size: 16, weight: .regular))
-                                            .foregroundColor(Color.toskaBlue)
-                                            .frame(width: 44, height: 44)
-                                            .background(Color.toskaBlue.opacity(0.12))
-                                            .cornerRadius(22)
-                                    }
+                                // DMs were cut as a product decision — Toska is
+                                // posts + replies + reposts, not a chat app.
+                                // Envelope button removed; conversation/messages
+                                // code stays in place for legacy data only.
+                                Button { toggleFollow() } label: {
+                                    Text(isFollowing ? "following" : "follow")
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(isFollowing ? Color(hex: "888888") : .white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 11)
+                                        .background(isFollowing ? Color(hex: "e4e6ea") : Color.toskaBlue)
+                                        .cornerRadius(22)
                                 }
                             } else {
                                 Text("this is you")
@@ -246,14 +258,6 @@ struct OtherProfileView: View {
             loadReplies()
             if !isOwnProfile { checkFollowing() }
         }
-        .confirmationDialog("", isPresented: $showReport) {
-            Button("report") {
-                reportUser()
-                showReportedAlert = true
-            }
-            Button("block", role: .destructive) { blockUser() }
-            Button("cancel", role: .cancel) {}
-        }
         .alert("user blocked", isPresented: $showBlockedAlert) {
             Button("ok") { dismiss() }
         } message: {
@@ -263,21 +267,6 @@ struct OtherProfileView: View {
             Button("ok") {}
         } message: {
             Text("we hear you. well look into it.")
-        }
-        .alert("couldnt open conversation", isPresented: $showStartConversationError) {
-            Button("ok") {}
-        } message: {
-            Text("something went wrong on our end. try again in a moment.")
-        }
-        .navigationDestination(isPresented: $showMessages) {
-            if !activeConversationId.isEmpty {
-                ConversationView(
-                    conversationId: activeConversationId,
-                    otherHandle: handle,
-                    otherUserId: userId
-                )
-                .navigationBarHidden(true)
-            }
         }
         .hidesAppTabBar()
     }
@@ -549,56 +538,8 @@ struct OtherProfileView: View {
         Telemetry.reportSubmitted(target: .user, reasonCode: "other")
     }
 
-    // MARK: - Start Conversation (DM)
-    //
-    // Previously this was three nested completion handlers with every error
-    // silently swallowed — if any step failed (permission check, conversation
-    // lookup, creation write) the "Message" button just did nothing and the
-    // user had no feedback. Rewritten as async/await with a single catch so
-    // a real failure surfaces via showStartConversationError.
-    func startConversation() {
-        guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
-        let db = Firestore.firestore()
-
-        Task { @MainActor in
-            do {
-                let blockedSnap = try await db.collection("users")
-                    .document(userId).collection("blocked").document(uid)
-                    .getDocumentAsync()
-                // Silent return is intentional here: the target has blocked
-                // the actor. Surfacing a "you are blocked" error would leak
-                // the block state.
-                if blockedSnap.exists { return }
-
-                let convoId = [uid, userId].sorted().joined(separator: "_")
-                let convoRef = db.collection("conversations").document(convoId)
-                let myHandle = UserHandleCache.shared.handle
-
-                let convoSnap = try await convoRef.getDocumentAsync()
-                if convoSnap.exists {
-                    // Keep participantHandles fresh in case the actor's
-                    // handle changed since the conversation was created.
-                    // Non-fatal if it fails — we still open the thread.
-                    try? await convoRef.updateData([
-                        "participantHandles.\(uid)": myHandle
-                    ])
-                } else {
-                    try await convoRef.setData([
-                        "participants": [uid, userId],
-                        "participantHandles": [uid: myHandle, userId: handle],
-                        "lastMessage": "",
-                        "lastMessageAt": FieldValue.serverTimestamp(),
-                        "messageCount": [uid: 0, userId: 0],
-                        "createdAt": FieldValue.serverTimestamp()
-                    ])
-                }
-
-                activeConversationId = convoId
-                showMessages = true
-            } catch {
-                Telemetry.recordError(error, context: "OtherProfile.startConversation")
-                showStartConversationError = true
-            }
-        }
-    }
+    // startConversation was removed when DMs were cut as a product decision.
+    // ConversationView / MessagesListView and the Firestore conversations
+    // collection still exist for legacy data, but no UI surface in the app
+    // creates new conversations anymore.
 }

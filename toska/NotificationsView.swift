@@ -68,67 +68,79 @@ struct NotificationsView: View {
                 ToskaHeader(title: "notifications")
 
                 // MARK: - Content
-                if isLoading {
-                    SkeletonFeed(kind: .notification, count: 5)
-                    Spacer()
-                } else if notifications.isEmpty {
-                    Spacer()
-                                        VStack(spacing: 14) {
-                                            Image(systemName: "heart.text.square")
-                                                .font(.system(size: 30, weight: .ultraLight))
-                                                .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                                .padding(.bottom, 4)
-                                            Text("\"someone will feel\nwhat you wrote.\"")
-                                                .font(.custom("Georgia-Italic", size: 20))
-                                                .foregroundColor(Color.toskaTimestamp)
-                                                .multilineTextAlignment(.center)
-                                                .lineSpacing(4)
-                                            Text(timeAwareNotifEmpty())
-                                                .font(.system(size: 11))
-                                                .foregroundColor(Color.toskaDivider)
-                                                .multilineTextAlignment(.center)
-                                        }
-                                        .padding(.horizontal, 48)
-                                        Spacer()
-                } else {
+                //
+                // Single ScrollView wraps all three branches so pull-to-refresh
+                // works regardless of state — previously .refreshable was only
+                // on the populated branch, so an empty notifications inbox had
+                // nothing to pull. GeometryReader gives the inner content a
+                // viewport-height min so the empty/loading states stay centered
+                // and there's still enough vertical room to overscroll.
+                GeometryReader { geo in
                     ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                            if !todayNotifs.isEmpty {
-                                Section {
-                                    ForEach(todayNotifs) { notif in
-                                        notifRow(notif)
+                        if isLoading {
+                            VStack {
+                                SkeletonFeed(kind: .notification, count: 5)
+                                Spacer()
+                            }
+                            .frame(minHeight: geo.size.height)
+                        } else if notifications.isEmpty {
+                            VStack(spacing: 14) {
+                                Spacer()
+                                Image(systemName: "heart.text.square")
+                                    .font(.system(size: 30, weight: .ultraLight))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                    .padding(.bottom, 4)
+                                Text("\"someone will feel\nwhat you wrote.\"")
+                                    .font(.custom("Georgia-Italic", size: 20))
+                                    .foregroundColor(Color.toskaTimestamp)
+                                    .multilineTextAlignment(.center)
+                                    .lineSpacing(4)
+                                Text(timeAwareNotifEmpty())
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.toskaDivider)
+                                    .multilineTextAlignment(.center)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 48)
+                            .frame(minHeight: geo.size.height)
+                        } else {
+                            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                if !todayNotifs.isEmpty {
+                                    Section {
+                                        ForEach(todayNotifs) { notif in
+                                            notifRow(notif)
+                                        }
+                                    } header: {
+                                        sectionHeader("new")
                                     }
-                                } header: {
-                                    sectionHeader("new")
                                 }
-                            }
 
-                            if !earlierNotifs.isEmpty {
-                                Section {
-                                    ForEach(earlierNotifs) { notif in
-                                        notifRow(notif)
+                                if !earlierNotifs.isEmpty {
+                                    Section {
+                                        ForEach(earlierNotifs) { notif in
+                                            notifRow(notif)
+                                        }
+                                    } header: {
+                                        sectionHeader("earlier")
                                     }
-                                } header: {
-                                    sectionHeader("earlier")
                                 }
-                            }
 
-                            if notifications.count >= 50 {
-                                Text("showing your 50 most recent notifications")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(Color(hex: "cccccc"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                            }
+                                if notifications.count >= 50 {
+                                    Text("showing your 50 most recent notifications")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                }
 
-                            Color.clear.frame(height: 80)
+                                Color.clear.frame(height: 80)
+                            }
                         }
                     }
                     .refreshable {
                         // Real pull-to-refresh: force a server-side fetch so
-                        // the spinner reflects an actual round-trip (this used
-                        // to just sleep 400ms cosmetically) and recover from
-                        // any transient listener silence; then re-bucket
+                        // the spinner reflects an actual round-trip and recovers
+                        // from any transient listener silence; then re-bucket
                         // today/earlier so a notification that was "new" earlier
                         // moves to "earlier" after midnight crosses. The live
                         // listener stays attached and applies any deltas as

@@ -229,12 +229,14 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.all, edges: .bottom)
-        .onPreferenceChange(HidesAppTabBarKey.self) { hidden in
-            // Animate the tab bar in/out. Spring matches the feel of
-            // navigation pushes so the bar's exit/entry tracks the push
-            // motion. See ToskaTheme.swift → HidesAppTabBarKey.
+        .onPreferenceChange(HidesAppTabBarKey.self) { _ in
+            // Tab bar is intentionally always visible — drill-in views can
+            // still declare `.hidesAppTabBar()`, the preference just isn't
+            // honored at the bar level anymore. Keeps navigation consistent
+            // so the user never loses their place. To restore per-screen
+            // hiding, set `tabBarHidden = hidden` here.
             withAnimation(.easeInOut(duration: 0.22)) {
-                tabBarHidden = hidden
+                tabBarHidden = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in

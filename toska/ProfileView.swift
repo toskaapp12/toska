@@ -37,7 +37,6 @@ struct ProfileView: View {
     // row stayed on screen with no indication the delete failed.
     @State private var deleteReplyError: String? = nil
     @State private var hasFetchedInitial = false
-    @State private var showMessagesList = false
     @State private var showWeeklyRecap = false
     @State private var presenceStreak = 0
     @State private var totalNights = 0
@@ -84,20 +83,14 @@ struct ProfileView: View {
                 // ToskaHeader, with messages + settings icons in the
                 // trailing slot. No back chevron (root tab).
                 ToskaHeader(title: userHandle, onBack: nil) {
-                    HStack(spacing: 18) {
-                        Button { showMessagesList = true } label: {
-                            Image(systemName: "envelope")
-                                .font(.system(size: 18, weight: .regular))
-                                .foregroundColor(Color.toskaTextLight)
-                        }
-                        .accessibilityLabel("messages")
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 18, weight: .regular))
-                                .foregroundColor(Color.toskaTextLight)
-                        }
-                        .accessibilityLabel("settings")
+                    // Messages envelope removed when DMs were cut. Only
+                    // settings remains in the trailing slot.
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(Color.toskaTextLight)
                     }
+                    .accessibilityLabel("settings")
                 }
                 
                 ScrollViewReader { proxy in
@@ -333,7 +326,6 @@ struct ProfileView: View {
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
-        .navigationDestination(isPresented: $showMessagesList) { MessagesListView() }
         .fullScreenCover(isPresented: $showWeeklyRecap) { EdgeSwipeDismissWrapper { WeeklyRecapView() } }
         .navigationDestination(isPresented: $showFollowers) { FollowListView(title: "followers").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showFollowing) { FollowListView(title: "following").navigationBarHidden(true) }
@@ -420,7 +412,6 @@ struct ProfileView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showSettings = false
-                    showMessagesList = false
                     showFollowers = false
                     showFollowing = false
                     showEditReply = false

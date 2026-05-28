@@ -82,7 +82,7 @@ struct NotificationsView: View {
                                 SkeletonFeed(kind: .notification, count: 5)
                                 Spacer()
                             }
-                            .frame(minHeight: geo.size.height)
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
                         } else if notifications.isEmpty {
                             VStack(spacing: 14) {
                                 Spacer()
@@ -102,7 +102,11 @@ struct NotificationsView: View {
                                 Spacer()
                             }
                             .padding(.horizontal, 48)
-                            .frame(minHeight: geo.size.height)
+                            // Span full width so the centered text is actually
+                            // centered. ScrollView content defaults to leading
+                            // alignment; without maxWidth: .infinity the VStack
+                            // hugged its widest line and sat on the left.
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
                         } else {
                             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                                 if !todayNotifs.isEmpty {

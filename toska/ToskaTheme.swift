@@ -1732,6 +1732,22 @@ struct SkeletonPostRow: View {
     }
 }
 
+struct SkeletonReplyRow: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ShimmerView().frame(width: 80, height: 11)
+                Spacer()
+                ShimmerView().frame(width: 28, height: 9)
+            }
+            ShimmerView().frame(height: 12)
+            ShimmerView().frame(height: 12).padding(.trailing, 60)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+    }
+}
+
 struct SkeletonNotificationRow: View {
     var body: some View {
         HStack(spacing: 12) {

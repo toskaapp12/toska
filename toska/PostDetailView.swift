@@ -69,6 +69,10 @@ struct PostDetailView: View {
     @State private var likeCount: Int = 0
     @State private var localRepostCount: Int = 0
     @State private var replyList: [ThreadedReply] = []
+    // True once the reply snapshot listener has returned at least once. Lets
+    // the UI show reply skeletons while loading instead of flashing the
+    // "be the first to reply" empty state and then popping replies in.
+    @State private var hasLoadedReplies = false
     // Reply ids whose collapsed deep-thread subtree the user has expanded
     // via the "show N more replies" stub. Persists across listener
     // re-renders within the lifetime of this PostDetailView (new push of
@@ -349,7 +353,23 @@ struct PostDetailView: View {
                             .padding(.horizontal, 18)
                             .padding(.top, 14)
 
-                        if replyList.isEmpty {
+                        if replyList.isEmpty && !hasLoadedReplies && replies > 0 {
+                            // Loading state. The post is known to have replies
+                            // (count arrived with the post), but the snapshot
+                            // listener hasn't returned yet. Show skeletons so
+                            // there's no flash of the "be the first to reply"
+                            // empty state before the real replies fade in.
+                            LazyVStack(spacing: 0) {
+                                ForEach(0..<min(max(replies, 1), 5), id: \.self) { _ in
+                                    SkeletonReplyRow()
+                                    Rectangle()
+                                        .fill(Color(hex: "e4e6ea").opacity(0.5))
+                                        .frame(height: 0.5)
+                                        .padding(.leading, 18)
+                                }
+                            }
+                            .transition(.opacity)
+                        } else if replyList.isEmpty {
                                                     VStack(spacing: 10) {
                                                         Text("\"some words just need\na witness.\"")
                                                             .font(.custom("Georgia-Italic", size: 18))
@@ -1035,12 +1055,19 @@ struct PostDetailView: View {
                         )
                     }
                     print("ℹ️ fetchReplies snapshot for post \(postId): \(documents.count) raw docs → \(flat.count) after block filter")
-                    // Stamp per-user interaction state. Three parallel one-shot
-                    // queries against the user's reverse indices + the posts
-                    // collection (for own reposts). Cheaper than per-reply
-                    // gets and avoids N additional listeners. Result is the
-                    // current snapshot's intersection with the user's history
-                    // — listener delta updates re-run this stamping.
+                    // Show reply text IMMEDIATELY, before the per-user
+                    // interaction-state stamping below. Stamping runs three
+                    // extra Firestore queries; holding replyList back until it
+                    // finished added a visible pause where the reply text was
+                    // already known but not shown. Render now, enrich after.
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        replyList = buildThreadedReplies(from: flat)
+                        hasLoadedReplies = true
+                    }
+                    // Stamp per-user interaction state (like/save/repost). Three
+                    // parallel one-shot queries against the user's reverse
+                    // indices + the posts collection (own reposts). The icons
+                    // fill in a moment after the text appears.
                     if let uid = Auth.auth().currentUser?.uid, !flat.isEmpty {
                         let replyIds = flat.map { $0.id }
                         let db = Firestore.firestore()
@@ -1050,9 +1077,8 @@ struct PostDetailView: View {
                             uid: uid,
                             db: db
                         )
-                        flat = stamped
+                        replyList = buildThreadedReplies(from: stamped)
                     }
-                    replyList = buildThreadedReplies(from: flat)
                 }
             }
     }

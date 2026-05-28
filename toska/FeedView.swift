@@ -953,47 +953,15 @@ struct FeedPostRow: View {
                                             .padding(.bottom, 10)
                                         }
                                         
-                                        // GIF
-                if let gifUrl = gifUrl, let url = URL(string: gifUrl) {
-                    AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                // Cap width as well as height. With only
-                                // maxHeight set, a wide GIF scaled to fit 200pt
-                                // tall could be far wider than the screen, which
-                                // pushed the feed's content wider than the
-                                // viewport and let the whole vertical feed pan
-                                // sideways. maxWidth keeps it within the row.
-                                .frame(maxWidth: .infinity, maxHeight: 200)
-                                .cornerRadius(10)
-                                .transition(.opacity)
-                        case .failure:
-                            // Distinguish a load failure from "still loading" so
-                            // the user has a hint that something went wrong
-                            // rather than staring at an empty box.
-                            LateNightTheme.inputBackground
-                                .frame(height: 120)
-                                .cornerRadius(10)
-                                .overlay(
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "photo.badge.exclamationmark")
-                                            .font(.system(size: 16, weight: .light))
-                                        Text("couldn't load gif")
-                                            .font(.system(size: 10))
-                                    }
-                                    .foregroundColor(LateNightTheme.tertiaryText)
-                                )
-                        default:
-                            LateNightTheme.inputBackground
-                                .frame(height: 120)
-                                .cornerRadius(10)
-                                .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
-                        }
-                    }
-                    .padding(.bottom, 10)
+                                        // GIF — animated. Uses StableGifPreview
+                                        // (shared from ComposeView) so frames
+                                        // actually animate via UIImageView; the
+                                        // old AsyncImage path only showed the
+                                        // first frame because SwiftUI's Image
+                                        // doesn't iterate GIF frames.
+                if let gifUrl = gifUrl, !gifUrl.isEmpty {
+                    StableGifPreview(urlString: gifUrl, maxHeight: 200)
+                        .padding(.bottom, 10)
                 }
                   }
                   .frame(maxWidth: .infinity, alignment: .leading)

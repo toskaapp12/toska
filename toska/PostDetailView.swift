@@ -101,6 +101,10 @@ struct PostDetailView: View {
     @State private var isDeleting = false
     @State private var deleteError = ""
     @State private var postText: String = ""
+    // GIF URL attached to the post. Populated by the live snapshot listener
+    // (startLiveListener), so it appears as soon as the post doc is read and
+    // updates if the post's gifUrl ever changes server-side.
+    @State private var postGifUrl: String? = nil
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
     @State private var showReplyNameWarning = false
@@ -593,6 +597,17 @@ struct PostDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 14)
 
+            // Attached GIF, if the post has one. Read from Firestore by the
+            // live listener (data["gifUrl"]) — PostDetailView previously never
+            // rendered the post's GIF, so opening a GIF post from the feed
+            // showed only the text. StableGifPreview (shared from ComposeView)
+            // sidesteps SwiftUI's AsyncImage cancellation issue inside views
+            // that recompute frequently.
+            if let gifUrl = postGifUrl, !gifUrl.isEmpty {
+                StableGifPreview(urlString: gifUrl)
+                    .padding(.bottom, 14)
+            }
+
             HStack(spacing: 12) {
                             HStack(spacing: 4) {
                                 Text(formatFull(likeCount))
@@ -759,6 +774,10 @@ struct PostDetailView: View {
                     }
                     guard let data = snapshot?.data() else { return }
                     if data["isLetter"] as? Bool == true { isLetter = true }
+                    // Pull the attached GIF URL so postHeaderSection can render
+                    // it. nil/empty string both clear the preview cleanly.
+                    let snapGif = data["gifUrl"] as? String
+                    if snapGif != postGifUrl { postGifUrl = snapGif }
                     let newCount = data["likeCount"] as? Int ?? 0
                     if Date() > suppressListenerUntil && newCount != likeCount {
                         likeCount = max(0, newCount)

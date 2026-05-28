@@ -268,6 +268,15 @@ struct OtherProfileView: View {
         } message: {
             Text("we hear you. well look into it.")
         }
+        // Tapping any bottom-tab button (home, trending, notifications, profile)
+        // posts .dismissAllSheets via MainTabView. Pop ourselves on receive so
+        // a user reading someone's profile lands on the destination tab's root
+        // instead of returning to find the profile still pushed under it
+        // (Twitter / Threads pattern: tapping a tab always shows that tab's
+        // root). PostDetailView already does the same.
+        .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
+            dismiss()
+        }
         .hidesAppTabBar()
     }
 

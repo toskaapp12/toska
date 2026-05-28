@@ -125,15 +125,27 @@ struct NotificationsView: View {
                         }
                     }
                     .refreshable {
-                        // The snapshot listener delivers updates live, so
-                        // pull-to-refresh is cosmetic — it lets the user
-                        // feel they've forced a refresh. The sleep gives
-                        // the spinner a brief visible moment before it
-                        // collapses. We deliberately do NOT re-attach the
-                        // listener here: re-attachment would risk a transient
-                        // empty snapshot between remove and re-register that
-                        // would flicker the notifications list.
-                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        // Real pull-to-refresh: force a server-side fetch so
+                        // the spinner reflects an actual round-trip (this used
+                        // to just sleep 400ms cosmetically) and recover from
+                        // any transient listener silence; then re-bucket
+                        // today/earlier so a notification that was "new" earlier
+                        // moves to "earlier" after midnight crosses. The live
+                        // listener stays attached and applies any deltas as
+                        // they arrive — re-attaching it would flicker on the
+                        // transient empty snapshot between remove + re-register.
+                        if let uid = Auth.auth().currentUser?.uid {
+                            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                                Firestore.firestore()
+                                    .collection("users").document(uid).collection("notifications")
+                                    .order(by: "createdAt", descending: true)
+                                    .limit(to: 50)
+                                    .getDocuments(source: .server) { _, _ in
+                                        cont.resume()
+                                    }
+                            }
+                        }
+                        recomputeNotificationGroups()
                     }
                 }
             }

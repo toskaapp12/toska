@@ -88,13 +88,19 @@ struct MainTabView: View {
                     }
                 }
             }
+            // Reserve space at the bottom so the always-visible tab bar (in
+            // the ZStack overlay below) never covers content. 70pt = the tab
+            // bar's HStack frame (50) + .padding(.bottom, 20). Pushing the
+            // content up by this amount means a pushed view's bottom-anchored
+            // UI — PostDetailView's reply composer, the conversation
+            // composer, etc. — sits above the tab bar instead of behind it.
+            .padding(.bottom, 70)
 
             // MARK: - Tab bar
-            // Hidden when any pushed view declares `.hidesAppTabBar()`; the
-            // bar slides off-screen so drill-in views (post detail, follow
-            // list, conversation, settings, etc.) get the full height for
-            // their bottom-anchored UI (e.g., the reply composer in
-            // PostDetailView). See HidesAppTabBarKey in ToskaTheme.swift.
+            // Always visible (the hide preference is intentionally ignored,
+            // see .onPreferenceChange below). Sits in the ZStack overlay so
+            // it stays at the screen bottom; the inner content VStack above
+            // is padded to leave room.
             if !tabBarHidden {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {

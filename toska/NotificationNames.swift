@@ -7,6 +7,11 @@ extension NSNotification.Name {
     static let authSessionExpired  = NSNotification.Name("AuthSessionExpired")
     static let authDidVerify       = NSNotification.Name("AuthDidVerify")
     static let newPostCreated      = NSNotification.Name("NewPostCreated")
+    // Posted by PostDetailView.deletePost on successful deletion. userInfo
+    // carries ["postId": String] so cached references (e.g. FeedViewModel's
+    // todaysPromptResponse) can invalidate themselves instead of waiting
+    // until the next pull-to-refresh.
+    static let postDeleted         = NSNotification.Name("PostDeleted")
     static let scrollFeedToTop     = NSNotification.Name("ScrollFeedToTop")
     static let dismissAllSheets    = NSNotification.Name("DismissAllSheets")
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")

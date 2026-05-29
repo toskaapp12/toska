@@ -14,6 +14,10 @@ struct ShareCardView: View {
     @State private var selectedSize = 1
     @State private var selectedAlignment = 1
     @State private var selectedRatio = 0
+    // User-toggleable: show or hide the "X felt this" line on the share card.
+    // Defaults to true (matches previous always-on-when-> 0 behavior), but
+    // users sharing a post they want to feel less performative can hide it.
+    @State private var showFeltCount = true
     @State private var showCopied = false
     @State private var showSharedConfirmation = false
     @State private var sharedPlatform = ""
@@ -206,6 +210,33 @@ struct ShareCardView: View {
                         }
                         .padding(.horizontal, 24)
 
+                        // MARK: - Felt-count toggle
+                        // Off-by-default would feel like a regression for posts
+                        // that DO have a meaningful felt count; on-by-default
+                        // matches the previous behavior. The toggle only shows
+                        // if there's actually a count to hide.
+                        if feltCount > 0 {
+                            HStack(spacing: 8) {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        showFeltCount.toggle()
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: showFeltCount ? "checkmark.square.fill" : "square")
+                                            .font(.system(size: 11, weight: .regular))
+                                            .foregroundColor(showFeltCount ? .white.opacity(0.5) : .white.opacity(0.2))
+                                        Text("show '\(formatCount(feltCount)) felt this'")
+                                            .font(.system(size: 10, weight: showFeltCount ? .medium : .regular))
+                                            .foregroundColor(showFeltCount ? .white.opacity(0.5) : .white.opacity(0.2))
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 4)
+                        }
+
                         // MARK: - Share Buttons
                         HStack(spacing: 0) {
                             platformButton(name: "Save", icon: "arrow.down.to.line", color: Color(hex: "c9a97a").opacity(0.8)) {
@@ -237,7 +268,7 @@ struct ShareCardView: View {
 
                         // MARK: - Copy Text
                         Button {
-                            UIPasteboard.general.string = "\"\(text)\"\n\n— someone on toska\nwww.toskaapp.com"
+                            UIPasteboard.general.string = "\"\(text)\"\n\n— someone on toska"
                             showCopied = true
                             HapticManager.play(.feltThis)
                             Task {
@@ -420,7 +451,7 @@ struct ShareCardView: View {
                 Spacer()
 
                 VStack(spacing: 6) {
-                    if feltCount > 0 {
+                    if feltCount > 0 && showFeltCount {
                         Text("\(formatCount(feltCount)) felt this")
                             .font(.system(size: 9, weight: .medium))
                             .foregroundColor(accentColor.opacity(0.35))
@@ -444,11 +475,10 @@ struct ShareCardView: View {
                             .font(.custom("Georgia-Italic", size: 12))
                             .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                     }
-
-                    Text("www.toskaapp.com")
-                        .font(.system(size: 7, weight: .medium))
-                        .tracking(1)
-                        .foregroundColor(isDarkStyle ? .white.opacity(0.1) : brandTextColor.opacity(0.15))
+                    // Website URL removed from the share card — felt out of
+                    // place under the brand mark for a screenshot people post
+                    // to IG / Twitter / TikTok. The "toska" wordmark above is
+                    // enough attribution.
                 }
                 .padding(.bottom, selectedRatio == 2 ? 10 : 20)
             }
@@ -669,7 +699,7 @@ struct ShareCardView: View {
                 Spacer()
 
                 VStack(spacing: 7) {
-                    if feltCount > 0 {
+                    if feltCount > 0 && showFeltCount {
                         Text("\(formatCount(feltCount)) felt this")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(accentColor.opacity(0.35))
@@ -693,11 +723,8 @@ struct ShareCardView: View {
                             .font(.custom("Georgia-Italic", size: 14))
                             .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                     }
-
-                    Text("www.toskaapp.com")
-                        .font(.system(size: 8, weight: .medium))
-                        .tracking(1.2)
-                        .foregroundColor(isDarkStyle ? .white.opacity(0.12) : brandTextColor.opacity(0.18))
+                    // Website URL removed from the rendered share image —
+                    // see the preview layout above.
                 }
                 .padding(.bottom, selectedRatio == 2 ? 14 : 26)
             }
@@ -795,7 +822,7 @@ struct ShareCardView: View {
 
     func shareToTwitter() {
         withRenderIndicator {
-            let tweetText = "\"\(text)\"\n\n— someone on toska\nwww.toskaapp.com"
+            let tweetText = "\"\(text)\"\n\n— someone on toska"
             guard let image = renderCardImage() else { return }
             presentShareSheet(with: [tweetText, image])
             sharedPlatform = "X"

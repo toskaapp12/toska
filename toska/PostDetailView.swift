@@ -1819,19 +1819,35 @@ struct SwipeToReplyRow: View {
             .padding(.vertical, 14)
             .background(LateNightTheme.background)
             .offset(x: dragOffset)
-            .gesture(
-                DragGesture(minimumDistance: 10)
+            // .simultaneousGesture (not .gesture) so the swipe-to-reply
+            // coexists with the parent ScrollView's vertical scroll instead of
+            // hijacking every drag — high-priority .gesture meant tapping or
+            // scrolling on a reply row made the row consume the gesture, so
+            // long reply threads weren't scrollable.
+            // Tighter activation guard: minimumDistance bumped 10→24, and the
+            // drag only counts as a swipe-to-reply when it's clearly
+            // horizontal-dominant (width > height * 2). Without that, a small
+            // rightward drift during a vertical scroll triggered the swipe
+            // and fired onReply, which is what made the row feel "sensitive."
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 24)
                     .onChanged { value in
-                        guard value.translation.width > 0 else { return }
-                        let raw = value.translation.width
-                        dragOffset = raw < triggerThreshold ? raw : triggerThreshold + (raw - triggerThreshold) * 0.2
+                        let w = value.translation.width
+                        let h = value.translation.height
+                        // Horizontal-dominant + rightward only.
+                        guard w > 0, w > abs(h) * 2 else { return }
+                        dragOffset = w < triggerThreshold ? w : triggerThreshold + (w - triggerThreshold) * 0.2
                         if dragOffset >= triggerThreshold && !hasTriggered {
                             hasTriggered = true
                             HapticManager.play(.tabSwitch)
                         }
                     }
                     .onEnded { value in
-                        if value.translation.width >= triggerThreshold { onReply() }
+                        let w = value.translation.width
+                        let h = value.translation.height
+                        // Only trigger the reply action if the drag was a clean
+                        // horizontal swipe past the threshold.
+                        if w >= triggerThreshold, w > abs(h) * 2 { onReply() }
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { dragOffset = 0 }
                         hasTriggered = false
                     }

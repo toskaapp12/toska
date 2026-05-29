@@ -1664,23 +1664,22 @@ struct SwipeToReplyRow: View {
     /// PostDetailView owns the edit sheet + delete confirmation.
     var onEdit: (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
-    @State private var dragOffset: CGFloat = 0
-    @State private var hasTriggered = false
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
-    private let triggerThreshold: CGFloat = 60
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            HStack {
-                Spacer()
-                Image(systemName: "arrowshape.turn.up.left.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Color.toskaBlue)
-                    .opacity(min(dragOffset / triggerThreshold, 1.0))
-                    .scaleEffect(min(0.6 + (dragOffset / triggerThreshold) * 0.4, 1.0))
-                    .padding(.trailing, 20)
-            }
+        // The row body — wrapped below in a NavigationLink so the whole row
+        // is tappable to open the reply as its own page (ReplyDetailView).
+        // Inner Buttons + Menu use .plain styling so they intercept their own
+        // taps and don't trigger the link.
+        rowContent
+    }
+
+    private var rowContent: some View {
+        NavigationLink {
+            ReplyDetailView(postId: postId, reply: item.reply)
+                .navigationBarHidden(true)
+        } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     if item.depth > 0 {
@@ -1829,41 +1828,11 @@ struct SwipeToReplyRow: View {
             .padding(.trailing, 18)
             .padding(.vertical, 14)
             .background(LateNightTheme.background)
-            .offset(x: dragOffset)
-            // .simultaneousGesture (not .gesture) so the swipe-to-reply
-            // coexists with the parent ScrollView's vertical scroll instead of
-            // hijacking every drag — high-priority .gesture meant tapping or
-            // scrolling on a reply row made the row consume the gesture, so
-            // long reply threads weren't scrollable.
-            // Tighter activation guard: minimumDistance bumped 10→24, and the
-            // drag only counts as a swipe-to-reply when it's clearly
-            // horizontal-dominant (width > height * 2). Without that, a small
-            // rightward drift during a vertical scroll triggered the swipe
-            // and fired onReply, which is what made the row feel "sensitive."
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 24)
-                    .onChanged { value in
-                        let w = value.translation.width
-                        let h = value.translation.height
-                        // Horizontal-dominant + rightward only.
-                        guard w > 0, w > abs(h) * 2 else { return }
-                        dragOffset = w < triggerThreshold ? w : triggerThreshold + (w - triggerThreshold) * 0.2
-                        if dragOffset >= triggerThreshold && !hasTriggered {
-                            hasTriggered = true
-                            HapticManager.play(.tabSwitch)
-                        }
-                    }
-                    .onEnded { value in
-                        let w = value.translation.width
-                        let h = value.translation.height
-                        // Only trigger the reply action if the drag was a clean
-                        // horizontal swipe past the threshold.
-                        if w >= triggerThreshold, w > abs(h) * 2 { onReply() }
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { dragOffset = 0 }
-                        hasTriggered = false
-                    }
-            )
-        }
+            .contentShape(Rectangle())
+        } // end NavigationLink label
+        // .plain so the row content is rendered as-is instead of in the
+        // default tinted NavigationLink style.
+        .buttonStyle(.plain)
         // Long-press context menu — mirror of FeedPostRow's context menu so
         // every reply gets the same like / save / repost / share / reply
         // action surface as a post does. The tap-row at the top of the

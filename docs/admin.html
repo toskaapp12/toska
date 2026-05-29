@@ -84,6 +84,7 @@
         <div class="tabs">
             <button class="active" data-tab="reports">reports</button>
             <button data-tab="flagged">flagged posts</button>
+            <button data-tab="crisis">crisis</button>
             <button data-tab="restricted">restricted users</button>
         </div>
         <div class="content" id="content">
@@ -275,7 +276,53 @@
             loadingState(content);
             if (currentTab === "reports") await loadReports(content);
             else if (currentTab === "flagged") await loadFlagged(content);
+            else if (currentTab === "crisis") await loadCrisis(content);
             else if (currentTab === "restricted") await loadRestricted(content);
+        }
+
+        // --- Crisis (concerningContent posts) ---
+
+        async function loadCrisis(container) {
+            try {
+                const q = query(
+                    collection(db, "posts"),
+                    where("concerningContent", "==", true),
+                    orderBy("createdAt", "desc"),
+                    limit(50)
+                );
+                const snap = await getDocs(q);
+                if (snap.empty) {
+                    emptyState(container, "no crisis posts", "auto-moderation hasn't flagged any concerning content recently");
+                    return;
+                }
+                container.replaceChildren();
+                snap.forEach(d => {
+                    const p = d.data();
+                    const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
+                    const card = el("div", "card");
+                    card.id = `crisis-${d.id}`;
+                    const header = el("div", "card-header");
+                    header.append(span("flagged-label", "concerning content"), span("card-time", time));
+                    card.appendChild(header);
+                    const textDiv = el("div", "card-text");
+                    textDiv.textContent = p.text || "";
+                    card.appendChild(textDiv);
+                    const meta = el("div", "card-meta");
+                    const bySpan = el("span");
+                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
+                    const likesSpan = el("span");
+                    likesSpan.textContent = `likes: ${p.likeCount || 0}`;
+                    const repliesSpan = el("span");
+                    repliesSpan.textContent = `replies: ${p.replyCount || 0}`;
+                    meta.append(bySpan, likesSpan, repliesSpan);
+                    card.appendChild(meta);
+                });
+            } catch (e) {
+                container.replaceChildren();
+                const errDiv = el("div", "card");
+                errDiv.textContent = `error loading crisis posts: ${e.message}`;
+                container.appendChild(errDiv);
+            }
         }
 
         // --- Reports ---

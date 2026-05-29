@@ -1811,9 +1811,24 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // path will still fire (and fail-noisily on the now-deleted doc), but the
   // post is gone before any reader could see it.
   if (containsNameOrIdentifyingInfo(text)) {
+    const createdAtMs = postData.createdAt?.toMillis?.() || 0;
+    const detectMs = Date.now();
     console.warn(`Deleting post ${postId} — server-side identifying-info detector tripped`);
     await moderationDeleteJitter();
     await db.collection("posts").doc(postId).delete();
+    const deletedMs = Date.now();
+    // Observability for the visibility window — i.e., how long the post
+    // existed where snapshot listeners could see it. createdAt is the
+    // server timestamp pinned in the rule; detect→delete is the function
+    // body itself. If the visibility window grows in production (cold
+    // starts, retries), Cloud Logging filtered on `pii_delete_window` will
+    // show it without needing a custom metric.
+    console.log(
+      `pii_delete_window post=${postId} ` +
+      `create_to_detect_ms=${createdAtMs ? detectMs - createdAtMs : -1} ` +
+      `detect_to_delete_ms=${deletedMs - detectMs} ` +
+      `total_visibility_ms=${createdAtMs ? deletedMs - createdAtMs : -1}`
+    );
     return;
   }
 });
@@ -2031,6 +2046,26 @@ const MOD_CONCERNING = [
   "wish i was dead", "take my own life", "don't want to exist",
 ];
 
+// Subset of MOD_CONCERNING — the explicit, high-urgency phrases. Mirrors
+// FeedView.swift's explicitCrisisPhrases. When a post trips one of these
+// we page admins (onPostCreatedAlertAdmins below) so a human can reach
+// out. The softer phrases in MOD_CONCERNING still flag concerningContent
+// and hide the post from feeds, but don't trigger the admin alert — we
+// don't want to fatigue the alert with everyday venting like "nobody
+// cares" or "can't do this anymore."
+const MOD_EXPLICIT_CRISIS = [
+  "kill myself", "end my life", "end it all", "take my own life",
+  "want to die", "wish i was dead", "wish i wasn't here", "better off dead",
+  "hurt myself", "want to hurt myself", "self harm", "self-harm",
+  "don't want to wake up", "don't want to be here", "don't want to exist",
+  "want to disappear",
+];
+
+function isPostExplicitCrisis(rawText) {
+  const text = (rawText || "").toLowerCase();
+  return MOD_EXPLICIT_CRISIS.some((phrase) => text.includes(phrase));
+}
+
 // ============================================================
 // Content moderation — flag posts with prohibited content
 //
@@ -2228,6 +2263,76 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
       flaggedAt: FieldValue.serverTimestamp(),
     });
     console.log(`Post ${postId} marked as concerning content after edit`);
+  }
+});
+
+// ============================================================
+// Admin crisis alert — pages registered admins when a post trips an
+// EXPLICIT crisis phrase ("kill myself", "end my life", etc.). Softer
+// phrases (in MOD_CONCERNING but not MOD_EXPLICIT_CRISIS) still flag the
+// post as concerningContent and hide it from feeds, but don't page —
+// alert fatigue would defeat the point.
+//
+// Recipients are configured in Firestore at `system/crisisAlertRecipients`
+// with shape `{ uids: ["<adminUid1>", ...] }`. FCM tokens are read from
+// each recipient's `users/{uid}/private/data.fcmToken`. If neither doc is
+// present, the function logs and returns — no crash, no retry storm.
+//
+// The alert routes to the admin dashboard at https://www.toskaapp.com/admin
+// on tap (apple-developer-app-association handles deep linking to the
+// post id, but since the dashboard is a web page, a regular URL works).
+// ============================================================
+
+exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (event) => {
+  const data = event.data?.data();
+  if (!data || data.isRepost === true || typeof data.text !== "string") return;
+  if (!isPostExplicitCrisis(data.text)) return;
+
+  const postId = event.params.postId;
+  // Fallback admin uid baked in so the function alerts you even before
+  // `system/crisisAlertRecipients` is seeded in Firestore. To add or
+  // change admins later without redeploying, write `{ uids: [...] }` to
+  // that doc — Firestore values override this fallback.
+  const FALLBACK_ADMIN_UIDS = ["fKcz0r7wYih8ePNg5019ZEOhSWB2"];
+  try {
+    const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
+    const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
+    const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
+    if (adminUids.length === 0) {
+      console.log(`crisis-alert: post ${postId} tripped explicit-crisis but no admin uids configured`);
+      return;
+    }
+
+    const tokens = [];
+    for (const uid of adminUids) {
+      const privSnap = await db.collection("users").doc(uid).collection("private").doc("data").get();
+      const token = privSnap.data()?.fcmToken;
+      if (typeof token === "string" && token.length > 0) tokens.push(token);
+    }
+    if (tokens.length === 0) {
+      console.log(`crisis-alert: post ${postId} tripped explicit-crisis but no FCM tokens for ${adminUids.length} admins`);
+      return;
+    }
+
+    const preview = data.text.length > 100 ? data.text.slice(0, 100) + "…" : data.text;
+    const message = {
+      notification: {
+        title: "crisis post",
+        body: preview,
+      },
+      data: {
+        type: "admin_crisis_alert",
+        postId,
+        authorHandle: data.authorHandle || "",
+      },
+      tokens,
+    };
+
+    const messaging = getMessaging();
+    const resp = await messaging.sendEachForMulticast(message);
+    console.log(`crisis-alert: post ${postId} sent to ${resp.successCount}/${tokens.length} admin devices`);
+  } catch (err) {
+    console.warn(`crisis-alert: failed to alert admins for post ${postId}: ${err.message}`);
   }
 });
 

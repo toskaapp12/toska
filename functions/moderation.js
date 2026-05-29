@@ -129,6 +129,32 @@ const NAMED_PATTERNS = ["named ", "called ", "name is ", "name was "];
 const STREET_SUFFIXES = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy";
 const STREET_REGEX = new RegExp(`\\d+\\s+[A-Za-z]+\\s+(${STREET_SUFFIXES})\\b`, 'i');
 
+// Doxxable location-context patterns. These catch the subtle locator
+// phrasing that the literal street-suffix / phone / "lives at" rules miss:
+//   "he works at chicago mercy hospital"
+//   "the cafe above the bodega on 5th and vine"
+//   "she goes to UCLA"
+//   "from brooklyn"
+// Heuristic — some false positives on legitimate "we worked at the same
+// hospital" venting. Tighter than letting a doxx with no street number
+// through.
+const LOCATION_CONTEXT_PATTERNS = [
+  // Workplace + capitalized proper-noun anchor (institution / business).
+  /\b(works at|worked at|employed at)\s+(the\s+)?[A-Z][A-Za-z'-]+/,
+  // Education with named institution / school district.
+  /\b(goes to|went to|attends|studies at|enrolled at|graduated from)\s+(the\s+)?[A-Z][A-Za-z'-]+/,
+  // Common identifiable-place context — hospital / school / etc. preceded
+  // by a locator preposition.
+  /\b(at|near|behind|above|across from|next to|in front of)\s+(the\s+)?(hospital|school|university|college|library|station|airport|bodega|cafe|bar|diner|restaurant|coffee shop|gym|church|mosque|temple|synagogue|park|mall|stadium|theater|theatre|hotel|motel|hostel|hospital)\b/i,
+  // Cross-street intersection: "on 5th and vine", "at park and 33rd".
+  /\b(on|at|near|by)\s+[A-Za-z0-9]+\s+(and|&)\s+[A-Za-z0-9]+\s+(street|st|ave|avenue|blvd|drive|dr)\b/i,
+  /\b(corner of|intersection of)\s+[A-Za-z0-9]+\s+(and|&)\s+[A-Za-z0-9]+\b/i,
+  // From [City] — top-50ish US population list plus a handful of major
+  // international cities. Trimmed to common single-word and two-word
+  // entries; long-tail city names are intentionally not enumerated.
+  /\b(from|in|near|outside)\s+(new york|brooklyn|manhattan|queens|los angeles|chicago|houston|phoenix|philadelphia|san diego|dallas|austin|seattle|denver|boston|portland|miami|atlanta|nashville|charlotte|detroit|memphis|baltimore|milwaukee|sacramento|kansas city|las vegas|long beach|fresno|oakland|minneapolis|cleveland|tampa|honolulu|new orleans|wichita|raleigh|omaha|tucson|albuquerque|st louis|saint louis|cincinnati|pittsburgh|anchorage|st paul|saint paul|toledo|newark|jersey city|orlando|tulsa|arlington|virginia beach|colorado springs|london|paris|tokyo|berlin|toronto|sydney|melbourne|dublin|madrid|rome|amsterdam|barcelona|mumbai|delhi|beijing|shanghai|mexico city)\b/i,
+];
+
 const CRISIS_NUMBERS = [
   "988-273-8255", "9882738255", "988 273 8255",
   "1-800-273-8255", "18002738255", "1 800 273 8255",
@@ -361,6 +387,15 @@ function containsNameOrIdentifyingInfo(text) {
 
   // Street address.
   if (STREET_REGEX.test(text)) return true;
+
+  // Doxxable location-context (works at X, the cafe above the bodega on
+  // 5th and vine, from brooklyn, etc.). Heuristic; some false positives
+  // on legitimate venting that name a workplace/city without targeting a
+  // specific person. Caught here, the post-trigger deletes it server-
+  // side; if it turns out to be over-aggressive we trim the patterns.
+  for (const re of LOCATION_CONTEXT_PATTERNS) {
+    if (re.test(text)) return true;
+  }
 
   // Mid-sentence proper noun matching a known first name.
   const starters = new Set();

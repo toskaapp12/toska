@@ -537,7 +537,14 @@ service cloud.firestore {
              // reply's author in `originalAuthorId`. validatePost verifies
              // the reply still exists and text matches before letting the
              // repost land on the feed.
-             'originalReplyId'
+             'originalReplyId',
+             // Daily-prompt marker (yyyy-MM-dd). Set by ComposeView only when
+             // the user opened compose from FeedView's prompt "respond" flow;
+             // FeedHeaderCard reads it back via a per-user-per-day query so the
+             // card can flip from "respond" to "your response" with edit/delete.
+             // Server-side single-response-per-day enforcement isn't done in
+             // rules (can't run a query) — soft-capped on the client.
+             'promptDate'
            ])
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0

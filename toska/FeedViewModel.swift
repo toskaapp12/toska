@@ -167,6 +167,56 @@ class FeedViewModel: ObservableObject {
         return Self.dailyPrompts[dayOfYear % Self.dailyPrompts.count]
     }
 
+    /// yyyy-MM-dd string for today, used as the prompt-response marker on
+    /// post docs. FeedView passes this into ComposeView when opening the
+    /// prompt "respond" flow; the post-create rule allows it as an optional
+    /// field on the post doc. Local-time bucket (matches todaysPrompt's
+    /// dayOfYear bucket) — both move together if the device timezone changes.
+    var todaysPromptDateString: String {
+        ToskaFormatters.dateKey.string(from: Date())
+    }
+
+    /// The current user's response to today's prompt, if they've answered.
+    /// Populated by fetchTodaysPromptResponse(); nil when the user hasn't
+    /// responded yet (or hasn't loaded yet). FeedHeaderCard reads this to
+    /// flip the prompt card between "respond" and "your response."
+    @Published var todaysPromptResponse: FeedPost? = nil
+
+    /// One-shot fetch of the user's response to today's prompt. Cheap (one
+    /// query, at most one doc returned) and called on initial load,
+    /// pull-to-refresh, and after .newPostCreated so the card updates the
+    /// moment a response lands. Server-side dedup isn't enforced here —
+    /// rules can't easily check "user already has a doc for today" — so a
+    /// tampered client could post multiple times. The client disables the
+    /// respond button once a response exists; that's the contract.
+    func fetchTodaysPromptResponse() {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            print("🌅 fetchTodaysPromptResponse skipped — no auth uid")
+            return
+        }
+        let today = todaysPromptDateString
+        print("🌅 fetchTodaysPromptResponse querying authorId=\(uid) promptDate=\(today)")
+        Task { @MainActor in
+            do {
+                let snap = try await Firestore.firestore().collection("posts")
+                    .whereField("authorId", isEqualTo: uid)
+                    .whereField("promptDate", isEqualTo: today)
+                    .limit(to: 1)
+                    .getDocumentsAsync()
+                print("🌅 fetchTodaysPromptResponse got \(snap.documents.count) docs")
+                guard let doc = snap.documents.first else {
+                    todaysPromptResponse = nil
+                    return
+                }
+                todaysPromptResponse = FeedView.feedPost(from: doc)
+                print("🌅 fetchTodaysPromptResponse — set response: \(doc.documentID)")
+            } catch {
+                print("⚠️ fetchTodaysPromptResponse failed: \(error)")
+                // Leave existing value alone on transient error.
+            }
+        }
+    }
+
     var promptTimeLabel: String {
         "\(timeOfDayLabel())'s prompt"
     }
@@ -246,6 +296,10 @@ class FeedViewModel: ObservableObject {
     func handleNewPostCreated() {
         fetchPosts()
         fetchMostUnsaidAndDailyMoment()
+        // Refresh the prompt-response state — if the new post WAS today's
+        // prompt response, the header card needs to flip from "respond" to
+        // the response card with edit/delete.
+        fetchTodaysPromptResponse()
     }
 
     // Called from FeedView in response to .userBlocked so the blocked user's
@@ -309,6 +363,7 @@ class FeedViewModel: ObservableObject {
                 fetchEmotionalWeather()
                 fetchMostUnsaidAndDailyMoment()
                 fetchAnniversaryPost()
+                fetchTodaysPromptResponse()
             }
 
     // MARK: - Fetch User Interaction States

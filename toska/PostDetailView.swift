@@ -81,7 +81,6 @@ struct PostDetailView: View {
     @State private var expandedDeepThreads: Set<String> = []
     @State private var replyingToId: String? = nil
     @State private var replyingToHandle: String? = nil
-    @State private var showReport = false
     @State private var showShareCard = false
     // Per-reply share — set when the user taps the share icon on a reply
     // row; presents a ShareCardView for the reply's text + handle. Uses
@@ -205,17 +204,10 @@ struct PostDetailView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                           dismiss()
-                      }            .confirmationDialog(isOwnPost ? "your post" : "", isPresented: $showReport) {
-                if isOwnPost {
-                    Button("edit post") { editText = postText; showEditSheet = true }
-                    Button("delete post", role: .destructive) { showDeleteAlert = true }
-                    Button("cancel", role: .cancel) {}
-                } else {
-                    Button("report") { reportPost(); showReportedAlert = true }
-                    Button("block", role: .destructive) { blockUser() }
-                    Button("cancel", role: .cancel) {}
-                }
-            }
+                      }
+            // confirmationDialog removed — the ⋯ button is now a Menu (popover
+            // anchored under the dots), so edit/delete/report/block are
+            // rendered inline by SwiftUI without needing a separate sheet.
             .alert("couldn't delete", isPresented: .init(get: { !deleteError.isEmpty }, set: { if !$0 { deleteError = "" } })) {
                 Button("ok") { deleteError = "" }
             } message: { Text(deleteError) }
@@ -328,10 +320,43 @@ struct PostDetailView: View {
                     title: "post",
                     onBack: { dismiss() }
                 ) {
-                    Button { showReport = true } label: {
+                    // Menu (popover anchored under the ⋯ button) instead of
+                    // a .confirmationDialog action sheet pinned to the screen
+                    // bottom. Matches OtherProfileView's pattern so options
+                    // appear right where the user tapped, with a 44pt tap
+                    // target so the bare 17pt image is reliably hit.
+                    Menu {
+                        if isOwnPost {
+                            Button {
+                                editText = postText
+                                showEditSheet = true
+                            } label: {
+                                Label("edit post", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                showDeleteAlert = true
+                            } label: {
+                                Label("delete post", systemImage: "trash")
+                            }
+                        } else {
+                            Button {
+                                reportPost()
+                                showReportedAlert = true
+                            } label: {
+                                Label("report", systemImage: "flag")
+                            }
+                            Button(role: .destructive) {
+                                blockUser()
+                            } label: {
+                                Label("block", systemImage: "person.slash")
+                            }
+                        }
+                    } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(Color.toskaTimestamp)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .opacity(isAuthorIdLoading ? 0 : 1)
                     .accessibilityLabel(isOwnPost ? "Edit or delete post" : "Report or block")
@@ -656,7 +681,17 @@ struct PostDetailView: View {
                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                            .frame(maxWidth: .infinity)
 
-                           // DM envelope removed when DMs were cut.
+                           // Share — opens ShareCardView (the same path as the
+                           // feed row's share button). Previously absent from
+                           // the post detail action row; users had to back out
+                           // to the feed to share a post.
+                           Button { showShareCard = true } label: {
+                               Image(systemName: "square.and.arrow.up")
+                                   .font(.system(size: 15, weight: .light))
+                                   .foregroundColor(Color.toskaTextLight)
+                           }
+                           .accessibilityLabel("Share post")
+                           .frame(maxWidth: .infinity)
                        }
                        .padding(.vertical, 8)
             Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)

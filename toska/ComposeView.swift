@@ -886,12 +886,7 @@ struct ComposeView: View {
             // FeedView's prompt "respond" flow. Lets the FeedHeaderCard show
             // "your response" with edit/delete instead of "respond" once a
             // user has answered today's prompt.
-            if let promptDate = promptDate {
-                postData["promptDate"] = promptDate
-                print("📝 ComposeView writing post WITH promptDate=\(promptDate)")
-            } else {
-                print("📝 ComposeView writing post (no promptDate — not from prompt flow)")
-            }
+            if let promptDate = promptDate { postData["promptDate"] = promptDate }
             if isWhisper && !expiresAtMidnight {
                 let oneHourFromNow = Date().addingTimeInterval(3600)
                 postData["expiresAt"] = Timestamp(date: oneHourFromNow)

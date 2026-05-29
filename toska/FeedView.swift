@@ -1338,6 +1338,16 @@ struct FeedHeaderCard: View {
                                                 .foregroundColor(.white.opacity(0.9))
                                                 .lineLimit(isExpanded ? nil : 2)
                                                 .multilineTextAlignment(.leading)
+
+                                            // Daily rhythm cue — makes the
+                                            // one-per-day cadence visible so
+                                            // users feel the prompt is fresh
+                                            // each morning and theirs alone
+                                            // for the day.
+                                            Text("new one tomorrow.")
+                                                .font(.system(size: 9, weight: .regular))
+                                                .foregroundColor(.white.opacity(0.4))
+                                                .padding(.top, 2)
                                         }
                                         
                                         Spacer()

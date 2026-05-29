@@ -190,12 +190,15 @@ class FeedViewModel: ObservableObject {
     /// tampered client could post multiple times. The client disables the
     /// respond button once a response exists; that's the contract.
     func fetchTodaysPromptResponse() {
-        guard let uid = Auth.auth().currentUser?.uid else {
-            print("🌅 fetchTodaysPromptResponse skipped — no auth uid")
-            return
-        }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
         let today = todaysPromptDateString
-        print("🌅 fetchTodaysPromptResponse querying authorId=\(uid) promptDate=\(today)")
+        // Capture uid so the post-await write to todaysPromptResponse can
+        // verify the same account is still signed in. Without this, a
+        // sign-out + sign-in to a different account during the Firestore
+        // round-trip would land the previous user's response card on the
+        // new user's feed. Mirrors the capturedUid pattern in
+        // fetchFollowingPosts / fetchLikedPostIds / startLiveListener.
+        let capturedUid = uid
         Task { @MainActor in
             do {
                 let snap = try await Firestore.firestore().collection("posts")
@@ -203,13 +206,12 @@ class FeedViewModel: ObservableObject {
                     .whereField("promptDate", isEqualTo: today)
                     .limit(to: 1)
                     .getDocumentsAsync()
-                print("🌅 fetchTodaysPromptResponse got \(snap.documents.count) docs")
+                guard Auth.auth().currentUser?.uid == capturedUid else { return }
                 guard let doc = snap.documents.first else {
                     todaysPromptResponse = nil
                     return
                 }
                 todaysPromptResponse = FeedView.feedPost(from: doc)
-                print("🌅 fetchTodaysPromptResponse — set response: \(doc.documentID)")
             } catch {
                 print("⚠️ fetchTodaysPromptResponse failed: \(error)")
                 // Leave existing value alone on transient error.

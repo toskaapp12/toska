@@ -1316,7 +1316,7 @@ struct FeedHeaderCard: View {
         // to surface the user's "your response" card with edit/delete even on
         // days when there's no other dynamic header content (no witness, no
         // weather phrase, etc.).
-        !vm.emotionalWeather.isEmpty || vm.witnessPost != nil || !vm.mostUnsaidText.isEmpty || vm.hasDailyMoment || vm.todaysPromptResponse != nil
+        !vm.emotionalWeather.isEmpty || vm.witnessPost != nil || vm.hasDailyMoment || vm.todaysPromptResponse != nil
     }
     
     var body: some View {
@@ -1361,7 +1361,11 @@ struct FeedHeaderCard: View {
                                     .background(Color.toskaBlue)
                                     .cornerRadius(12)
                                     .padding(.horizontal, 12)
-                                    .padding(.top, 8)
+                                    // Bumped 8→16 so the prompt card has
+                                    // breathing room below the for-you /
+                                    // following divider line — the line was
+                                    // hugging the top of the blue card.
+                                    .padding(.top, 16)
                                 }
                                 .buttonStyle(.plain)
 
@@ -1505,28 +1509,12 @@ struct FeedHeaderCard: View {
                             .buttonStyle(.plain)
                         }
                         
-                        // Most unsaid
-                        if !vm.mostUnsaidText.isEmpty {
-                            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 6) {
-                                    Text("most unsaid today")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Color.toskaBlue)
-                                    Spacer()
-                                    Text("\(formatCount(vm.mostUnsaidLikes)) felt this")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(LateNightTheme.tertiaryText)
-                                }
-                                Text(vm.mostUnsaidText)
-                                    .font(.custom("Georgia", size: 13))
-                                    .foregroundColor(LateNightTheme.primaryText)
-                                    .lineSpacing(3)
-                                    .lineLimit(2)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                        }
+                        // "most unsaid today" surface removed — it was the same
+                        // data as the trending tab (top-liked post in the last
+                        // 24h) and pulled the prompt card away from its core
+                        // job (prompt → respond → your response). The state +
+                        // fetcher stay in FeedViewModel because hasDailyMoment
+                        // also depends on that query.
                     }
                 }
                 

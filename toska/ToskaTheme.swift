@@ -1170,16 +1170,14 @@ struct PolicyAcceptanceView: View {
                 // decline path from Settings.
                 VStack(spacing: 12) {
                     if isReviewMode {
-                        Text("you accepted this when you signed up. tap to confirm and close.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.45))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 4)
-
+                        // Review-only display — no re-confirmation step. The
+                        // user already accepted this at signup; opening it from
+                        // Settings is just a read-back. Single "done" CTA
+                        // dismisses without the "tap to confirm" framing.
                         Button {
                             onAccept()
                         } label: {
-                            Text("i confirm")
+                            Text("done")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(Color(hex: "0a0908"))
                                 .frame(maxWidth: .infinity)

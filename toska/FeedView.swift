@@ -244,12 +244,12 @@ struct FeedView: View {
                                 // remains accessible from the empty-feed
                                 // state's "explore" button below for the
                                 // separate browse-by-tag flow.
-                                HStack(spacing: 6) {
+                                HStack(spacing: 8) {
                                     Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 12, weight: .light))
+                                        .font(.system(size: 14, weight: .regular))
                                         .foregroundColor(LateNightTheme.secondaryText)
                                     TextField("search", text: $searchText)
-                                        .font(.system(size: 13))
+                                        .font(.system(size: 14))
                                         .foregroundColor(LateNightTheme.handleText)
                                         .autocorrectionDisabled()
                                         .textInputAutocapitalization(.never)
@@ -262,18 +262,29 @@ struct FeedView: View {
                                             searchFocused = false
                                         } label: {
                                             Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 13))
+                                                .font(.system(size: 15))
                                                 .foregroundColor(LateNightTheme.tertiaryText)
                                         }
                                         .accessibilityLabel("Clear search")
                                     }
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Color.white.opacity(0.06))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                // Solid grey instead of barely-visible 6% white
+                                // overlay. With a thin border the bar reads as
+                                // a proper search field rather than a faint
+                                // ghost outline.
+                                .background(Color.toskaDivider.opacity(0.18))
+                                .overlay(
+                                    Capsule().stroke(Color.toskaDivider.opacity(0.4), lineWidth: 0.5)
+                                )
                                 .clipShape(Capsule())
                                 .padding(.horizontal, 12)
-                                .padding(.top, 8)
+                                // More breathing room above (between prompt /
+                                // response card and the search) and below
+                                // (between search and the first feed row).
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
 
                                 // Category pills — appear only while the
                                 // search bar is focused. Tapping a pill
@@ -609,7 +620,12 @@ struct FeedView: View {
                             EdgeSwipeDismissWrapper {
                                 ComposeView(
                                     initialText: "",
-                                    initialTag: vm.todaysPrompt.1
+                                    initialTag: vm.todaysPrompt.1,
+                                    // Stamps the resulting post doc with today's
+                                    // prompt-date marker so FeedHeaderCard can
+                                    // detect "you already responded today" and
+                                    // surface the response with edit/delete.
+                                    promptDate: vm.todaysPromptDateString
                                 )
                                 .onAppear { HapticManager.play(.compose) }
                             }
@@ -1296,7 +1312,11 @@ struct FeedHeaderCard: View {
     @State private var isExpanded = false
     
     private var hasContent: Bool {
-        !vm.emotionalWeather.isEmpty || vm.witnessPost != nil || !vm.mostUnsaidText.isEmpty || vm.hasDailyMoment
+        // Include todaysPromptResponse so the card stays visible specifically
+        // to surface the user's "your response" card with edit/delete even on
+        // days when there's no other dynamic header content (no witness, no
+        // weather phrase, etc.).
+        !vm.emotionalWeather.isEmpty || vm.witnessPost != nil || !vm.mostUnsaidText.isEmpty || vm.hasDailyMoment || vm.todaysPromptResponse != nil
     }
     
     var body: some View {
@@ -1334,40 +1354,98 @@ struct FeedHeaderCard: View {
                                     .padding(.top, 8)
                                 }
                                 .buttonStyle(.plain)
-                
+
+                // ALWAYS-visible "your response" card (not gated by isExpanded).
+                // When the user has responded today, this sits right under the
+                // prompt header in the collapsed state so it's immediately
+                // visible. Tap pushes PostDetailView (where the existing ⋯
+                // menu surfaces edit/delete on own posts).
+                if let response = vm.todaysPromptResponse {
+                    NavigationLink {
+                        PostDetailView(
+                            postId: response.id,
+                            handle: response.handle,
+                            text: response.text,
+                            tag: response.tag,
+                            likes: response.likes,
+                            reposts: response.reposts,
+                            replies: response.replies,
+                            time: response.time,
+                            authorId: response.authorId,
+                            isAlreadyLiked: false,
+                            isAlreadySaved: false,
+                            isAlreadyReposted: false
+                        )
+                        .navigationBarHidden(true)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                Text("your response")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                Spacer()
+                                Text("tap to open")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color.toskaTimestamp)
+                            }
+                            Text(response.text)
+                                .font(.custom("Georgia", size: 13))
+                                .foregroundColor(LateNightTheme.primaryText)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.toskaBlue.opacity(0.06))
+                        .cornerRadius(10)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 // Expanded content
                 if isExpanded {
                     VStack(spacing: 0) {
                         Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-                        
-                        // Prompt respond button
-                        Button { vm.showPromptCompose = true } label: {
-                            HStack {
-                                HStack(spacing: 5) {
-                                    Image(systemName: vm.todaysPrompt.2)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(tagColor(for: vm.todaysPrompt.1))
-                                    Text(vm.todaysPrompt.1)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(tagColor(for: vm.todaysPrompt.1).opacity(0.6))
+
+                        // Respond button — hidden once today's response exists
+                        // (soft one-per-day cap). The "your response" card
+                        // above replaces it.
+                        if vm.todaysPromptResponse == nil {
+                            Button { vm.showPromptCompose = true } label: {
+                                HStack {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: vm.todaysPrompt.2)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(tagColor(for: vm.todaysPrompt.1))
+                                        Text(vm.todaysPrompt.1)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(tagColor(for: vm.todaysPrompt.1).opacity(0.6))
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "pencil.line")
+                                            .font(.system(size: 10))
+                                        Text("respond")
+                                            .font(.system(size: 10, weight: .semibold))
+                                    }
+                                    .foregroundColor(Color.toskaBlue)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.toskaBlue.opacity(0.1))
+                                    .cornerRadius(12)
                                 }
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    Image(systemName: "pencil.line")
-                                        .font(.system(size: 10))
-                                    Text("respond")
-                                        .font(.system(size: 10, weight: .semibold))
-                                }
-                                .foregroundColor(Color.toskaBlue)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.toskaBlue.opacity(0.1))
-                                .cornerRadius(12)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                         
                         // Daily moment
                         if vm.hasDailyMoment {

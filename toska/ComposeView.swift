@@ -9,6 +9,12 @@ struct ComposeView: View {
     @Environment(\.dismiss) var dismiss
     var initialText: String = ""
     var initialTag: String? = nil
+    // When this compose was opened from the daily-prompt "respond" button,
+    // FeedView passes today's promptDate (yyyy-MM-dd). It's stamped onto the
+    // resulting post doc so the FeedHeaderCard can detect that the user has
+    // already responded today and flip the card to show their response with
+    // edit/delete. nil for non-prompt posts (the regular + compose path).
+    var promptDate: String? = nil
     var onPostSuccess: (() -> Void)? = nil
     // When opened from DraftsView, the id of the draft being edited.
     // The Save button updates that doc instead of creating a new draft;
@@ -876,6 +882,16 @@ struct ComposeView: View {
             if let tag = selectedTag { postData["tag"] = tag }
             if let gifUrl = selectedGifUrl { postData["gifUrl"] = gifUrl }
             if isLetter { postData["isLetter"] = true }
+            // Daily prompt marker — set only when ComposeView was opened from
+            // FeedView's prompt "respond" flow. Lets the FeedHeaderCard show
+            // "your response" with edit/delete instead of "respond" once a
+            // user has answered today's prompt.
+            if let promptDate = promptDate {
+                postData["promptDate"] = promptDate
+                print("📝 ComposeView writing post WITH promptDate=\(promptDate)")
+            } else {
+                print("📝 ComposeView writing post (no promptDate — not from prompt flow)")
+            }
             if isWhisper && !expiresAtMidnight {
                 let oneHourFromNow = Date().addingTimeInterval(3600)
                 postData["expiresAt"] = Timestamp(date: oneHourFromNow)

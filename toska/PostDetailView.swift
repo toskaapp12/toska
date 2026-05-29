@@ -1036,6 +1036,17 @@ struct PostDetailView: View {
             do {
                 try await db.collection("posts").document(postId).delete()
                 isDeleting = false
+                // Tell the rest of the app that this postId no longer exists,
+                // so cached references can invalidate (e.g. FeedViewModel's
+                // todaysPromptResponse card on the home feed). Without this,
+                // a user who deletes their daily-prompt response sees the
+                // response card stuck on the deleted text until the next
+                // pull-to-refresh.
+                NotificationCenter.default.post(
+                    name: .postDeleted,
+                    object: nil,
+                    userInfo: ["postId": postId]
+                )
                 dismiss()
             } catch {
                 isDeleting = false

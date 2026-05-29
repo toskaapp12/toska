@@ -661,6 +661,19 @@ struct FeedView: View {
             newPostsBadgeCount = 0
             previousPostCount = -1 // re-baseline on next .onChange tick
         }
+        // Drop the cached daily-prompt response card the moment the user
+        // deletes that post via PostDetailView. Without this, the response
+        // stays on screen with the deleted text until pull-to-refresh.
+        // Also strip the deleted post from the in-memory feed so it
+        // disappears from the list immediately.
+        .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
+            guard let deletedId = notif.userInfo?["postId"] as? String else { return }
+            if vm.todaysPromptResponse?.id == deletedId {
+                vm.todaysPromptResponse = nil
+            }
+            vm.posts.removeAll { $0.id == deletedId }
+            vm.followingPosts.removeAll { $0.id == deletedId }
+        }
         .onChange(of: vm.posts.count) { _, newValue in
             // "X new posts available" delta tracking. previousPostCount
             // initializes to -1 so the first snapshot (cold-load) doesn't
@@ -1311,17 +1324,15 @@ struct FeedHeaderCard: View {
     @ObservedObject var vm: FeedViewModel
     @State private var isExpanded = false
     
-    private var hasContent: Bool {
-        // Include todaysPromptResponse so the card stays visible specifically
-        // to surface the user's "your response" card with edit/delete even on
-        // days when there's no other dynamic header content (no witness, no
-        // weather phrase, etc.).
-        !vm.emotionalWeather.isEmpty || vm.witnessPost != nil || vm.hasDailyMoment || vm.todaysPromptResponse != nil
-    }
-    
+    // hasContent gate removed — the daily prompt is ALWAYS meaningful (it
+    // rotates and the user can always tap "respond"), so the card must
+    // always render. The previous gate was inherited from when the card only
+    // existed to surface optional secondary content (witness post, weather,
+    // daily moment, most-unsaid); removing the most-unsaid surface meant a
+    // fresh user on a quiet day saw nothing — no prompt, no respond button.
+
     var body: some View {
-        if hasContent {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 // Collapsed: just the prompt + tap to expand
                 Button {
                                     withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
@@ -1520,8 +1531,7 @@ struct FeedHeaderCard: View {
                 
                 Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
             }
-        }
-        
+
         // Anniversary post (always visible, not collapsed)
         if let annPost = vm.anniversaryPost {
                     AnniversaryCardView(post: annPost, postId: annPost.postId)

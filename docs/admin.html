@@ -93,6 +93,20 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- DIAGNOSTIC: surface any script error as an alert so we don't need
+         DevTools to see what's failing. Remove this block once sign-in
+         is confirmed working end-to-end. -->
+    <script>
+        window.addEventListener("error", function (e) {
+            alert("JS error: " + (e.message || e.error || "(unknown)"));
+        });
+        window.addEventListener("unhandledrejection", function (e) {
+            var r = e.reason;
+            var msg = (r && (r.message || r.code)) || String(r);
+            alert("Unhandled promise rejection: " + msg);
+        });
+    </script>
+
     <script type="module">
         // ============================================================
         // SECURITY NOTE — admin.html
@@ -233,14 +247,19 @@
         });
 
         async function signIn() {
+            // DIAGNOSTIC: alert() so user sees what's happening without
+            // needing DevTools. Remove once sign-in is confirmed working.
+            alert("signIn() fired");
             const email = document.getElementById("email").value;
             const password = document.getElementById("password").value;
             const errEl = document.getElementById("loginError");
             errEl.textContent = "";
             try {
                 await signInWithEmailAndPassword(auth, email, password);
+                alert("Auth call returned (no throw). Waiting for onAuthStateChanged…");
             } catch (e) {
                 errEl.textContent = e.message;
+                alert("Sign-in failed: " + (e.code || "") + " — " + e.message);
             }
         }
 
@@ -252,17 +271,25 @@
         }
 
         onAuthStateChanged(auth, async (user) => {
+            // DIAGNOSTIC: remove once sign-in is confirmed working.
+            alert("onAuthStateChanged fired. user=" + (user ? user.uid : "null"));
             const errEl = document.getElementById("loginError");
             if (user) {
-                const adminDoc = await getDoc(doc(db, "admins", user.uid));
-                if (adminDoc.exists() && adminDoc.data().role === "admin") {
-                    document.getElementById("loginView").style.display = "none";
-                    document.getElementById("appView").style.display = "block";
-                    loadTab();
-                } else {
-                    errEl.textContent = "not an admin account";
-                    await fbSignOut(auth);
-                    document.getElementById("loginView").style.display = "flex";
+                try {
+                    const adminDoc = await getDoc(doc(db, "admins", user.uid));
+                    alert("admin doc read OK. exists=" + adminDoc.exists() + " role=" + (adminDoc.exists() ? adminDoc.data().role : "(n/a)"));
+                    if (adminDoc.exists() && adminDoc.data().role === "admin") {
+                        document.getElementById("loginView").style.display = "none";
+                        document.getElementById("appView").style.display = "block";
+                        loadTab();
+                    } else {
+                        errEl.textContent = "not an admin account";
+                        await fbSignOut(auth);
+                        document.getElementById("loginView").style.display = "flex";
+                    }
+                } catch (e) {
+                    alert("admin doc read FAILED: " + (e.code || "") + " — " + e.message);
+                    errEl.textContent = "permission error reading admin doc";
                 }
             } else {
                 document.getElementById("loginView").style.display = "flex";

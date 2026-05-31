@@ -145,13 +145,17 @@
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
+        // Web app config (NOT iOS). App Check is registered per-app, so
+        // the dashboard needs its own Web appId — using the iOS appId
+        // here would mean Firestore App Check enforcement rejects every
+        // request from this page. Web appId created 2026-05-31 in prod.
         const app = initializeApp({
-            apiKey: "AIzaSyCttNQOgw3r5TqON7v1kgUQs_dWilDO5oE",
+            apiKey: "AIzaSyBrw_EFSHD2lMr7RqQd7sM9-2jMnr2tzdQ",
             authDomain: "toska-4ebf4.firebaseapp.com",
             projectId: "toska-4ebf4",
             storageBucket: "toska-4ebf4.firebasestorage.app",
             messagingSenderId: "183467627187",
-            appId: "1:183467627187:ios:ce1217a856e980f70756c6"
+            appId: "1:183467627187:web:fd3f93867a2a54f90756c6"
         });
 
         // App Check via reCAPTCHA Enterprise. Once a site key is set
@@ -177,7 +181,12 @@
         // Until step 2 is done, the constant below stays empty and the
         // initializeAppCheck call is skipped — the dashboard keeps
         // working without App Check. No fail-closed surprise.
-        const RECAPTCHA_SITE_KEY = ""; // TODO: paste reCAPTCHA Enterprise site key
+        // reCAPTCHA Enterprise key for www.toskaapp.com / toskaapp.com,
+        // attached to the Web app's App Check config 2026-05-31. Public
+        // identifier; safe to commit. Firestore App Check is ENFORCED in
+        // prod, so this site key must be valid for the dashboard to read
+        // anything from Firestore.
+        const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
         if (RECAPTCHA_SITE_KEY) {
             const { initializeAppCheck, ReCaptchaEnterpriseProvider } =
                 await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js");
@@ -247,18 +256,16 @@
         });
 
         async function signIn() {
-            // DIAGNOSTIC: alert() so user sees what's happening without
-            // needing DevTools. Remove once sign-in is confirmed working.
-            alert("signIn() fired");
             const email = document.getElementById("email").value;
             const password = document.getElementById("password").value;
             const errEl = document.getElementById("loginError");
             errEl.textContent = "";
             try {
                 await signInWithEmailAndPassword(auth, email, password);
-                alert("Auth call returned (no throw). Waiting for onAuthStateChanged…");
             } catch (e) {
                 errEl.textContent = e.message;
+                // DIAGNOSTIC: keep failure-only alert until sign-in is
+                // confirmed working end-to-end with App Check enforced.
                 alert("Sign-in failed: " + (e.code || "") + " — " + e.message);
             }
         }
@@ -271,13 +278,10 @@
         }
 
         onAuthStateChanged(auth, async (user) => {
-            // DIAGNOSTIC: remove once sign-in is confirmed working.
-            alert("onAuthStateChanged fired. user=" + (user ? user.uid : "null"));
             const errEl = document.getElementById("loginError");
             if (user) {
                 try {
                     const adminDoc = await getDoc(doc(db, "admins", user.uid));
-                    alert("admin doc read OK. exists=" + adminDoc.exists() + " role=" + (adminDoc.exists() ? adminDoc.data().role : "(n/a)"));
                     if (adminDoc.exists() && adminDoc.data().role === "admin") {
                         document.getElementById("loginView").style.display = "none";
                         document.getElementById("appView").style.display = "block";
@@ -288,6 +292,8 @@
                         document.getElementById("loginView").style.display = "flex";
                     }
                 } catch (e) {
+                    // DIAGNOSTIC: keep failure alert until end-to-end is
+                    // confirmed under App Check enforcement.
                     alert("admin doc read FAILED: " + (e.code || "") + " — " + e.message);
                     errEl.textContent = "permission error reading admin doc";
                 }

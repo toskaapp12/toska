@@ -162,6 +162,9 @@ struct TopView: View {
     func fetchTopPosts(onComplete: (() -> Void)? = nil) {
                     let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
         Firestore.firestore().collection("posts")
+                            // moderationStatus filter required by firestore.rules
+                            // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                            .whereField("moderationStatus", isEqualTo: "live")
                             .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                             .order(by: "createdAt", descending: true)
                             .limit(to: 50)

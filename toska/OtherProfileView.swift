@@ -316,6 +316,10 @@ struct OtherProfileView: View {
     
     func loadPosts() {
         Firestore.firestore().collection("posts")
+            // moderationStatus filter required by firestore.rules
+            // 2026-05-31 (see FeedViewModel.fetchPosts comment). This
+            // view shows OTHER users' posts, so isOwner doesn't apply.
+            .whereField("moderationStatus", isEqualTo: "live")
             .whereField("authorId", isEqualTo: userId)
             .order(by: "createdAt", descending: true)
             .limit(to: 50)

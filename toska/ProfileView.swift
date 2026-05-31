@@ -214,6 +214,9 @@ struct ProfileView: View {
                                                                                             .padding(.horizontal, 16)
                                                                                             .padding(.top, 8)
                                                                                         }
+                                                                                        if post.pendingReview {
+                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel)
+                                                                                        }
                                                                                         FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
                                                                                     }
                                                                                 }
@@ -814,17 +817,22 @@ struct ProfileView: View {
                     myPosts = documents.compactMap { doc in
                         let data = doc.data()
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return nil }
-                        // Also hide flagged posts from their own author —
-                        // previously the feed filtered flagged but the profile
-                        // didn't, so an author saw posts that no one else
-                        // could (silent shadowban from their perspective).
-                        // Matching filterBlocked's behavior keeps the author
-                        // view consistent with what the rest of the app sees.
-                        if data["flagged"] as? Bool == true { return nil }
+                        // 2026-05-31: do NOT hide flagged/pending posts from
+                        // the author themselves anymore. The new pending-
+                        // review banner tells them explicitly that the post
+                        // is held for admin approval, which is better than a
+                        // silent disappearance ("did my post even publish?").
+                        // The previous "if flagged, hide from author" check
+                        // is removed for this reason.
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                         let isRepost = data["isRepost"] as? Bool ?? false
                         let originalHandle = data["originalHandle"] as? String
-                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle)
+                        let modStatus = data["moderationStatus"] as? String ?? "live"
+                        let isPending = modStatus == "pending_review"
+                        let reasonLabel = isPending
+                            ? pendingReasonLabelFor(data["pendingReason"] as? String)
+                            : nil
+                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, pendingReview: isPending, pendingReasonLabel: reasonLabel)
                     }
                 }
             }
@@ -1642,5 +1650,65 @@ struct EditReplyView: View {
                     dismiss()
                 }
             }
+    }
+}
+
+// 2026-05-31: "under review" banner shown above the author's own pending
+// posts in ProfileView. Without this, the author sees their post on their
+// own profile and assumes it published normally — there's no signal that
+// other users can't see it. Banner sits between the optional repost
+// chevron and the FeedPostRow content so it groups visually with the
+// post body but doesn't compete with the post text for attention.
+struct PendingReviewBanner: View {
+    let reasonLabel: String?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "eye.slash.fill")
+                .font(.system(size: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("under review — visible only to you")
+                    .font(.system(size: 11, weight: .semibold))
+                if let label = reasonLabel {
+                    Text(label)
+                        .font(.system(size: 10))
+                        .opacity(0.85)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundColor(Color(hex: "9a7843"))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(hex: "c49a6c").opacity(0.12))
+        .overlay(
+            Rectangle()
+                .fill(Color(hex: "c49a6c"))
+                .frame(width: 3)
+                .frame(maxHeight: .infinity),
+            alignment: .leading
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+}
+
+// Maps the server-side pendingReason taxonomy onto short author-facing
+// labels. Stays generic enough not to give an evasion-tuner a precise
+// "this exact word tripped it" signal — the reason hints at the
+// category, not the specific phrase that matched.
+func pendingReasonLabelFor(_ reason: String?) -> String? {
+    switch reason {
+    case "pii":              return "may contain names or contact info"
+    case "crisis":           return "checking in — flagged for safety review"
+    case "abuse_hate":       return "flagged for hateful language"
+    case "abuse_harassment": return "flagged for harassment language"
+    case "abuse_threat":     return "flagged for threatening language"
+    case "abuse_sexual":     return "flagged for sexual content"
+    case "abuse_link":       return "contains a link — held for review"
+    case "abuse_spam":       return "flagged as possible spam"
+    case "user_reports":     return "multiple reports — held for review"
+    case nil:                return nil
+    default:                 return "held for review"
     }
 }

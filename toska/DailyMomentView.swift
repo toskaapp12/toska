@@ -222,6 +222,9 @@ struct DailyMomentView: View {
                     let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
                     let postsSnap = try await db
                         .collection("posts")
+                        // moderationStatus filter required by firestore.rules
+                        // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                        .whereField("moderationStatus", isEqualTo: "live")
                         .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                         .order(by: "createdAt", descending: true)
                         .order(by: "likeCount", descending: true)

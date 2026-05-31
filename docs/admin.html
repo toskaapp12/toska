@@ -83,6 +83,7 @@
         </div>
         <div class="tabs">
             <button class="active" data-tab="reports">reports</button>
+            <button data-tab="pending">pending review</button>
             <button data-tab="flagged">flagged posts</button>
             <button data-tab="crisis">crisis</button>
             <button data-tab="restricted">restricted users</button>
@@ -288,9 +289,140 @@
             const content = document.getElementById("content");
             loadingState(content);
             if (currentTab === "reports") await loadReports(content);
+            else if (currentTab === "pending") await loadPending(content);
             else if (currentTab === "flagged") await loadFlagged(content);
             else if (currentTab === "crisis") await loadCrisis(content);
             else if (currentTab === "restricted") await loadRestricted(content);
+        }
+
+        // --- Pending review ---
+        //
+        // Surfaces posts where moderationStatus == "pending_review" — the new
+        // (2026-05-31) hold-for-admin queue. Posts land here when:
+        //   - validatePost detects PII (names/addresses) — reason="pii"
+        //   - onPostCreated detects abuse patterns — reason="abuse_*"
+        //   - onPostCreated detects crisis language — reason="crisis"
+        //   - onReportCreatedAutoHide sees 3+ distinct user reports in 24h —
+        //     reason="user_reports"
+        // Author + admins are the only ones who can read the post until it's
+        // approved (flipped back to "live") or removed.
+        //
+        // Approve flips moderationStatus to "live" so the iOS feed query
+        // (whereField moderationStatus == "live") starts returning it again.
+        // Remove uses the existing deletePost path. Restrict author uses the
+        // existing restrict path.
+        //
+        // Ordered by pendingDetectedAt DESC so newest holds surface first.
+        // Index requirement: posts(moderationStatus ASC, pendingDetectedAt DESC).
+
+        const PENDING_REASON_LABELS = {
+            pii: "names / contact info",
+            crisis: "crisis language",
+            abuse_hate: "hateful language",
+            abuse_harassment: "harassment",
+            abuse_threat: "threatening language",
+            abuse_sexual: "sexual content",
+            abuse_link: "contains link",
+            abuse_spam: "spam / commercial",
+            user_reports: "user reports (3+)",
+        };
+
+        async function loadPending(container) {
+            try {
+                const q = query(
+                    collection(db, "posts"),
+                    where("moderationStatus", "==", "pending_review"),
+                    orderBy("pendingDetectedAt", "desc"),
+                    limit(50)
+                );
+                const snap = await getDocs(q);
+                if (snap.empty) {
+                    emptyState(container, "no posts pending review", "auto-detection is keeping the queue clear");
+                    return;
+                }
+                container.replaceChildren();
+                snap.docs.forEach(d => {
+                    const p = d.data();
+                    const detectedAt = p.pendingDetectedAt?.toDate?.()
+                        ?? p.flaggedAt?.toDate?.()
+                        ?? p.createdAt?.toDate?.();
+                    const time = detectedAt ? timeAgo(detectedAt) : "unknown";
+                    const reasonKey = typeof p.pendingReason === "string" ? p.pendingReason : "";
+                    const reasonText = PENDING_REASON_LABELS[reasonKey] || reasonKey || "held for review";
+
+                    const card = el("div", "card");
+                    card.id = `pending-${d.id}`;
+
+                    const header = el("div", "card-header");
+                    header.append(
+                        span("flagged-label", reasonText),
+                        span("card-time", time)
+                    );
+                    card.appendChild(header);
+
+                    const textDiv = el("div", "card-text");
+                    textDiv.textContent = p.text || "";
+                    card.appendChild(textDiv);
+
+                    const meta = el("div", "card-meta");
+                    const bySpan = el("span");
+                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
+                    const reportsSpan = el("span");
+                    if (typeof p.autoHiddenReportCount === "number") {
+                        reportsSpan.textContent = `reports: ${p.autoHiddenReportCount}`;
+                        meta.append(bySpan, reportsSpan);
+                    } else {
+                        meta.append(bySpan);
+                    }
+                    card.appendChild(meta);
+
+                    const actions = el("div", "card-actions");
+
+                    const approveBtn = el("button", "btn-dismiss");
+                    approveBtn.textContent = "approve (publish)";
+                    approveBtn.addEventListener("click", () => approvePending(d.id));
+                    actions.appendChild(approveBtn);
+
+                    const deleteBtn = el("button", "btn-remove");
+                    deleteBtn.textContent = "remove post";
+                    deleteBtn.addEventListener("click", () => deletePost(d.id));
+                    actions.appendChild(deleteBtn);
+
+                    if (p.authorId) {
+                        const restrictBtn = el("button", "btn-restrict");
+                        restrictBtn.textContent = "restrict author";
+                        restrictBtn.addEventListener("click", () => restrictUserDirect(p.authorId, p.authorHandle || ""));
+                        actions.appendChild(restrictBtn);
+                    }
+
+                    card.appendChild(actions);
+                    container.appendChild(card);
+                });
+            } catch (e) {
+                container.replaceChildren();
+                const errDiv = el("div", "card");
+                errDiv.textContent = `error loading pending posts: ${e.message}`;
+                container.appendChild(errDiv);
+            }
+        }
+
+        async function approvePending(postId) {
+            try {
+                // Flip back to "live" + null out the pending markers so the
+                // post stops appearing on this tab and starts appearing in
+                // the feed again. Keep flagged / flagReason / concerningContent
+                // intact for audit trail; only the visibility gate changes.
+                const uid = auth.currentUser?.uid || "";
+                await updateDoc(doc(db, "posts", postId), {
+                    moderationStatus: "live",
+                    pendingApprovedAt: serverTimestamp(),
+                    pendingApprovedBy: uid,
+                });
+                const card = document.getElementById(`pending-${postId}`);
+                if (card) card.remove();
+            } catch (e) {
+                alert(`couldn't approve: ${e.message}`);
+            }
         }
 
         // --- Crisis (concerningContent posts) ---

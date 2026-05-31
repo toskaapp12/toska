@@ -445,6 +445,9 @@ struct ExploreView: View {
           let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
           Task { @MainActor in
               let snapshot = try? await Firestore.firestore().collection("posts")
+                  // moderationStatus filter required by firestore.rules
+                  // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                  .whereField("moderationStatus", isEqualTo: "live")
                   .whereField("tag", isEqualTo: tag)
                   .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                   .order(by: "createdAt", descending: true)
@@ -526,6 +529,9 @@ struct ExploreView: View {
                         if let tag = matchingTag {
                                                     group.addTask { @MainActor in
                                                         guard let snapshot = try? await db.collection("posts")
+                                                                                                                    // moderationStatus filter required by firestore.rules
+                                                                                                                    // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                                                                                                                    .whereField("moderationStatus", isEqualTo: "live")
                                                                                                                     .whereField("tag", isEqualTo: tag)
                                                                                                                     .whereField("isRepost", isEqualTo: false)
                                                                                                                     .order(by: "createdAt", descending: true)
@@ -545,6 +551,9 @@ struct ExploreView: View {
                         if allPosts.isEmpty {
                                                                             group.addTask { @MainActor in
                                                                                 guard let snapshot = try? await db.collection("posts")
+                                                                                                                                            // moderationStatus filter required by firestore.rules
+                                                                                                                                            // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                                                                                                                                            .whereField("moderationStatus", isEqualTo: "live")
                                                                                                                                             .order(by: "createdAt", descending: true)
                                                                                                                                             .limit(to: 100)
                                                                                                                                             .getDocumentsAsync() else { return }
@@ -581,6 +590,9 @@ struct ExploreView: View {
     func fetchPostsForTag(_ tag: String) {
             isLoadingTag = true; tagPosts = []
             Firestore.firestore().collection("posts")
+                // moderationStatus filter required by firestore.rules
+                // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                .whereField("moderationStatus", isEqualTo: "live")
                 .whereField("tag", isEqualTo: tag)
                 .whereField("isRepost", isEqualTo: false)
                 .order(by: "createdAt", descending: true)
@@ -603,6 +615,9 @@ struct ExploreView: View {
     func fetchTrendingPosts() {
             let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
             Firestore.firestore().collection("posts")
+                // moderationStatus filter required by firestore.rules
+                // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                .whereField("moderationStatus", isEqualTo: "live")
                 .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                 .whereField("isRepost", isEqualTo: false)
                 .order(by: "createdAt", descending: true)

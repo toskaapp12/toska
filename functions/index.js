@@ -437,6 +437,47 @@ async function moderationDeleteJitter() {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ============================================================
+// Pending-review system — moderationStatus field on posts.
+//
+// Replaces the old "auto-delete on PII" + "leave-visible on flagged /
+// concerning" behavior. Every post starts at moderationStatus="live" (or
+// inferred-live for legacy docs missing the field, post-backfill). When
+// any detection path trips, the post flips to "pending_review" so the
+// iOS feed query (whereField moderationStatus == "live") drops it from
+// every reader except the author and admins. Admin dashboard "pending"
+// tab is the only path to flip back to "live" (approve) or delete.
+//
+// pendingReason values:
+//   "pii"               — containsNameOrIdentifyingInfo trip (validatePost / edit)
+//   "crisis"            — isPostConcerning / isPostExplicitCrisis trip
+//   "abuse_hate"        — MOD_HATE wordlist trip
+//   "abuse_harassment"  — MOD_HARASSMENT phrase trip
+//   "abuse_threat"      — MOD_THREAT phrase trip
+//   "abuse_sexual"      — MOD_SEXUAL pattern trip
+//   "abuse_link"        — containsURL trip
+//   "user_reports"      — onReportCreatedAutoHide: 3+ distinct reporters in 24h
+//
+// Idempotent: re-calling with the same reason on an already-pending post
+// is a no-op (skip Firestore write to keep pendingDetectedAt stable and
+// avoid trigger recursion in onPostUpdated).
+// ============================================================
+async function setPendingReview(postRef, reason, extraFields = {}) {
+  const snap = await postRef.get();
+  if (!snap.exists) return false;
+  const data = snap.data() || {};
+  if (data.moderationStatus === "pending_review" && data.pendingReason === reason) {
+    return false; // already pending for the same reason — no-op
+  }
+  await postRef.update({
+    moderationStatus: "pending_review",
+    pendingReason: reason,
+    pendingDetectedAt: FieldValue.serverTimestamp(),
+    ...extraFields,
+  });
+  return true;
+}
+
 // Symmetric helper-runner for the onUserDocDeleted cascade. Every cleanup
 // helper goes through this so the audit's asymmetric-resume gap is closed:
 // previously cleanupReflectionsForUid was the only helper that queued resume
@@ -1803,31 +1844,30 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // Server-side mirror of FeedView.swift::containsNameOrIdentifyingInfo.
   // The iOS pre-publish detector grew aggressive evasion-hardening (Unicode
   // confusables, leet, separator collapse, last names, dotted initials) in
-  // the 2026-05-01 pre-launch sprint. A tampered client that bypasses the
-  // iOS check would otherwise slip a named-target post (anonymous + public
-  // + named-target = textbook defamation) straight through to feed. Delete
-  // outright at the validate-trigger boundary, matching how this trigger
-  // already handles blank / over-length posts. The companion onPostCreated
-  // path will still fire (and fail-noisily on the now-deleted doc), but the
-  // post is gone before any reader could see it.
+  // the 2026-05-01 pre-launch sprint. Prior policy was to DELETE on detect;
+  // 2026-05-31 switched to flip moderationStatus="pending_review" so admin
+  // can rescue false positives (e.g. real names that are the author's own
+  // in a quote). Effect on readers is the same — pending posts are hidden
+  // from non-author / non-admin feed queries by the rules + iOS filter.
   if (containsNameOrIdentifyingInfo(text)) {
     const createdAtMs = postData.createdAt?.toMillis?.() || 0;
     const detectMs = Date.now();
-    console.warn(`Deleting post ${postId} — server-side identifying-info detector tripped`);
+    console.warn(`Pending-review post ${postId} — server-side identifying-info detector tripped`);
     await moderationDeleteJitter();
-    await db.collection("posts").doc(postId).delete();
-    const deletedMs = Date.now();
+    await setPendingReview(db.collection("posts").doc(postId), "pii");
+    const pendedMs = Date.now();
     // Observability for the visibility window — i.e., how long the post
-    // existed where snapshot listeners could see it. createdAt is the
-    // server timestamp pinned in the rule; detect→delete is the function
-    // body itself. If the visibility window grows in production (cold
-    // starts, retries), Cloud Logging filtered on `pii_delete_window` will
-    // show it without needing a custom metric.
+    // existed at moderationStatus=live (or pre-field) where snapshot
+    // listeners could see it before the flip hid it. createdAt is the
+    // server timestamp pinned in the rule; detect→pending is the function
+    // body itself. Field name kept (pii_delete_window) so existing log
+    // filters keep matching; field semantics: detect_to_delete_ms is now
+    // detect_to_pending_ms, total_visibility_ms is now hidden_at - created.
     console.log(
       `pii_delete_window post=${postId} ` +
       `create_to_detect_ms=${createdAtMs ? detectMs - createdAtMs : -1} ` +
-      `detect_to_delete_ms=${deletedMs - detectMs} ` +
-      `total_visibility_ms=${createdAtMs ? deletedMs - createdAtMs : -1}`
+      `detect_to_delete_ms=${pendedMs - detectMs} ` +
+      `total_visibility_ms=${createdAtMs ? pendedMs - createdAtMs : -1}`
     );
     return;
   }
@@ -2095,6 +2135,12 @@ function computePostFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
   if (SPAM_PATTERNS.some((p) => p.test(text))) return "spam_or_commercial";
   if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
+  // 2026-05-31: added MOD_HARASSMENT for posts. Previously only replies
+  // checked it (computeReplyFlagReason at line 2350), so a user could
+  // publish a top-level post with "kys" / "drink bleach" and have it
+  // bypass auto-detection entirely. Now it's checked before threats so a
+  // post containing both still routes to the more specific reason.
+  if (MOD_HARASSMENT.some((phrase) => text.includes(phrase))) return "harassment";
   if (MOD_THREAT.some((phrase) => text.includes(phrase))) return "targeted_threat";
   if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
@@ -2192,21 +2238,56 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
   const concerning = isPostConcerning(postData.text);
 
   if (flagReason) {
+    // 2026-05-31: flagged posts now flip to pending_review in addition to
+    // the legacy flagged=true marker. The legacy flag is retained so the
+    // admin "flagged posts" tab keeps showing them, and so any analytics
+    // looking at flagReason still works. Map flagReason → pendingReason
+    // for the pending-review queue and admin UI.
     await db.collection("posts").doc(postId).update({
       flagged: true,
       flaggedAt: FieldValue.serverTimestamp(),
       flagReason,
     });
-    console.log(`Post ${postId} flagged: ${flagReason}`);
+    await setPendingReview(
+      db.collection("posts").doc(postId),
+      flagReasonToPendingReason(flagReason)
+    );
+    console.log(`Post ${postId} flagged + pending_review: ${flagReason}`);
     await checkRepeatOffenderPosts(postData.authorId);
   } else if (concerning) {
+    // 2026-05-31: per product decision, crisis posts no longer publish
+    // visibly with just a concerningContent flag — they flip to
+    // pending_review and stay hidden until admin approval. Tradeoff
+    // documented in project_toska_admin_appcheck memory: silencing crisis
+    // posts can deepen isolation; admin must triage promptly. The
+    // existing onPostCreatedAlertAdmins push covers urgent notification.
     await db.collection("posts").doc(postId).update({
       concerningContent: true,
       flaggedAt: FieldValue.serverTimestamp(),
     });
-    console.log(`Post ${postId} marked as concerning content`);
+    await setPendingReview(db.collection("posts").doc(postId), "crisis");
+    console.log(`Post ${postId} concerning + pending_review`);
   }
 });
+
+// Maps the existing flagReason taxonomy (hate_speech, harassment,
+// targeted_threat, sexual_content, personal_information, contains_link)
+// onto the pendingReason taxonomy used by the admin dashboard pending
+// tab. Kept here near onPostCreated so the two stay in sync; if a new
+// flagReason is added to computePostFlagReason, add it here too or it
+// falls through to a generic "abuse" reason.
+function flagReasonToPendingReason(flagReason) {
+  switch (flagReason) {
+    case "hate_speech": return "abuse_hate";
+    case "harassment": return "abuse_harassment";
+    case "targeted_threat": return "abuse_threat";
+    case "sexual_content": return "abuse_sexual";
+    case "personal_information": return "pii";
+    case "contains_link": return "abuse_link";
+    case "spam_or_commercial": return "abuse_spam";
+    default: return "abuse";
+  }
+}
 
 // Re-runs moderation when an existing post's text changes. Without this,
 // EditPostView (PostDetailView.swift) lets an author publish clean text,
@@ -2228,17 +2309,12 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
   //     metadata fields, etc.) doesn't need a moderation pass.
   if (before.text === after.text) return;
 
-  // Identifying-info detection: take down on edit, not just flag.
-  // validatePost deletes name-containing posts at create time; without the
-  // mirror here, an author could publish clean text, pass create-time
-  // moderation, then edit a name in. computePostFlagReason() also routes
-  // this through "personal_information" (because containsPII delegates),
-  // but that path FLAGS rather than DELETES. For the name-detection vector
-  // specifically (defamation / Apple Guideline 1.2 risk on a public
-  // anonymous app), takedown is the right policy on edits too.
+  // Identifying-info detection on edit: 2026-05-31 switched from DELETE
+  // to pending-review flip, mirroring validatePost. Author can still
+  // see + further edit; admin must approve.
   if (containsNameOrIdentifyingInfo(after.text)) {
-    console.warn(`Deleting post ${postId} after edit — server-side identifying-info detector tripped`);
-    await db.collection("posts").doc(postId).delete();
+    console.warn(`Pending-review post ${postId} after edit — identifying-info detector tripped`);
+    await setPendingReview(db.collection("posts").doc(postId), "pii");
     return;
   }
 
@@ -2255,14 +2331,19 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
       flaggedAt: FieldValue.serverTimestamp(),
       flagReason,
     });
-    console.log(`Post ${postId} re-flagged after edit: ${flagReason}`);
+    await setPendingReview(
+      db.collection("posts").doc(postId),
+      flagReasonToPendingReason(flagReason)
+    );
+    console.log(`Post ${postId} re-flagged + pending_review after edit: ${flagReason}`);
     await checkRepeatOffenderPosts(after.authorId);
   } else if (concerning && after.concerningContent !== true) {
     await db.collection("posts").doc(postId).update({
       concerningContent: true,
       flaggedAt: FieldValue.serverTimestamp(),
     });
-    console.log(`Post ${postId} marked as concerning content after edit`);
+    await setPendingReview(db.collection("posts").doc(postId), "crisis");
+    console.log(`Post ${postId} concerning + pending_review after edit`);
   }
 });
 
@@ -2854,6 +2935,68 @@ exports.rateLimitReports = onDocumentCreated(
         "from", reportedBy);
       await db.collection("reports").doc(event.params.reportId).delete();
     }
+  }
+);
+
+// ============================================================
+// Auto-hide a post into pending-review when 3+ distinct users report it
+// within a 24-hour window. Mirrors the user-decision: "reports queue
+// auto-hide pending review after N reports." Threshold = 3 (chosen as
+// the balance between catching real problems and being abuse-proof: a
+// single bad actor can't silence someone they disagree with).
+//
+// Counts DISTINCT reportedBy uids (so the same reporter spamming "report"
+// 5 times on the same post still counts as 1). Reports older than 24h
+// don't count — the window resets, matching how user perception of "this
+// post is bad right now" works.
+//
+// No-ops when the post is already pending_review (setPendingReview is
+// idempotent on same-reason; here we'd be overwriting with a different
+// reason which would lose the original detection signal — guard upfront
+// instead). Skips reports targeting replies / users / conversations —
+// those have their own admin paths and don't hide source posts.
+//
+// Index requirement: reports/(type ASC, postId ASC, createdAt DESC) —
+// added to firestore.indexes.json.
+// ============================================================
+exports.onReportCreatedAutoHide = onDocumentCreated(
+  "reports/{reportId}",
+  async (event) => {
+    const reportData = event.data.data();
+    if (!reportData) return;
+    if (reportData.type !== "post") return;
+    const postId = reportData.postId;
+    if (typeof postId !== "string" || !postId) return;
+
+    const postRef = db.collection("posts").doc(postId);
+    const postSnap = await postRef.get();
+    if (!postSnap.exists) return;
+    const postData = postSnap.data() || {};
+    if (postData.moderationStatus === "pending_review") return; // already hidden
+
+    const since = Timestamp.fromDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const reportsSnap = await db.collection("reports")
+      .where("type", "==", "post")
+      .where("postId", "==", postId)
+      .where("createdAt", ">", since)
+      .get();
+
+    // Distinct reporter uids (Set semantics) — same user reporting twice
+    // counts as one. Skip docs missing reportedBy (shouldn't happen given
+    // rule enforcement, but defensive).
+    const distinctReporters = new Set();
+    reportsSnap.forEach((d) => {
+      const r = d.get("reportedBy");
+      if (typeof r === "string" && r) distinctReporters.add(r);
+    });
+
+    const THRESHOLD = 3;
+    if (distinctReporters.size < THRESHOLD) return;
+
+    console.log(`auto-hide post ${postId} — ${distinctReporters.size} distinct reports in 24h`);
+    await setPendingReview(postRef, "user_reports", {
+      autoHiddenReportCount: distinctReporters.size,
+    });
   }
 );
 

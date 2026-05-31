@@ -674,7 +674,12 @@ service cloud.firestore {
                          // re-show their pending content. Admin UI flips
                          // status via the Admin SDK and is unaffected.
                          'moderationStatus', 'pendingReason', 'pendingDetectedAt',
-                         'autoHiddenReportCount']))
+                         'autoHiddenReportCount',
+                         // Approval audit fields written by admin
+                         // dashboard's approvePending. Same rationale —
+                         // author shouldn't be able to forge an approval
+                         // stamp even though they can't flip status.
+                         'pendingApprovedAt', 'pendingApprovedBy']))
         || isAdmin();
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();

@@ -466,8 +466,19 @@ async function setPendingReview(postRef, reason, extraFields = {}) {
   const snap = await postRef.get();
   if (!snap.exists) return false;
   const data = snap.data() || {};
-  if (data.moderationStatus === "pending_review" && data.pendingReason === reason) {
-    return false; // already pending for the same reason — no-op
+  // First-detected reason wins. If validatePost flips to "pii" first and
+  // onPostCreated then finds an abuse trigger, we DON'T overwrite — the
+  // original detection is more informative for admin triage (the post
+  // was already a takedown regardless of whether a second rule also
+  // matches), and overwriting would shuffle the reason label the author
+  // sees in their banner. extraFields ARE still merged in case the
+  // second call wants to add audit fields (e.g. autoHiddenReportCount)
+  // without changing the pending reason.
+  if (data.moderationStatus === "pending_review") {
+    if (Object.keys(extraFields).length > 0) {
+      await postRef.update(extraFields);
+    }
+    return false;
   }
   await postRef.update({
     moderationStatus: "pending_review",
@@ -1853,8 +1864,16 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
     const createdAtMs = postData.createdAt?.toMillis?.() || 0;
     const detectMs = Date.now();
     console.warn(`Pending-review post ${postId} — server-side identifying-info detector tripped`);
-    await moderationDeleteJitter();
+    // 2026-05-31 fix: flip status FIRST, then jitter. Previously the
+    // 1.5-3s jitter ran before the flip, widening the PII visibility
+    // window by that amount. The original jitter was a timing-oracle
+    // defense (so an evasion-tuner couldn't measure "did this exact
+    // phrasing trip the detector?" from response time). After the flip,
+    // the post is already hidden — jitter on the no-op log line below
+    // preserves the same timing-oracle property without keeping a PII
+    // post visible during the jitter sleep.
     await setPendingReview(db.collection("posts").doc(postId), "pii");
+    await moderationDeleteJitter();
     const pendedMs = Date.now();
     // Observability for the visibility window — i.e., how long the post
     // existed at moderationStatus=live (or pre-field) where snapshot
@@ -2138,10 +2157,11 @@ function computePostFlagReason(rawText) {
   // 2026-05-31: added MOD_HARASSMENT for posts. Previously only replies
   // checked it (computeReplyFlagReason at line 2350), so a user could
   // publish a top-level post with "kys" / "drink bleach" and have it
-  // bypass auto-detection entirely. Now it's checked before threats so a
-  // post containing both still routes to the more specific reason.
-  if (MOD_HARASSMENT.some((phrase) => text.includes(phrase))) return "harassment";
+  // bypass auto-detection entirely. Ordered AFTER threat so a post
+  // containing both ("im gonna kill you, kys") routes to the more
+  // severe "targeted_threat" reason instead of "harassment".
   if (MOD_THREAT.some((phrase) => text.includes(phrase))) return "targeted_threat";
+  if (MOD_HARASSMENT.some((phrase) => text.includes(phrase))) return "harassment";
   if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";
@@ -2238,19 +2258,20 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
   const concerning = isPostConcerning(postData.text);
 
   if (flagReason) {
-    // 2026-05-31: flagged posts now flip to pending_review in addition to
-    // the legacy flagged=true marker. The legacy flag is retained so the
-    // admin "flagged posts" tab keeps showing them, and so any analytics
-    // looking at flagReason still works. Map flagReason → pendingReason
-    // for the pending-review queue and admin UI.
-    await db.collection("posts").doc(postId).update({
-      flagged: true,
-      flaggedAt: FieldValue.serverTimestamp(),
-      flagReason,
-    });
+    // 2026-05-31: flagged posts flip to pending_review AND keep the
+    // legacy flagged=true marker so the existing "flagged posts" admin
+    // tab keeps showing them. Single combined write — atomic, no
+    // intermediate "flagged but still visible" window if the second
+    // write would have failed. setPendingReview's extraFields path
+    // applies these alongside the visibility flip in one update().
     await setPendingReview(
       db.collection("posts").doc(postId),
-      flagReasonToPendingReason(flagReason)
+      flagReasonToPendingReason(flagReason),
+      {
+        flagged: true,
+        flaggedAt: FieldValue.serverTimestamp(),
+        flagReason,
+      }
     );
     console.log(`Post ${postId} flagged + pending_review: ${flagReason}`);
     await checkRepeatOffenderPosts(postData.authorId);
@@ -2261,11 +2282,14 @@ exports.onPostCreated = onDocumentCreated("posts/{postId}", async (event) => {
     // documented in project_toska_admin_appcheck memory: silencing crisis
     // posts can deepen isolation; admin must triage promptly. The
     // existing onPostCreatedAlertAdmins push covers urgent notification.
-    await db.collection("posts").doc(postId).update({
-      concerningContent: true,
-      flaggedAt: FieldValue.serverTimestamp(),
-    });
-    await setPendingReview(db.collection("posts").doc(postId), "crisis");
+    await setPendingReview(
+      db.collection("posts").doc(postId),
+      "crisis",
+      {
+        concerningContent: true,
+        flaggedAt: FieldValue.serverTimestamp(),
+      }
+    );
     console.log(`Post ${postId} concerning + pending_review`);
   }
 });
@@ -2326,23 +2350,27 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
     // saves a Firestore write per no-change re-flag and keeps flaggedAt
     // pinned to the original detection time.
     if (after.flagged === true && after.flagReason === flagReason) return;
-    await db.collection("posts").doc(postId).update({
-      flagged: true,
-      flaggedAt: FieldValue.serverTimestamp(),
-      flagReason,
-    });
+    // Same single-write pattern as onPostCreated (see comment there).
     await setPendingReview(
       db.collection("posts").doc(postId),
-      flagReasonToPendingReason(flagReason)
+      flagReasonToPendingReason(flagReason),
+      {
+        flagged: true,
+        flaggedAt: FieldValue.serverTimestamp(),
+        flagReason,
+      }
     );
     console.log(`Post ${postId} re-flagged + pending_review after edit: ${flagReason}`);
     await checkRepeatOffenderPosts(after.authorId);
   } else if (concerning && after.concerningContent !== true) {
-    await db.collection("posts").doc(postId).update({
-      concerningContent: true,
-      flaggedAt: FieldValue.serverTimestamp(),
-    });
-    await setPendingReview(db.collection("posts").doc(postId), "crisis");
+    await setPendingReview(
+      db.collection("posts").doc(postId),
+      "crisis",
+      {
+        concerningContent: true,
+        flaggedAt: FieldValue.serverTimestamp(),
+      }
+    );
     console.log(`Post ${postId} concerning + pending_review after edit`);
   }
 });

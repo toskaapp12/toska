@@ -505,7 +505,20 @@ service cloud.firestore {
     }
 
     match /posts/{postId} {
-      allow read: if isAuth();
+      // 2026-05-31: posts with moderationStatus=="pending_review" are
+      // visible only to the author and admins. The iOS feed query is
+      // expected to add `.whereField("moderationStatus", isEqualTo:
+      // "live")` so non-author/non-admin lists return only live posts;
+      // this rule enforces it at the API layer so a tampered client
+      // dropping the filter still gets denied per-doc.
+      //
+      // .get('moderationStatus', 'live') defaults docs without the field
+      // to "live" — safe because the backfill migration set every
+      // existing prod post to "live" before this rule deployed.
+      allow read: if isAuth()
+        && (resource.data.get('moderationStatus', 'live') == 'live'
+            || resource.data.authorId == request.auth.uid
+            || isAdmin());
       allow create: if isAuth()
         && notRestricted()
         && hasConfirmedAdult()
@@ -653,7 +666,15 @@ service cloud.firestore {
             && request.resource.data.text.size() <= 2000
             && !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt',
-                         'flagged', 'flagReason', 'flaggedAt', 'concerningContent']))
+                         'flagged', 'flagReason', 'flaggedAt', 'concerningContent',
+                         // 2026-05-31: pending-review fields are owned by
+                         // Cloud Functions (Admin SDK bypasses rules).
+                         // Without these, an author whose post got hidden
+                         // could update moderationStatus="live" and
+                         // re-show their pending content. Admin UI flips
+                         // status via the Admin SDK and is unaffected.
+                         'moderationStatus', 'pendingReason', 'pendingDetectedAt',
+                         'autoHiddenReportCount']))
         || isAdmin();
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();

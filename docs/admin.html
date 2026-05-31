@@ -84,6 +84,7 @@
         <div class="tabs">
             <button class="active" data-tab="reports">reports</button>
             <button data-tab="flagged">flagged posts</button>
+            <button data-tab="crisis">crisis</button>
             <button data-tab="restricted">restricted users</button>
         </div>
         <div class="content" id="content">
@@ -92,20 +93,6 @@
     </div>
 
     <div class="toast" id="toast"></div>
-
-    <!-- DIAGNOSTIC: surface any script error as an alert so we don't need
-         DevTools to see what's failing. Remove this block once sign-in
-         is confirmed working end-to-end. -->
-    <script>
-        window.addEventListener("error", function (e) {
-            alert("JS error: " + (e.message || e.error || "(unknown)"));
-        });
-        window.addEventListener("unhandledrejection", function (e) {
-            var r = e.reason;
-            var msg = (r && (r.message || r.code)) || String(r);
-            alert("Unhandled promise rejection: " + msg);
-        });
-    </script>
 
     <script type="module">
         // ============================================================
@@ -264,9 +251,6 @@
                 await signInWithEmailAndPassword(auth, email, password);
             } catch (e) {
                 errEl.textContent = e.message;
-                // DIAGNOSTIC: keep failure-only alert until sign-in is
-                // confirmed working end-to-end with App Check enforced.
-                alert("Sign-in failed: " + (e.code || "") + " — " + e.message);
             }
         }
 
@@ -292,10 +276,7 @@
                         document.getElementById("loginView").style.display = "flex";
                     }
                 } catch (e) {
-                    // DIAGNOSTIC: keep failure alert until end-to-end is
-                    // confirmed under App Check enforcement.
-                    alert("admin doc read FAILED: " + (e.code || "") + " — " + e.message);
-                    errEl.textContent = "permission error reading admin doc";
+                    errEl.textContent = "permission error reading admin doc: " + (e.code || e.message);
                 }
             } else {
                 document.getElementById("loginView").style.display = "flex";
@@ -308,7 +289,105 @@
             loadingState(content);
             if (currentTab === "reports") await loadReports(content);
             else if (currentTab === "flagged") await loadFlagged(content);
+            else if (currentTab === "crisis") await loadCrisis(content);
             else if (currentTab === "restricted") await loadRestricted(content);
+        }
+
+        // --- Crisis (concerningContent posts) ---
+        //
+        // Surfaces posts auto-tagged with concerningContent: true (the iOS
+        // crisis-phrase detector + server mirror). Newest first. A reviewed
+        // post sets crisisReviewedAt / crisisReviewedBy on the post doc and
+        // is filtered out of this query so the list shrinks as the admin
+        // works through it. The post itself stays in Firestore — reviewing
+        // doesn't delete; use "delete post" for that.
+
+        async function loadCrisis(container) {
+            try {
+                const q = query(
+                    collection(db, "posts"),
+                    where("concerningContent", "==", true),
+                    orderBy("createdAt", "desc"),
+                    limit(50)
+                );
+                const snap = await getDocs(q);
+                // Filter to un-reviewed client-side. A composite index for
+                // (concerningContent ASC, crisisReviewedAt ==null, createdAt
+                // DESC) would let us push this to Firestore, but the
+                // volume here is small enough that filtering 50 docs in
+                // JS is fine.
+                const docs = snap.docs.filter(d => !d.data().crisisReviewedAt);
+                if (docs.length === 0) {
+                    emptyState(container, "no unreviewed crisis posts", "everything flagged has been reviewed");
+                    return;
+                }
+                container.replaceChildren();
+                docs.forEach(d => {
+                    const p = d.data();
+                    const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
+                    const card = el("div", "card");
+                    card.id = `crisis-${d.id}`;
+
+                    const header = el("div", "card-header");
+                    header.append(span("flagged-label", "concerning content"), span("card-time", time));
+                    card.appendChild(header);
+
+                    const textDiv = el("div", "card-text");
+                    textDiv.textContent = p.text || "";
+                    card.appendChild(textDiv);
+
+                    const meta = el("div", "card-meta");
+                    const bySpan = el("span");
+                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
+                    const likesSpan = el("span");
+                    likesSpan.textContent = `likes: ${p.likeCount || 0}`;
+                    const repliesSpan = el("span");
+                    repliesSpan.textContent = `replies: ${p.replyCount || 0}`;
+                    meta.append(bySpan, likesSpan, repliesSpan);
+                    card.appendChild(meta);
+
+                    const actions = el("div", "card-actions");
+
+                    const reviewedBtn = el("button", "btn-dismiss");
+                    reviewedBtn.textContent = "mark reviewed";
+                    reviewedBtn.addEventListener("click", () => markCrisisReviewed(d.id));
+                    actions.appendChild(reviewedBtn);
+
+                    const deleteBtn = el("button", "btn-remove");
+                    deleteBtn.textContent = "delete post";
+                    deleteBtn.addEventListener("click", () => deletePost(d.id));
+                    actions.appendChild(deleteBtn);
+
+                    if (p.authorId) {
+                        const restrictBtn = el("button", "btn-restrict");
+                        restrictBtn.textContent = "restrict author";
+                        restrictBtn.addEventListener("click", () => restrictUserDirect(p.authorId, p.authorHandle || ""));
+                        actions.appendChild(restrictBtn);
+                    }
+
+                    card.appendChild(actions);
+                    container.appendChild(card);
+                });
+            } catch (e) {
+                container.replaceChildren();
+                const errDiv = el("div", "card");
+                errDiv.textContent = `error loading crisis posts: ${e.message}`;
+                container.appendChild(errDiv);
+            }
+        }
+
+        async function markCrisisReviewed(postId) {
+            try {
+                const uid = auth.currentUser?.uid || "";
+                await updateDoc(doc(db, "posts", postId), {
+                    crisisReviewedAt: serverTimestamp(),
+                    crisisReviewedBy: uid,
+                });
+                const card = document.getElementById(`crisis-${postId}`);
+                if (card) card.remove();
+            } catch (e) {
+                alert(`couldn't mark reviewed: ${e.message}`);
+            }
         }
 
         // --- Reports ---

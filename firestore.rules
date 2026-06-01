@@ -641,19 +641,32 @@ service cloud.firestore {
             && request.resource.data.get('originalAuthorId', '') is string
             && request.resource.data.originalAuthorId.size() > 0)
           || (
-               // Reply-repost path: when originalReplyId is set, defer the
-               // text/authorId match check to the validatePost Cloud
-               // Function rather than nesting a second 5-get() branch into
-               // this rule. The visibility window (~200ms between create
-               // and Cloud Function delete on mismatch) is an accepted
-               // trade-off — keeps the rule's get() count bounded and
-               // avoids duplicating the reply-existence check structure.
-               // Block check on the original author still runs at the rule
-               // layer below, so the most important anonymity defense
-               // (blocked user can't repost the blocker) is rule-enforced.
+               // Reply-repost path: when originalReplyId is set, verify the
+               // repost against the ORIGINAL REPLY at the rule layer (mirrors
+               // the post-repost branch below and validatePost's reply-repost
+               // check at functions/index.js). 2026-06-01 audit: this branch
+               // previously verified only the id + block and deferred
+               // text/authorId matching to validatePost, leaving a window
+               // where a forged repost attributing fabricated text to a
+               // victim (originalHandle byline on the forger's profile) was
+               // rule-accepted until the trigger deleted it. Now rejected at
+               // write time. The reply lives at
+               // posts/{originalPostId}/replies/{originalReplyId}; all get()s
+               // resolve the same cached reply doc, so the added cost is one
+               // document access.
                (request.resource.data.get('originalReplyId', '') is string
                 && request.resource.data.originalReplyId.size() > 0
-                && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid)))
+                && request.resource.data.get('originalPostId', '') is string
+                && request.resource.data.originalPostId.size() > 0
+                && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId))
+                && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.authorId == request.resource.data.originalAuthorId
+                && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.text == request.resource.data.text
+                && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+                && (
+                     !('originalHandle' in request.resource.data.keys())
+                  || request.resource.data.originalHandle ==
+                       get(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)).data.handle
+                ))
             || (
                request.resource.data.get('originalPostId', '') is string
             && request.resource.data.originalPostId.size() > 0

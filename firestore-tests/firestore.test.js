@@ -2277,6 +2277,92 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
       })
     );
   });
+
+  // 2026-06-01 audit: reply-reposts (originalReplyId set) are now verified at
+  // the rule layer against the ORIGINAL REPLY, same as post-reposts. setReply
+  // seeds posts/p_orig/replies/r1 authored by alice with text "a reply".
+  it("allows a faithful reply-repost", async () => {
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "a reply",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalReplyId: "r1",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects a reply-repost with a forged originalAuthorId", async () => {
+    await setReply("p_orig", "r1", "alice"); // reply really authored by alice
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "a reply",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalReplyId: "r1",
+        originalAuthorId: "carol", // forged byline
+        originalHandle: "handle_carol",
+      })
+    );
+  });
+
+  it("rejects a reply-repost with text that doesn't match the original reply", async () => {
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "fabricated reply quote",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalReplyId: "r1",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+      })
+    );
+  });
+
+  it("rejects a reply-repost pointing at a non-existent reply", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "a reply",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalReplyId: "does_not_exist",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+      })
+    );
+  });
 });
 
 describe("notification create: message field is server-only (audit P1 2026-05-08)", () => {

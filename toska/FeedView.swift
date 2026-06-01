@@ -1686,6 +1686,11 @@ let explicitCrisisPhrases = [
     "hurt myself", "want to hurt myself", "self harm", "self-harm",
     "don't want to wake up", "don't want to be here", "don't want to exist",
     "want to disappear",
+    // 2026-06-01: the literal crisis vocabulary was missing — "i'm suicidal"
+    // slipped past the client check AND the server mirror. Keep in sync with
+    // functions/index.js MOD_EXPLICIT_CRISIS / MOD_CONCERNING.
+    "suicidal", "suicide", "unalive", "kill my self", "killing myself",
+    "want to kill myself", "ending my life", "ending it all",
 ]
 
 let softConcernPhrases = [

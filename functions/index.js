@@ -2222,6 +2222,10 @@ const MOD_CONCERNING = [
   "want it to stop", "want it all to end", "nothing left",
   "not worth living", "why am i still here", "wish i wasn't here",
   "wish i was dead", "take my own life", "don't want to exist",
+  // 2026-06-01: the literal crisis vocabulary was missing — "i'm suicidal"
+  // slipped through every phrase above. Direct words + common euphemisms.
+  "suicidal", "suicide", "unalive", "kill my self", "killing myself",
+  "want to kill myself", "ending my life", "ending it all",
 ];
 
 // Subset of MOD_CONCERNING — the explicit, high-urgency phrases. Mirrors
@@ -2237,6 +2241,9 @@ const MOD_EXPLICIT_CRISIS = [
   "hurt myself", "want to hurt myself", "self harm", "self-harm",
   "don't want to wake up", "don't want to be here", "don't want to exist",
   "want to disappear",
+  // 2026-06-01: direct crisis vocabulary (high-urgency → pages admins).
+  "suicidal", "suicide", "unalive", "kill my self", "killing myself",
+  "want to kill myself", "ending my life", "ending it all",
 ];
 
 function isPostExplicitCrisis(rawText) {

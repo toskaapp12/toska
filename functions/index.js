@@ -1994,7 +1994,10 @@ exports.reconcilePostVisibility = onSchedule("every 30 minutes", async () => {
   let promoted = 0, held = 0;
   for (const doc of snap.docs) {
     const d = doc.data();
-    if (d.moderationStatus) continue; // already resolved (live or pending_review)
+    // Resolve posts still unvalidated: no moderationStatus (old clients) OR
+    // "pending_validation" (new clients that start hidden). Skip posts already
+    // resolved to "live" or held at "pending_review".
+    if (d.moderationStatus && d.moderationStatus !== "pending_validation") continue;
     if (d.isRepost === true || isPostClean(d.text)) {
       await setPostLive(doc.ref);
       promoted++;

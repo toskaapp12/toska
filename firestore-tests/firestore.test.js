@@ -175,6 +175,41 @@ describe("baseline sanity", () => {
   });
 });
 
+describe("post create: client moderationStatus is start-hidden only (audit 2026-06-01)", () => {
+  // Clients may start a post hidden ("pending_validation") so it's invisible
+  // until validatePost promotes it to "live", but can NEVER self-publish as
+  // "live" or self-assign the moderation hold "pending_review".
+  beforeEach(async () => { await setUserDoc("alice"); });
+
+  function postWith(modStatus) {
+    const a = env.authenticatedContext("alice").firestore();
+    const data = {
+      authorId: "alice",
+      authorHandle: "handle_alice",
+      text: "hello world",
+      createdAt: serverTimestamp(),
+      likeCount: 0,
+      repostCount: 0,
+      replyCount: 0,
+    };
+    if (modStatus !== undefined) data.moderationStatus = modStatus;
+    return a.collection("posts").doc("p1").set(data);
+  }
+
+  it("allows omitting moderationStatus (old clients)", async () => {
+    await assertSucceeds(postWith(undefined));
+  });
+  it("allows moderationStatus = pending_validation (new clients, start hidden)", async () => {
+    await assertSucceeds(postWith("pending_validation"));
+  });
+  it("rejects a client self-publishing as live", async () => {
+    await assertFails(postWith("live"));
+  });
+  it("rejects a client self-assigning the moderation hold", async () => {
+    await assertFails(postWith("pending_review"));
+  });
+});
+
 describe("Finding 1: conversation participants must be exactly 2", () => {
   it("allows 2-party conversation create", async () => {
     const a = env.authenticatedContext("alice").firestore();

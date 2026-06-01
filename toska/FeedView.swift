@@ -1680,26 +1680,44 @@ func tagColor(for tag: String) -> Color {
 // gentleCheckIn toggle so users who find the rail intrusive can opt out of the
 // softer tier without losing the explicit-tier safety net.
 
+// Keep in sync with functions/index.js MOD_CRISIS_EXPLICIT / MOD_CRISIS_SOFT.
+// (The server additionally normalizes leet/unicode/spaced evasions; the
+// client is a best-effort pre-publish check, the server is the backstop.)
 let explicitCrisisPhrases = [
-    "kill myself", "end my life", "end it all", "take my own life",
-    "want to die", "wish i was dead", "wish i wasn't here", "better off dead",
-    "hurt myself", "want to hurt myself", "self harm", "self-harm",
-    "don't want to wake up", "don't want to be here", "don't want to exist",
-    "want to disappear",
-    // 2026-06-01: the literal crisis vocabulary was missing — "i'm suicidal"
-    // slipped past the client check AND the server mirror. Keep in sync with
-    // functions/index.js MOD_EXPLICIT_CRISIS / MOD_CONCERNING.
-    "suicidal", "suicide", "unalive", "kill my self", "killing myself",
-    "want to kill myself", "ending my life", "ending it all",
+    // direct suicide vocabulary + common misspellings
+    "suicidal", "suicide", "suicidel", "sucide", "sucidal", "suiside", "suacide",
+    // self-killing intent
+    "kill myself", "killing myself", "kill my self", "want to kill myself",
+    "wanna kill myself", "going to kill myself", "gonna kill myself",
+    "off myself", "end myself", "delete myself", "unalive", "unalive myself",
+    "hang myself", "hanging myself", "neck myself",
+    // ending my life
+    "end my life", "ending my life", "end it all", "ending it all",
+    "take my own life", "take my life", "want to end my life",
+    // wanting to die / be dead
+    "want to die", "wanna die", "want to be dead", "ready to die",
+    "wish i was dead", "wish i were dead", "wish i could die",
+    "better off dead", "rather be dead",
+    // self-harm
+    "hurt myself", "want to hurt myself", "harm myself", "self harm",
+    "self-harm", "selfharm", "cut myself", "cutting myself", "burn myself",
+    // not wanting to exist / wake up
+    "don't want to wake up", "dont want to wake up", "don't want to be here",
+    "dont want to be here", "don't want to exist", "dont want to exist",
+    "want to disappear", "want to vanish",
 ]
 
 let softConcernPhrases = [
-    "can't go on", "no reason to live", "no point anymore",
-    "nobody cares", "disappear forever", "not worth it",
-    "give up on everything", "better off without me",
-    "no one would care", "no one would notice", "can't do this anymore",
-    "done with life", "want it to stop", "want it all to end",
-    "nothing left", "not worth living", "why am i still here",
+    "can't go on", "cant go on", "can't do this anymore", "cant do this anymore",
+    "can't keep going", "can't take it anymore", "cant take it anymore",
+    "no reason to live", "nothing to live for", "no point in living",
+    "no point anymore", "not worth living", "give up on everything",
+    "want to give up", "done with life", "done with everything",
+    "tired of living", "tired of being alive", "better off without me",
+    "everyone better off without me", "no one would care", "no one would notice",
+    "nobody cares", "nobody would miss me", "won't be missed",
+    "disappear forever", "why am i still here", "wish i wasn't here",
+    "wish i didn't exist", "want it to stop", "want it all to end", "nothing left",
 ]
 
 // Back-compat alias so existing call sites that only care about "is it

@@ -877,7 +877,13 @@ struct ComposeView: View {
                             "replyCount": 0,
                             "isRepost": false,
                             "isShareable": allowSharing,
-                            "createdAt": FieldValue.serverTimestamp()
+                            "createdAt": FieldValue.serverTimestamp(),
+                            // Start hidden (2026-06-01 audit): invisible to
+                            // feeds (which query moderationStatus == "live")
+                            // and to direct reads until validatePost promotes a
+                            // clean post to "live". The author still sees it
+                            // immediately on their own profile.
+                            "moderationStatus": "pending_validation"
                         ]
             if let tag = selectedTag { postData["tag"] = tag }
             if let gifUrl = selectedGifUrl { postData["gifUrl"] = gifUrl }

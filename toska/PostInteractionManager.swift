@@ -343,7 +343,11 @@ class PostInteractionManager {
                                 "originalPostId": postId,
                                 "originalHandle": originalHandle,
                                 "originalAuthorId": authorId,
-                                "createdAt": FieldValue.serverTimestamp()
+                                "createdAt": FieldValue.serverTimestamp(),
+                                // Start hidden until validatePost verifies the
+                                // repost and promotes it to "live" (2026-06-01
+                                // audit) — same as ComposeView.postNow.
+                                "moderationStatus": "pending_validation"
                             ]
                             if let tag = postTag { repostData["tag"] = tag }
 

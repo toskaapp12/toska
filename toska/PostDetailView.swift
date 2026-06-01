@@ -489,26 +489,19 @@ struct PostDetailView: View {
         VStack(spacing: 0) {
             Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
 
-            if let gifUrl = replyGifUrl, let url = URL(string: gifUrl) {
+            if let gifUrl = replyGifUrl {
                 HStack {
                     ZStack(alignment: .topTrailing) {
-                        AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().aspectRatio(contentMode: .fit).frame(maxHeight: 100).cornerRadius(8)
-                                    .transition(.opacity)
-                            case .failure:
-                                Color(hex: "e8eaed").frame(width: 80, height: 60).cornerRadius(8)
-                                    .overlay(
-                                        Image(systemName: "photo.badge.exclamationmark")
-                                            .font(.system(size: 12, weight: .light))
-                                            .foregroundColor(Color.toskaTimestamp)
-                                    )
-                            default:
-                                Color(hex: "e8eaed").frame(width: 80, height: 60).cornerRadius(8)
-                                    .overlay(ProgressView().scaleEffect(0.5).tint(Color.toskaTimestamp))
-                            }
-                        }
+                        // 2026-06-01 audit: use StableGifPreview, not a raw
+                        // AsyncImage. replyBarView also holds the $replyText
+                        // TextField, so it recomputes on every keystroke — a
+                        // raw AsyncImage re-cancels its load each time
+                        // (NSURLError -999), flickering the attached-GIF
+                        // thumbnail. StableGifPreview owns its load +
+                        // placeholder/failure and survives the recompute
+                        // (same fix already used at PostDetailView:627 and
+                        // FeedView:992).
+                        StableGifPreview(urlString: gifUrl, maxHeight: 100)
                         Button { withAnimation { replyGifUrl = nil } } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 16))

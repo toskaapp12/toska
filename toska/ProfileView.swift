@@ -412,6 +412,8 @@ struct ProfileView: View {
             followerCount = 0
             followingCount = 0
             totalLikes = 0
+            presenceStreak = 0
+            totalNights = 0
         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showSettings = false
@@ -440,6 +442,10 @@ struct ProfileView: View {
             .getDocuments { snapshot, _ in
                 Task { @MainActor in
                     guard let docs = snapshot?.documents else { return }
+                    // Cross-session guard (2026-06-01 audit): don't paint a
+                    // prior account's streak onto a new session if the account
+                    // switched while this query was in flight.
+                    guard Auth.auth().currentUser?.uid == uid else { return }
                     totalNights = docs.count
                     let calendar = Calendar.current
                     var streak = 0
@@ -1159,6 +1165,12 @@ struct ProfileView: View {
                     if let result = result { results.append(result) }
                 }
             }
+            // Cross-session guard (2026-06-01 audit): the collectionGroup query
+            // + nested parent-post fetches above can outlive a sign-out/sign-in.
+            // Without rechecking the captured uid, a task in flight when the
+            // account switches would render User A's authored replies on User
+            // B's profile. Mirrors loadMyPosts / loadSavedPosts / loadLikedPosts.
+            guard Auth.auth().currentUser?.uid == uid else { return }
             myReplies = results.sorted { $0.createdAt > $1.createdAt }
         }
     }

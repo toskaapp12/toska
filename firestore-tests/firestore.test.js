@@ -1923,6 +1923,51 @@ describe("follow mirrors: create + delete", () => {
         .collection("followers").doc("alice").delete()
     );
   });
+
+  // 2026-06-01 audit: follower/following docs are schema-locked to
+  // { handle, createdAt } so a follower can't smuggle arbitrary fields into
+  // a doc that lives under the target's user document.
+  it("allows a follower create carrying the legit { handle, createdAt }", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .set({ handle: "alice_h", createdAt: serverTimestamp() })
+    );
+  });
+
+  it("rejects a follower create with an extra side-channel field", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .set({ handle: "alice_h", createdAt: serverTimestamp(), injected: "x" })
+    );
+  });
+
+  it("rejects a follower UPDATE that injects a side-channel field", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .set({ handle: "alice_h", createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("bob")
+        .collection("followers").doc("alice")
+        .update({ injected: "x" })
+    );
+  });
+
+  it("rejects a following create with an extra side-channel field", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice")
+        .collection("following").doc("bob")
+        .set({ handle: "bob_h", createdAt: serverTimestamp(), injected: "x" })
+    );
+  });
 });
 
 describe("notRestricted(): time-expiry leg", () => {
@@ -2472,5 +2517,132 @@ describe("conversation create: participantHandles slot pin", () => {
         createdAt: new Date(),
       })
     );
+  });
+});
+
+// 2026-06-01 audit — pending-review subcollections must inherit the parent
+// post's visibility. Before the fix, replies/likes under a held
+// (moderationStatus != 'live') post were readable by any authed user, which
+// leaked the held post's content (replies snapshot parentPostText) and its
+// engager list. postVisibleToCaller() (firestore.rules:18) now gates these.
+async function setAdmin(uid) {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx.firestore().collection("admins").doc(uid).set({ role: "admin" });
+  });
+}
+
+async function setReply(postId, replyId, authorId) {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx
+      .firestore()
+      .collection("posts").doc(postId)
+      .collection("replies").doc(replyId)
+      .set({
+        authorId,
+        text: "a reply",
+        parentPostText: "the held parent post body",
+        createdAt: new Date(),
+        likeCount: 0,
+      });
+  });
+}
+
+async function setLike(postId, likeUserId) {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx
+      .firestore()
+      .collection("posts").doc(postId)
+      .collection("likes").doc(likeUserId)
+      .set({ createdAt: new Date() });
+  });
+}
+
+describe("pending-review: post subcollections inherit parent visibility", () => {
+  // alice authors a post that the moderation system has HELD.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("held", "alice", { moderationStatus: "pending_review" });
+    await setPost("live", "alice", { moderationStatus: "live" });
+    await setReply("held", "r1", "carol");
+    await setReply("live", "r1", "carol");
+    await setLike("held", "dave");
+    await setLike("live", "dave");
+  });
+
+  it("blocks a non-author from reading replies on a held post", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collection("posts").doc("held").collection("replies").doc("r1").get()
+    );
+  });
+
+  it("lets the post author read replies on their own held post", async () => {
+    const alice = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      alice.collection("posts").doc("held").collection("replies").doc("r1").get()
+    );
+  });
+
+  it("lets an admin read replies on a held post", async () => {
+    await setAdmin("mod");
+    const mod = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(
+      mod.collection("posts").doc("held").collection("replies").doc("r1").get()
+    );
+  });
+
+  it("still lets any authed user read replies on a live post", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collection("posts").doc("live").collection("replies").doc("r1").get()
+    );
+  });
+
+  it("defaults a post with no moderationStatus field to live (legacy)", async () => {
+    await setPost("legacy", "alice"); // no moderationStatus
+    await setReply("legacy", "r1", "carol");
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collection("posts").doc("legacy").collection("replies").doc("r1").get()
+    );
+  });
+
+  it("blocks a non-author from enumerating likers on a held post", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collection("posts").doc("held").collection("likes").doc("dave").get()
+    );
+  });
+
+  it("still lets any authed user read likes on a live post", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collection("posts").doc("live").collection("likes").doc("dave").get()
+    );
+  });
+
+  // The collection-group catch-all (firestore.rules /{path=**}/replies) is
+  // ORed with the per-post rule, so it must not re-open the leak.
+  it("collectionGroup: a user can read their OWN replies (powers ProfileView)", async () => {
+    await setReply("held", "mine", "bob"); // bob's own reply under a held post
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collectionGroup("replies").where("authorId", "==", "bob").get()
+    );
+  });
+
+  it("collectionGroup: a user CANNOT read another user's replies", async () => {
+    // carol authored held/r1; bob querying carol's replies is denied — this
+    // is the OtherProfileView path that was intentionally closed.
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collectionGroup("replies").where("authorId", "==", "carol").get()
+    );
+  });
+
+  it("collectionGroup: an unfiltered replies dump is denied", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(bob.collectionGroup("replies").get());
   });
 });

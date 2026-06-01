@@ -268,6 +268,46 @@ describe("phone number detection — formatted variants (audit 2026-05-13 M-1)",
   );
 });
 
+describe("evasion: render-as-nothing separators (audit 2026-06-01)", () => {
+  // These characters render invisibly, so the text looks identical to the
+  // bare name to a human, but they fragment the token before the name
+  // lookup. They were NOT in the original STRIP_INVISIBLE set.
+  it("canonicalize strips soft hyphen (U+00AD)", () => {
+    assert.strictEqual(canonicalize("Sa­rah"), "sarah");
+  });
+  it("canonicalize strips Hangul filler (U+3164)", () => {
+    assert.strictEqual(canonicalize("Saㅤrah"), "sarah");
+  });
+  it("canonicalize strips combining grapheme joiner (U+034F)", () => {
+    assert.strictEqual(canonicalize("Sa͏rah"), "sarah");
+  });
+  it("canonicalize strips Mongolian vowel separator (U+180E)", () => {
+    assert.strictEqual(canonicalize("Sa᠎rah"), "sarah");
+  });
+
+  flag(
+    "name fragmented with a soft hyphen still flags",
+    "her name is Sa­rah and i miss her"
+  );
+  flag(
+    "name fragmented with a Hangul filler still flags",
+    "her name is Saㅤrah and i miss her"
+  );
+});
+
+describe("evasion: fullwidth-digit phone numbers (audit 2026-06-01)", () => {
+  // A 10-digit phone typed in fullwidth digits renders as digits to a human
+  // but the ASCII \d count was zero before folding.
+  flag(
+    "fullwidth-digit phone in prose flags",
+    "her number is ５５５１２３４５６７ if you want"
+  );
+  flag(
+    "fullwidth digits split by zero-width spaces flags",
+    "５​５​５​１２３４５６７"
+  );
+});
+
 describe("evasion: combining-mark fragmentation (audit 2026-05-13 L-1)", () => {
   // U+0300-U+036F combining marks are Mn category, which the default
   // `\p{L}\p{N}` token split treats as separators. Without combining-

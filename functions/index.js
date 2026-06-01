@@ -1,5 +1,5 @@
 const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { containsNameOrIdentifyingInfo } = require("./moderation");
+const { containsNameOrIdentifyingInfo, aggressiveNormalizeForNameMatch } = require("./moderation");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -2210,45 +2210,79 @@ const MOD_HARASSMENT = [
   "nobody likes you", "youre worthless", "you deserve to die",
 ];
 
-const MOD_CONCERNING = [
-  "end it all", "can't go on", "no reason to live",
-  "want to die", "kill myself", "better off without me",
-  "no point anymore", "nobody cares", "disappear forever",
-  "not worth it", "give up on everything",
-  "want to hurt myself", "hurt myself", "self harm", "self-harm",
-  "end my life", "don't want to wake up", "don't want to be here",
-  "want to disappear", "better off dead", "no one would care",
-  "no one would notice", "can't do this anymore", "done with life",
-  "want it to stop", "want it all to end", "nothing left",
-  "not worth living", "why am i still here", "wish i wasn't here",
-  "wish i was dead", "take my own life", "don't want to exist",
-  // 2026-06-01: the literal crisis vocabulary was missing — "i'm suicidal"
-  // slipped through every phrase above. Direct words + common euphemisms.
-  "suicidal", "suicide", "unalive", "kill my self", "killing myself",
-  "want to kill myself", "ending my life", "ending it all",
+// Explicit, high-urgency crisis statements — held AND page admins
+// (onPostCreatedAlertAdmins). 2026-06-01: expanded with direct vocabulary,
+// common slang/euphemisms, contractions, and frequent misspellings. Matching
+// runs through matchesCrisisPhrase, which normalizes leet/unicode/spaced
+// evasions, so we list canonical lowercase forms here.
+const MOD_CRISIS_EXPLICIT = [
+  // direct suicide vocabulary + common misspellings
+  "suicidal", "suicide", "suicidel", "sucide", "sucidal", "suiside", "suacide",
+  // self-killing intent
+  "kill myself", "killing myself", "kill my self", "want to kill myself",
+  "wanna kill myself", "going to kill myself", "gonna kill myself",
+  "off myself", "end myself", "delete myself", "unalive", "unalive myself",
+  "hang myself", "hanging myself", "neck myself",
+  // ending my life
+  "end my life", "ending my life", "end it all", "ending it all",
+  "take my own life", "take my life", "want to end my life",
+  // wanting to die / be dead
+  "want to die", "wanna die", "want to be dead", "ready to die",
+  "wish i was dead", "wish i were dead", "wish i could die",
+  "better off dead", "rather be dead",
+  // self-harm
+  "hurt myself", "want to hurt myself", "harm myself", "self harm",
+  "self-harm", "selfharm", "cut myself", "cutting myself", "burn myself",
+  // not wanting to exist / wake up
+  "don't want to wake up", "dont want to wake up", "don't want to be here",
+  "dont want to be here", "don't want to exist", "dont want to exist",
+  "want to disappear", "want to vanish",
 ];
 
-// Subset of MOD_CONCERNING — the explicit, high-urgency phrases. Mirrors
-// FeedView.swift's explicitCrisisPhrases. When a post trips one of these
-// we page admins (onPostCreatedAlertAdmins below) so a human can reach
-// out. The softer phrases in MOD_CONCERNING still flag concerningContent
-// and hide the post from feeds, but don't trigger the admin alert — we
-// don't want to fatigue the alert with everyday venting like "nobody
-// cares" or "can't do this anymore."
-const MOD_EXPLICIT_CRISIS = [
-  "kill myself", "end my life", "end it all", "take my own life",
-  "want to die", "wish i was dead", "wish i wasn't here", "better off dead",
-  "hurt myself", "want to hurt myself", "self harm", "self-harm",
-  "don't want to wake up", "don't want to be here", "don't want to exist",
-  "want to disappear",
-  // 2026-06-01: direct crisis vocabulary (high-urgency → pages admins).
-  "suicidal", "suicide", "unalive", "kill my self", "killing myself",
-  "want to kill myself", "ending my life", "ending it all",
+// Softer distress / hopelessness — held for review (concerningContent) but
+// NOT paged, to avoid fatiguing the admin alert with everyday venting.
+const MOD_CRISIS_SOFT = [
+  "can't go on", "cant go on", "can't do this anymore", "cant do this anymore",
+  "can't keep going", "can't take it anymore", "cant take it anymore",
+  "no reason to live", "nothing to live for", "no point in living",
+  "no point anymore", "not worth living", "give up on everything",
+  "want to give up", "done with life", "done with everything",
+  "tired of living", "tired of being alive", "better off without me",
+  "everyone better off without me", "no one would care", "no one would notice",
+  "nobody cares", "nobody would miss me", "won't be missed",
+  "disappear forever", "why am i still here", "wish i wasn't here",
+  "wish i didn't exist", "want it to stop", "want it all to end", "nothing left",
 ];
+
+// Derived so MOD_EXPLICIT_CRISIS is, by construction, a subset of
+// MOD_CONCERNING — preventing the 2026-06-01 class of bug where an explicit
+// phrase ("suicidal") was paged-worthy but absent from the hold list.
+const MOD_EXPLICIT_CRISIS = MOD_CRISIS_EXPLICIT;
+const MOD_CONCERNING = [...MOD_CRISIS_EXPLICIT, ...MOD_CRISIS_SOFT];
+
+// Evasion-resistant crisis matcher (2026-06-01). A plain lowercase
+// `includes` misses leetspeak ("su1c1dal"), unicode confusables/fullwidth
+// ("𝐬𝐮𝐢𝐜𝐢𝐝𝐚𝐥"), and spaced-out letters ("s u i c i d e"). We reuse the PII
+// detector's aggressiveNormalizeForNameMatch (canonicalize → fold unicode →
+// de-leet → collapse single-letter chains) and also test a punctuation/space-
+// stripped form so "kill myself" matches "k i l l m y s e l f" → "killmyself".
+// Crisis posts are HELD for review (not deleted), so leaning toward
+// over-detection is the intended, safe direction.
+function matchesCrisisPhrase(rawText, list) {
+  const lowered = (rawText || "").toLowerCase();
+  const normalized = aggressiveNormalizeForNameMatch(rawText || "");
+  const noSpace = normalized.replace(/[^a-z0-9]/g, "");
+  return list.some((phrase) => {
+    if (lowered.includes(phrase) || normalized.includes(phrase)) return true;
+    // Space/punct-insensitive fallback, length-guarded so short tokens
+    // (e.g. "kms") don't false-positive against arbitrary letter runs.
+    const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
+    return pNoSpace.length >= 6 && noSpace.includes(pNoSpace);
+  });
+}
 
 function isPostExplicitCrisis(rawText) {
-  const text = (rawText || "").toLowerCase();
-  return MOD_EXPLICIT_CRISIS.some((phrase) => text.includes(phrase));
+  return matchesCrisisPhrase(rawText, MOD_EXPLICIT_CRISIS);
 }
 
 // ============================================================
@@ -2295,8 +2329,7 @@ function computePostFlagReason(rawText) {
 }
 
 function isPostConcerning(rawText) {
-  const text = (rawText || "").toLowerCase();
-  return MOD_CONCERNING.some((phrase) => text.includes(phrase));
+  return matchesCrisisPhrase(rawText, MOD_CONCERNING);
 }
 
 // Repeat-offender tracking. Previously 3 flagged posts all-time → permanent

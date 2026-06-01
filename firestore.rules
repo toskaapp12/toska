@@ -587,8 +587,25 @@ service cloud.firestore {
              // card can flip from "respond" to "your response" with edit/delete.
              // Server-side single-response-per-day enforcement isn't done in
              // rules (can't run a query) — soft-capped on the client.
-             'promptDate'
+             'promptDate',
+             // 2026-06-01 audit: clients MAY set moderationStatus at create,
+             // but only to "pending_validation" (enforced below) — a distinct
+             // create-time "hidden until validated" state, NOT the
+             // moderation-owned "pending_review" hold. This lets the new build
+             // create posts explicitly hidden ("start hidden" / fail-closed)
+             // so there's no direct-get window before validatePost promotes a
+             // clean post to "live". Old clients omit it and rely on the
+             // absent→validatePost-promotes path (still hidden from the feed
+             // query, which requires moderationStatus == "live").
+             'moderationStatus'
            ])
+        // A client can never self-publish as "live" or self-assign the
+        // moderation hold ("pending_review") — only omit the field or start
+        // the post in "pending_validation". validatePost (Admin SDK, bypasses
+        // rules) is the sole writer of "live"; setPendingReview owns
+        // "pending_review".
+        && (!('moderationStatus' in request.resource.data.keys())
+            || request.resource.data.moderationStatus == 'pending_validation')
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
         && request.resource.data.replyCount == 0

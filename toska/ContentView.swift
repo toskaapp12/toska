@@ -81,6 +81,10 @@ struct ContentView: View {
                 SplashView()
             }
         }
+        // App-wide tap-to-dismiss-keyboard, like a normal iOS app: tapping
+        // anywhere outside a text field lowers the keyboard, without blocking
+        // taps on buttons, posts, or scrolling. See KeyboardDismiss.swift.
+        .dismissKeyboardOnTap()
         .fullScreenCover(isPresented: $showPolicyUpdate) {
             // Version-bump retro-prompt. A user declining here is signed out
             // rather than deleted — their account and content persist so they
@@ -299,6 +303,22 @@ struct ContentView: View {
                 let acceptedVersion = data["acceptedPolicyVersion"] as? Int ?? 0
                 if hasCompletedOnboarding, acceptedVersion < currentPolicyVersion {
                     showPolicyUpdate = true
+                }
+
+                // Stuck-account auto-recovery. If the user completed onboarding
+                // but `confirmedAdult` is still false (the original confirmAdult
+                // RPC during signup was rejected by App Check — typically when a
+                // debug build's debug token isn't registered yet — and commit
+                // 953eebb lets signup proceed regardless), they end up unable
+                // to post or repost: every post.create rule check fails on
+                // hasConfirmedAdult(). Before this, the only in-app recovery
+                // was an attempted post in ComposeView surfacing the "still
+                // setting up your account" error — reposts and other paths
+                // gave no signal. Fire confirmAdult here on next launch so any
+                // stuck account self-heals as soon as App Check works.
+                let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                if hasCompletedOnboarding, !confirmedAdult {
+                    confirmAdultServerSideFireAndForget(uid: uid)
                 }
 
                 showVerifyError = false

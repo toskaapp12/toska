@@ -244,12 +244,12 @@ struct FeedView: View {
                                 // remains accessible from the empty-feed
                                 // state's "explore" button below for the
                                 // separate browse-by-tag flow.
-                                HStack(spacing: 6) {
+                                HStack(spacing: 8) {
                                     Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 12, weight: .light))
+                                        .font(.system(size: 14, weight: .regular))
                                         .foregroundColor(LateNightTheme.secondaryText)
                                     TextField("search", text: $searchText)
-                                        .font(.system(size: 13))
+                                        .font(.system(size: 14))
                                         .foregroundColor(LateNightTheme.handleText)
                                         .autocorrectionDisabled()
                                         .textInputAutocapitalization(.never)
@@ -262,18 +262,29 @@ struct FeedView: View {
                                             searchFocused = false
                                         } label: {
                                             Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 13))
+                                                .font(.system(size: 15))
                                                 .foregroundColor(LateNightTheme.tertiaryText)
                                         }
                                         .accessibilityLabel("Clear search")
                                     }
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Color.white.opacity(0.06))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                // Solid grey instead of barely-visible 6% white
+                                // overlay. With a thin border the bar reads as
+                                // a proper search field rather than a faint
+                                // ghost outline.
+                                .background(Color.toskaDivider.opacity(0.18))
+                                .overlay(
+                                    Capsule().stroke(Color.toskaDivider.opacity(0.4), lineWidth: 0.5)
+                                )
                                 .clipShape(Capsule())
                                 .padding(.horizontal, 12)
-                                .padding(.top, 8)
+                                // More breathing room above (between prompt /
+                                // response card and the search) and below
+                                // (between search and the first feed row).
+                                .padding(.top, 14)
+                                .padding(.bottom, 6)
 
                                 // Category pills — appear only while the
                                 // search bar is focused. Tapping a pill
@@ -487,18 +498,18 @@ struct FeedView: View {
                     
                     if vm.selectedTab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
                                                                 VStack(spacing: 4) {
-                                                                    Text(vm.endedDueToBlocking
-                                                                         ? "no more posts to show"
-                                                                         : "youve read everything.")
+                                                                    Text("no more posts to show")
                                                                         .font(.system(size: 10))
                                                                         .foregroundColor(LateNightTheme.tertiaryText)
-                                                                    Text(vm.endedDueToBlocking
-                                                                         ? "some posts are hidden"
-                                                                                                                                                                                                                      : LateNightTheme.isLateNight
-                                                                                                                                                                                                                         ? "try to sleep. or dont. were here either way."
-                                                                                                                                                                                                                         : "close the app. or dont. well be here.")
-                                                                        .font(.custom("Georgia-Italic", size: 10))
-                                                                        .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                                    // Only annotate when posts are hidden by blocking.
+                                                                    // The neutral end-line stands on its own otherwise —
+                                                                    // the old poetic sublines ("close the app. or dont.")
+                                                                    // read as awkward at the bottom of a real feed.
+                                                                    if vm.endedDueToBlocking {
+                                                                        Text("some posts are hidden")
+                                                                            .font(.custom("Georgia-Italic", size: 10))
+                                                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                                    }
                                                                 }
                                                                 .padding(.vertical, 20)
                                                             }
@@ -516,18 +527,16 @@ struct FeedView: View {
                                                                                 // the posts ForEach keeps the LazyVStack identity stable
                                                                                 // and avoids the blank-feed-on-launch regression.
                                                                             }
-                                                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                                            // Pull-to-refresh on the feed. fetchPosts
-                                                                            // isn't async / completion-bearing so we
-                                                                            // mirror ProfileView's pattern: fire the
-                                                                            // fetch then sleep ~1.5s so the spinner
-                                                                            // stays visible long enough to feel like
-                                                                            // a real refresh. The underlying listener
-                                                                            // delivers the actual data update.
-                                                                            .refreshable {
-                                                                                vm.fetchPosts()
-                                                                                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                                                            }
+                                                                            // Pin to the exact viewport width — NOT maxHeight.
+                                                                            // maxHeight: .infinity would clamp the content to the
+                                                                            // viewport height and kill vertical scrolling (that
+                                                                            // bug surfaced once the seeded feed filled past one
+                                                                            // screen). Fixing the WIDTH to geo.size.width (rather
+                                                                            // than maxWidth: .infinity, which grows to fit an
+                                                                            // oversized child) guarantees the content can never be
+                                                                            // wider than the screen, so the vertical feed can't be
+                                                                            // panned sideways even if a row's media overflows.
+                                                                            .frame(width: geo.size.width)
                                                                                 .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
                                                         proxy.scrollTo("feedTop", anchor: .top)
                                                     }
@@ -539,31 +548,20 @@ struct FeedView: View {
                 // an explicit save/restore round-trip isn't needed here.
             } // end ScrollViewReader
                                                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                                        .simultaneousGesture(
-                                                                DragGesture()
-                                .onChanged { value in
-                                                                    guard value.translation.height > 0 else { return }
-                                                                    vm.dragOffset = value.translation.height
-                                                                }
-                                                        .onEnded { value in
-                                                                                                                            if value.translation.height > 80 && !vm.isRefreshing {
-                                        vm.isRefreshing = true
-                                        HapticManager.play(.tabSwitch)
-                                        Task { @MainActor in
-                                            vm.refreshAll()
-                                            try? await Task.sleep(nanoseconds: 800_000_000)
-                                            withAnimation(.easeOut(duration: 0.3)) {
-                                                vm.isRefreshing = false
-                                                vm.dragOffset = 0
-                                            }
-                                        }
-                                    } else {
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                            vm.dragOffset = 0
-                                        }
-                                    }
-                                                                    }
-                                                            )
+                                                        // Native pull-to-refresh. This replaces a custom
+                                                        // simultaneousGesture(DragGesture()) that fired on EVERY
+                                                        // downward drag — even mid-feed, not just at the top —
+                                                        // setting dragOffset and expanding the refresh header,
+                                                        // which shoved content around while scrolling and made
+                                                        // the feed feel wonky. .refreshable engages only at the
+                                                        // top and lets the scroll view own touch arbitration, so
+                                                        // normal scrolling stays seamless. refreshAll() refreshes
+                                                        // posts + header content, matching the old behavior.
+                                                        .refreshable {
+                                                            HapticManager.play(.tabSwitch)
+                                                            vm.refreshAll()
+                                                            try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                                        }
                                                 .frame(width: geo.size.width, height: geo.size.height)
                                                 }
                                             }
@@ -622,7 +620,12 @@ struct FeedView: View {
                             EdgeSwipeDismissWrapper {
                                 ComposeView(
                                     initialText: "",
-                                    initialTag: vm.todaysPrompt.1
+                                    initialTag: vm.todaysPrompt.1,
+                                    // Stamps the resulting post doc with today's
+                                    // prompt-date marker so FeedHeaderCard can
+                                    // detect "you already responded today" and
+                                    // surface the response with edit/delete.
+                                    promptDate: vm.todaysPromptDateString
                                 )
                                 .onAppear { HapticManager.play(.compose) }
                             }
@@ -657,6 +660,19 @@ struct FeedView: View {
             NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
             newPostsBadgeCount = 0
             previousPostCount = -1 // re-baseline on next .onChange tick
+        }
+        // Drop the cached daily-prompt response card the moment the user
+        // deletes that post via PostDetailView. Without this, the response
+        // stays on screen with the deleted text until pull-to-refresh.
+        // Also strip the deleted post from the in-memory feed so it
+        // disappears from the list immediately.
+        .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
+            guard let deletedId = notif.userInfo?["postId"] as? String else { return }
+            if vm.todaysPromptResponse?.id == deletedId {
+                vm.todaysPromptResponse = nil
+            }
+            vm.posts.removeAll { $0.id == deletedId }
+            vm.followingPosts.removeAll { $0.id == deletedId }
         }
         .onChange(of: vm.posts.count) { _, newValue in
             // "X new posts available" delta tracking. previousPostCount
@@ -772,7 +788,6 @@ struct FeedPostRow: View {
     @State private var hasInitialized = false
         @State private var likePulse = false
             @State private var repostPulse = false
-            @State private var showPostDetail = false
             @State private var likePulseTask: Task<Void, Never>? = nil
             @State private var repostPulseTask: Task<Void, Never>? = nil
             // Heart burst overlay state — drives a brief expanding+fading
@@ -782,12 +797,6 @@ struct FeedPostRow: View {
             // automatically and don't compose with anything else.
             @State private var likeBurstScale: CGFloat = 1.0
             @State private var likeBurstOpacity: Double = 0.0
-            // Press-state tint for the whole row — @GestureState so the
-            // value resets the moment the user lifts/cancels, no manual
-            // teardown. LongPressGesture(minimumDuration: 0.01) fires
-            // immediately on touch and tracks pressing via .updating;
-            // doesn't block the existing onTapGesture or context menu.
-            @GestureState private var rowIsPressed: Bool = false
             @State private var showShareCard = false
         @State private var showReportSheet = false
         @State private var showBlockConfirm = false
@@ -795,6 +804,34 @@ struct FeedPostRow: View {
 
     var body: some View {
                 VStack(alignment: .leading, spacing: 0) {
+                // Tapping the post content PUSHES PostDetailView in from the
+                // right (real navigation), not a modal pop-up. A
+                // destination-closure NavigationLink is used instead of
+                // .navigationDestination(...) because FeedPostRow renders
+                // dozens of times in an eager VStack across several screens;
+                // per-row navigationDestination declarations collide in one
+                // NavigationStack and silently stop working. Destination-closure
+                // links each carry their own destination, so there's no
+                // collision. The action bar lives OUTSIDE this link so its
+                // buttons never fight the link's tap.
+                NavigationLink {
+                    PostDetailView(
+                        postId: postId,
+                        handle: handle,
+                        text: text,
+                        tag: tag,
+                        likes: localLikeCount,
+                        reposts: localRepostCount,
+                        replies: replies,
+                        time: time,
+                        authorId: authorId,
+                        isAlreadyLiked: isLiked,
+                        isAlreadySaved: isSaved,
+                        isAlreadyReposted: isReposted
+                    )
+                    .navigationBarHidden(true)
+                } label: {
+                  VStack(alignment: .leading, spacing: 0) {
                 // Repost provenance — small "@reposter reposted" line above
                 // the handle row when this post is a repost. Without this,
                 // reposts looked identical to original posts and readers had
@@ -945,58 +982,51 @@ struct FeedPostRow: View {
                                             .padding(.bottom, 10)
                                         }
                                         
-                                        // GIF
-                if let gifUrl = gifUrl, let url = URL(string: gifUrl) {
-                    AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxHeight: 200)
-                                .cornerRadius(10)
-                                .transition(.opacity)
-                        case .failure:
-                            // Distinguish a load failure from "still loading" so
-                            // the user has a hint that something went wrong
-                            // rather than staring at an empty box.
-                            LateNightTheme.inputBackground
-                                .frame(height: 120)
-                                .cornerRadius(10)
-                                .overlay(
-                                    VStack(spacing: 4) {
-                                        Image(systemName: "photo.badge.exclamationmark")
-                                            .font(.system(size: 16, weight: .light))
-                                        Text("couldn't load gif")
-                                            .font(.system(size: 10))
-                                    }
-                                    .foregroundColor(LateNightTheme.tertiaryText)
-                                )
-                        default:
-                            LateNightTheme.inputBackground
-                                .frame(height: 120)
-                                .cornerRadius(10)
-                                .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
-                        }
-                    }
-                    .padding(.bottom, 10)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if !postId.isEmpty { showPostDetail = true }
-                    }
+                                        // GIF — animated. Uses StableGifPreview
+                                        // (shared from ComposeView) so frames
+                                        // actually animate via UIImageView; the
+                                        // old AsyncImage path only showed the
+                                        // first frame because SwiftUI's Image
+                                        // doesn't iterate GIF frames.
+                if let gifUrl = gifUrl, !gifUrl.isEmpty {
+                    StableGifPreview(urlString: gifUrl, maxHeight: 200)
+                        .padding(.bottom, 10)
                 }
+                  }
+                  .frame(maxWidth: .infinity, alignment: .leading)
+                  .contentShape(Rectangle())
+                } // end NavigationLink label
+                // Drive the press highlight from the link's ButtonStyle, not a
+                // manual gesture. The scroll view owns touch arbitration, so
+                // isPressed is only true on a deliberate press and is cancelled
+                // the instant a scroll begins — no highlight flicker while
+                // scrolling, and the link never fires on a scroll/flick
+                // (UITableView / Twitter behavior). See FeedRowPressStyle.
+                .buttonStyle(FeedRowPressStyle())
+                // Sample/placeholder posts (empty postId) aren't real and have
+                // no detail to open — disable the link so tapping them is inert.
+                .disabled(postId.isEmpty)
 
                     // Action bar — larger icons + a bit tighter spacing so
                                     // the row feels more substantial without crowding.
                                     if !postId.isEmpty {
                                         HStack(spacing: 24) {
-                                                                                   Button {
-                                                                                       NotificationCenter.default.post(
-                                                                                           name: .saveFeedScrollPosition,
-                                                                                           object: nil,
-                                                                                           userInfo: ["postId": postId]
+                                                                                   NavigationLink {
+                                                                                       PostDetailView(
+                                                                                           postId: postId,
+                                                                                           handle: handle,
+                                                                                           text: text,
+                                                                                           tag: tag,
+                                                                                           likes: localLikeCount,
+                                                                                           reposts: localRepostCount,
+                                                                                           replies: replies,
+                                                                                           time: time,
+                                                                                           authorId: authorId,
+                                                                                           isAlreadyLiked: isLiked,
+                                                                                           isAlreadySaved: isSaved,
+                                                                                           isAlreadyReposted: isReposted
                                                                                        )
-                                                                                       showPostDetail = true
+                                                                                       .navigationBarHidden(true)
                                                                                    } label: {
                                                                                        actionLabel(icon: "bubble.left", count: replies, isActive: false)
                                                                                    }
@@ -1059,45 +1089,29 @@ struct FeedPostRow: View {
                                         .padding(.top, 16)
                                     }
                                 }
+                                            // Span the full width so the whole card is one
+                                            // tap target — without this the row is only as
+                                            // wide as its widest child, so short / text-only
+                                            // posts (and the empty space beside them) had dead
+                                            // zones that didn't open the post. Combined with
+                                            // .contentShape(Rectangle()) + .onTapGesture below,
+                                            // tapping anywhere on the post opens it; the action
+                                            // buttons still capture their own taps.
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                             .padding(.horizontal, 16)
                                             .padding(.top, 18)
                                             .padding(.bottom, 16)
-                                            // Layered background: base color +
-                                            // press-state tint that fades in
-                                            // when the user touches the row.
-                                            // The tint via @GestureState clears
-                                            // automatically on lift / cancel,
-                                            // and the LongPressGesture's tiny
-                                            // minimumDuration fires the press
-                                            // state immediately without
-                                            // blocking the existing tap or
-                                            // context menu (those use
-                                            // independent gesture systems).
-                                            .background(
-                                                ZStack {
-                                                    LateNightTheme.background
-                                                    if rowIsPressed {
-                                                        Color.toskaDivider.opacity(0.18)
-                                                    }
-                                                }
-                                            )
+                                            // Solid row background. The press
+                                            // highlight lives in FeedRowPressStyle
+                                            // on the content link now, so there's
+                                            // no manual press gesture here — the
+                                            // old LongPressGesture fired on
+                                            // touch-down, flickered during scroll,
+                                            // and competed with the scroll view
+                                            // for taps (opening posts mid-scroll).
+                                            .background(LateNightTheme.background)
                                             .contentShape(Rectangle())
-                                            .simultaneousGesture(
-                                                LongPressGesture(minimumDuration: 0.01, maximumDistance: 50)
-                                                    .updating($rowIsPressed) { _, state, _ in state = true }
-                                            )
-                                            .animation(.easeInOut(duration: 0.12), value: rowIsPressed)
-                                            .onTapGesture {
-                                                                            if !postId.isEmpty {
-                                                                                NotificationCenter.default.post(
-                                                                                    name: .saveFeedScrollPosition,
-                                                                                    object: nil,
-                                                                                    userInfo: ["postId": postId]
-                                                                                )
-                                    showPostDetail = true
-                                }
-                            }
-                            .overlay(
+                                            .overlay(
                                 Rectangle()
                                     .fill(LateNightTheme.divider)
                                     .frame(height: 0.5),
@@ -1133,13 +1147,6 @@ struct FeedPostRow: View {
                                             }
                                         }
 
-                    Divider()
-
-                    Button {
-                        showPostDetail = true
-                    } label: {
-                        Label("open post", systemImage: "bubble.left")
-                    }
                 }
                 .onAppear {
                                                     if !hasInitialized {
@@ -1164,38 +1171,31 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
-                .navigationDestination(isPresented: $showPostDetail) {
-                                                    PostDetailView(
-                                                        postId: postId,
-                                                        handle: handle,
-                                                        text: text,
-                                                        tag: tag,
-                                                        likes: localLikeCount,
-                                                        reposts: localRepostCount,
-                                                        replies: replies,
-                                                        time: time,
-                                                        authorId: authorId,
-                                                        isAlreadyLiked: isLiked,
-                                                        isAlreadySaved: isSaved,
-                                                        isAlreadyReposted: isReposted
-                                                    )
-                                                    .navigationBarHidden(true)
-                                                }
-                                .navigationDestination(isPresented: $showShareCard) {
-                                    ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
-                                        .navigationBarHidden(true)
-                                        .hidesAppTabBar()
-                                }
-                                .navigationDestination(isPresented: $showReportSheet) {
-                                    ReportSheet(target: .post(
-                                        postId: postId,
-                                        authorId: authorId,
-                                        authorHandle: handle,
-                                        text: text
-                                    ))
-                                    .navigationBarHidden(true)
-                                    .hidesAppTabBar()
-                                }
+                // Opening the post uses push navigation (the NavigationLink
+                // wrapping the content above) so it slides in from the right.
+                // Share and report stay as modal covers — secondary leaf
+                // actions where a modal is conventional. Per-row covers don't
+                // collide the way per-row navigationDestination(isPresented:)
+                // did, which is why these two are safe to keep per-row.
+                .fullScreenCover(isPresented: $showShareCard) {
+                    EdgeSwipeDismissWrapper {
+                        ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
+                            .navigationBarHidden(true)
+                    }
+                }
+                .fullScreenCover(isPresented: $showReportSheet) {
+                    EdgeSwipeDismissWrapper {
+                        NavigationStack {
+                            ReportSheet(target: .post(
+                                postId: postId,
+                                authorId: authorId,
+                                authorHandle: handle,
+                                text: text
+                            ))
+                            .navigationBarHidden(true)
+                        }
+                    }
+                }
                                 .confirmationDialog(
                                     "block \(handle)?",
                                     isPresented: $showBlockConfirm,
@@ -1298,9 +1298,25 @@ struct FeedPostRow: View {
                     isSaved = newSaved
                 }
             }
-    
-    
+
+
 }
+
+// MARK: - Feed Row Press Style
+//
+// Press highlight for the tappable post content. Driven by the link's own
+// isPressed (which the enclosing ScrollView manages) instead of a manual
+// gesture, so the highlight only shows on a deliberate press and is cancelled
+// the moment a scroll starts — matching UITableView / Twitter. No flicker
+// while scrolling, and the row's tap never fires mid-scroll.
+struct FeedRowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Color.toskaDivider.opacity(0.18) : Color.clear)
+            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Collapsible Feed Header Card
 
 @MainActor
@@ -1308,13 +1324,15 @@ struct FeedHeaderCard: View {
     @ObservedObject var vm: FeedViewModel
     @State private var isExpanded = false
     
-    private var hasContent: Bool {
-        !vm.emotionalWeather.isEmpty || vm.witnessPost != nil || !vm.mostUnsaidText.isEmpty || vm.hasDailyMoment
-    }
-    
+    // hasContent gate removed — the daily prompt is ALWAYS meaningful (it
+    // rotates and the user can always tap "respond"), so the card must
+    // always render. The previous gate was inherited from when the card only
+    // existed to surface optional secondary content (witness post, weather,
+    // daily moment, most-unsaid); removing the most-unsaid surface meant a
+    // fresh user on a quiet day saw nothing — no prompt, no respond button.
+
     var body: some View {
-        if hasContent {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
                 // Collapsed: just the prompt + tap to expand
                 Button {
                                     withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
@@ -1331,6 +1349,16 @@ struct FeedHeaderCard: View {
                                                 .foregroundColor(.white.opacity(0.9))
                                                 .lineLimit(isExpanded ? nil : 2)
                                                 .multilineTextAlignment(.leading)
+
+                                            // Daily rhythm cue — makes the
+                                            // one-per-day cadence visible so
+                                            // users feel the prompt is fresh
+                                            // each morning and theirs alone
+                                            // for the day.
+                                            Text("new one tomorrow.")
+                                                .font(.system(size: 9, weight: .regular))
+                                                .foregroundColor(.white.opacity(0.4))
+                                                .padding(.top, 2)
                                         }
                                         
                                         Spacer()
@@ -1344,43 +1372,105 @@ struct FeedHeaderCard: View {
                                     .background(Color.toskaBlue)
                                     .cornerRadius(12)
                                     .padding(.horizontal, 12)
-                                    .padding(.top, 8)
+                                    // Bumped 8→16 so the prompt card has
+                                    // breathing room below the for-you /
+                                    // following divider line — the line was
+                                    // hugging the top of the blue card.
+                                    .padding(.top, 16)
                                 }
                                 .buttonStyle(.plain)
-                
+
+                // ALWAYS-visible "your response" card (not gated by isExpanded).
+                // When the user has responded today, this sits right under the
+                // prompt header in the collapsed state so it's immediately
+                // visible. Tap pushes PostDetailView (where the existing ⋯
+                // menu surfaces edit/delete on own posts).
+                if let response = vm.todaysPromptResponse {
+                    NavigationLink {
+                        PostDetailView(
+                            postId: response.id,
+                            handle: response.handle,
+                            text: response.text,
+                            tag: response.tag,
+                            likes: response.likes,
+                            reposts: response.reposts,
+                            replies: response.replies,
+                            time: response.time,
+                            authorId: response.authorId,
+                            isAlreadyLiked: false,
+                            isAlreadySaved: false,
+                            isAlreadyReposted: false
+                        )
+                        .navigationBarHidden(true)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                Text("your response")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                Spacer()
+                                Text("tap to open")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(Color.toskaTimestamp)
+                            }
+                            Text(response.text)
+                                .font(.custom("Georgia", size: 13))
+                                .foregroundColor(LateNightTheme.primaryText)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.toskaBlue.opacity(0.06))
+                        .cornerRadius(10)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 // Expanded content
                 if isExpanded {
                     VStack(spacing: 0) {
                         Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-                        
-                        // Prompt respond button
-                        Button { vm.showPromptCompose = true } label: {
-                            HStack {
-                                HStack(spacing: 5) {
-                                    Image(systemName: vm.todaysPrompt.2)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(tagColor(for: vm.todaysPrompt.1))
-                                    Text(vm.todaysPrompt.1)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(tagColor(for: vm.todaysPrompt.1).opacity(0.6))
+
+                        // Respond button — hidden once today's response exists
+                        // (soft one-per-day cap). The "your response" card
+                        // above replaces it.
+                        if vm.todaysPromptResponse == nil {
+                            Button { vm.showPromptCompose = true } label: {
+                                HStack {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: vm.todaysPrompt.2)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(tagColor(for: vm.todaysPrompt.1))
+                                        Text(vm.todaysPrompt.1)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(tagColor(for: vm.todaysPrompt.1).opacity(0.6))
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "pencil.line")
+                                            .font(.system(size: 10))
+                                        Text("respond")
+                                            .font(.system(size: 10, weight: .semibold))
+                                    }
+                                    .foregroundColor(Color.toskaBlue)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.toskaBlue.opacity(0.1))
+                                    .cornerRadius(12)
                                 }
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    Image(systemName: "pencil.line")
-                                        .font(.system(size: 10))
-                                    Text("respond")
-                                        .font(.system(size: 10, weight: .semibold))
-                                }
-                                .foregroundColor(Color.toskaBlue)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.toskaBlue.opacity(0.1))
-                                .cornerRadius(12)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                         
                         // Daily moment
                         if vm.hasDailyMoment {
@@ -1430,35 +1520,18 @@ struct FeedHeaderCard: View {
                             .buttonStyle(.plain)
                         }
                         
-                        // Most unsaid
-                        if !vm.mostUnsaidText.isEmpty {
-                            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(spacing: 6) {
-                                    Text("most unsaid today")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Color.toskaBlue)
-                                    Spacer()
-                                    Text("\(formatCount(vm.mostUnsaidLikes)) felt this")
-                                        .font(.system(size: 10))
-                                        .foregroundColor(LateNightTheme.tertiaryText)
-                                }
-                                Text(vm.mostUnsaidText)
-                                    .font(.custom("Georgia", size: 13))
-                                    .foregroundColor(LateNightTheme.primaryText)
-                                    .lineSpacing(3)
-                                    .lineLimit(2)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                        }
+                        // "most unsaid today" surface removed — it was the same
+                        // data as the trending tab (top-liked post in the last
+                        // 24h) and pulled the prompt card away from its core
+                        // job (prompt → respond → your response). The state +
+                        // fetcher stay in FeedViewModel because hasDailyMoment
+                        // also depends on that query.
                     }
                 }
                 
                 Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
             }
-        }
-        
+
         // Anniversary post (always visible, not collapsed)
         if let annPost = vm.anniversaryPost {
                     AnniversaryCardView(post: annPost, postId: annPost.postId)

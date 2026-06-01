@@ -20,7 +20,7 @@ struct MainTabView: View {
     // of the matching type; the corresponding fullScreenCover/sheet opens
     // the right destination. We use Identifiable wrappers so SwiftUI can
     // distinguish the value-bound presentation modifiers.
-    @State private var pushConversation: ConversationSelection? = nil
+    // pushConversation state removed when DMs were cut.
     @State private var pushProfileUser: UserSelection? = nil
     // FIX: only the feed tab is rendered on cold start. Other tabs are added
     // to this set the first time the user selects them, then kept alive so
@@ -88,13 +88,19 @@ struct MainTabView: View {
                     }
                 }
             }
+            // Reserve space at the bottom so the always-visible tab bar (in
+            // the ZStack overlay below) never covers content. 70pt = the tab
+            // bar's HStack frame (50) + .padding(.bottom, 20). Pushing the
+            // content up by this amount means a pushed view's bottom-anchored
+            // UI — PostDetailView's reply composer, the conversation
+            // composer, etc. — sits above the tab bar instead of behind it.
+            .padding(.bottom, 70)
 
             // MARK: - Tab bar
-            // Hidden when any pushed view declares `.hidesAppTabBar()`; the
-            // bar slides off-screen so drill-in views (post detail, follow
-            // list, conversation, settings, etc.) get the full height for
-            // their bottom-anchored UI (e.g., the reply composer in
-            // PostDetailView). See HidesAppTabBarKey in ToskaTheme.swift.
+            // Always visible (the hide preference is intentionally ignored,
+            // see .onPreferenceChange below). Sits in the ZStack overlay so
+            // it stays at the screen bottom; the inner content VStack above
+            // is padded to leave room.
             if !tabBarHidden {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
@@ -229,12 +235,14 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.all, edges: .bottom)
-        .onPreferenceChange(HidesAppTabBarKey.self) { hidden in
-            // Animate the tab bar in/out. Spring matches the feel of
-            // navigation pushes so the bar's exit/entry tracks the push
-            // motion. See ToskaTheme.swift → HidesAppTabBarKey.
+        .onPreferenceChange(HidesAppTabBarKey.self) { _ in
+            // Tab bar is intentionally always visible — drill-in views can
+            // still declare `.hidesAppTabBar()`, the preference just isn't
+            // honored at the bar level anymore. Keeps navigation consistent
+            // so the user never loses their place. To restore per-screen
+            // hiding, set `tabBarHidden = hidden` here.
             withAnimation(.easeInOut(duration: 0.22)) {
-                tabBarHidden = hidden
+                tabBarHidden = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
@@ -284,44 +292,25 @@ struct MainTabView: View {
             guard let postId = notification.userInfo?["postId"] as? String, !postId.isEmpty else { return }
             PushNotificationManager.shared.pendingIntent = nil
             showCompose = false
-            pushConversation = nil
             pushProfileUser = nil
             selectedTab = .feed
             pushPostId = postId
         }
-        .onReceive(NotificationCenter.default.publisher(for: .openConversationFromPush)) { notification in
-            guard let convoId = notification.userInfo?["conversationId"] as? String, !convoId.isEmpty else { return }
-            let otherUserId = notification.userInfo?["otherUserId"] as? String ?? ""
-            PushNotificationManager.shared.pendingIntent = nil
-            showCompose = false
-            pushPostId = nil
-            pushProfileUser = nil
-            // We don't always know the other handle from push payload alone.
-            // ConversationView fetches it from the conversation doc on appear,
-            // so an empty handle is acceptable here.
-            pushConversation = ConversationSelection(id: convoId, handle: "", userId: otherUserId)
-        }
+        // openConversationFromPush observer removed when DMs were cut. The
+        // push payload may still arrive for users on older builds; we just
+        // don't route it to ConversationView anymore.
         .onReceive(NotificationCenter.default.publisher(for: .openProfileFromPush)) { notification in
             guard let userId = notification.userInfo?["userId"] as? String, !userId.isEmpty else { return }
             PushNotificationManager.shared.pendingIntent = nil
             showCompose = false
             pushPostId = nil
-            pushConversation = nil
             pushProfileUser = UserSelection(id: userId, handle: "")
         }
         .onReceive(NotificationCenter.default.publisher(for: .openComposeFromEmptyFeed)) { _ in
             HapticManager.play(.tabSwitch)
             showCompose = true
         }
-        .fullScreenCover(item: $pushConversation) { selection in
-            EdgeSwipeDismissWrapper {
-                ConversationView(
-                    conversationId: selection.id,
-                    otherHandle: selection.handle,
-                    otherUserId: selection.userId
-                )
-            }
-        }
+        // pushConversation cover removed when DMs were cut.
         .fullScreenCover(item: $pushProfileUser) { selection in
             EdgeSwipeDismissWrapper {
                 OtherProfileView(userId: selection.id, handle: selection.handle)
@@ -340,12 +329,9 @@ struct MainTabView: View {
                 case .post where !intent.postId.isEmpty:
                     selectedTab = .feed
                     pushPostId = intent.postId
-                case .conversation where !intent.conversationId.isEmpty:
-                    pushConversation = ConversationSelection(
-                        id: intent.conversationId,
-                        handle: "",
-                        userId: intent.userId
-                    )
+                case .conversation:
+                    // DM intent ignored when DMs were cut.
+                    break
                 case .profile where !intent.userId.isEmpty:
                     pushProfileUser = UserSelection(id: intent.userId, handle: "")
                 default:

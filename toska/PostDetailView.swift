@@ -69,6 +69,10 @@ struct PostDetailView: View {
     @State private var likeCount: Int = 0
     @State private var localRepostCount: Int = 0
     @State private var replyList: [ThreadedReply] = []
+    // True once the reply snapshot listener has returned at least once. Lets
+    // the UI show reply skeletons while loading instead of flashing the
+    // "be the first to reply" empty state and then popping replies in.
+    @State private var hasLoadedReplies = false
     // Reply ids whose collapsed deep-thread subtree the user has expanded
     // via the "show N more replies" stub. Persists across listener
     // re-renders within the lifetime of this PostDetailView (new push of
@@ -77,7 +81,6 @@ struct PostDetailView: View {
     @State private var expandedDeepThreads: Set<String> = []
     @State private var replyingToId: String? = nil
     @State private var replyingToHandle: String? = nil
-    @State private var showReport = false
     @State private var showShareCard = false
     // Per-reply share — set when the user taps the share icon on a reply
     // row; presents a ShareCardView for the reply's text + handle. Uses
@@ -97,6 +100,10 @@ struct PostDetailView: View {
     @State private var isDeleting = false
     @State private var deleteError = ""
     @State private var postText: String = ""
+    // GIF URL attached to the post. Populated by the live snapshot listener
+    // (startLiveListener), so it appears as soon as the post doc is read and
+    // updates if the post's gifUrl ever changes server-side.
+    @State private var postGifUrl: String? = nil
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
     @State private var showReplyNameWarning = false
@@ -107,7 +114,15 @@ struct PostDetailView: View {
     @State private var replyGentleCheckLevel: CrisisLevel = .soft
     @State private var replyGifUrl: String? = nil
     @State private var showReplyGifPicker = false
-    @State private var activeConversation: ConversationSelection? = nil
+    // Edit / delete for the viewer's own reply, from the reply context menu.
+    // The reply snapshot listener (replyListener) reflects the change in
+    // replyList automatically, so there's no manual list mutation here.
+    @State private var editReplyId = ""
+    @State private var editReplyText = ""
+    @State private var showEditReply = false
+    @State private var deleteReplyId = ""
+    @State private var showDeleteReplyAlert = false
+    @State private var deleteReplyError: String? = nil
     @State private var isLetter = false
 
     var isOwnPost: Bool {
@@ -189,17 +204,10 @@ struct PostDetailView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                           dismiss()
-                      }            .confirmationDialog(isOwnPost ? "your post" : "", isPresented: $showReport) {
-                if isOwnPost {
-                    Button("edit post") { editText = postText; showEditSheet = true }
-                    Button("delete post", role: .destructive) { showDeleteAlert = true }
-                    Button("cancel", role: .cancel) {}
-                } else {
-                    Button("report") { reportPost(); showReportedAlert = true }
-                    Button("block", role: .destructive) { blockUser() }
-                    Button("cancel", role: .cancel) {}
-                }
-            }
+                      }
+            // confirmationDialog removed — the ⋯ button is now a Menu (popover
+            // anchored under the dots), so edit/delete/report/block are
+            // rendered inline by SwiftUI without needing a separate sheet.
             .alert("couldn't delete", isPresented: .init(get: { !deleteError.isEmpty }, set: { if !$0 { deleteError = "" } })) {
                 Button("ok") { deleteError = "" }
             } message: { Text(deleteError) }
@@ -269,9 +277,31 @@ struct PostDetailView: View {
                     .navigationBarHidden(true)
                     .hidesAppTabBar()
             }
-            .navigationDestination(item: $activeConversation) { convo in
-                ConversationView(conversationId: convo.id, otherHandle: convo.handle, otherUserId: convo.userId)
+            // Edit own reply in the thread. Reuses EditReplyView (defined in
+            // ProfileView.swift). The reply snapshot listener refreshes the
+            // edited text into replyList, so no onSave mutation is needed here.
+            .navigationDestination(isPresented: $showEditReply) {
+                EditReplyView(postId: postId, replyId: editReplyId, replyText: $editReplyText) { }
                     .navigationBarHidden(true)
+                    .hidesAppTabBar()
+            }
+            .alert("delete this reply?", isPresented: $showDeleteReplyAlert) {
+                Button("delete", role: .destructive) { deleteReply(replyId: deleteReplyId) }
+                Button("cancel", role: .cancel) {}
+            } message: {
+                Text("this can't be undone.")
+            }
+            .alert(
+                "couldn't delete",
+                isPresented: Binding(
+                    get: { deleteReplyError != nil },
+                    set: { if !$0 { deleteReplyError = nil } }
+                ),
+                presenting: deleteReplyError
+            ) { _ in
+                Button("ok", role: .cancel) { deleteReplyError = nil }
+            } message: { msg in
+                Text(msg)
             }
     }
 
@@ -290,10 +320,43 @@ struct PostDetailView: View {
                     title: "post",
                     onBack: { dismiss() }
                 ) {
-                    Button { showReport = true } label: {
+                    // Menu (popover anchored under the ⋯ button) instead of
+                    // a .confirmationDialog action sheet pinned to the screen
+                    // bottom. Matches OtherProfileView's pattern so options
+                    // appear right where the user tapped, with a 44pt tap
+                    // target so the bare 17pt image is reliably hit.
+                    Menu {
+                        if isOwnPost {
+                            Button {
+                                editText = postText
+                                showEditSheet = true
+                            } label: {
+                                Label("edit post", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                showDeleteAlert = true
+                            } label: {
+                                Label("delete post", systemImage: "trash")
+                            }
+                        } else {
+                            Button {
+                                reportPost()
+                                showReportedAlert = true
+                            } label: {
+                                Label("report", systemImage: "flag")
+                            }
+                            Button(role: .destructive) {
+                                blockUser()
+                            } label: {
+                                Label("block", systemImage: "person.slash")
+                            }
+                        }
+                    } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(Color.toskaTimestamp)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .opacity(isAuthorIdLoading ? 0 : 1)
                     .accessibilityLabel(isOwnPost ? "Edit or delete post" : "Report or block")
@@ -314,7 +377,23 @@ struct PostDetailView: View {
                             .padding(.horizontal, 18)
                             .padding(.top, 14)
 
-                        if replyList.isEmpty {
+                        if replyList.isEmpty && !hasLoadedReplies && replies > 0 {
+                            // Loading state. The post is known to have replies
+                            // (count arrived with the post), but the snapshot
+                            // listener hasn't returned yet. Show skeletons so
+                            // there's no flash of the "be the first to reply"
+                            // empty state before the real replies fade in.
+                            LazyVStack(spacing: 0) {
+                                ForEach(0..<min(max(replies, 1), 5), id: \.self) { _ in
+                                    SkeletonReplyRow()
+                                    Rectangle()
+                                        .fill(Color(hex: "e4e6ea").opacity(0.5))
+                                        .frame(height: 0.5)
+                                        .padding(.leading, 18)
+                                }
+                            }
+                            .transition(.opacity)
+                        } else if replyList.isEmpty {
                                                     VStack(spacing: 10) {
                                                         Text("\"some words just need\na witness.\"")
                                                             .font(.custom("Georgia-Italic", size: 18))
@@ -377,7 +456,16 @@ struct PostDetailView: View {
                                             replyingToHandle = item.reply.handle
                                             replyFocused = true
                                         },
-                                        onShare: { shareReply = item.reply }
+                                        onShare: { shareReply = item.reply },
+                                        onEdit: {
+                                            editReplyId = item.reply.id
+                                            editReplyText = item.reply.text
+                                            showEditReply = true
+                                        },
+                                        onDelete: {
+                                            deleteReplyId = item.reply.id
+                                            showDeleteReplyAlert = true
+                                        }
                                     )
                                     if index < flat.count - 1 {
                                         Rectangle()
@@ -529,6 +617,17 @@ struct PostDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 14)
 
+            // Attached GIF, if the post has one. Read from Firestore by the
+            // live listener (data["gifUrl"]) — PostDetailView previously never
+            // rendered the post's GIF, so opening a GIF post from the feed
+            // showed only the text. StableGifPreview (shared from ComposeView)
+            // sidesteps SwiftUI's AsyncImage cancellation issue inside views
+            // that recompute frequently.
+            if let gifUrl = postGifUrl, !gifUrl.isEmpty {
+                StableGifPreview(urlString: gifUrl)
+                    .padding(.bottom, 14)
+            }
+
             HStack(spacing: 12) {
                             HStack(spacing: 4) {
                                 Text(formatFull(likeCount))
@@ -582,15 +681,17 @@ struct PostDetailView: View {
                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                            .frame(maxWidth: .infinity)
 
-                           if !isOwnPost && !isAuthorIdLoading && !authorUserId.isEmpty {
-                               Button { startConversation() } label: {
-                                   Image(systemName: "envelope")
-                                       .font(.system(size: 15, weight: .light))
-                                       .foregroundColor(Color.toskaTextLight)
-                               }
-                               .accessibilityLabel("Send message")
-                               .frame(maxWidth: .infinity)
+                           // Share — opens ShareCardView (the same path as the
+                           // feed row's share button). Previously absent from
+                           // the post detail action row; users had to back out
+                           // to the feed to share a post.
+                           Button { showShareCard = true } label: {
+                               Image(systemName: "square.and.arrow.up")
+                                   .font(.system(size: 15, weight: .light))
+                                   .foregroundColor(Color.toskaTextLight)
                            }
+                           .accessibilityLabel("Share post")
+                           .frame(maxWidth: .infinity)
                        }
                        .padding(.vertical, 8)
             Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
@@ -695,6 +796,10 @@ struct PostDetailView: View {
                     }
                     guard let data = snapshot?.data() else { return }
                     if data["isLetter"] as? Bool == true { isLetter = true }
+                    // Pull the attached GIF URL so postHeaderSection can render
+                    // it. nil/empty string both clear the preview cleanly.
+                    let snapGif = data["gifUrl"] as? String
+                    if snapGif != postGifUrl { postGifUrl = snapGif }
                     let newCount = data["likeCount"] as? Int ?? 0
                     if Date() > suppressListenerUntil && newCount != likeCount {
                         likeCount = max(0, newCount)
@@ -931,6 +1036,17 @@ struct PostDetailView: View {
             do {
                 try await db.collection("posts").document(postId).delete()
                 isDeleting = false
+                // Tell the rest of the app that this postId no longer exists,
+                // so cached references can invalidate (e.g. FeedViewModel's
+                // todaysPromptResponse card on the home feed). Without this,
+                // a user who deletes their daily-prompt response sees the
+                // response card stuck on the deleted text until the next
+                // pull-to-refresh.
+                NotificationCenter.default.post(
+                    name: .postDeleted,
+                    object: nil,
+                    userInfo: ["postId": postId]
+                )
                 dismiss()
             } catch {
                 isDeleting = false
@@ -991,12 +1107,19 @@ struct PostDetailView: View {
                         )
                     }
                     print("ℹ️ fetchReplies snapshot for post \(postId): \(documents.count) raw docs → \(flat.count) after block filter")
-                    // Stamp per-user interaction state. Three parallel one-shot
-                    // queries against the user's reverse indices + the posts
-                    // collection (for own reposts). Cheaper than per-reply
-                    // gets and avoids N additional listeners. Result is the
-                    // current snapshot's intersection with the user's history
-                    // — listener delta updates re-run this stamping.
+                    // Show reply text IMMEDIATELY, before the per-user
+                    // interaction-state stamping below. Stamping runs three
+                    // extra Firestore queries; holding replyList back until it
+                    // finished added a visible pause where the reply text was
+                    // already known but not shown. Render now, enrich after.
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        replyList = buildThreadedReplies(from: flat)
+                        hasLoadedReplies = true
+                    }
+                    // Stamp per-user interaction state (like/save/repost). Three
+                    // parallel one-shot queries against the user's reverse
+                    // indices + the posts collection (own reposts). The icons
+                    // fill in a moment after the text appears.
                     if let uid = Auth.auth().currentUser?.uid, !flat.isEmpty {
                         let replyIds = flat.map { $0.id }
                         let db = Firestore.firestore()
@@ -1006,9 +1129,8 @@ struct PostDetailView: View {
                             uid: uid,
                             db: db
                         )
-                        flat = stamped
+                        replyList = buildThreadedReplies(from: stamped)
                     }
-                    replyList = buildThreadedReplies(from: flat)
                 }
             }
     }
@@ -1067,6 +1189,27 @@ struct PostDetailView: View {
                 r.likes = result.newCount
             }
         }
+    }
+
+    /// Deletes the viewer's own reply. Plain document delete — the
+    /// onReplyDeletedUpdateCount Cloud Function decrements the post's
+    /// replyCount, and the reply snapshot listener removes it from replyList.
+    /// Mirrors ProfileView.deleteReply (the post update rule blocks client
+    /// counter writes, so a transaction here would fail permission_denied).
+    private func deleteReply(replyId: String) {
+        guard !replyId.isEmpty, !postId.isEmpty else { return }
+        Firestore.firestore()
+            .collection("posts").document(postId)
+            .collection("replies").document(replyId)
+            .delete { error in
+                Task { @MainActor in
+                    if let error = error {
+                        print("⚠️ deleteReply failed: \(error)")
+                        Telemetry.recordError(error, context: "PostDetailView.deleteReply")
+                        deleteReplyError = "couldn't delete — try again"
+                    }
+                }
+            }
     }
 
     private func toggleReplySaveAt(replyId: String) {
@@ -1322,36 +1465,7 @@ struct PostDetailView: View {
         PostInteractionManager.sendNotification(postId: postId, toUserId: toUserId, type: type, message: message)
     }
 
-    // MARK: - DM Conversation
-
-    func startConversation() {
-        guard let uid = Auth.auth().currentUser?.uid, !authorUserId.isEmpty, uid != authorUserId else { return }
-        let db = Firestore.firestore()
-        let convoId = [uid, authorUserId].sorted().joined(separator: "_")
-        let convoRef = db.collection("conversations").document(convoId)
-
-        Task { @MainActor in
-            let theyBlockedMe = try? await db.collection("users").document(authorUserId).collection("blocked").document(uid).getDocumentAsync()
-            if theyBlockedMe?.exists == true { return }
-            let iBlockedThem = try? await db.collection("users").document(uid).collection("blocked").document(authorUserId).getDocumentAsync()
-            if iBlockedThem?.exists == true { return }
-
-            let myHandle = UserHandleCache.shared.handle
-            let existing = try? await convoRef.getDocumentAsync()
-            if existing?.exists == true {
-                activeConversation = ConversationSelection(id: convoId, handle: handle, userId: authorUserId)
-                return
-            }
-            try? await convoRef.setData([
-                "participants": [uid, authorUserId],
-                "participantHandles": [uid: myHandle, authorUserId: handle],
-                "lastMessage": "", "lastMessageAt": FieldValue.serverTimestamp(),
-                "messageCount": [uid: 0, authorUserId: 0],
-                "createdAt": FieldValue.serverTimestamp()
-            ])
-            activeConversation = ConversationSelection(id: convoId, handle: handle, userId: authorUserId)
-        }
-    }
+    // startConversation removed when DMs were cut.
 
     func formatFull(_ count: Int) -> String {
         ToskaFormatters.decimalNumber.string(from: NSNumber(value: count)) ?? "\(count)"
@@ -1545,23 +1659,27 @@ struct SwipeToReplyRow: View {
     /// share path posts use. Implemented in PostDetailView, which owns
     /// the sheet presentation state.
     var onShare: (() -> Void)? = nil
-    @State private var dragOffset: CGFloat = 0
-    @State private var hasTriggered = false
+    /// Edit / delete the viewer's OWN reply. Surfaced in the context menu
+    /// only when the reply's authorId matches the signed-in user.
+    /// PostDetailView owns the edit sheet + delete confirmation.
+    var onEdit: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
-    private let triggerThreshold: CGFloat = 60
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            HStack {
-                Spacer()
-                Image(systemName: "arrowshape.turn.up.left.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(Color.toskaBlue)
-                    .opacity(min(dragOffset / triggerThreshold, 1.0))
-                    .scaleEffect(min(0.6 + (dragOffset / triggerThreshold) * 0.4, 1.0))
-                    .padding(.trailing, 20)
-            }
+        // The row body — wrapped below in a NavigationLink so the whole row
+        // is tappable to open the reply as its own page (ReplyDetailView).
+        // Inner Buttons + Menu use .plain styling so they intercept their own
+        // taps and don't trigger the link.
+        rowContent
+    }
+
+    private var rowContent: some View {
+        NavigationLink {
+            ReplyDetailView(postId: postId, reply: item.reply)
+                .navigationBarHidden(true)
+        } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     if item.depth > 0 {
@@ -1710,25 +1828,11 @@ struct SwipeToReplyRow: View {
             .padding(.trailing, 18)
             .padding(.vertical, 14)
             .background(LateNightTheme.background)
-            .offset(x: dragOffset)
-            .gesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { value in
-                        guard value.translation.width > 0 else { return }
-                        let raw = value.translation.width
-                        dragOffset = raw < triggerThreshold ? raw : triggerThreshold + (raw - triggerThreshold) * 0.2
-                        if dragOffset >= triggerThreshold && !hasTriggered {
-                            hasTriggered = true
-                            HapticManager.play(.tabSwitch)
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.width >= triggerThreshold { onReply() }
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) { dragOffset = 0 }
-                        hasTriggered = false
-                    }
-            )
-        }
+            .contentShape(Rectangle())
+        } // end NavigationLink label
+        // .plain so the row content is rendered as-is instead of in the
+        // default tinted NavigationLink style.
+        .buttonStyle(.plain)
         // Long-press context menu — mirror of FeedPostRow's context menu so
         // every reply gets the same like / save / repost / share / reply
         // action surface as a post does. The tap-row at the top of the
@@ -1766,6 +1870,21 @@ struct SwipeToReplyRow: View {
             if let onComment = onComment {
                 Button { onComment() } label: {
                     Label("reply", systemImage: "bubble.left")
+                }
+            }
+            // Own reply → edit / delete. Mirrors the post author's edit/delete
+            // menu and ProfileView's reply context menu, so you can manage a
+            // reply right where you read it instead of only from your profile.
+            if let onEdit = onEdit,
+               item.reply.authorId == Auth.auth().currentUser?.uid {
+                Divider()
+                Button { onEdit() } label: {
+                    Label("edit reply", systemImage: "pencil")
+                }
+                if let onDelete = onDelete {
+                    Button(role: .destructive) { onDelete() } label: {
+                        Label("delete reply", systemImage: "trash")
+                    }
                 }
             }
             if !postId.isEmpty,

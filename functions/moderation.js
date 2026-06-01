@@ -129,6 +129,32 @@ const NAMED_PATTERNS = ["named ", "called ", "name is ", "name was "];
 const STREET_SUFFIXES = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy";
 const STREET_REGEX = new RegExp(`\\d+\\s+[A-Za-z]+\\s+(${STREET_SUFFIXES})\\b`, 'i');
 
+// Doxxable location-context patterns. These catch the subtle locator
+// phrasing that the literal street-suffix / phone / "lives at" rules miss:
+//   "he works at chicago mercy hospital"
+//   "the cafe above the bodega on 5th and vine"
+//   "she goes to UCLA"
+//   "from brooklyn"
+// Heuristic — some false positives on legitimate "we worked at the same
+// hospital" venting. Tighter than letting a doxx with no street number
+// through.
+const LOCATION_CONTEXT_PATTERNS = [
+  // Workplace + capitalized proper-noun anchor (institution / business).
+  /\b(works at|worked at|employed at)\s+(the\s+)?[A-Z][A-Za-z'-]+/,
+  // Education with named institution / school district.
+  /\b(goes to|went to|attends|studies at|enrolled at|graduated from)\s+(the\s+)?[A-Z][A-Za-z'-]+/,
+  // Common identifiable-place context — hospital / school / etc. preceded
+  // by a locator preposition.
+  /\b(at|near|behind|above|across from|next to|in front of)\s+(the\s+)?(hospital|school|university|college|library|station|airport|bodega|cafe|bar|diner|restaurant|coffee shop|gym|church|mosque|temple|synagogue|park|mall|stadium|theater|theatre|hotel|motel|hostel|hospital)\b/i,
+  // Cross-street intersection: "on 5th and vine", "at park and 33rd".
+  /\b(on|at|near|by)\s+[A-Za-z0-9]+\s+(and|&)\s+[A-Za-z0-9]+\s+(street|st|ave|avenue|blvd|drive|dr)\b/i,
+  /\b(corner of|intersection of)\s+[A-Za-z0-9]+\s+(and|&)\s+[A-Za-z0-9]+\b/i,
+  // From [City] — top-50ish US population list plus a handful of major
+  // international cities. Trimmed to common single-word and two-word
+  // entries; long-tail city names are intentionally not enumerated.
+  /\b(from|in|near|outside)\s+(new york|brooklyn|manhattan|queens|los angeles|chicago|houston|phoenix|philadelphia|san diego|dallas|austin|seattle|denver|boston|portland|miami|atlanta|nashville|charlotte|detroit|memphis|baltimore|milwaukee|sacramento|kansas city|las vegas|long beach|fresno|oakland|minneapolis|cleveland|tampa|honolulu|new orleans|wichita|raleigh|omaha|tucson|albuquerque|st louis|saint louis|cincinnati|pittsburgh|anchorage|st paul|saint paul|toledo|newark|jersey city|orlando|tulsa|arlington|virginia beach|colorado springs|london|paris|tokyo|berlin|toronto|sydney|melbourne|dublin|madrid|rome|amsterdam|barcelona|mumbai|delhi|beijing|shanghai|mexico city)\b/i,
+];
+
 const CRISIS_NUMBERS = [
   "988-273-8255", "9882738255", "988 273 8255",
   "1-800-273-8255", "18002738255", "1 800 273 8255",
@@ -189,9 +215,45 @@ const MATH_ALPHA_LOWER_OFFSETS = [
 // fragmenting a flagged name with `J​ohn` (zero-width space splits
 // the token before tokenizeAlphanumeric runs) or reversing it with U+202E
 // (RTL override flips visual order without changing codepoint sequence).
-// U+FEFF (zero-width no-break space / BOM) and U+2060 (word joiner) round
-// out the common evasion set.
-const STRIP_INVISIBLE_RE = /[​-‏‪-‮⁠⁦-⁩﻿]/g;
+//
+// Built from an explicit codepoint list (rather than a hand-typed literal of
+// invisible characters) so the set is reviewable and extendable. All entries
+// are BMP, so \uXXXX in the constructed class is sufficient.
+const STRIP_INVISIBLE_CODEPOINTS = [
+  0x200b, 0x200c, 0x200d, 0x200e, 0x200f, // ZWSP, ZWNJ, ZWJ, LRM, RLM
+  0x202a, 0x202b, 0x202c, 0x202d, 0x202e, // bidi embed/override controls
+  0x2060,                                 // word joiner
+  0x2066, 0x2067, 0x2068, 0x2069,         // bidi isolates
+  0xfeff,                                 // zero-width no-break space / BOM
+  // 2026-06-01 audit: render-as-nothing separators an attacker can splice
+  // into a flagged name with NO visible change, fragmenting the token so the
+  // name lookup misses (e.g. `Sa­rah` looks exactly like "Sarah").
+  0x00ad,                 // soft hyphen
+  0x034f,                 // combining grapheme joiner
+  0x061c,                 // arabic letter mark
+  0x115f, 0x1160,         // Hangul choseong / jungseong fillers
+  0x17b4, 0x17b5,         // Khmer invisible inherent vowels
+  0x180e,                 // Mongolian vowel separator
+  0x3164,                 // Hangul filler
+  0xffa0,                 // halfwidth Hangul filler
+];
+const STRIP_INVISIBLE_RE = new RegExp(
+  "[" +
+    STRIP_INVISIBLE_CODEPOINTS.map(
+      (cp) => "\\u" + cp.toString(16).padStart(4, "0")
+    ).join("") +
+    "]",
+  "g"
+);
+
+// Fold fullwidth digits (U+FF10..U+FF19) to ASCII 0-9. Used by the phone
+// heuristic, which counts ASCII \d; without this, a number typed in
+// fullwidth digits renders as digits to a human but counts as zero.
+function foldFullwidthDigits(s) {
+  return s.replace(/[０-９]/g, (d) =>
+    String.fromCharCode(d.charCodeAt(0) - 0xfee0)
+  );
+}
 
 function foldMathAlpha(cp) {
   for (const start of MATH_ALPHA_UPPER_OFFSETS) {
@@ -362,6 +424,15 @@ function containsNameOrIdentifyingInfo(text) {
   // Street address.
   if (STREET_REGEX.test(text)) return true;
 
+  // Doxxable location-context (works at X, the cafe above the bodega on
+  // 5th and vine, from brooklyn, etc.). Heuristic; some false positives
+  // on legitimate venting that name a workplace/city without targeting a
+  // specific person. Caught here, the post-trigger deletes it server-
+  // side; if it turns out to be over-aggressive we trim the patterns.
+  for (const re of LOCATION_CONTEXT_PATTERNS) {
+    if (re.test(text)) return true;
+  }
+
   // Mid-sentence proper noun matching a known first name.
   const starters = new Set();
   for (const sentence of text.split(/[.!?\n]/)) {
@@ -385,7 +456,11 @@ function containsNameOrIdentifyingInfo(text) {
   }
 
   // 10+ digits → phone number heuristic.
-  let digitStripped = text;
+  // Strip invisible separators (so `5​5​5…` collapses to a contiguous run)
+  // and fold fullwidth digits U+FF10..U+FF19 → ASCII (so a phone typed in
+  // fullwidth digits, `５５５１２３４５６７`, is counted by the \d heuristic
+  // below instead of slipping past as zero ASCII digits). 2026-06-01 audit.
+  let digitStripped = foldFullwidthDigits(text.replace(STRIP_INVISIBLE_RE, ""));
   for (const num of CRISIS_NUMBERS) {
     digitStripped = digitStripped.split(num).join("");
   }

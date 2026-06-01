@@ -229,9 +229,22 @@ struct GifPickerView: View {
                 guard let id = item["id"] as? String,
                       let images = item["images"] as? [String: Any] else { return nil }
 
+                // Prefer fixed_width (~700KB, animated) for the post URL.
+                // downsized_medium / original (~2.5MB) frequently fail to load
+                // in SwiftUI AsyncImage on iOS — likely a decode/timeout issue
+                // with larger animated GIFs — leaving compose with the
+                // "couldn't load — pick another?" placeholder even when the
+                // picker preview rendered fine. fixed_width is the same URL
+                // the picker preview uses, so it's guaranteed to render in
+                // the compose preview and in the eventual feed/reply post.
+                // downsized (~1.4MB) and original are fallbacks if Giphy ever
+                // omits fixed_width on a result.
                 let fullUrl: String
-                if let downsized = images["downsized_medium"] as? [String: Any],
-                   let url = downsized["url"] as? String {
+                if let fixedWidth = images["fixed_width"] as? [String: Any],
+                   let url = fixedWidth["url"] as? String {
+                    fullUrl = url
+                } else if let downsized = images["downsized"] as? [String: Any],
+                          let url = downsized["url"] as? String {
                     fullUrl = url
                 } else if let original = images["original"] as? [String: Any],
                           let url = original["url"] as? String {

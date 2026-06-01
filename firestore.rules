@@ -15,6 +15,22 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin";
     }
 
+    // A post is readable by a caller only when it is live, or it's the
+    // caller's own post, or the caller is an admin — the SAME predicate the
+    // posts/{postId} read rule uses (firestore.rules:518). Subcollections of
+    // a post (replies, likes) MUST inherit this gate, otherwise a post held
+    // by the pending-review system (moderationStatus != 'live') leaks its
+    // content/engagers through its subcollections. `.get('moderationStatus',
+    // 'live')` defaults legacy docs to live, matching the post read rule.
+    function postVisibleToCaller(postId) {
+      return isAuth()
+        && (
+          get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', 'live') == 'live'
+          || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
+          || isAdmin()
+        );
+    }
+
     // Server-side enforcement of the auto-restrict / admin-restrict gate.
     // Previously every write rule trusted UserHandleCache.isRestricted on the
     // iOS client, which a tampered build can ignore — letting a flagged
@@ -246,7 +262,10 @@ service cloud.firestore {
         // own followingCount/followerCount with no real follow relationship.
         // Delete intentionally has no self-guard so any pre-existing
         // self-follow doc can still be cleaned up.
-        allow create: if isOwner(userId) && followedId != userId;
+        // Schema lockdown to match /followers — a following doc is exactly
+        // { handle, createdAt } (2026-06-01 audit).
+        allow create: if isOwner(userId) && followedId != userId
+          && request.resource.data.keys().hasOnly(['handle', 'createdAt']);
         allow delete: if isOwner(userId);
       }
 
@@ -263,10 +282,21 @@ service cloud.firestore {
         // reason as the /following/ subcollection above — prevents counter
         // inflation via a tampered client posting itself into its own
         // followers list.
+        // Schema lockdown (2026-06-01 audit): a follower doc is exactly
+        // { handle, createdAt } (OtherProfileView.follow batch). Without
+        // hasOnly, a follower could attach arbitrary fields into a doc that
+        // lives under the TARGET's user document — a side channel a future
+        // counter trigger or admin tool might read/trust.
         allow create: if isAuth() && request.auth.uid == followerId
           && request.auth.uid != userId
+          && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
           && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid));
-        allow update: if isAuth() && request.auth.uid == followerId;
+        // The client only ever re-writes a follower doc via setData (same
+        // { handle, createdAt } shape); there is no field-level update path.
+        // Lock the allow-list so the previously unconstrained update can't be
+        // used to inject side-channel fields.
+        allow update: if isAuth() && request.auth.uid == followerId
+          && request.resource.data.keys().hasOnly(['handle', 'createdAt']);
         allow delete: if isAuth() && (request.auth.uid == followerId || isOwner(userId));
       }
 
@@ -505,7 +535,20 @@ service cloud.firestore {
     }
 
     match /posts/{postId} {
-      allow read: if isAuth();
+      // 2026-05-31: posts with moderationStatus=="pending_review" are
+      // visible only to the author and admins. The iOS feed query is
+      // expected to add `.whereField("moderationStatus", isEqualTo:
+      // "live")` so non-author/non-admin lists return only live posts;
+      // this rule enforces it at the API layer so a tampered client
+      // dropping the filter still gets denied per-doc.
+      //
+      // .get('moderationStatus', 'live') defaults docs without the field
+      // to "live" — safe because the backfill migration set every
+      // existing prod post to "live" before this rule deployed.
+      allow read: if isAuth()
+        && (resource.data.get('moderationStatus', 'live') == 'live'
+            || resource.data.authorId == request.auth.uid
+            || isAdmin());
       allow create: if isAuth()
         && notRestricted()
         && hasConfirmedAdult()
@@ -537,7 +580,14 @@ service cloud.firestore {
              // reply's author in `originalAuthorId`. validatePost verifies
              // the reply still exists and text matches before letting the
              // repost land on the feed.
-             'originalReplyId'
+             'originalReplyId',
+             // Daily-prompt marker (yyyy-MM-dd). Set by ComposeView only when
+             // the user opened compose from FeedView's prompt "respond" flow;
+             // FeedHeaderCard reads it back via a per-user-per-day query so the
+             // card can flip from "respond" to "your response" with edit/delete.
+             // Server-side single-response-per-day enforcement isn't done in
+             // rules (can't run a query) — soft-capped on the client.
+             'promptDate'
            ])
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
@@ -646,13 +696,30 @@ service cloud.firestore {
             && request.resource.data.text.size() <= 2000
             && !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt',
-                         'flagged', 'flagReason', 'flaggedAt', 'concerningContent']))
+                         'flagged', 'flagReason', 'flaggedAt', 'concerningContent',
+                         // 2026-05-31: pending-review fields are owned by
+                         // Cloud Functions (Admin SDK bypasses rules).
+                         // Without these, an author whose post got hidden
+                         // could update moderationStatus="live" and
+                         // re-show their pending content. Admin UI flips
+                         // status via the Admin SDK and is unaffected.
+                         'moderationStatus', 'pendingReason', 'pendingDetectedAt',
+                         'autoHiddenReportCount',
+                         // Approval audit fields written by admin
+                         // dashboard's approvePending. Same rationale —
+                         // author shouldn't be able to forge an approval
+                         // stamp even though they can't flip status.
+                         'pendingApprovedAt', 'pendingApprovedBy']))
         || isAdmin();
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();
 
       match /replies/{replyId} {
-        allow read: if isAuth();
+        // Inherit the parent post's visibility — replies snapshot the parent
+        // post text (parentPostText/parentPostHandle), so an isAuth()-only
+        // read leaked the content of pending-review (held) posts. See
+        // postVisibleToCaller (firestore.rules:18).
+        allow read: if postVisibleToCaller(postId);
         // Block enforcement: the post author can't be replied to by a user
         // they've blocked. Without this check, blocked users could keep
         // engaging server-side; the client filter (BlockedUsersCache) only
@@ -711,7 +778,10 @@ service cloud.firestore {
         // Block enforcement targets the REPLY author (more specific than
         // the post author) since the like is an interaction with the reply.
         match /likes/{likeUserId} {
-          allow read: if isAuth();
+          // Inherit parent post visibility — enumerating reply likers on a
+          // held post leaks the de-anonymizing engager list and confirms the
+          // hidden post exists. See postVisibleToCaller (firestore.rules:18).
+          allow read: if postVisibleToCaller(postId);
           allow create: if isAuth() && request.auth.uid == likeUserId
             && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)/blocked/$(request.auth.uid))
             && request.resource.data.keys().hasOnly(['createdAt'])
@@ -724,7 +794,10 @@ service cloud.firestore {
       }
 
       match /likes/{likeUserId} {
-        allow read: if isAuth();
+        // Inherit parent post visibility — enumerating likers on a held post
+        // leaks the de-anonymizing engager list and confirms the hidden post
+        // exists. See postVisibleToCaller (firestore.rules:18).
+        allow read: if postVisibleToCaller(postId);
         // Same block enforcement as replies — a blocked user shouldn't be
         // able to bump someone's likeCount.
         allow create: if isAuth() && request.auth.uid == likeUserId
@@ -791,8 +864,16 @@ service cloud.firestore {
     }
 
     match /conversations/{convoId} {
+      // `resource == null` for a non-existent doc — without that leg, reading
+      // a not-yet-created conversation (e.g. OtherProfileView.startConversation
+      // checks `convoRef.getDocument()` before deciding to setData) fails with
+      // permission_denied because `resource.data.participants` can't evaluate.
+      // The client never reaches the "doc doesn't exist → create" branch, so
+      // no first message between two users ever opens. Allowing existence
+      // probes is safe: a non-existent doc returns no data; the create rule
+      // below still enforces who can write it.
       allow read: if isAuth()
-        && request.auth.uid in resource.data.participants;
+        && (resource == null || request.auth.uid in resource.data.participants);
       // messageCount is the per-user 5-message rate-limit ledger and feeds
       // the cap check in the messages create rule below. Without locking
       // it, a malicious peer could pre-set messageCount.{victim_uid} = 5
@@ -1182,8 +1263,18 @@ service cloud.firestore {
       allow delete: if isOwner(uid);
     }
 
+    // Collection-group reads of replies are restricted to the caller's OWN
+    // replies. This rule is ORed with the per-post replies read rule
+    // (firestore.rules:687), so leaving it as `isAuth()` would re-open the
+    // pending-review leak for EVERY held post: a direct get on a held post's
+    // reply, or an unfiltered collectionGroup("replies") dump, would match
+    // here and be allowed. It cannot get() the parent post (no postId
+    // binding), so own-author is the only safe gate. Powers
+    // ProfileView/SettingsView "my replies" (authorId == uid). The
+    // OtherProfileView "replies" tab (querying another user's authorId) is
+    // intentionally no longer served here — see audit 2026-06-01.
     match /{path=**}/replies/{replyId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && resource.data.authorId == request.auth.uid;
     }
 
     // Server-maintained aggregate counters. Cloud Functions write here via

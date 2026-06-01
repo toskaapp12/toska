@@ -1,12 +1,20 @@
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
+import ImageIO
+import UIKit
 
 @MainActor
 struct ComposeView: View {
     @Environment(\.dismiss) var dismiss
     var initialText: String = ""
     var initialTag: String? = nil
+    // When this compose was opened from the daily-prompt "respond" button,
+    // FeedView passes today's promptDate (yyyy-MM-dd). It's stamped onto the
+    // resulting post doc so the FeedHeaderCard can detect that the user has
+    // already responded today and flip the card to show their response with
+    // edit/delete. nil for non-prompt posts (the regular + compose path).
+    var promptDate: String? = nil
     var onPostSuccess: (() -> Void)? = nil
     // When opened from DraftsView, the id of the draft being edited.
     // The Save button updates that doc instead of creating a new draft;
@@ -165,6 +173,149 @@ struct ComposeView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
 
+                // MARK: - Toolbar (formerly at the bottom; moved to sit right
+                // under the cancel/save/post header so the modifiers are
+                // within easy reach without scrolling past the text editor).
+                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+
+                HStack(spacing: 20) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
+                    } label: {
+                        Image(systemName: showTagPicker ? "tag.fill" : "tag")
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundColor(showTagPicker ? Color.toskaBlue : LateNightTheme.secondaryText)
+                    }
+                    .accessibilityLabel("Tag")
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isWhisper.toggle()
+                            if isWhisper { expiresAtMidnight = false }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: isWhisper ? "eye.slash.fill" : "eye.slash")
+                                .font(.system(size: 13, weight: .light))
+                            if isWhisper {
+                                Text("1hr")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                        }
+                        .foregroundColor(isWhisper ? Color(hex: "c47a8a") : LateNightTheme.secondaryText)
+                    }
+                    .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            expiresAtMidnight.toggle()
+                            if expiresAtMidnight { isWhisper = false }
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: expiresAtMidnight ? "moon.fill" : "moon")
+                                .font(.system(size: 13, weight: .light))
+                            if expiresAtMidnight {
+                                Text("midnight")
+                                    .font(.system(size: 10, weight: .medium))
+                            }
+                        }
+                        .foregroundColor(expiresAtMidnight ? Color(hex: "8b7ec8") : LateNightTheme.secondaryText)
+                    }
+                    .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
+                    } label: {
+                        Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
+                            .font(.system(size: 14, weight: .light))
+                            .foregroundColor(isLetter ? Color(hex: "c9a97a") : LateNightTheme.secondaryText)
+                    }
+                    .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
+
+                    Button { showGifPicker = true } label: {
+                        Text("GIF")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.secondaryText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .stroke(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.tertiaryText, lineWidth: 1)
+                            )
+                    }
+                    .accessibilityLabel("Add GIF")
+
+                    Spacer()
+
+                    if text.count > 0 {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .stroke(LateNightTheme.divider, lineWidth: 2)
+                                    .frame(width: 24, height: 24)
+                                Circle()
+                                    .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
+                                    .stroke(
+                                        isNearLimit ? Color(hex: "c45c5c") : Color.toskaBlue,
+                                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                                    )
+                                    .frame(width: 24, height: 24)
+                                    .rotationEffect(.degrees(-90))
+                            }
+                            if isNearLimit {
+                                Text("\(charRemaining)")
+                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                    .foregroundColor(charRemaining < 0 ? Color(hex: "c45c5c") : LateNightTheme.secondaryText)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(LateNightTheme.cardBackground)
+
+                // Tag picker expansion now drops DOWN from the toolbar above
+                // (was originally pinned to the bottom toolbar with a
+                // .move(edge: .bottom) transition).
+                if showTagPicker {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("how does this feel")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(LateNightTheme.secondaryText)
+                            .tracking(0.5)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 10)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(tags, id: \.name) { tag in
+                                    Button {
+                                        selectedTag = tag.name
+                                        withAnimation(.easeOut(duration: 0.2)) { showTagPicker = false }
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            Image(systemName: tag.icon)
+                                                .font(.system(size: 10))
+                                            Text(tag.name)
+                                                .font(.system(size: 11, weight: .medium))
+                                        }
+                                        .foregroundColor(selectedTag == tag.name ? .white : Color(hex: tag.colorHex))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(selectedTag == tag.name ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.08))
+                                        .clipShape(Capsule())
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        .padding(.bottom, 10)
+                    }
+                    .background(LateNightTheme.cardBackground)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 // MARK: - Warning banners
                 if UserHandleCache.shared.isRestricted {
                     warningBanner(icon: "exclamationmark.octagon", text: "your account is under review. you cannot post right now.", color: "c45c5c")
@@ -290,35 +441,16 @@ struct ComposeView: View {
                         // Selected GIF preview
                         if let gifUrl = selectedGifUrl {
                             ZStack(alignment: .topTrailing) {
-                                AsyncImage(url: URL(string: gifUrl), transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-                                    switch phase {
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fit)
-                                            .frame(maxHeight: 180)
-                                            .cornerRadius(10)
-                                            .transition(.opacity)
-                                    case .failure:
-                                        LateNightTheme.inputBackground
-                                            .frame(height: 120)
-                                            .cornerRadius(10)
-                                            .overlay(
-                                                VStack(spacing: 4) {
-                                                    Image(systemName: "photo.badge.exclamationmark")
-                                                        .font(.system(size: 16, weight: .light))
-                                                    Text("couldn't load — pick another?")
-                                                        .font(.system(size: 10))
-                                                }
-                                                .foregroundColor(LateNightTheme.tertiaryText)
-                                            )
-                                    default:
-                                        LateNightTheme.inputBackground
-                                            .frame(height: 120)
-                                            .cornerRadius(10)
-                                            .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
-                                    }
-                                }
+                                // Custom loader (not AsyncImage). ComposeView's
+                                // body recomputes constantly (keyboard, focus,
+                                // text edits, transitions), and AsyncImage tears
+                                // down + recreates on each pass, cancelling the
+                                // URLSession task with NSURLError -999 forever.
+                                // .id() didn't fix it. StableGifPreview owns the
+                                // load state in @State and uses .task(id:) so the
+                                // image survives parent recomputes; the GIF
+                                // actually appears as soon as the bytes arrive.
+                                StableGifPreview(urlString: gifUrl)
 
                                 Button {
                                     withAnimation { selectedGifUrl = nil }
@@ -419,151 +551,6 @@ struct ComposeView: View {
                     .background(Color(hex: "8b7ec8").opacity(0.06))
                 }
 
-                // MARK: - Tag picker (expandable)
-                if showTagPicker {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("how does this feel")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(LateNightTheme.secondaryText)
-                            .tracking(0.5)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 10)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(tags, id: \.name) { tag in
-                                    Button {
-                                        selectedTag = tag.name
-                                        withAnimation(.easeOut(duration: 0.2)) { showTagPicker = false }
-                                    } label: {
-                                        HStack(spacing: 5) {
-                                            Image(systemName: tag.icon)
-                                                .font(.system(size: 10))
-                                            Text(tag.name)
-                                                .font(.system(size: 11, weight: .medium))
-                                        }
-                                        .foregroundColor(selectedTag == tag.name ? .white : Color(hex: tag.colorHex))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(selectedTag == tag.name ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.08))
-                                        .clipShape(Capsule())
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                        .padding(.bottom, 10)
-                    }
-                    .background(LateNightTheme.cardBackground)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                // MARK: - Bottom toolbar
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-
-                HStack(spacing: 20) {
-                    // Tag button
-                                        Button {
-                                            withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
-                                        } label: {
-                                            Image(systemName: showTagPicker ? "tag.fill" : "tag")
-                                                .font(.system(size: 16, weight: .light))
-                                                .foregroundColor(showTagPicker ? Color.toskaBlue : LateNightTheme.secondaryText)
-                                        }
-                                        .accessibilityLabel("Tag")
-
-                    // Whisper toggle (1 hour)
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            isWhisper.toggle()
-                            if isWhisper { expiresAtMidnight = false }
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: isWhisper ? "eye.slash.fill" : "eye.slash")
-                                .font(.system(size: 13, weight: .light))
-                            if isWhisper {
-                                Text("1hr")
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                        }
-                        .foregroundColor(isWhisper ? Color(hex: "c47a8a") : LateNightTheme.secondaryText)
-                                            }
-                                            .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
-
-                    // Midnight toggle
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            expiresAtMidnight.toggle()
-                            if expiresAtMidnight { isWhisper = false }
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: expiresAtMidnight ? "moon.fill" : "moon")
-                                .font(.system(size: 13, weight: .light))
-                            if expiresAtMidnight {
-                                Text("midnight")
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                        }
-                        .foregroundColor(expiresAtMidnight ? Color(hex: "8b7ec8") : LateNightTheme.secondaryText)
-                                            }
-                                            .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
-
-                    // Letter mode toggle
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
-                    } label: {
-                        Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(isLetter ? Color(hex: "c9a97a") : LateNightTheme.secondaryText)
-                                                }
-                                                .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
-
-                    // GIF button
-                                        Button { showGifPicker = true } label: {
-                                            Text("GIF")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.secondaryText)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 3)
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: 4)
-                                                        .stroke(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.tertiaryText, lineWidth: 1)
-                                                )
-                                        }
-                                        .accessibilityLabel("Add GIF")
-
-                    Spacer()
-
-                    // Character counter
-                    if text.count > 0 {
-                        HStack(spacing: 6) {
-                            ZStack {
-                                Circle()
-                                    .stroke(LateNightTheme.divider, lineWidth: 2)
-                                    .frame(width: 24, height: 24)
-                                Circle()
-                                    .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
-                                    .stroke(
-                                        isNearLimit ? Color(hex: "c45c5c") : Color.toskaBlue,
-                                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                                    )
-                                    .frame(width: 24, height: 24)
-                                    .rotationEffect(.degrees(-90))
-                            }
-
-                            if isNearLimit {
-                                Text("\(charRemaining)")
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundColor(charRemaining < 0 ? Color(hex: "c45c5c") : LateNightTheme.secondaryText)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(LateNightTheme.cardBackground)
             }
 
             // MARK: - Gentle check dialog
@@ -895,6 +882,11 @@ struct ComposeView: View {
             if let tag = selectedTag { postData["tag"] = tag }
             if let gifUrl = selectedGifUrl { postData["gifUrl"] = gifUrl }
             if isLetter { postData["isLetter"] = true }
+            // Daily prompt marker — set only when ComposeView was opened from
+            // FeedView's prompt "respond" flow. Lets the FeedHeaderCard show
+            // "your response" with edit/delete instead of "respond" once a
+            // user has answered today's prompt.
+            if let promptDate = promptDate { postData["promptDate"] = promptDate }
             if isWhisper && !expiresAtMidnight {
                 let oneHourFromNow = Date().addingTimeInterval(3600)
                 postData["expiresAt"] = Timestamp(date: oneHourFromNow)
@@ -988,5 +980,129 @@ struct ComposeView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Stable GIF Preview
+//
+// Custom replacement for SwiftUI's AsyncImage. AsyncImage cancels the
+// URLSession task with NSURLError -999 whenever its parent's body recomputes
+// (constant in ComposeView and PostDetailView), so the load never completes.
+// This view owns the GIF data in @State so it survives parent recomputes,
+// and renders via AnimatedGifImageView (UIKit-backed) so animated GIFs
+// actually animate — SwiftUI's Image(uiImage:) doesn't animate frames even
+// when given UIImage.animatedImage(with:duration:).
+@MainActor
+struct StableGifPreview: View {
+    let urlString: String
+    var maxHeight: CGFloat = 180
+    @State private var data: Data? = nil
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let data = data {
+                AnimatedGifImageView(data: data)
+                    .frame(maxWidth: .infinity, maxHeight: maxHeight)
+                    .cornerRadius(10)
+                    .transition(.opacity)
+            } else if failed {
+                LateNightTheme.inputBackground
+                    .frame(height: 120)
+                    .cornerRadius(10)
+                    .overlay(
+                        VStack(spacing: 4) {
+                            Image(systemName: "photo.badge.exclamationmark")
+                                .font(.system(size: 16, weight: .light))
+                            Text("couldn't load — pick another?")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundColor(LateNightTheme.tertiaryText)
+                    )
+            } else {
+                LateNightTheme.inputBackground
+                    .frame(height: 120)
+                    .cornerRadius(10)
+                    .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
+            }
+        }
+        .task(id: urlString) {
+            guard let url = URL(string: urlString) else {
+                failed = true
+                return
+            }
+            failed = false
+            do {
+                let (downloaded, _) = try await URLSession.shared.data(from: url)
+                withAnimation(.easeIn(duration: 0.2)) { data = downloaded }
+            } catch is CancellationError {
+                // URL changed or view torn down — don't flip to failed.
+            } catch {
+                failed = true
+            }
+        }
+    }
+}
+
+// UIImageView-backed view that decodes all frames of an animated GIF via
+// ImageIO and lets UIImageView animate them. SwiftUI's Image doesn't iterate
+// animatedImage frames, so we have to drop down to UIKit. Single-frame
+// images (PNG/JPG or 1-frame GIFs) fall back to a static UIImage.
+private struct AnimatedGifImageView: UIViewRepresentable {
+    let data: Data
+
+    func makeUIView(context: Context) -> UIImageView {
+        let v = UIImageView()
+        v.contentMode = .scaleAspectFit
+        v.clipsToBounds = true
+        // Don't fight the SwiftUI frame — let the parent maxHeight decide.
+        v.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        v.setContentHuggingPriority(.defaultLow, for: .vertical)
+        v.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        v.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return v
+    }
+
+    func updateUIView(_ uiView: UIImageView, context: Context) {
+        if let animated = Self.animatedImage(from: data) {
+            uiView.image = animated
+            uiView.startAnimating()
+        } else if let still = UIImage(data: data) {
+            uiView.image = still
+        }
+    }
+
+    static func animatedImage(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        let count = CGImageSourceGetCount(source)
+        guard count > 1 else { return nil }
+
+        var frames: [UIImage] = []
+        var totalDuration: Double = 0
+        for i in 0..<count {
+            guard let cg = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+            frames.append(UIImage(cgImage: cg))
+            totalDuration += frameDelay(at: i, source: source)
+        }
+        guard !frames.isEmpty else { return nil }
+        // UIImageView automatically animates an animatedImage with the given
+        // duration once startAnimating() is called.
+        return UIImage.animatedImage(with: frames, duration: totalDuration)
+    }
+
+    static func frameDelay(at index: Int, source: CGImageSource) -> Double {
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let gifProps = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
+            return 0.1
+        }
+        // Prefer unclamped delay (true source value); fall back to clamped
+        // (browsers historically floor very-low delays around 10ms).
+        if let unclamped = gifProps[kCGImagePropertyGIFUnclampedDelayTime] as? Double, unclamped > 0 {
+            return unclamped
+        }
+        if let clamped = gifProps[kCGImagePropertyGIFDelayTime] as? Double, clamped > 0 {
+            return clamped
+        }
+        return 0.1
     }
 }

@@ -62,6 +62,17 @@ struct MyPost: Identifiable {
     let handle: String
     let isRepost: Bool
     let originalHandle: String?
+    // 2026-05-31: true when moderationStatus == "pending_review" on the
+    // Firestore doc. ProfileView renders an "under review" banner above
+    // these so the author knows the post is hidden from other users
+    // pending admin approval — otherwise they'd think it published
+    // normally and might repost / give up. Defaults false so legacy doc
+    // shapes (pre-backfill) and live posts render normally.
+    var pendingReview: Bool = false
+    // Reason chip text — derived from pendingReason on the doc. Shown
+    // inside the banner so the author understands which detection rule
+    // tripped (e.g. "names or contact info detected"). Nil for non-pending.
+    var pendingReasonLabel: String? = nil
 }
 
 /// Used in OtherProfileView posts (no handle, no authorId — those are known)

@@ -25,8 +25,6 @@ struct NotificationsView: View {
     @State private var lastFetchTime: Date? = nil
     @State private var showDeletedPostAlert = false
     @State private var markAsReadTask: Task<Void, Never>? = nil
-    @State private var selectedConversation: (id: String, handle: String, userId: String)? = nil
-    @State private var showConversation = false
     // Real-time listener for the notification feed. Replaces the earlier
     // one-shot loadNotifications/pull-to-refresh model so likes, replies,
     // follows, and messages land in the UI as the Cloud Function writes
@@ -68,72 +66,100 @@ struct NotificationsView: View {
                 ToskaHeader(title: "notifications")
 
                 // MARK: - Content
-                if isLoading {
-                    SkeletonFeed(kind: .notification, count: 5)
-                    Spacer()
-                } else if notifications.isEmpty {
-                    Spacer()
-                                        VStack(spacing: 14) {
-                                            Image(systemName: "heart.text.square")
-                                                .font(.system(size: 30, weight: .ultraLight))
-                                                .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                                .padding(.bottom, 4)
-                                            Text("\"someone will feel\nwhat you wrote.\"")
-                                                .font(.custom("Georgia-Italic", size: 20))
-                                                .foregroundColor(Color.toskaTimestamp)
-                                                .multilineTextAlignment(.center)
-                                                .lineSpacing(4)
-                                            Text(timeAwareNotifEmpty())
-                                                .font(.system(size: 11))
-                                                .foregroundColor(Color.toskaDivider)
-                                                .multilineTextAlignment(.center)
-                                        }
-                                        .padding(.horizontal, 48)
-                                        Spacer()
-                } else {
+                //
+                // Single ScrollView wraps all three branches so pull-to-refresh
+                // works regardless of state — previously .refreshable was only
+                // on the populated branch, so an empty notifications inbox had
+                // nothing to pull. GeometryReader gives the inner content a
+                // viewport-height min so the empty/loading states stay centered
+                // and there's still enough vertical room to overscroll.
+                GeometryReader { geo in
                     ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                            if !todayNotifs.isEmpty {
-                                Section {
-                                    ForEach(todayNotifs) { notif in
-                                        notifRow(notif)
+                        if isLoading {
+                            VStack {
+                                SkeletonFeed(kind: .notification, count: 5)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                        } else if notifications.isEmpty {
+                            VStack(spacing: 14) {
+                                Spacer()
+                                Image(systemName: "heart.text.square")
+                                    .font(.system(size: 30, weight: .ultraLight))
+                                    .foregroundColor(Color.toskaBlue.opacity(0.4))
+                                    .padding(.bottom, 4)
+                                Text("\"someone will feel\nwhat you wrote.\"")
+                                    .font(.custom("Georgia-Italic", size: 20))
+                                    .foregroundColor(Color.toskaTimestamp)
+                                    .multilineTextAlignment(.center)
+                                    .lineSpacing(4)
+                                Text(timeAwareNotifEmpty())
+                                    .font(.system(size: 11))
+                                    .foregroundColor(Color.toskaDivider)
+                                    .multilineTextAlignment(.center)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 48)
+                            // Span full width so the centered text is actually
+                            // centered. ScrollView content defaults to leading
+                            // alignment; without maxWidth: .infinity the VStack
+                            // hugged its widest line and sat on the left.
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                        } else {
+                            LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                if !todayNotifs.isEmpty {
+                                    Section {
+                                        ForEach(todayNotifs) { notif in
+                                            notifRow(notif)
+                                        }
+                                    } header: {
+                                        sectionHeader("new")
                                     }
-                                } header: {
-                                    sectionHeader("new")
                                 }
-                            }
 
-                            if !earlierNotifs.isEmpty {
-                                Section {
-                                    ForEach(earlierNotifs) { notif in
-                                        notifRow(notif)
+                                if !earlierNotifs.isEmpty {
+                                    Section {
+                                        ForEach(earlierNotifs) { notif in
+                                            notifRow(notif)
+                                        }
+                                    } header: {
+                                        sectionHeader("earlier")
                                     }
-                                } header: {
-                                    sectionHeader("earlier")
                                 }
-                            }
 
-                            if notifications.count >= 50 {
-                                Text("showing your 50 most recent notifications")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(Color(hex: "cccccc"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                            }
+                                if notifications.count >= 50 {
+                                    Text("showing your 50 most recent notifications")
+                                        .font(.system(size: 9))
+                                        .foregroundColor(Color(hex: "cccccc"))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                }
 
-                            Color.clear.frame(height: 80)
+                                Color.clear.frame(height: 80)
+                            }
                         }
                     }
                     .refreshable {
-                        // The snapshot listener delivers updates live, so
-                        // pull-to-refresh is cosmetic — it lets the user
-                        // feel they've forced a refresh. The sleep gives
-                        // the spinner a brief visible moment before it
-                        // collapses. We deliberately do NOT re-attach the
-                        // listener here: re-attachment would risk a transient
-                        // empty snapshot between remove and re-register that
-                        // would flicker the notifications list.
-                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        // Real pull-to-refresh: force a server-side fetch so
+                        // the spinner reflects an actual round-trip and recovers
+                        // from any transient listener silence; then re-bucket
+                        // today/earlier so a notification that was "new" earlier
+                        // moves to "earlier" after midnight crosses. The live
+                        // listener stays attached and applies any deltas as
+                        // they arrive — re-attaching it would flicker on the
+                        // transient empty snapshot between remove + re-register.
+                        if let uid = Auth.auth().currentUser?.uid {
+                            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                                Firestore.firestore()
+                                    .collection("users").document(uid).collection("notifications")
+                                    .order(by: "createdAt", descending: true)
+                                    .limit(to: 50)
+                                    .getDocuments(source: .server) { _, _ in
+                                        cont.resume()
+                                    }
+                            }
+                        }
+                        recomputeNotificationGroups()
                     }
                 }
             }
@@ -189,9 +215,6 @@ struct NotificationsView: View {
             stopListeningToNotifications()
             notifications = []
         }
-        .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
-                    showConversation = false
-                }
         // Tap-active-bell-to-pop-to-root. MainTabView posts this when the
         // bell is tapped while .notifications is already the selected tab.
         // Reset every push / sheet binding here so the user lands back on
@@ -201,8 +224,6 @@ struct NotificationsView: View {
             selectedPostId = nil
             selectedPostData = nil
             selectedFollowUser = nil
-            showConversation = false
-            selectedConversation = nil
         }
         .navigationDestination(isPresented: $showPost) {
                                     if let post = selectedPostData, let postId = selectedPostId {
@@ -224,16 +245,10 @@ struct NotificationsView: View {
                     OtherProfileView(userId: user.id, handle: user.handle)
                         .navigationBarHidden(true)
                 }
-        .navigationDestination(isPresented: $showConversation) {
-            if let convo = selectedConversation {
-                ConversationView(
-                    conversationId: convo.id,
-                    otherHandle: convo.handle,
-                    otherUserId: convo.userId
-                )
-                .navigationBarHidden(true)
-            }
-        }
+        // Conversation destination removed when DMs were cut. Tapping a
+        // legacy message notification no longer routes anywhere; the
+        // notification row stays inert until the row-level handler is
+        // also pruned. See notifRow for where the route is suppressed.
         .alert("post deleted", isPresented: $showDeletedPostAlert) {
             Button("ok") {}
         } message: {
@@ -329,27 +344,15 @@ struct NotificationsView: View {
                     selectedFollowUser = NotifFollowUser(id: notif.fromUserId, handle: handle)
                 }
             }
-        } else if notif.type == "message" && !notif.fromUserId.isEmpty {
-            openConversation(fromUserId: notif.fromUserId)
+        } else if notif.type == "message" {
+            // DMs were cut — message notifications are inert. No-op tap.
+            // (The legacy notification row may still arrive for users on
+            // older builds; we just don't route it to ConversationView.)
         } else {
             openPost(postId: notif.postId)
         }
     }
-
-    func openConversation(fromUserId: String) {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        let db = Firestore.firestore()
-        let convoId = [uid, fromUserId].sorted().joined(separator: "_")
-        db.collection("conversations").document(convoId).getDocument { snapshot, _ in
-            Task { @MainActor in
-                guard let data = snapshot?.data() else { return }
-                let handles = data["participantHandles"] as? [String: String] ?? [:]
-                let otherHandle = handles[fromUserId] ?? "anonymous"
-                selectedConversation = (id: convoId, handle: otherHandle, userId: fromUserId)
-                showConversation = true
-            }
-        }
-    }
+    // openConversation removed when DMs were cut.
 
     func openPost(postId: String) {
         guard !postId.isEmpty else { return }

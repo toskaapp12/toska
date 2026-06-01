@@ -162,6 +162,9 @@ struct TopView: View {
     func fetchTopPosts(onComplete: (() -> Void)? = nil) {
                     let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
         Firestore.firestore().collection("posts")
+                            // moderationStatus filter required by firestore.rules
+                            // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+                            .whereField("moderationStatus", isEqualTo: "live")
                             .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
                             .order(by: "createdAt", descending: true)
                             .limit(to: 50)
@@ -201,21 +204,20 @@ struct TopView: View {
                             if data["isRepost"] as? Bool == true { continue }
 
                             let likeCount = data["likeCount"] as? Int ?? 0
-                            let replyCount = data["replyCount"] as? Int ?? 0
-                            let repostCount = data["repostCount"] as? Int ?? 0
                             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                            
-                            let hoursAge = max(0.5, Date().timeIntervalSince(createdAt) / 3600)
-                            let engagement = Double(likeCount) + Double(replyCount) * 2 + Double(repostCount) * 1.5
-                            
-                            let recencyMultiplier: Double
-                            if hoursAge < 2 { recencyMultiplier = 3.0 }
-                            else if hoursAge < 6 { recencyMultiplier = 2.0 }
-                            else if hoursAge < 12 { recencyMultiplier = 1.5 }
-                            else { recencyMultiplier = 1.0 }
-                            
-                            let velocity = (engagement / hoursAge) * recencyMultiplier
-                            
+
+                            // Simple ranking: like count, with createdAt as a
+                            // tiebreaker so newer posts bubble up among ties.
+                            // Previously this ranked by an engagement-velocity
+                            // score (likes + replies*2 + reposts*1.5 divided
+                            // by hours, with a recency multiplier) and gated
+                            // on `engagement > 0` — which made the tab look
+                            // empty whenever no recent post had any
+                            // interaction yet, even though "top ten each day"
+                            // is what users actually expect to see. Showing
+                            // zero-like posts at the bottom is fine: that's
+                            // just an honest reflection of a quiet day.
+                            let score = Double(likeCount) + createdAt.timeIntervalSince1970 / 1_000_000_000_000
                             let entry = (
                                 handle: data["authorHandle"] as? String ?? "anonymous",
                                 text: data["text"] as? String ?? "",
@@ -223,21 +225,15 @@ struct TopView: View {
                                 likes: likeCount,
                                 id: doc.documentID,
                                 authorId: authorId,
-                                score: velocity
+                                score: score
                             )
-                            
-                            if engagement > 0 {
-                                                            engaged.append(entry)
-                                                        }
+                            engaged.append(entry)
                         }
-                        
-                        // Only show posts with actual engagement — if nothing has
-                                                // any likes/replies/reposts yet, show the empty state rather
-                                                // than listing posts in an arbitrary order labeled "trending"
-                                                rankedPosts = engaged
-                                                    .sorted { $0.score > $1.score }
-                                                    .prefix(10)
-                                                    .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId) }
+
+                        rankedPosts = engaged
+                            .sorted { $0.score > $1.score }
+                            .prefix(10)
+                            .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId) }
                         print("📊 TopView showing \(rankedPosts.count) ranked, engaged: \(engaged.count)")
                         isLoading = false
                                                 onComplete?()

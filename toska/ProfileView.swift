@@ -37,7 +37,6 @@ struct ProfileView: View {
     // row stayed on screen with no indication the delete failed.
     @State private var deleteReplyError: String? = nil
     @State private var hasFetchedInitial = false
-    @State private var showMessagesList = false
     @State private var showWeeklyRecap = false
     @State private var presenceStreak = 0
     @State private var totalNights = 0
@@ -55,6 +54,7 @@ struct ProfileView: View {
         ("text.document", "text.document.fill"),
         ("heart", "heart.fill"),
         ("bookmark", "bookmark.fill"),
+        ("arrowshape.turn.up.left", "arrowshape.turn.up.left.fill"),
     ]
     var avatarInitial: String {
         let cleaned = userHandle.replacingOccurrences(of: "anonymous_", with: "")
@@ -83,20 +83,14 @@ struct ProfileView: View {
                 // ToskaHeader, with messages + settings icons in the
                 // trailing slot. No back chevron (root tab).
                 ToskaHeader(title: userHandle, onBack: nil) {
-                    HStack(spacing: 18) {
-                        Button { showMessagesList = true } label: {
-                            Image(systemName: "envelope")
-                                .font(.system(size: 18, weight: .regular))
-                                .foregroundColor(Color.toskaTextLight)
-                        }
-                        .accessibilityLabel("messages")
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 18, weight: .regular))
-                                .foregroundColor(Color.toskaTextLight)
-                        }
-                        .accessibilityLabel("settings")
+                    // Messages envelope removed when DMs were cut. Only
+                    // settings remains in the trailing slot.
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundColor(Color.toskaTextLight)
                     }
+                    .accessibilityLabel("settings")
                 }
                 
                 ScrollViewReader { proxy in
@@ -220,6 +214,9 @@ struct ProfileView: View {
                                                                                             .padding(.horizontal, 16)
                                                                                             .padding(.top, 8)
                                                                                         }
+                                                                                        if post.pendingReview {
+                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel)
+                                                                                        }
                                                                                         FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
                                                                                     }
                                                                                 }
@@ -286,9 +283,24 @@ struct ProfileView: View {
                                                                             }
                                                                         }
                                                                     }
+                                                                case 3:
+                                                                    if myReplies.isEmpty {
+                                                                        emptyState(icon: "arrowshape.turn.up.left", title: "no replies yet.", subtitle: "say something back to someone who needed it.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(myReplies) { reply in
+                                                                                replyRow(reply)
+                                                                            }
+                                                                            if myReplies.count >= 30 {
+                                                                                Text("showing your most recent replies")
+                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
                                                                 default: EmptyView()
                                                                 }
-                        
+
                         Color.clear.frame(height: 80)
                     }
                 }
@@ -302,6 +314,8 @@ struct ProfileView: View {
                                     case 2:
                                         loadSavedPosts()
                                         loadSavedReplies()
+                                    case 3:
+                                        loadMyReplies()
                                     default: break
                                     }
                                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -315,7 +329,6 @@ struct ProfileView: View {
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
-        .navigationDestination(isPresented: $showMessagesList) { MessagesListView() }
         .fullScreenCover(isPresented: $showWeeklyRecap) { EdgeSwipeDismissWrapper { WeeklyRecapView() } }
         .navigationDestination(isPresented: $showFollowers) { FollowListView(title: "followers").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showFollowing) { FollowListView(title: "following").navigationBarHidden(true) }
@@ -366,6 +379,7 @@ struct ProfileView: View {
                                                 loadLikedReplies()
                                                 loadSavedPosts()
                                                 loadSavedReplies()
+                                                loadMyReplies()
                         ensurePresenceThenLoadStreak()
                         Task {
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -374,6 +388,13 @@ struct ProfileView: View {
                     }
                     loadProfile()
                 }
+        // Refresh the replies tab each time it's selected so a reply the user
+        // just posted (from a post detail elsewhere) shows up without needing a
+        // manual pull-to-refresh. onAppear only fetches once (hasFetchedInitial),
+        // so without this a new reply wouldn't appear until the next launch.
+        .onChange(of: selectedTab) { _, newValue in
+            if newValue == 3 { loadMyReplies() }
+        }
         // Reset on sign-out so any in-flight ProfileView state from the
         // previous account doesn't blend into the next user's UI when
         // MainTabView remounts. hasFetchedInitial=false re-arms the
@@ -394,7 +415,6 @@ struct ProfileView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showSettings = false
-                    showMessagesList = false
                     showFollowers = false
                     showFollowing = false
                     showEditReply = false
@@ -797,17 +817,22 @@ struct ProfileView: View {
                     myPosts = documents.compactMap { doc in
                         let data = doc.data()
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return nil }
-                        // Also hide flagged posts from their own author —
-                        // previously the feed filtered flagged but the profile
-                        // didn't, so an author saw posts that no one else
-                        // could (silent shadowban from their perspective).
-                        // Matching filterBlocked's behavior keeps the author
-                        // view consistent with what the rest of the app sees.
-                        if data["flagged"] as? Bool == true { return nil }
+                        // 2026-05-31: do NOT hide flagged/pending posts from
+                        // the author themselves anymore. The new pending-
+                        // review banner tells them explicitly that the post
+                        // is held for admin approval, which is better than a
+                        // silent disappearance ("did my post even publish?").
+                        // The previous "if flagged, hide from author" check
+                        // is removed for this reason.
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                         let isRepost = data["isRepost"] as? Bool ?? false
                         let originalHandle = data["originalHandle"] as? String
-                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle)
+                        let modStatus = data["moderationStatus"] as? String ?? "live"
+                        let isPending = modStatus == "pending_review"
+                        let reasonLabel = isPending
+                            ? pendingReasonLabelFor(data["pendingReason"] as? String)
+                            : nil
+                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, pendingReview: isPending, pendingReasonLabel: reasonLabel)
                     }
                 }
             }
@@ -1087,11 +1112,56 @@ struct ProfileView: View {
         }
     }
     
-    // loadMyReplies was removed — no UI surface in ProfileView renders the
-    // user's replies list (the replies tab was intentionally dropped, see the
-    // toskaUITests assertion in testProfileElements). OtherProfileView still
-    // owns its own reply-loading path. If a replies tab is ever reintroduced
-    // here, restore this function and the populated myReplies state.
+    /// Loads the current user's own replies for the "replies" profile tab.
+    /// Mirrors OtherProfileView.loadReplies, scoped to the signed-in uid.
+    /// Uses the replies collection-group index (authorId ASC, createdAt DESC)
+    /// that OtherProfileView already relies on. Denormalized parentPostText/
+    /// parentPostHandle are used when present; older replies fall back to
+    /// fetching the parent post for context.
+    func loadMyReplies() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let db = Firestore.firestore()
+        Task {
+            guard let replySnap = try? await db.collectionGroup("replies")
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 30)
+                .getDocumentsAsync() else { return }
+
+            var results: [MyReply] = []
+            await withTaskGroup(of: MyReply?.self) { group in
+                for doc in replySnap.documents {
+                    let data = doc.data()
+                    let replyText = data["text"] as? String ?? ""
+                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+                    let replyTime = ToskaFormatters.timeAgo(from: createdAt)
+                    let replyDocId = doc.documentID
+
+                    if let parentText = data["parentPostText"] as? String {
+                        let parentHandle = data["parentPostHandle"] as? String ?? "anonymous"
+                        let parentPostId = doc.reference.parent.parent?.documentID ?? ""
+                        group.addTask {
+                            MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                        }
+                    } else {
+                        guard let parentRef = doc.reference.parent.parent else { continue }
+                        let parentPostId = parentRef.documentID
+                        group.addTask {
+                            let parentSnap = try? await parentRef.getDocumentAsync()
+                            let parentData = parentSnap?.data()
+                            let parentText = parentData?["text"] as? String ?? "deleted post"
+                            let parentHandle = parentData?["authorHandle"] as? String ?? "anonymous"
+                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                        }
+                    }
+                }
+                for await result in group {
+                    if let result = result { results.append(result) }
+                }
+            }
+            myReplies = results.sorted { $0.createdAt > $1.createdAt }
+        }
+    }
 }
 
 // MARK: - Reply Engagement Row
@@ -1580,5 +1650,65 @@ struct EditReplyView: View {
                     dismiss()
                 }
             }
+    }
+}
+
+// 2026-05-31: "under review" banner shown above the author's own pending
+// posts in ProfileView. Without this, the author sees their post on their
+// own profile and assumes it published normally — there's no signal that
+// other users can't see it. Banner sits between the optional repost
+// chevron and the FeedPostRow content so it groups visually with the
+// post body but doesn't compete with the post text for attention.
+struct PendingReviewBanner: View {
+    let reasonLabel: String?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "eye.slash.fill")
+                .font(.system(size: 10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("under review — visible only to you")
+                    .font(.system(size: 11, weight: .semibold))
+                if let label = reasonLabel {
+                    Text(label)
+                        .font(.system(size: 10))
+                        .opacity(0.85)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundColor(Color(hex: "9a7843"))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(hex: "c49a6c").opacity(0.12))
+        .overlay(
+            Rectangle()
+                .fill(Color(hex: "c49a6c"))
+                .frame(width: 3)
+                .frame(maxHeight: .infinity),
+            alignment: .leading
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+}
+
+// Maps the server-side pendingReason taxonomy onto short author-facing
+// labels. Stays generic enough not to give an evasion-tuner a precise
+// "this exact word tripped it" signal — the reason hints at the
+// category, not the specific phrase that matched.
+func pendingReasonLabelFor(_ reason: String?) -> String? {
+    switch reason {
+    case "pii":              return "may contain names or contact info"
+    case "crisis":           return "checking in — flagged for safety review"
+    case "abuse_hate":       return "flagged for hateful language"
+    case "abuse_harassment": return "flagged for harassment language"
+    case "abuse_threat":     return "flagged for threatening language"
+    case "abuse_sexual":     return "flagged for sexual content"
+    case "abuse_link":       return "contains a link — held for review"
+    case "abuse_spam":       return "flagged as possible spam"
+    case "user_reports":     return "multiple reports — held for review"
+    case nil:                return nil
+    default:                 return "held for review"
     }
 }

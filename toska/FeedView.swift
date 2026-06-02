@@ -2107,6 +2107,34 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
             }
         }
     }
+
+    // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
+    // Mirror of functions/moderation.js looksLikeFullName (2026-06-02). Catches
+    // uncommon names with no relationship context; lowercase-surname / bare
+    // single names still slip (that needs NER). Excludes common non-name
+    // proper nouns so "New York" / "Harry Potter" don't trip it.
+    let safeProperNounBigrams: Set<String> = [
+        "new york", "new jersey", "new orleans", "new mexico", "new hampshire",
+        "los angeles", "san francisco", "san diego", "san antonio", "san jose",
+        "las vegas", "rhode island", "north carolina", "south carolina",
+        "north dakota", "south dakota", "west virginia", "new zealand",
+        "hong kong", "costa rica", "puerto rico", "united states", "united kingdom",
+        "great britain", "saudi arabia", "south africa", "south korea",
+        "taylor swift", "harry potter", "taco bell", "burger king", "old navy",
+        "stranger things", "breaking bad", "black friday",
+        "happy birthday", "happy holidays", "merry christmas",
+        "good morning", "good evening", "good afternoon", "good night", "good luck",
+        "thank god",
+    ]
+    for match in text.matches(of: /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/) {
+        let w1 = String(match.1).lowercased()
+        let w2 = String(match.2).lowercased()
+        if w1.count < 2 || w2.count < 2 { continue }
+        if safeCapitalizedWords.contains(w1) || safeCapitalizedWords.contains(w2) { continue }
+        if ambiguousWords.contains(w1) && ambiguousWords.contains(w2) { continue }
+        if safeProperNounBigrams.contains("\(w1) \(w2)") { continue }
+        return true
+    }
     let crisisNumbers = [
             "988-273-8255", "9882738255", "988 273 8255",
             "1-800-273-8255", "18002738255", "1 800 273 8255",

@@ -391,3 +391,19 @@ describe("evasion: Mathematical Alphanumeric Symbols (audit P2)", () => {
     "her name is 𝐉𝐨𝐡𝐧 and i'm done"
   );
 });
+
+describe("full-name heuristic: two consecutive Capitalized words (audit 2026-06-02)", () => {
+  // A real full name slipped through (uncommon name, no relationship context).
+  // The both-capitalized "First Last" shape is now held, with exclusions for
+  // common non-name proper nouns. The lowercase-surname case still slips —
+  // that needs NER and is intentionally not claimed here.
+  flag("uncommon full name flags", "Tess Salinaro");
+  flag("common full name flags", "John Smith");
+  flag("full name mid-sentence flags", "i think Sarah Johnson is the one");
+
+  noFlag("place bigram does not flag", "i still miss New York");
+  noFlag("media bigram does not flag", "we used to watch Harry Potter");
+  noFlag("capitalized greeting does not flag", "Good Morning to everyone here");
+  noFlag("brand bigram does not flag", "we grabbed Taco Bell after");
+  noFlag("all-lowercase prose does not flag", "i keep replaying the last conversation we had");
+});

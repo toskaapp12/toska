@@ -89,6 +89,46 @@ const SAFE_CAPITALIZED_WORDS = new Set([
   "toska", "giphy", "apple", "google", "firebase",
 ]);
 
+// Common two-word proper nouns that are NOT a person's name — places, brands,
+// media, and capitalized greetings — so the full-name heuristic below doesn't
+// hold "I miss New York" or "we watched Harry Potter". Long-tail proper nouns
+// not listed here will still be held for review (the safe direction for an
+// anonymity app — held, not deleted).
+const SAFE_PROPER_NOUN_BIGRAMS = new Set([
+  "new york", "new jersey", "new orleans", "new mexico", "new hampshire",
+  "los angeles", "san francisco", "san diego", "san antonio", "san jose",
+  "las vegas", "rhode island", "north carolina", "south carolina",
+  "north dakota", "south dakota", "west virginia", "new zealand",
+  "hong kong", "costa rica", "puerto rico", "united states", "united kingdom",
+  "great britain", "saudi arabia", "south africa", "south korea",
+  "taylor swift", "harry potter", "taco bell", "burger king", "old navy",
+  "stranger things", "breaking bad", "black friday",
+  "happy birthday", "happy holidays", "merry christmas",
+  "good morning", "good evening", "good afternoon", "good night", "good luck",
+  "thank god",
+]);
+
+// Full-name shape: two consecutive Capitalized words ("Tess Salinaro",
+// "John Smith") — a strong signal of a person's name even when neither word
+// is in our first/last-name dictionaries. 2026-06-01: added after a real full
+// name slipped through (uncommon name + no relationship context). Guards skip
+// safe words, all-ambiguous pairs, and known non-name bigrams. NOTE: this only
+// catches the BOTH-capitalized shape; "Tess salinaro" (lowercase surname) and
+// bare single names still slip — reliably catching those needs NER/ML.
+function looksLikeFullName(text) {
+  const re = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g;
+  for (const m of text.matchAll(re)) {
+    const w1 = m[1].toLowerCase();
+    const w2 = m[2].toLowerCase();
+    if (w1.length < 2 || w2.length < 2) continue;
+    if (SAFE_CAPITALIZED_WORDS.has(w1) || SAFE_CAPITALIZED_WORDS.has(w2)) continue;
+    if (AMBIGUOUS_WORDS.has(w1) && AMBIGUOUS_WORDS.has(w2)) continue;
+    if (SAFE_PROPER_NOUN_BIGRAMS.has(`${w1} ${w2}`)) continue;
+    return true;
+  }
+  return false;
+}
+
 const IDENTIFYING_PATTERNS = [
   "instagram", "insta", "snapchat", "snap", "tiktok", "twitter",
   "facebook", "linkedin", "phone number", "my number", "text me",
@@ -454,6 +494,9 @@ function containsNameOrIdentifyingInfo(text) {
       }
     }
   }
+
+  // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
+  if (looksLikeFullName(text)) return true;
 
   // 10+ digits → phone number heuristic.
   // Strip invisible separators (so `5​5​5…` collapses to a contiguous run)

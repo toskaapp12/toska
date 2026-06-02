@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — stuck account deletion",
+  "documentation": {
+    "content": "The hourly monitorPendingDeletions sweep failed to drain a pendingDeletions record — an account deletion may be stuck mid-cascade (GDPR Art. 17 risk). Inspect pendingDeletions/{uid} and the userDeletionCleanupQueue / postDeletionQueue. Source: monitorPendingDeletions in functions/index.js.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "pending-deletion retry failure log entry",
+      "conditionMatchedLog": {
+        "filter": "textPayload:\"Retry failed for pending deletion\" AND severity>=ERROR"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "1800s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

@@ -49,7 +49,6 @@ struct FeelingPerson: Identifiable {
 struct ExploreView: View {
     @State private var searchText = ""
     @State private var selectedTag: String? = nil
-    @State private var showLastSaid = false
     @State private var tagPosts: [ExplorePost] = []
     @State private var trendingPosts: [ExplorePost] = []
     @State private var searchResults: [ExplorePost] = []
@@ -68,7 +67,6 @@ struct ExploreView: View {
     @State private var breakupStageCounts: [String: Int] = [:]
     @State private var hasFetchedInitial = false
     @State private var feelingPeople: [FeelingPerson] = []
-    @State private var hasFinalPosts = false
         @State private var searchTask: Task<Void, Never>? = nil
 
         let tags = sharedTags
@@ -380,28 +378,6 @@ struct ExploreView: View {
                                                                     }
                                                                 }
                                                                 
-                                                                if hasFinalPosts {
-                                                                    Button { showLastSaid = true } label: {
-                                                                        HStack(spacing: 8) {
-                                                                            Image(systemName: "leaf")
-                                                                                .font(.system(size: 12, weight: .light))
-                                                                                .foregroundColor(Color.toskaBlue)
-                                                                            Text("the last thing they said")
-                                                                                .font(.system(size: 12, weight: .medium))
-                                                                                .foregroundColor(Color.toskaTextDark)
-                                                                            Spacer()
-                                                                            Image(systemName: "chevron.right")
-                                                                                .font(.system(size: 10, weight: .light))
-                                                                                .foregroundColor(Color.toskaDivider)
-                                                                        }
-                                                                        .padding(.horizontal, 16)
-                                                                        .padding(.vertical, 14)
-                                                                    }
-                                                                    .buttonStyle(.plain)
-                                                                    
-                                                                    Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
-                                                                }
-                                                                
                                                                 Color.clear.frame(height: 40)
                         }
                     }
@@ -417,17 +393,11 @@ struct ExploreView: View {
                     fetchTrendingPosts()
                     fetchTagCounts()
                     fetchBreakupStageCounts()
-                    checkForFinalPosts()
                 }
                 .onDisappear {
                     searchTask?.cancel()
                     searchTask = nil
                 }
-        .fullScreenCover(isPresented: $showLastSaid) {
-            EdgeSwipeDismissWrapper { LastThingSaidView() }
-        }
-        
-            
         .hidesAppTabBar()
     }
 
@@ -636,15 +606,6 @@ struct ExploreView: View {
                 }
         }
     
-    func checkForFinalPosts() {
-            Firestore.firestore().collection("finalPosts").limit(to: 1)
-                .getDocuments { snapshot, _ in
-                    Task { @MainActor in
-                        hasFinalPosts = !(snapshot?.documents.isEmpty ?? true)
-                    }
-                }
-        }
-        
     // FIX: replaced a 200-document fan-out query with a single document read.
         // A Cloud Function (onPostCreatedUpdateTagCounts / onPostDeletedUpdateTagCounts)
         // now maintains meta/tagCounts, incrementing and decrementing each tag key

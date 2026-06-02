@@ -1197,10 +1197,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 2026-06-02: the "last thing they said" feature was removed. Account
+    // deletion no longer archives a final post here (see onUserDocDeleted),
+    // and no client surface reads this collection. Deny everything so any
+    // legacy docs are inert and unreadable until purged. Admin SDK (a cleanup
+    // script) bypasses these rules to delete the residue.
     match /finalPosts/{postId} {
-      allow read: if isAuth();
-      allow create: if false;
-      allow update, delete: if false;
+      allow read, write: if false;
     }
 
     // Reports collection — written when a user submits a report via ReportSheet.

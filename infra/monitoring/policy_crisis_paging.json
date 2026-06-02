@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — crisis paging failure",
+  "documentation": {
+    "content": "A post tripped an explicit-crisis phrase but admins could not be paged: either the FCM send failed, no crisis recipients are configured (system/crisisAlertRecipients), or recipients have no FCM token in users/{uid}/private/data. A self-harm post may be sitting un-triaged. Verify crisis recipient config and check the admin crisis tab. Source: onPostCreatedAlertAdmins in functions/index.js.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "crisis-alert failure or misconfiguration log entry",
+      "conditionMatchedLog": {
+        "filter": "textPayload =~ \"crisis-alert: (failed to alert admins|tripped explicit-crisis but no)\""
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

@@ -759,6 +759,10 @@
             if (!confirm("delete this post permanently?")) return;
             const uid = auth.currentUser.uid;
             try {
+                // Stamp the acting admin BEFORE deleting so auditPostDeletion
+                // (functions/index.js) reads deletedBy off the doc's last state
+                // and attributes the removal to this admin rather than "author".
+                await updateDoc(doc(db, "posts", postId), { deletedBy: uid, deletedAt: serverTimestamp() });
                 await deleteDoc(doc(db, "posts", postId));
                 await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "post_deleted" });
                 document.getElementById(`report-${reportId}`)?.remove();
@@ -795,13 +799,19 @@
                 // and ProfileView all also filter on `concerningContent`,
                 // so a post that was flagged AND marked concerning would
                 // stay hidden from feeds even after the appeal succeeded.
-                // Same for flagReason — leaving it set keeps the audit
-                // trail honest but contradicts the "unflagged" state.
                 // Clear all three so the post is fully restored to feeds.
+                //
+                // unflaggedBy/unflaggedAt are the actor stamp for the audit
+                // trail: restoring previously-flagged (incl. crisis) content to
+                // public feeds is the most sensitive moderation reversal, and
+                // auditPostModeration (functions/index.js) keys a "post.unflag"
+                // entry on unflaggedBy newly appearing.
                 await updateDoc(doc(db, "posts", postId), {
                     flagged: false,
                     concerningContent: false,
-                    flagReason: null
+                    flagReason: null,
+                    unflaggedBy: auth.currentUser.uid,
+                    unflaggedAt: serverTimestamp()
                 });
                 document.getElementById(`flagged-${postId}`)?.remove();
                 showToast("post unflagged — now visible in feeds");
@@ -811,6 +821,10 @@
         async function deletePost(postId) {
             if (!confirm("delete this post permanently?")) return;
             try {
+                // Stamp the acting admin BEFORE deleting so auditPostDeletion
+                // (functions/index.js) attributes the removal to this admin
+                // rather than falling back to "author".
+                await updateDoc(doc(db, "posts", postId), { deletedBy: auth.currentUser.uid, deletedAt: serverTimestamp() });
                 await deleteDoc(doc(db, "posts", postId));
                 document.getElementById(`flagged-${postId}`)?.remove();
                 showToast("post deleted");

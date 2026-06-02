@@ -759,33 +759,15 @@ async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds) {
 
 exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => {
   const uid = event.params.userId;
-  const data = event.data.data();
   console.log("Cleaning up data for deleted user:", uid);
 
   try {
-    const postsSnap = await db.collection("posts")
-      .where("authorId", "==", uid)
-      .orderBy("createdAt", "desc")
-      .limit(1)
-      .get();
-    if (!postsSnap.empty) {
-      const postData = postsSnap.docs[0].data();
-      // Deterministic doc ID (= uid) so a retry of this trigger overwrites
-      // the same finalPosts document instead of creating a second copy.
-      // Previously addDocument auto-generated an ID, so any retry after a
-      // post-write cleanup failure would archive the same user's last post
-      // twice. uid is unique per user and the trigger fires exactly once
-      // per user lifecycle (on user-doc delete), so collisions are
-      // impossible by construction.
-      await db.collection("finalPosts").doc(uid).set({
-        authorHandle: postData.authorHandle || data.handle || "anonymous",
-        text: postData.text || "",
-        tag: postData.tag || null,
-        likeCount: postData.likeCount || 0,
-        createdAt: postData.createdAt || new Date(),
-        leftAt: new Date(),
-      });
-    }
+    // 2026-06-02: the "last thing they said" feature was removed. Account
+    // deletion no longer archives the user's final post — deletion now means
+    // full erasure, matching the in-app delete copy ("everything you said here
+    // goes with it") and the GDPR right-to-erasure expectation. (Previously
+    // this block copied the user's most recent post — text + handle — into a
+    // world-readable finalPosts/{uid} doc that outlived the account.)
 
     // Delete the user's posts via the shared helper. Cap at 500 iterations =
     // 50,000 posts per invocation so the function doesn't run past its
@@ -835,7 +817,13 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // queuing a resume, the cap silently drops everything past 50K. We
     // queue per-(uid, sub) so resumeUserCleanup drains the remainder
     // hourly until each subcollection is empty.
-    const subs = ["saved", "liked", "notifications", "blocked", "presence", "private", "drafts"];
+    // likedReplies/savedReplies are the reply-engagement reverse indices
+    // written by PostInteractionManager (iOS). Deleting the parent user doc
+    // does NOT delete subcollections, and nothing else cleans these, so
+    // without them here the deleted user's reply like/save history (replyId +
+    // parent postId) survives account deletion as owner-only orphans — a GDPR
+    // Art. 17 gap and a storage leak.
+    const subs = ["saved", "liked", "likedReplies", "savedReplies", "notifications", "blocked", "presence", "private", "drafts"];
     for (const sub of subs) {
       try {
         const result = await deleteCollection(db.collection("users").doc(uid).collection(sub));
@@ -3811,7 +3799,13 @@ exports.auditPostModeration = onDocumentUpdated(
       before.pendingApprovedBy == null && after.pendingApprovedBy != null;
     const newlyCrisisReviewed =
       before.crisisReviewedBy == null && after.crisisReviewedBy != null;
-    if (!newlyApproved && !newlyCrisisReviewed) return;
+    // unflagPost (docs/admin.html) restores previously-flagged content —
+    // including content auto-held as crisis/PII — back to public feeds. That
+    // reversal must be audited; key on unflaggedBy newly appearing so the
+    // trigger's own no-op rewrites don't re-emit it.
+    const newlyUnflagged =
+      before.unflaggedBy == null && after.unflaggedBy != null;
+    if (!newlyApproved && !newlyCrisisReviewed && !newlyUnflagged) return;
 
     if (newlyApproved) {
       await writeAuditEntry({
@@ -3835,12 +3829,33 @@ exports.auditPostModeration = onDocumentUpdated(
         after:  { concerningContent: after.concerningContent ?? null },
       });
     }
+    if (newlyUnflagged) {
+      await writeAuditEntry({
+        action: "post.unflag",
+        adminUid: after.unflaggedBy || "unknown",
+        targetType: "post",
+        targetId: event.params.postId,
+        targetHandle: after.authorHandle || before.authorHandle || null,
+        before: {
+          flagged: before.flagged ?? null,
+          concerningContent: before.concerningContent ?? null,
+          flagReason: before.flagReason ?? null,
+        },
+        after: {
+          flagged: after.flagged ?? null,
+          concerningContent: after.concerningContent ?? null,
+          flagReason: after.flagReason ?? null,
+        },
+      });
+    }
   }
 );
 
-// Audit post deletions. admin.html stamps deletedBy/deletedAt just before the
-// delete, so this onDocumentDeleted reads the doc's last state to record who
-// removed it. Author self-deletes (no deletedBy) are recorded as "author".
+// Audit post deletions. The admin dashboard's removePost/deletePost
+// (docs/admin.html) update the post with deletedBy/deletedAt immediately
+// before the delete, so this onDocumentDeleted reads the doc's last state to
+// record who removed it. Author self-deletes (no deletedBy) are recorded as
+// "author".
 exports.auditPostDeletion = onDocumentDeleted(
   "posts/{postId}",
   async (event) => {

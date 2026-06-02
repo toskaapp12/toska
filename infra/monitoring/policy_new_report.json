@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — new report for review (Apple 1.2 24h SLA)",
+  "documentation": {
+    "content": "A user filed a report (post/reply/user/conversation). The in-app ReportSheet promises review within 24h. Open the admin dashboard (https://www.toskaapp.com/admin) and triage. Source: notifyAdminsOfNewReport in functions/index.js.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "new_report_for_review log entry",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.tag=\"new_report_for_review\""
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

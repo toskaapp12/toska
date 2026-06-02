@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — counter drift",
+  "documentation": {
+    "content": "A counter trigger failed after claiming its idempotency key, leaving a like/reply/repost/follow count permanently off by one (logged, not auto-recovered). Run reconcileMyCounts for the affected user or fix the count manually. Source: logCounterDrift in functions/index.js.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "counter_drift ERROR log entry",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.tag=\"counter_drift\" AND severity>=ERROR"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

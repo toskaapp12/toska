@@ -398,8 +398,15 @@ struct OtherProfileView: View {
     
     func checkFollowing() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Capture the uid this read is for. After the async round-trip the
+        // signed-in user may have changed (account switch on the same device);
+        // without rechecking, account A's follow relationship would be stamped
+        // into account B's view of this profile. Mirrors the recheck pattern in
+        // ProfileView.loadPresenceStreak / PostDetailView.checkIfLiked.
+        let capturedUid = uid
         Firestore.firestore().collection("users").document(uid).collection("following").document(userId).getDocument { snapshot, _ in
             Task { @MainActor in
+                guard Auth.auth().currentUser?.uid == capturedUid else { return }
                 isFollowing = snapshot?.exists == true
             }
         }

@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — critical function error",
+  "documentation": {
+    "content": "A load-bearing function logged an ERROR: validatePost (moderation gatekeeper), onUserDocDeleted (GDPR cascade), or sendPushNotification (delivery). Investigate the function logs for the traceback. Source: functions/index.js runtime errors.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "ERROR on a critical service",
+      "conditionMatchedLog": {
+        "filter": "severity>=ERROR AND resource.labels.service_name=(\"validatepost\" OR \"onuserdocdeleted\" OR \"sendpushnotification\")"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

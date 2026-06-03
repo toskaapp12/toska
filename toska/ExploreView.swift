@@ -84,8 +84,7 @@ struct ExploreView: View {
                 VStack(spacing: 0) {
                     HStack {
                         Text("explore")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Color.toskaTextDark)
+                            .toskaScreenTitle()
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -337,7 +336,7 @@ struct ExploreView: View {
                                                 .foregroundColor(Color.toskaBlue.opacity(0.4))
                                                 .padding(.bottom, 2)
                                             Text("nobody's said it yet")
-                                                .font(.custom("Georgia-Italic", size: 18))
+                                                .font(ToskaFont.serifItalic(18))
                                                 .foregroundColor(Color.toskaTextLight)
                                             Text("be the first.")
                                                 .font(.system(size: 11))
@@ -367,7 +366,7 @@ struct ExploreView: View {
                                     if trendingPosts.isEmpty {
                                                                             VStack(spacing: 10) {
                                                                                 Text("\"everyone's being\nquiet right now.\"")
-                                                                                    .font(.custom("Georgia-Italic", size: 18))
+                                                                                    .font(ToskaFont.serifItalic(18))
                                                                                     .foregroundColor(Color.toskaTimestamp)
                                                                                     .multilineTextAlignment(.center)
                                                                                     .lineSpacing(4)

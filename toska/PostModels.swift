@@ -94,6 +94,9 @@ struct RankedPost: Identifiable {
     let tag: String?
     let likes: Int
     let authorId: String
+    var replies: Int = 0
+    var reposts: Int = 0
+    var time: String = ""
 }
 
 struct NotificationItem: Identifiable, Equatable {

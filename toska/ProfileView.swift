@@ -37,7 +37,6 @@ struct ProfileView: View {
     // row stayed on screen with no indication the delete failed.
     @State private var deleteReplyError: String? = nil
     @State private var hasFetchedInitial = false
-    @State private var showWeeklyRecap = false
     @State private var presenceStreak = 0
     @State private var totalNights = 0
     // Gates the streak-share button while ImageRenderer rasterizes. Mirrors
@@ -54,7 +53,7 @@ struct ProfileView: View {
         ("text.document", "text.document.fill"),
         ("heart", "heart.fill"),
         ("bookmark", "bookmark.fill"),
-        ("arrowshape.turn.up.left", "arrowshape.turn.up.left.fill"),
+        ("bubble.left", "bubble.left.fill"),
     ]
     var avatarInitial: String {
         let cleaned = userHandle.replacingOccurrences(of: "anonymous_", with: "")
@@ -82,13 +81,13 @@ struct ProfileView: View {
                 // Profile root tab — large bold handle as the title via
                 // ToskaHeader, with messages + settings icons in the
                 // trailing slot. No back chevron (root tab).
-                ToskaHeader(title: userHandle, onBack: nil) {
+                ToskaHeader(title: "profile", onBack: nil) {
                     // Messages envelope removed when DMs were cut. Only
                     // settings remains in the trailing slot.
                     Button { showSettings = true } label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: 18, weight: .regular))
-                            .foregroundColor(Color.toskaTextLight)
+                            .foregroundColor(ToskaColor.text)
                     }
                     .accessibilityLabel("settings")
                 }
@@ -101,98 +100,56 @@ struct ProfileView: View {
                                     // when the user re-taps the profile tab).
                                     Color.clear.frame(height: 0).id("top")
                                     VStack(alignment: .leading, spacing: 0) {
-                                        // Compact profile info
+                                        // Identity — eyebrow + large serif handle
+                                        // + the anonymity bio line. Reads quiet and
+                                        // editorial; no follower/stat chrome (the
+                                        // anonymity is the point).
                                         VStack(alignment: .leading, spacing: 8) {
-                                            HStack(spacing: 4) {
-                                                Text("joined \(joinedDate)")
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(Color.toskaTextLight)
-                                                
-                                                if LateNightTheme.isLateNight {
-                                                    Text("·")
-                                                        .font(.system(size: 9))
-                                                        .foregroundColor(Color.toskaTextLight)
-                                                    Text("still here at this hour.")
-                                                        .font(.custom("Georgia-Italic", size: 10))
-                                                        .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                                }
-                                            }
-                                            
-                                            // Stats inline — bumped to 16pt bold
-                                            // numbers + roomier spacing so the
-                                            // header has real visual presence.
-                                            HStack(spacing: 18) {
-                                                statLabel(count: postCount, label: "posts")
-                                                Button { showFollowers = true } label: { statLabel(count: followerCount, label: "followers") }
-                                                    .buttonStyle(.plain)
-                                                Button { showFollowing = true } label: { statLabel(count: followingCount, label: "following") }
-                                                    .buttonStyle(.plain)
-                                                statLabel(count: totalLikes, label: "felt")
-                                            }
-                                            .padding(.top, 2)
-                                            
-                                            if totalNights > 0 {
-                                                HStack(spacing: 8) {
-                                                    Button {
-                                                        showWeeklyRecap = true
-                                                    } label: {
-                                                        HStack(spacing: 4) {
-                                                            Image(systemName: "moon.stars").font(.system(size: 9))
-                                                            Text("here for \(totalNights) \(totalNights == 1 ? "night" : "nights")")
-                                                                .font(.system(size: 11))
-                                                            if presenceStreak > 1 {
-                                                                Text("· \(presenceStreak) in a row")
-                                                                    .font(.system(size: 11))
-                                                                    .foregroundColor(Color.toskaBlue)
-                                                            }
-                                                        }
-                                                        .foregroundColor(Color.toskaTextLight)
+                                            Text("anonymous · here since \(joinedDate)")
+                                                .font(ToskaFont.eyebrow)
+                                                .textCase(.uppercase)
+                                                .tracking(1.4)
+                                                .foregroundColor(ToskaColor.text3)
+
+                                            Text("@\(userHandle)")
+                                                .font(ToskaFont.serifMedium(22))
+                                                .tracking(-0.4)
+                                                .foregroundColor(ToskaColor.text)
+
+                                            Text("no name, no face. just the things you needed to say.")
+                                                .font(ToskaFont.serifItalic(14))
+                                                .foregroundColor(ToskaColor.text2)
+                                                .lineSpacing(3)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 16)
+                                        .padding(.top, 6)
+                                        .padding(.bottom, 18)
+                        
+                                        HStack(spacing: 0) {
+                                            ForEach(0..<tabIcons.count, id: \.self) { index in
+                                                Button {
+                                                    withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
+                                                } label: {
+                                                    VStack(spacing: 9) {
+                                                        Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
+                                                            .font(.system(size: 18, weight: selectedTab == index ? .medium : .regular))
+                                                            .foregroundColor(selectedTab == index ? ToskaColor.handle : ToskaColor.time)
+                                                        Rectangle()
+                                                            .fill(selectedTab == index ? ToskaColor.handle : Color.clear)
+                                                            .frame(width: 26, height: 2)
                                                     }
-                                                    .buttonStyle(.plain)
-                                                    
-                                                    Button {
-                                                        shareStreak()
-                                                    } label: {
-                                                        ZStack {
-                                                            if isStreakRendering {
-                                                                ProgressView().scaleEffect(0.5).tint(Color.toskaDivider)
-                                                            } else {
-                                                                Image(systemName: "square.and.arrow.up")
-                                                                    .font(.system(size: 9, weight: .light))
-                                                                    .foregroundColor(Color.toskaDivider)
-                                                            }
-                                                        }
-                                                    }
-                                                    .buttonStyle(.plain)
-                                                    .disabled(isStreakRendering)
+                                                    .frame(maxWidth: .infinity)
+                                                    .padding(.top, 13)
                                                 }
                                             }
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 8)
-                                        .padding(.bottom, 14)
-                        
-                                        HStack(spacing: 0) {
-                                                                    ForEach(0..<tabIcons.count, id: \.self) { index in
-                                                                        Button {
-                                                                            withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
-                                                                        } label: {
-                                                                            VStack(spacing: 6) {
-                                                                                Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
-                                                                                    .font(.system(size: 18, weight: selectedTab == index ? .medium : .light))
-                                                                                    .foregroundColor(selectedTab == index ? Color.toskaBlue : Color(hex: "c8c8c8"))
-                                                                                Capsule()
-                                                                                    .fill(selectedTab == index ? Color.toskaBlue : Color.clear)
-                                                                                    .frame(height: 2)
-                                                                            }
-                                                                            .frame(maxWidth: .infinity)
-                                                                        }
-                                                                    }
-                                                                }
-                                                                .padding(.horizontal, 16)
-                                                                .padding(.vertical, 6)
-                        
-                        Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+                                        .padding(.horizontal, 8)
+                                        .overlay(
+                                            Rectangle().fill(ToskaColor.divider).frame(height: 1),
+                                            alignment: .bottom
+                                        )
                         
                                         switch selectedTab {
                                                                 case 0:
@@ -329,7 +286,6 @@ struct ProfileView: View {
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
-        .fullScreenCover(isPresented: $showWeeklyRecap) { EdgeSwipeDismissWrapper { WeeklyRecapView() } }
         .navigationDestination(isPresented: $showFollowers) { FollowListView(title: "followers").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showFollowing) { FollowListView(title: "following").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showPost) {
@@ -420,7 +376,6 @@ struct ProfileView: View {
                     showFollowers = false
                     showFollowing = false
                     showEditReply = false
-                    showWeeklyRecap = false
                 }
     }
     
@@ -499,17 +454,6 @@ struct ProfileView: View {
         }
     }
     
-    func statLabel(count: Int, label: String) -> some View {
-        HStack(spacing: 5) {
-            Text("\(formatCount(count))")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(Color.toskaTextDark)
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundColor(Color.toskaTextLight)
-        }
-    }
-    
     func replyRow(_ reply: MyReply) -> some View {
         Button {
             if !reply.parentPostId.isEmpty {
@@ -539,7 +483,7 @@ struct ProfileView: View {
                     )
                 
                 Text(reply.replyText)
-                    .font(.custom("Georgia", size: 14))
+                    .font(ToskaFont.serif(14))
                     .foregroundColor(Color.toskaTextDark)
                     .lineSpacing(3)
             }
@@ -608,7 +552,7 @@ struct ProfileView: View {
                     .foregroundColor(Color.toskaBlue.opacity(0.4))
                     .padding(.bottom, 2)
                 Text(title)
-                    .font(.custom("Georgia-Italic", size: 18))
+                    .font(ToskaFont.serifItalic(18))
                     .foregroundColor(Color.toskaTextLight)
                 Text(subtitle)
                     .font(.system(size: 11))
@@ -669,14 +613,14 @@ struct ProfileView: View {
                 }
                 
                 Text("saying what i never said")
-                    .font(.custom("Georgia-Italic", size: 13))
+                    .font(ToskaFont.serifItalic(13))
                     .foregroundColor(.white.opacity(0.25))
                 
                 Spacer()
                 
                 VStack(spacing: 4) {
                     Text("toska")
-                        .font(.custom("Georgia-Italic", size: 18))
+                        .font(ToskaFont.serifItalic(18))
                         .foregroundColor(.white.opacity(0.15))
                     Text("for the things you cant say out loud")
                         .font(.system(size: 9))
@@ -1209,7 +1153,7 @@ struct ReplyEngagementRow: View {
                         .foregroundColor(Color(hex: "c8c8c8"))
                 }
                 Text(text)
-                    .font(.custom("Georgia", size: 13))
+                    .font(ToskaFont.serif(13))
                     .foregroundColor(Color.toskaTextDark)
                     .lineSpacing(3)
                     .lineLimit(5)
@@ -1564,11 +1508,11 @@ struct EditReplyView: View {
                 ZStack(alignment: .topLeading) {
                     if replyText.isEmpty {
                         Text("say what you feel...")
-                            .font(.custom("Georgia", size: 16)).foregroundColor(Color(hex: "c0c3ca"))
+                            .font(ToskaFont.serif(16)).foregroundColor(Color(hex: "c0c3ca"))
                             .padding(.horizontal, 18).padding(.top, 16)
                     }
                     TextEditor(text: $replyText)
-                        .font(.custom("Georgia", size: 16)).foregroundColor(Color(hex: "1a1a1a"))
+                        .font(ToskaFont.serif(16)).foregroundColor(Color(hex: "1a1a1a"))
                         .lineSpacing(4).scrollContentBackground(.hidden)
                         .padding(.horizontal, 14).padding(.top, 8)
                         .onChange(of: replyText) { _, newValue in

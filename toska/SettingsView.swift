@@ -106,7 +106,7 @@ struct SettingsView: View {
                                     }
                                 }
                             }
-                            .background(Color.white)
+                            .background(LateNightTheme.cardBackground)
                             .cornerRadius(12)
                         }
                         
@@ -132,7 +132,7 @@ struct SettingsView: View {
                                     miniToggle("milestones", isOn: $settings.notifyMilestones)
                                 }
                             }
-                            .background(Color.white)
+                            .background(LateNightTheme.cardBackground)
                             .cornerRadius(12)
                         }
                         
@@ -161,6 +161,25 @@ struct SettingsView: View {
                                     .padding(.horizontal, 14)
                                 }
                                 Divider().padding(.leading, 14)
+                                NavigationLink(destination: WeeklyRecapView().navigationBarHidden(true)) {
+                                    HStack(alignment: .top) {
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text("your week")
+                                                .font(.system(size: 15, weight: .medium))
+                                                .foregroundColor(ToskaColor.text)
+                                            Text("a quiet recap of what you felt this week")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(ToskaColor.text2)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .regular))
+                                            .foregroundColor(ToskaColor.text3)
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 14)
+                                }
+                                Divider().padding(.leading, 14)
                                 NavigationLink(destination: BlockedUsersListView()) {
                                     HStack {
                                         Text("blocked users")
@@ -175,7 +194,7 @@ struct SettingsView: View {
                                     .padding(.horizontal, 14)
                                 }
                             }
-                            .background(Color.white)
+                            .background(LateNightTheme.cardBackground)
                             .cornerRadius(12)
                         }
                         
@@ -287,7 +306,7 @@ struct SettingsView: View {
                                                         .foregroundColor(Color.toskaTextLight)
                                                     
                                                     Text("i went through a breakup. talked to everyone. they ran out of things to say and i ran out of people to say it to. everyone had moved on but i was still sad. i was on reddit at 2am, downloading random apps, watching sad tiktoks. none of it was it. i just wanted somewhere anonymous where people are going through the same thing and nobody's pretending they're not. so i built it.")
-                                                        .font(.custom("Georgia", size: 12))
+                                                        .font(ToskaFont.serif(12))
                                                         .foregroundColor(Color(hex: "999999"))
                                                         .lineSpacing(4)
                                                         .multilineTextAlignment(.center)
@@ -298,7 +317,7 @@ struct SettingsView: View {
                                                             .font(.system(size: 9))
                                                             .foregroundColor(Color.toskaDivider)
                                                         Text("for the things you couldnt say to them")
-                                                            .font(.custom("Georgia-Italic", size: 9))
+                                                            .font(ToskaFont.serifItalic(9))
                                                             .foregroundColor(Color.toskaDivider.opacity(0.5))
                                                     }
                                                     .padding(.top, 4)
@@ -419,7 +438,8 @@ struct SettingsView: View {
     func groupHeader(_ title: String) -> some View {
         Text(title)
             .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(Color.toskaTextLight)
+            .foregroundColor(ToskaColor.text2)
+            .tracking(0.3)
             .padding(.leading, 4)
     }
 
@@ -439,7 +459,7 @@ struct SettingsView: View {
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .tint(Color.toskaBlue)
+                .tint(ToskaColor.accent)
         }
         .padding(.vertical, 13)
         .padding(.horizontal, 14)
@@ -453,7 +473,7 @@ struct SettingsView: View {
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
-                .tint(Color.toskaBlue)
+                .tint(ToskaColor.accent)
                 .scaleEffect(0.85)
         }
         .padding(.vertical, 8)

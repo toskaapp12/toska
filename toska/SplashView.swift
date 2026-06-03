@@ -31,18 +31,18 @@ struct SplashView: View {
                         .fill(Color.white.opacity(0.18))
                         .frame(width: 60, height: 60)
                     Text("t")
-                        .font(.custom("Georgia-Italic", size: 42))
+                        .font(ToskaFont.serifItalic(42))
                         .foregroundColor(.white)
                 }
                 .padding(.bottom, 14)
 
                 Text("toska")
-                    .font(.custom("Georgia-Italic", size: 42))
+                    .font(ToskaFont.serifItalic(42))
                     .foregroundColor(.white)
                     .padding(.bottom, 6)
 
                 Text("for the things you couldnt say to your ex")
-                    .font(.custom("Georgia-Italic", size: 12))
+                    .font(ToskaFont.serifItalic(12))
                     .foregroundColor(.white.opacity(0.3))
 
                 Spacer()

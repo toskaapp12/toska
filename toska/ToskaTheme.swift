@@ -286,8 +286,7 @@ struct ToskaHeader<Trailing: View>: View {
                 .accessibilityLabel("Back")
             }
             Text(title)
-                .font(.system(size: 22, weight: .bold))
-                .foregroundColor(Color.toskaTextDark)
+                .toskaScreenTitle()
             Spacer()
             trailing()
         }
@@ -771,7 +770,7 @@ struct CrisisCheckInView: View {
                     .foregroundColor(Color.toskaBlue)
 
                 Text(headline)
-                    .font(.custom("Georgia-Italic", size: 18))
+                    .font(ToskaFont.serifItalic(18))
                     .foregroundColor(LateNightTheme.handleText)
                     .multilineTextAlignment(.center)
 
@@ -1020,7 +1019,7 @@ struct AgeGateView: View {
                 .foregroundColor(Color.toskaBlue)
 
             Text("one quick thing")
-                .font(.custom("Georgia-Italic", size: 24))
+                .font(ToskaFont.serifItalic(24))
                 .foregroundColor(.white)
 
             Text("toska is for 17 and up.\nsome of what people share here is heavy.\nwe want to make sure youre ready for that.")
@@ -1068,7 +1067,7 @@ struct AgeGateView: View {
                 .foregroundColor(Color.toskaBlue)
 
             Text("come back when youre older")
-                .font(.custom("Georgia-Italic", size: 22))
+                .font(ToskaFont.serifItalic(22))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
@@ -1141,7 +1140,7 @@ struct PolicyAcceptanceView: View {
                 // Header
                 VStack(spacing: 4) {
                     Text("terms and content policy")
-                        .font(.custom("Georgia-Italic", size: 22))
+                        .font(ToskaFont.serifItalic(22))
                         .foregroundColor(.white)
                     Text("version \(currentPolicyVersion) · last updated 2026")
                         .font(.system(size: 10))
@@ -1496,7 +1495,7 @@ struct ReportSheet: View {
                 .font(.system(size: 32, weight: .light))
                 .foregroundColor(Color.toskaBlue)
             Text("thanks. we'll review this.")
-                .font(.custom("Georgia-Italic", size: 18))
+                .font(ToskaFont.serifItalic(18))
                 .foregroundColor(.white)
             Text("our team reviews every report within 24 hours.")
                 .font(.system(size: 11))
@@ -1543,7 +1542,7 @@ struct ReportSheet: View {
                 .font(.system(size: 32, weight: .light))
                 .foregroundColor(Color.toskaBlue)
             Text("block this user?")
-                .font(.custom("Georgia-Italic", size: 18))
+                .font(ToskaFont.serifItalic(18))
                 .foregroundColor(.white)
             Text("you wont see their posts or messages. they wont be notified.")
                 .font(.system(size: 11))

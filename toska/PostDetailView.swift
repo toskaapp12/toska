@@ -535,14 +535,14 @@ struct PostDetailView: View {
                 .padding(.vertical, 6)
             }
 
-            HStack(spacing: 8) {
-                TextField("say what you feel...", text: $replyText)
-                    .font(.system(size: 13))
+            HStack(spacing: 10) {
+                TextField("say something gently…", text: $replyText)
+                    .font(.system(size: 14))
                     .focused($replyFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Color(hex: "e8eaed"))
-                    .cornerRadius(20)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .background(ToskaColor.input)
+                    .clipShape(Capsule())
                     .onChange(of: replyText) { _, newValue in
                         if newValue.count > 500 { replyText = String(newValue.prefix(500)) }
                         // Persist reply draft per post so a kill mid-typing
@@ -555,19 +555,24 @@ struct PostDetailView: View {
                         }
                     }
                 Button { sendReply() } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(
-                            replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil
-                                ? Color.toskaDivider : Color.toskaBlue
-                        )
+                    ZStack {
+                        Circle()
+                            .fill((replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil) ? ToskaColor.input : ToskaColor.accent)
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor((replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil) ? ToskaColor.text3 : .white)
+                    }
                 }
                 .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil)
             }
-            .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
+            .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
                     }
-        .background(Color.white.ignoresSafeArea(edges: .bottom))
+        .background(
+            LateNightTheme.cardBackground.ignoresSafeArea(edges: .bottom)
+                .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 0.5), alignment: .top)
+        )
            }
 
     // MARK: - Post Header Section
@@ -579,13 +584,13 @@ struct PostDetailView: View {
                     if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
                 } label: {
                     Text(handle)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(Color.toskaBlue)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(ToskaColor.accent)
                 }
                 if isOwnPost {
                     Text("· you")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(Color.toskaBlue.opacity(0.5))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(ToskaColor.accent.opacity(0.6))
                 }
                 if let tag = tag {
                     Text("·").font(.system(size: 9)).foregroundColor(Color.toskaDivider)
@@ -598,15 +603,14 @@ struct PostDetailView: View {
                 }
                 Spacer()
                 Text(time)
-                    .font(.system(size: 10, weight: .light))
-                    .foregroundColor(Color(hex: "c8c8c8"))
+                    .font(.system(size: 12.5))
+                    .foregroundColor(ToskaColor.time)
             }
             .padding(.bottom, 10)
 
             Text(postText)
-                .font(.custom("Georgia", size: 16))
-                .foregroundColor(Color(hex: "1a1a1a"))
-                .lineSpacing(5)
+                .toskaPostDetailBody()
+                .foregroundColor(ToskaColor.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 14)
 
@@ -818,6 +822,11 @@ struct PostDetailView: View {
         ) { result in
             isLiked = result.isLiked
             likeCount = result.newCount
+            // Re-arm suppression from completion time. On slow networks the
+            // fixed 2s-from-tap window can lapse before the write round-trips,
+            // so without this the live listener re-applies the same server
+            // count and re-pulses (visible count flicker). 1.5s absorbs the echo.
+            suppressListenerUntil = Date().addingTimeInterval(1.5)
             if result.isLiked {
                 likePulse = true
                 likePulseTask?.cancel()
@@ -1450,6 +1459,10 @@ struct PostDetailView: View {
             } catch {
                 Telemetry.recordError(error, context: "PostDetailView.postReply")
                 self.replyText = currentReplyText
+                // The send failed — nothing was posted, so release the 5s
+                // rate-limit window the attempt consumed (line 1397) so the
+                // user can retry immediately instead of being blocked.
+                RateLimiter.shared.lastReplyTime = nil
             }
         }
     }
@@ -1525,11 +1538,11 @@ struct EditPostView: View {
                 ZStack(alignment: .topLeading) {
                     if editText.isEmpty {
                         Text("say what you never said...")
-                            .font(.custom("Georgia", size: 16)).foregroundColor(Color(hex: "c0c3ca"))
+                            .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text3)
                             .padding(.horizontal, 18).padding(.top, 16)
                     }
                     TextEditor(text: $editText)
-                        .font(.custom("Georgia", size: 16)).foregroundColor(Color(hex: "1a1a1a"))
+                        .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text)
                         .lineSpacing(4).scrollContentBackground(.hidden)
                         .padding(.horizontal, 14).padding(.top, 8)
                         .onChange(of: editText) { _, newValue in
@@ -1717,9 +1730,8 @@ struct SwipeToReplyRow: View {
                     }
                 }
                 Text(item.reply.text)
-                    .font(.custom("Georgia", size: 15))
-                    .foregroundColor(Color.toskaTextDark)
-                    .lineSpacing(4)
+                    .toskaReplyBody()
+                    .foregroundColor(ToskaColor.text)
                 // Interactive action row — like, save, repost. Matches the
                 // affordances on a top-level post. Each icon is hidden when
                 // the corresponding handler isn't wired (defensive — current

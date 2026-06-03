@@ -26,7 +26,7 @@ struct ContentView: View {
                     if showVerifyError {
                         VStack(spacing: 16) {
                             Text("t")
-                                .font(.custom("Georgia-Italic", size: 42))
+                                .font(ToskaFont.serifItalic(42))
                                 .foregroundColor(.white)
                             Text(Auth.auth().currentUser != nil
                                  ? "setting up your account"
@@ -58,7 +58,7 @@ struct ContentView: View {
                     } else {
                         VStack(spacing: 20) {
                             Text("t")
-                                .font(.custom("Georgia-Italic", size: 42))
+                                .font(ToskaFont.serifItalic(42))
                                 .foregroundColor(.white)
                             ProgressView()
                                 .tint(.white.opacity(0.4))
@@ -85,6 +85,9 @@ struct ContentView: View {
         // anywhere outside a text field lowers the keyboard, without blocking
         // taps on buttons, posts, or scrolling. See KeyboardDismiss.swift.
         .dismissKeyboardOnTap()
+        // Subtle paper-grain texture over the whole surface (3% light / 5%
+        // dark), non-interactive — the editorial "printed page" feel.
+        .overlay(ToskaPaperGrain())
         .fullScreenCover(isPresented: $showPolicyUpdate) {
             // Version-bump retro-prompt. A user declining here is signed out
             // rather than deleted — their account and content persist so they

@@ -38,7 +38,7 @@ struct WeeklyRecapView: View {
                                 } else if postCount == 0 {
                                     VStack(spacing: 12) {
                                         Text("nothing this week.")
-                                            .font(.custom("Georgia-Italic", size: 20))
+                                            .font(ToskaFont.serifItalic(20))
                                             .foregroundColor(.white.opacity(0.4))
                                         Text("say something. it keeps.")
                                             .font(.system(size: 12))
@@ -49,7 +49,7 @@ struct WeeklyRecapView: View {
                                 } else {
                                     VStack(spacing: 24) {                        VStack(spacing: 4) {
                             Text("your week")
-                                                            .font(.custom("Georgia-Italic", size: 22))
+                                                            .font(ToskaFont.serifItalic(22))
                                                             .foregroundColor(.white)
                             Text(weekRangeString())
                                 .font(.system(size: 10))
@@ -75,7 +75,7 @@ struct WeeklyRecapView: View {
                                     .tracking(1)
                                 
                                 Text(topPostText)
-                                    .font(.custom("Georgia", size: 16))
+                                    .font(ToskaFont.serif(16))
                                     .foregroundColor(.white.opacity(0.9))
                                     .lineSpacing(5)
                                     .multilineTextAlignment(.center)
@@ -140,7 +140,7 @@ struct WeeklyRecapView: View {
                                   .animation(.easeIn(duration: 0.6).delay(1.7), value: isVisible)
                               }
                 Text("toska")
-                    .font(.custom("Georgia-Italic", size: 13))
+                    .font(ToskaFont.serifItalic(13))
                     .foregroundColor(.white.opacity(0.12))
                     .padding(.top, 12)
                     .padding(.bottom, 40)
@@ -289,7 +289,7 @@ struct WeeklyRecapView: View {
             VStack(spacing: 16) {
                 Spacer()
                 Text("my week")
-                                    .font(.custom("Georgia-Italic", size: 20))
+                                    .font(ToskaFont.serifItalic(20))
                                     .foregroundColor(.white)
                 Text(weekRangeString())
                     .font(.system(size: 9))
@@ -306,7 +306,7 @@ struct WeeklyRecapView: View {
                 }
                 Spacer()
                 Text("toska")
-                    .font(.custom("Georgia-Italic", size: 12))
+                    .font(ToskaFont.serifItalic(12))
                     .foregroundColor(.white.opacity(0.12))
                     .padding(.bottom, 16)
             }

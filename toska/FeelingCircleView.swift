@@ -121,7 +121,7 @@ struct FeelingCircleView: View {
                                 .font(.system(size: 28, weight: .light))
                                 .foregroundColor(tagColor(for: tag))
                             Text("feeling \(tag)?")
-                                .font(.custom("Georgia-Italic", size: 20))
+                                .font(ToskaFont.serifItalic(20))
                                 .foregroundColor(.white)
                                 .padding(.top, 4)
                             Text("you're not the only one tonight.")

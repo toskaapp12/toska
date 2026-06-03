@@ -110,21 +110,28 @@ struct LateNightTheme {
     }
 
     // Backgrounds
-    static var background: Color      { isLateNight ? Color(hex: "08090a") : Color(hex: "f0f1f3") }
-    static var cardBackground: Color  { isLateNight ? Color(hex: "121314") : Color.white }
-    static var inputBackground: Color { isLateNight ? Color(hex: "17191a") : Color(hex: "e8eaed") }
+    static var background: Color      { isLateNight ? Color(hex: "0A0B0D") : Color(hex: "EEEFF1") }
+    static var bg2: Color             { isLateNight ? Color(hex: "08090A") : Color(hex: "E7E8EB") }
+    static var cardBackground: Color  { isLateNight ? Color(hex: "141517") : Color(hex: "FFFFFF") }
+    static var card2: Color           { isLateNight ? Color(hex: "1C1E21") : Color(hex: "F6F7F8") }
+    static var inputBackground: Color { isLateNight ? Color(hex: "1B1D1F") : Color(hex: "E9EBEE") }
 
     // Text
-    static var primaryText: Color   { isLateNight ? Color(hex: "e0e2e6") : Color(hex: "0a0908") }
-    static var secondaryText: Color { isLateNight ? Color(hex: "85898f") : Color(hex: "8a8d96") }
-    static var tertiaryText: Color  { isLateNight ? Color(hex: "555960") : Color(hex: "b8bbc2") }
-    static var handleText: Color    { isLateNight ? Color(hex: "b0b3b8") : Color(hex: "2a2c32") }
+    static var primaryText: Color   { isLateNight ? Color(hex: "E6E7EA") : Color(hex: "14130F") }
+    static var secondaryText: Color { isLateNight ? Color(hex: "82868D") : Color(hex: "8A8D96") }
+    static var tertiaryText: Color  { isLateNight ? Color(hex: "5C5F66") : Color(hex: "A9ACB4") }
+    static var handleText: Color    { isLateNight ? Color(hex: "B6B9BE") : Color(hex: "2A2C32") }
 
     // Dividers
-    static var divider: Color { isLateNight ? Color(hex: "1c1e1f") : Color(hex: "dfe1e5") }
+    static var divider: Color { isLateNight ? Color(hex: "222427") : Color(hex: "E2E4E8") }
 
-    // Accent stays the same
-    static var accent: Color { Color.toskaBlue }
+    // Accent — theme-aware muted blue (handles, primary buttons, active states)
+    static var accent: Color { isLateNight ? Color(hex: "9AA1B2") : Color(hex: "828AA0") }
+
+    // Timestamp / meta tertiary, badge, and scrim
+    static var timeText: Color { isLateNight ? Color(hex: "4E5157") : Color(hex: "B7BAC1") }
+    static var badge: Color    { Color(hex: "C47A8A") }
+    static var scrim: Color    { isLateNight ? Color.black.opacity(0.66) : Color(hex: "14130F").opacity(0.38) }
 
     // Tab bar
     static var selectedPill: Color { isLateNight ? Color(hex: "1c1e1f") : Color(hex: "dfe1e5").opacity(0.6) }

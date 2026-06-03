@@ -535,13 +535,13 @@ struct OnboardingView: View {
                         .fill(Color.white.opacity(0.1))
                         .frame(width: 50, height: 50)
                     Text("t")
-                        .font(.custom("Georgia-Italic", size: 34))
+                        .font(ToskaFont.serifItalic(34))
                         .foregroundColor(.white)
                 }
                 .padding(.bottom, 8)
                 
                 Text("toska")
-                    .font(.custom("Georgia-Italic", size: 28))
+                    .font(ToskaFont.serifItalic(28))
                     .foregroundColor(.white)
                     .padding(.bottom, 4)
                 
@@ -554,7 +554,7 @@ struct OnboardingView: View {
                     .padding(.bottom, 12)
                 
                 Text("this is a place for the things\nyou wish youd said to them.")
-                    .font(.custom("Georgia-Italic", size: 13))
+                    .font(ToskaFont.serifItalic(13))
                     .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -569,7 +569,7 @@ struct OnboardingView: View {
                 .padding(.bottom, 4)
             
             Text("youre anonymous here")
-                            .font(.custom("Georgia-Italic", size: 24))
+                            .font(ToskaFont.serifItalic(24))
                             .foregroundColor(Color(hex: "111111"))
                         
                         Text("no names. no faces. just what you feel.")
@@ -608,7 +608,7 @@ struct OnboardingView: View {
     var stageStep: some View {
         VStack(spacing: 12) {
             Text("where are you in it")
-                .font(.custom("Georgia-Italic", size: 24))
+                .font(ToskaFont.serifItalic(24))
                 .foregroundColor(.white)
 
             Text("nobody else has to know.\nthis just helps us know what to show you.")
@@ -656,7 +656,7 @@ struct OnboardingView: View {
             // when no stage is selected yet (selectedStage == nil).
             if let stage = selectedStage, let n = stageCohortCount, n > 0 {
                 Text(cohortLine(forCount: n, stage: stage))
-                    .font(.custom("Georgia-Italic", size: 13))
+                    .font(ToskaFont.serifItalic(13))
                     .foregroundColor(Color.toskaBlue.opacity(0.85))
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
@@ -718,7 +718,7 @@ struct OnboardingView: View {
     var moodStep: some View {
             VStack(spacing: 12) {
                 Text("where are you at right now")
-                                    .font(.custom("Georgia-Italic", size: 24))
+                                    .font(ToskaFont.serifItalic(24))
                                     .foregroundColor(.white)
                                 
                                 Text("well show you people who feel the same")
@@ -761,7 +761,7 @@ struct OnboardingView: View {
                     .padding(.bottom, 4)
                 
                 Text("say the thing")
-                                    .font(.custom("Georgia-Italic", size: 24))
+                                    .font(ToskaFont.serifItalic(24))
                                     .foregroundColor(.white)
                                 
                                 Text("the thing youve been holding in.\nthe thing you type and delete.\nsay it here. no one knows its you.")
@@ -779,7 +779,7 @@ struct OnboardingView: View {
                         .tracking(1)
                     
                     Text(promptForMood(selectedMood))
-                        .font(.custom("Georgia-Italic", size: 16))
+                        .font(ToskaFont.serifItalic(16))
                         .foregroundColor(.white.opacity(0.8))
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)

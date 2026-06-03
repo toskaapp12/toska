@@ -80,12 +80,12 @@ struct FeedView: View {
                     // tag chips / trending / "feeling people" experience.
             HStack {
                             Text("toska")
-                                .font(.custom("Georgia-Italic", size: 22))
-                                .foregroundColor(LateNightTheme.handleText)
+                                .toskaScreenTitle()
                             Spacer()
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
 
             // MARK: - Take-a-break banner
             //
@@ -158,26 +158,34 @@ struct FeedView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // MARK: - Tab bar
-            HStack(spacing: 6) {
+            // MARK: - Tab bar (full-width segmented control)
+            HStack(spacing: 3) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
+                    let isSel = vm.selectedTab == index
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             vm.selectedTab = index
                         }
                     } label: {
                         Text(vm.tabs[index])
-                            .font(.system(size: 13, weight: vm.selectedTab == index ? .semibold : .regular))
-                            .foregroundColor(vm.selectedTab == index ? LateNightTheme.handleText : LateNightTheme.secondaryText)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(vm.selectedTab == index ? LateNightTheme.selectedPill : Color.clear)
-                            .clipShape(Capsule())
+                            .font(.system(size: 14, weight: isSel ? .semibold : .medium))
+                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 34)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(isSel ? ToskaColor.card : Color.clear)
+                                    .shadow(color: isSel ? Color.black.opacity(0.08) : Color.clear, radius: 3, x: 0, y: 1)
+                            )
                     }
+                    .buttonStyle(.plain)
                 }
-                Spacer()
             }
-            .padding(.horizontal, 12)
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ToskaColor.input)
+            )
+            .padding(.horizontal, 16)
             .padding(.vertical, 4)
             
             Rectangle()
@@ -229,7 +237,9 @@ struct FeedView: View {
                                                 .background(Color(hex: "c45c5c").opacity(0.06))
                                             }
                                 // MARK: - Collapsed feed header
-                                                    if vm.selectedTab == 0 {
+                                // Hidden while searching (focused or query present)
+                                // so the search + filter chips take over the top.
+                                                    if vm.selectedTab == 0 && !(searchFocused || !searchText.isEmpty) {
                                                         FeedHeaderCard(vm: vm)
                                                     }
 
@@ -244,45 +254,53 @@ struct FeedView: View {
                                 // remains accessible from the empty-feed
                                 // state's "explore" button below for the
                                 // separate browse-by-tag flow.
-                                HStack(spacing: 8) {
-                                    Image(systemName: "magnifyingglass")
-                                        .font(.system(size: 14, weight: .regular))
-                                        .foregroundColor(LateNightTheme.secondaryText)
-                                    TextField("search", text: $searchText)
-                                        .font(.system(size: 14))
-                                        .foregroundColor(LateNightTheme.handleText)
-                                        .autocorrectionDisabled()
-                                        .textInputAutocapitalization(.never)
-                                        .focused($searchFocused)
-                                        .submitLabel(.search)
-                                        .accessibilityLabel("Search")
-                                    if !searchText.isEmpty {
+                                HStack(spacing: 10) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "magnifyingglass")
+                                            .font(.system(size: 17, weight: .regular))
+                                            .foregroundColor(ToskaColor.text2)
+                                        TextField("search", text: $searchText)
+                                            .font(.system(size: 14))
+                                            .foregroundColor(ToskaColor.handle)
+                                            .autocorrectionDisabled()
+                                            .textInputAutocapitalization(.never)
+                                            .focused($searchFocused)
+                                            .submitLabel(.search)
+                                            .accessibilityLabel("Search")
+                                        if !searchText.isEmpty {
+                                            Button {
+                                                searchText = ""
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 15))
+                                                    .foregroundColor(ToskaColor.text3)
+                                            }
+                                            .accessibilityLabel("Clear search")
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    .background(ToskaColor.input)
+                                    .overlay(
+                                        Capsule().stroke(ToskaColor.divider, lineWidth: 1)
+                                    )
+                                    .clipShape(Capsule())
+
+                                    // Cancel — appears while searching; clears the
+                                    // query and drops focus, returning to the feed.
+                                    if searchFocused || !searchText.isEmpty {
                                         Button {
                                             searchText = ""
                                             searchFocused = false
                                         } label: {
-                                            Image(systemName: "xmark.circle.fill")
+                                            Text("cancel")
                                                 .font(.system(size: 15))
-                                                .foregroundColor(LateNightTheme.tertiaryText)
+                                                .foregroundColor(ToskaColor.accent)
                                         }
-                                        .accessibilityLabel("Clear search")
+                                        .transition(.opacity)
                                     }
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                // Solid grey instead of barely-visible 6% white
-                                // overlay. With a thin border the bar reads as
-                                // a proper search field rather than a faint
-                                // ghost outline.
-                                .background(Color.toskaDivider.opacity(0.18))
-                                .overlay(
-                                    Capsule().stroke(Color.toskaDivider.opacity(0.4), lineWidth: 0.5)
-                                )
-                                .clipShape(Capsule())
-                                .padding(.horizontal, 12)
-                                // More breathing room above (between prompt /
-                                // response card and the search) and below
-                                // (between search and the first feed row).
+                                .padding(.horizontal, 16)
                                 .padding(.top, 14)
                                 .padding(.bottom, 6)
 
@@ -295,24 +313,42 @@ struct FeedView: View {
                                 // Hidden as soon as focus leaves the search
                                 // bar so the chrome doesn't compete with the
                                 // feed in the resting state.
-                                if searchFocused {
+                                if searchFocused || !searchText.isEmpty {
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         HStack(spacing: 8) {
+                                            // "all" — clears the tag filter. Selected
+                                            // (dark pill) when no tag query is active.
+                                            let allSelected = searchText.isEmpty
+                                            Button {
+                                                searchText = ""
+                                            } label: {
+                                                Text("all")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
+                                                    .padding(.horizontal, 13)
+                                                    .padding(.vertical, 5)
+                                                    .background(allSelected ? ToskaColor.handle : Color.clear)
+                                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
+                                                    .clipShape(Capsule())
+                                            }
+                                            .buttonStyle(.plain)
+
                                             ForEach(sharedTags, id: \.name) { tag in
+                                                let isSel = searchText == tag.name
                                                 Button {
                                                     searchText = tag.name
                                                     searchFocused = false
                                                 } label: {
-                                                    HStack(spacing: 4) {
+                                                    HStack(spacing: 5) {
                                                         Image(systemName: tag.icon)
-                                                            .font(.system(size: 10))
+                                                            .font(.system(size: 11))
                                                         Text(tag.name)
-                                                            .font(.system(size: 11, weight: .medium))
+                                                            .font(.system(size: 13, weight: .medium))
                                                     }
-                                                    .foregroundColor(Color(hex: tag.colorHex))
-                                                    .padding(.horizontal, 10)
-                                                    .padding(.vertical, 6)
-                                                    .background(Color(hex: tag.colorHex).opacity(0.12))
+                                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 7)
+                                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
                                                     .clipShape(Capsule())
                                                 }
                                                 .buttonStyle(.plain)
@@ -320,15 +356,15 @@ struct FeedView: View {
                                         }
                                         .padding(.horizontal, 16)
                                     }
-                                    .padding(.top, 8)
-                                    .padding(.bottom, 2)
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 12)
                                     .transition(.opacity)
                                 }
 
                                 if vm.selectedTab == 1 && vm.followingPosts.isEmpty {
                                                         VStack(spacing: 12) {
                                                             Text("\"the things we don't\nsay out loud still\nneed somewhere to go.\"")
-                                                                .font(.custom("Georgia-Italic", size: 20))
+                                                                .font(ToskaFont.serifItalic(20))
                                                                 .foregroundColor(LateNightTheme.tertiaryText)
                                                                 .multilineTextAlignment(.center)
                                                                 .lineSpacing(4)
@@ -643,8 +679,8 @@ struct FeedView: View {
                             handle: witness.handle,
                             text: witness.text,
                             tag: witness.tag,
-                            likes: 0,
-                            reposts: 0,
+                            likes: witness.likeCount,
+                            reposts: witness.repostCount,
                             replies: 0,
                             time: witness.timeString
                         )
@@ -779,7 +815,11 @@ struct FeedPostRow: View {
         // FeedView when post.originalHandle is set. Drives the
         // "@handle reposted" provenance row at the top of the cell.
         var reposterHandle: String? = nil
-        
+        // Optional leaderboard rank (felt-most page). When set, a subtle
+        // serif-italic "01" badge renders at the trailing edge of the handle
+        // row. nil everywhere else, so the feed is unaffected.
+        var rank: Int? = nil
+
         @State private var isSaved = false
         @State private var isLiked = false
         @State private var isReposted = false
@@ -846,7 +886,7 @@ struct FeedPostRow: View {
                         Text("\(reposter) reposted")
                             .font(.system(size: 11, weight: .medium))
                     }
-                    .foregroundColor(Color.toskaTimestamp)
+                    .foregroundColor(ToskaColor.text3)
                     .padding(.bottom, 6)
                 }
 
@@ -855,18 +895,25 @@ struct FeedPostRow: View {
                 // separator dot and ellipsis bumped to match.
                     HStack(spacing: 6) {
                                             Text(handle)
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundColor(Color.toskaBlue)
+                                                .font(ToskaFont.handle)
+                                                .foregroundColor(ToskaColor.accent)
 
-                                            Text("·")
-                                                .font(.system(size: 11))
-                                                .foregroundColor(Color.toskaDivider)
+                                            Circle()
+                                                .fill(ToskaColor.text3)
+                                                .frame(width: 2.5, height: 2.5)
 
                                             Text(time)
-                                                .font(.system(size: 12))
-                                                .foregroundColor(Color.toskaTimestamp)
+                                                .font(ToskaFont.meta)
+                                                .foregroundColor(ToskaColor.text3)
 
                                             Spacer()
+
+                                            if let rank = rank {
+                                                Text(String(format: "%02d", rank))
+                                                    .font(ToskaFont.serifItalic(13))
+                                                    .foregroundColor(ToskaColor.text3)
+                                                    .padding(.trailing, 2)
+                                            }
 
                                             if isMidnightPost {
                                                 Image(systemName: "moon.fill")
@@ -898,7 +945,7 @@ struct FeedPostRow: View {
                                                 } label: {
                                                     Image(systemName: "ellipsis")
                                                         .font(.system(size: 13))
-                                                        .foregroundColor(Color.toskaTimestamp)
+                                                        .foregroundColor(ToskaColor.text3)
                                                         .padding(.horizontal, 6)
                                                         .padding(.vertical, 4)
                                                         .contentShape(Rectangle())
@@ -906,7 +953,7 @@ struct FeedPostRow: View {
                                                 .accessibilityLabel("More options for \(handle)'s post")
                                             }
                                         }
-                                        .padding(.bottom, 10)
+                                        .padding(.bottom, 8)
                 
                 // Post text
                 if !text.isEmpty {
@@ -921,9 +968,9 @@ struct FeedPostRow: View {
                             .foregroundColor(Color(hex: "c9a97a"))
                             
                             Text(text)
-                                                            .font(.custom("Georgia", size: 15))
-                                                            .foregroundColor(LateNightTheme.primaryText)
-                                                            .lineSpacing(6)
+                                                            .font(ToskaFont.postBody)
+                                                            .foregroundColor(ToskaColor.text)
+                                                            .lineSpacing(4)
                                                             .lineLimit(3)
                             
                             Button {
@@ -951,9 +998,9 @@ struct FeedPostRow: View {
                             }
                             
                             Text(text)
-                                                            .font(.custom("Georgia", size: 15))
-                                                            .foregroundColor(LateNightTheme.primaryText)
-                                                            .lineSpacing(6)
+                                                            .font(ToskaFont.postBody)
+                                                            .foregroundColor(ToskaColor.text)
+                                                            .lineSpacing(4)
                                                             .multilineTextAlignment(.leading)
                         }
                         .padding(.bottom, 8)
@@ -969,16 +1016,17 @@ struct FeedPostRow: View {
                                         // visual vocabulary is consistent.
                                         if let tag = tag {
                                             HStack(spacing: 4) {
-                                                Image(systemName: sharedTags.first(where: { $0.name == tag })?.icon ?? "tag")
-                                                    .font(.system(size: 9, weight: .medium))
+                                                Image(systemName: ToskaEmotion.icon(tag))
+                                                    .font(.system(size: 10, weight: .medium))
                                                 Text(tag)
-                                                    .font(.system(size: 11, weight: .medium))
+                                                    .font(.system(size: 11, weight: .semibold))
                                             }
-                                            .foregroundColor(tagColor(for: tag).opacity(0.8))
-                                            .padding(.horizontal, 10)
+                                            .foregroundColor(tagColor(for: tag))
                                             .padding(.vertical, 4)
-                                            .background(tagColor(for: tag).opacity(0.08))
-                                            .cornerRadius(12)
+                                            .padding(.leading, 8)
+                                            .padding(.trailing, 10)
+                                            .background(tagColor(for: tag).opacity(0.13))
+                                            .clipShape(Capsule())
                                             .padding(.bottom, 10)
                                         }
                                         
@@ -1010,83 +1058,95 @@ struct FeedPostRow: View {
                     // Action bar — larger icons + a bit tighter spacing so
                                     // the row feels more substantial without crowding.
                                     if !postId.isEmpty {
-                                        HStack(spacing: 24) {
-                                                                                   NavigationLink {
-                                                                                       PostDetailView(
-                                                                                           postId: postId,
-                                                                                           handle: handle,
-                                                                                           text: text,
-                                                                                           tag: tag,
-                                                                                           likes: localLikeCount,
-                                                                                           reposts: localRepostCount,
-                                                                                           replies: replies,
-                                                                                           time: time,
-                                                                                           authorId: authorId,
-                                                                                           isAlreadyLiked: isLiked,
-                                                                                           isAlreadySaved: isSaved,
-                                                                                           isAlreadyReposted: isReposted
-                                                                                       )
-                                                                                       .navigationBarHidden(true)
-                                                                                   } label: {
-                                                                                       actionLabel(icon: "bubble.left", count: replies, isActive: false)
-                                                                                   }
-                                                                                   .accessibilityLabel("Reply")
-                                                                                   .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
-                                                                                   .buttonStyle(.plain)
+                                        HStack(spacing: 0) {
+                                            // reply
+                                            NavigationLink {
+                                                PostDetailView(
+                                                    postId: postId,
+                                                    handle: handle,
+                                                    text: text,
+                                                    tag: tag,
+                                                    likes: localLikeCount,
+                                                    reposts: localRepostCount,
+                                                    replies: replies,
+                                                    time: time,
+                                                    authorId: authorId,
+                                                    isAlreadyLiked: isLiked,
+                                                    isAlreadySaved: isSaved,
+                                                    isAlreadyReposted: isReposted
+                                                )
+                                                .navigationBarHidden(true)
+                                            } label: {
+                                                actionLabel(icon: "bubble.left", count: replies, isActive: false)
+                                            }
+                                            .accessibilityLabel("Reply")
+                                            .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
+                                            .buttonStyle(.plain)
 
-                                                                                   Button { repostPost() } label: {
-                                                                                       actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
-                                                                                   }
-                                                                                   .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
-                                                                                   .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                                                                   .buttonStyle(.plain)
-                                                                                   .disabled(isRepostPost)
-                                                                                   .opacity(isRepostPost ? 0.3 : 1.0)
+                                            Spacer(minLength: 8)
 
-                                                                                   Button { toggleSave() } label: {
-                                                                                       Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                                                           .font(.system(size: 17, weight: .regular))
-                                                                                           .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaDivider)
-                                                                                   }
-                                                                                   .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-                                                                                   .buttonStyle(.plain)
+                                            // repost
+                                            Button { repostPost() } label: {
+                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
+                                            }
+                                            .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                                            .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                            .buttonStyle(.plain)
+                                            .disabled(isRepostPost)
+                                            .opacity(isRepostPost ? 0.3 : 1.0)
 
-                                                                                   if isShareable {
-                                                                                       Button { showShareCard = true } label: {
-                                                                                           Image(systemName: "square.and.arrow.up")
-                                                                                               .font(.system(size: 17, weight: .regular))
-                                                                                               .foregroundColor(Color.toskaDivider)
-                                                                                       }
-                                                                                       .accessibilityLabel("Share post")
-                                                                                       .buttonStyle(.plain)
-                                                                                   }
+                                            Spacer(minLength: 8)
 
-                                                                                   Spacer()
+                                            // like (with burst overlay — only visible mid-animation;
+                                            // allowsHitTesting(false) so taps still hit the button)
+                                            Button { toggleLike() } label: {
+                                                ZStack {
+                                                    actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                                    Image(systemName: "heart.fill")
+                                                        .font(.system(size: 15, weight: .regular))
+                                                        .foregroundColor(ToskaColor.badge)
+                                                        .scaleEffect(likeBurstScale)
+                                                        .opacity(likeBurstOpacity)
+                                                        .allowsHitTesting(false)
+                                                        .alignmentGuide(.leading) { $0[.leading] }
+                                                }
+                                            }
+                                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                                            .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                            .buttonStyle(.plain)
+                                            .scaleEffect(likePulse ? 1.15 : 1.0)
+                                            .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
 
-                                                                                   Button { toggleLike() } label: {
-                                                                                       ZStack {
-                                                                                           actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
-                                                                                           // Burst overlay — only visible mid-animation
-                                                                                           // (opacity > 0). Positioned over the heart icon
-                                                                                           // and allowsHitTesting(false) so taps still go
-                                                                                           // to the button. Aligned to leading so it
-                                                                                           // pops from the icon, not the count.
-                                                                                           Image(systemName: "heart.fill")
-                                                                                               .font(.system(size: 17, weight: .regular))
-                                                                                               .foregroundColor(Color(hex: "c47a8a"))
-                                                                                               .scaleEffect(likeBurstScale)
-                                                                                               .opacity(likeBurstOpacity)
-                                                                                               .allowsHitTesting(false)
-                                                                                               .alignmentGuide(.leading) { $0[.leading] }
-                                                                                       }
-                                                                                   }
-                                                                                   .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                                                                                   .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                                                                   .buttonStyle(.plain)
-                                                                                   .scaleEffect(likePulse ? 1.15 : 1.0)
-                                                                                   .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
-                                                                               }
-                                        .padding(.top, 16)
+                                            Spacer(minLength: 8)
+
+                                            // bookmark
+                                            Button { toggleSave() } label: {
+                                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                                                    .font(.system(size: 15, weight: .regular))
+                                                    .foregroundColor(isSaved ? ToskaColor.accent : ToskaColor.text3)
+                                            }
+                                            .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
+                                            .buttonStyle(.plain)
+
+                                            Spacer(minLength: 8)
+
+                                            // share (keep the slot balanced when hidden)
+                                            if isShareable {
+                                                Button { showShareCard = true } label: {
+                                                    Image(systemName: "square.and.arrow.up")
+                                                        .font(.system(size: 15, weight: .regular))
+                                                        .foregroundColor(ToskaColor.text3)
+                                                }
+                                                .accessibilityLabel("Share post")
+                                                .buttonStyle(.plain)
+                                            } else {
+                                                Color.clear.frame(width: 18, height: 1)
+                                            }
+                                        }
+                                        // Evenly-spaced row, left-aligned, capped width so the
+                                        // icons sit in a tidy band (not stretched edge-to-edge).
+                                        .frame(maxWidth: 278, alignment: .leading)
+                                        .padding(.top, 4)
                                     }
                                 }
                                             // Span the full width so the whole card is one
@@ -1098,25 +1158,18 @@ struct FeedPostRow: View {
                                             // tapping anywhere on the post opens it; the action
                                             // buttons still capture their own taps.
                                             .frame(maxWidth: .infinity, alignment: .leading)
+                                            // Card interior padding (16 × 17). The press
+                                            // highlight lives in FeedRowPressStyle on the
+                                            // content link; no manual press gesture here.
                                             .padding(.horizontal, 16)
-                                            .padding(.top, 18)
-                                            .padding(.bottom, 16)
-                                            // Solid row background. The press
-                                            // highlight lives in FeedRowPressStyle
-                                            // on the content link now, so there's
-                                            // no manual press gesture here — the
-                                            // old LongPressGesture fired on
-                                            // touch-down, flickered during scroll,
-                                            // and competed with the scroll view
-                                            // for taps (opening posts mid-scroll).
-                                            .background(LateNightTheme.background)
+                                            .padding(.vertical, 14)
                                             .contentShape(Rectangle())
-                                            .overlay(
-                                Rectangle()
-                                    .fill(LateNightTheme.divider)
-                                    .frame(height: 0.5),
-                                alignment: .bottom
-                            )
+                                            // Editorial card: card bg, radius 18, 1px
+                                            // hairline border + subtle lift (replaces the
+                                            // old full-width row + bottom divider).
+                                            .toskaCard()
+                                            .padding(.horizontal, 16)
+                                            .padding(.bottom, 10)
                 .contextMenu {
                     Button {
                         toggleLike()
@@ -1171,6 +1224,15 @@ struct FeedPostRow: View {
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty { isReposted = newValue }
                 }
+                // Adopt the latest server counts when the same post id is
+                // re-delivered by a feed refresh — without these, the row keeps
+                // its first-seen like/repost numbers and drifts from the server.
+                .onChange(of: likes) { _, newValue in
+                    if !postId.isEmpty { localLikeCount = newValue }
+                }
+                .onChange(of: reposts) { _, newValue in
+                    if !postId.isEmpty { localRepostCount = newValue }
+                }
                 // Opening the post uses push navigation (the NavigationLink
                 // wrapping the content above) so it slides in from the right.
                 // Share and report stay as modal covers — secondary leaf
@@ -1212,16 +1274,17 @@ struct FeedPostRow: View {
     
     // MARK: - Action Label
 
-    func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "9198a8") -> some View {
+    func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "828AA0") -> some View {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 17, weight: .regular))
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(isActive ? Color(hex: activeColor) : ToskaColor.text3)
                 if count > 0 {
                     Text(formatCount(count))
-                        .font(.system(size: 12))
+                        .font(ToskaFont.actionCount)
+                        .foregroundColor(ToskaColor.text2)
                 }
             }
-            .foregroundColor(isActive ? Color(hex: activeColor) : Color.toskaDivider)
         }
     
     // MARK: - Like
@@ -1337,41 +1400,47 @@ struct FeedHeaderCard: View {
                 Button {
                                     withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                                 } label: {
-                                    HStack(spacing: 0) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(vm.promptTimeLabel)
-                                                .font(.system(size: 9, weight: .semibold))
-                                                .foregroundColor(.white.opacity(0.5))
-                                                .tracking(0.5)
-                                            
-                                            Text(vm.todaysPrompt.0)
-                                                .font(.custom("Georgia-Italic", size: 14))
-                                                .foregroundColor(.white.opacity(0.9))
-                                                .lineLimit(isExpanded ? nil : 2)
-                                                .multilineTextAlignment(.leading)
+                                    VStack(alignment: .leading, spacing: 7) {
+                                        // Eyebrow — uppercase, tracked, muted.
+                                        Text(vm.promptTimeLabel)
+                                            .font(ToskaFont.eyebrow)
+                                            .textCase(.uppercase)
+                                            .foregroundColor(ToskaColor.text3)
+                                            .tracking(1.4)
 
-                                            // Daily rhythm cue — makes the
-                                            // one-per-day cadence visible so
-                                            // users feel the prompt is fresh
-                                            // each morning and theirs alone
-                                            // for the day.
-                                            Text("new one tomorrow.")
-                                                .font(.system(size: 9, weight: .regular))
-                                                .foregroundColor(.white.opacity(0.4))
-                                                .padding(.top, 2)
+                                        // Greeting — editorial serif italic on the
+                                        // plain surface (no card).
+                                        Text(vm.todaysPrompt.0)
+                                            .font(ToskaFont.serifItalic(17))
+                                            .foregroundColor(ToskaColor.text)
+                                            .lineSpacing(3)
+                                            .lineLimit(isExpanded ? nil : 3)
+                                            .multilineTextAlignment(.leading)
+
+                                        // "todays moment" affordance — accent link row
+                                        // (sparkle + label + chevron), per design.
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "sparkle")
+                                                .font(.system(size: 13))
+                                                .foregroundColor(ToskaColor.accent)
+                                            Text("todays moment")
+                                                .font(.system(size: 12.5, weight: .semibold))
+                                                .foregroundColor(ToskaColor.accent)
+                                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                                .font(.system(size: 11, weight: .semibold))
+                                                .foregroundColor(ToskaColor.accent)
                                         }
-                                        
-                                        Spacer()
-                                        
-                                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                            .font(.system(size: 10, weight: .light))
-                                            .foregroundColor(.white.opacity(0.3))
+                                        .padding(.top, 2)
+
+                                        if isExpanded {
+                                            Text("new one tomorrow.")
+                                                .font(.system(size: 10, weight: .regular))
+                                                .foregroundColor(ToskaColor.text3)
+                                        }
                                     }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(Color.toskaBlue)
-                                    .cornerRadius(12)
-                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
                                     // Bumped 8→16 so the prompt card has
                                     // breathing room below the for-you /
                                     // following divider line — the line was
@@ -1417,8 +1486,9 @@ struct FeedHeaderCard: View {
                                     .foregroundColor(Color.toskaTimestamp)
                             }
                             Text(response.text)
-                                .font(.custom("Georgia", size: 13))
-                                .foregroundColor(LateNightTheme.primaryText)
+                                .font(ToskaFont.serif(14))
+                                .foregroundColor(ToskaColor.text)
+                                .lineSpacing(3)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
@@ -1611,11 +1681,11 @@ struct TagItem {
 }
 
 let sharedTags: [TagItem] = [
-    TagItem(name: "longing", colorHex: "9198a8", icon: "moon.stars"),
-    TagItem(name: "anger", colorHex: "c45c5c", icon: "flame"),
-    TagItem(name: "regret", colorHex: "8b7ec8", icon: "arrow.uturn.backward"),
-    TagItem(name: "acceptance", colorHex: "6ba58e", icon: "leaf"),
-    TagItem(name: "confusion", colorHex: "c49a6c", icon: "questionmark.circle"),
+    TagItem(name: "longing", colorHex: "8B92A6", icon: "moon.stars"),
+    TagItem(name: "anger", colorHex: "C0635E", icon: "flame"),
+    TagItem(name: "regret", colorHex: "8B7EC8", icon: "arrow.uturn.backward"),
+    TagItem(name: "acceptance", colorHex: "5F9E89", icon: "leaf"),
+    TagItem(name: "confusion", colorHex: "C09A6A", icon: "questionmark.circle"),
     TagItem(name: "unsent", colorHex: "7a97b5", icon: "envelope"),
     TagItem(name: "moving on", colorHex: "5a9e8f", icon: "arrow.right.circle"),
     TagItem(name: "still love you", colorHex: "c47a8a", icon: "heart"),
@@ -1652,15 +1722,15 @@ func timeOfDayLabel() -> String {
 
 func tagColor(for tag: String) -> Color {
     switch tag {
-    case "longing": return Color.toskaBlue
-    case "anger": return Color(hex: "c45c5c")
-    case "regret": return Color(hex: "8b7ec8")
-    case "acceptance": return Color(hex: "6ba58e")
-    case "confusion": return Color(hex: "c49a6c")
-    case "unsent": return Color(hex: "7a97b5")
-    case "moving on": return Color(hex: "5a9e8f")
-    case "still love you": return Color(hex: "c47a8a")
-    default: return Color.toskaBlue
+    case "longing": return Color(hex: "8B92A6")
+    case "anger": return Color(hex: "C0635E")
+    case "regret": return Color(hex: "8B7EC8")
+    case "acceptance": return Color(hex: "5F9E89")
+    case "confusion": return Color(hex: "C09A6A")
+    case "unsent": return Color(hex: "7A97B5")
+    case "moving on": return Color(hex: "5A9E8F")
+    case "still love you": return Color(hex: "C47A8A")
+    default: return Color(hex: "8B92A6")
     }
 }
 

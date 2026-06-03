@@ -146,13 +146,13 @@ struct ComposeView: View {
                     // a new entry or revising the open one.
                     Button { saveAsDraft() } label: {
                         Text(editingDraftId == nil ? "save" : "update")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(canSave ? Color.toskaBlue : Color.toskaBlue.opacity(0.4))
-                            .padding(.horizontal, 14)
+                            .font(.system(size: 14.5, weight: .semibold))
+                            .foregroundColor(canSave ? ToskaColor.text : ToskaColor.text3)
+                            .padding(.horizontal, 16)
                             .padding(.vertical, 8)
                             .background(Color.clear)
                             .overlay(
-                                Capsule().stroke(canSave ? Color.toskaBlue : Color.toskaBlue.opacity(0.3), lineWidth: 0.5)
+                                Capsule().stroke(ToskaColor.divider, lineWidth: 1)
                             )
                             .clipShape(Capsule())
                     }
@@ -161,11 +161,11 @@ struct ComposeView: View {
 
                     Button { attemptPost() } label: {
                         Text(isPosting ? "posting..." : "post")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(.system(size: 14.5, weight: .semibold))
+                            .foregroundColor(canPost ? .white : ToskaColor.text2)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 8)
-                            .background(canPost ? Color.toskaBlue : Color.toskaBlue.opacity(0.4))
+                            .background(canPost ? ToskaColor.accent : ToskaColor.input)
                             .clipShape(Capsule())
                     }
                     .disabled(!canPost)
@@ -184,7 +184,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: showTagPicker ? "tag.fill" : "tag")
                             .font(.system(size: 16, weight: .light))
-                            .foregroundColor(showTagPicker ? Color.toskaBlue : LateNightTheme.secondaryText)
+                            .foregroundColor(showTagPicker ? ToskaColor.accent : ToskaColor.text2)
                     }
                     .accessibilityLabel("Tag")
 
@@ -236,12 +236,12 @@ struct ComposeView: View {
                     Button { showGifPicker = true } label: {
                         Text("GIF")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.secondaryText)
+                            .foregroundColor(selectedGifUrl != nil ? ToskaColor.accent : ToskaColor.text2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4)
-                                    .stroke(selectedGifUrl != nil ? Color.toskaBlue : LateNightTheme.tertiaryText, lineWidth: 1)
+                                    .stroke(selectedGifUrl != nil ? ToskaColor.accent : ToskaColor.divider, lineWidth: 1)
                             )
                     }
                     .accessibilityLabel("Add GIF")
@@ -257,7 +257,7 @@ struct ComposeView: View {
                                 Circle()
                                     .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
                                     .stroke(
-                                        isNearLimit ? Color(hex: "c45c5c") : Color.toskaBlue,
+                                        isNearLimit ? Color(hex: "c45c5c") : ToskaColor.accent,
                                         style: StrokeStyle(lineWidth: 2, lineCap: .round)
                                     )
                                     .frame(width: 24, height: 24)
@@ -366,14 +366,14 @@ struct ComposeView: View {
                         ZStack(alignment: .topLeading) {
                             if text.isEmpty {
                                 Text(composePlaceholder)
-                                    .font(.custom("Georgia", size: 18))
+                                    .font(ToskaFont.serif(18))
                                     .foregroundColor(LateNightTheme.isLateNight ? Color(hex: "3a3835") : Color(hex: "c0c3ca"))
                                     .padding(.horizontal, 16)
                                     .padding(.top, 12)
                             }
 
                             TextEditor(text: $text)
-                                                            .font(.custom("Georgia", size: 18))
+                                                            .font(ToskaFont.serif(18))
                                                             .foregroundColor(LateNightTheme.primaryText)
                                                             .lineSpacing(5)
                                                             .scrollContentBackground(.hidden)
@@ -574,7 +574,7 @@ struct ComposeView: View {
                         .foregroundColor(Color(hex: "c45c5c"))
 
                     Text("hold on")
-                        .font(.custom("Georgia-Italic", size: 18))
+                        .font(ToskaFont.serifItalic(18))
                         .foregroundColor(LateNightTheme.handleText)
 
                     Text(contentWarningMessage)
@@ -614,7 +614,7 @@ struct ComposeView: View {
                         .foregroundColor(Color(hex: "c9a97a"))
 
                     Text("keep it anonymous")
-                        .font(.custom("Georgia-Italic", size: 18))
+                        .font(ToskaFont.serifItalic(18))
                         .foregroundColor(LateNightTheme.handleText)
 
                     Text("your post might include a name or identifying info.\n\neveryone here is anonymous. including the people in your story. thats what makes it safe.")
@@ -786,13 +786,13 @@ struct ComposeView: View {
             }
             return
         }
-        if !trimmedText.isEmpty, let violation = contentViolation(in: text) {
+        if !trimmedText.isEmpty, let violation = contentViolation(in: trimmedText) {
             contentWarningMessage = contentViolationMessage(for: violation)
             showContentWarning = true
             return
         }
-        if !trimmedText.isEmpty && containsNameOrIdentifyingInfo(text) { showNameWarning = true; return }
-        if !trimmedText.isEmpty, let level = crisisCheckLevelRespectingSetting(for: text) {
+        if !trimmedText.isEmpty && containsNameOrIdentifyingInfo(trimmedText) { showNameWarning = true; return }
+        if !trimmedText.isEmpty, let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
             gentleCheckLevel = level
             showGentleCheck = true
         } else {

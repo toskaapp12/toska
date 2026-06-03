@@ -37,7 +37,7 @@ struct AnniversaryCardView: View {
             .padding(.bottom, 10)
 
             Text(post.text)
-                .font(.custom("Georgia", size: 14))
+                .font(ToskaFont.serif(14))
                 .foregroundColor(Color.toskaTextDark)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
@@ -73,7 +73,7 @@ struct AnniversaryCardView: View {
                     .padding(.top, 4)
 
                     Text(reflectionText)
-                        .font(.custom("Georgia", size: 13))
+                        .font(ToskaFont.serif(13))
                         .foregroundColor(Color.toskaTextDark.opacity(0.8))
                         .lineSpacing(3)
                 }
@@ -89,7 +89,7 @@ struct AnniversaryCardView: View {
                         .padding(.top, 4)
 
                     TextField("reflect on this moment...", text: $reflectionText, axis: .vertical)
-                        .font(.custom("Georgia", size: 13))
+                        .font(ToskaFont.serif(13))
                         .foregroundColor(Color.toskaTextDark)
                         .lineLimit(4)
 

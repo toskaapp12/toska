@@ -69,7 +69,7 @@ struct DailyMomentView: View {
                     Spacer()
 
                     Text(postText)
-                        .font(.custom("Georgia", size: 22))
+                        .font(ToskaFont.serif(22))
                         .foregroundColor(.white.opacity(0.95))
                         .lineSpacing(8)
                         .multilineTextAlignment(.center)
@@ -131,7 +131,7 @@ struct DailyMomentView: View {
                         .animation(reduceMotion ? .none : .easeIn(duration: 0.8).delay(2.0), value: isVisible)
 
                         Text("toska")
-                            .font(.custom("Georgia-Italic", size: 13))
+                            .font(ToskaFont.serifItalic(13))
                             .foregroundColor(.white.opacity(0.12))
                             .padding(.top, 4)
                     }
@@ -366,7 +366,7 @@ struct DailyMomentView: View {
                 .padding(.bottom, 24)
 
                 Text(postText)
-                    .font(.custom("Georgia", size: 22))
+                    .font(ToskaFont.serif(22))
                     .foregroundColor(.white.opacity(0.95))
                     .lineSpacing(8)
                     .multilineTextAlignment(.center)
@@ -398,7 +398,7 @@ struct DailyMomentView: View {
 
                 VStack(spacing: 4) {
                     Text("toska")
-                        .font(.custom("Georgia-Italic", size: 18))
+                        .font(ToskaFont.serifItalic(18))
                         .foregroundColor(.white.opacity(0.15))
                     Text("for the things you couldnt say to them")
                         .font(.system(size: 9))

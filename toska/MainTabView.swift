@@ -88,13 +88,13 @@ struct MainTabView: View {
                     }
                 }
             }
-            // Reserve space at the bottom so the always-visible tab bar (in
-            // the ZStack overlay below) never covers content. 70pt = the tab
-            // bar's HStack frame (50) + .padding(.bottom, 20). Pushing the
+            // Reserve space at the bottom so the floating tab pill (in the
+            // ZStack overlay below) never covers content. ~92pt = pill height
+            // (60) + bottom margin (16) + breathing room (16). Pushing the
             // content up by this amount means a pushed view's bottom-anchored
             // UI — PostDetailView's reply composer, the conversation
-            // composer, etc. — sits above the tab bar instead of behind it.
-            .padding(.bottom, 70)
+            // composer, etc. — sits above the pill instead of behind it.
+            .padding(.bottom, 92)
 
             // MARK: - Tab bar
             // Always visible (the hide preference is intentionally ignored,
@@ -114,7 +114,7 @@ struct MainTabView: View {
                     } label: {
                         Image(systemName: selectedTab == .feed ? "house.fill" : "house")
                             .font(.system(size: 20, weight: selectedTab == .feed ? .medium : .light))
-                            .foregroundColor(selectedTab == .feed ? LateNightTheme.handleText : Color.toskaTimestamp)
+                            .foregroundColor(selectedTab == .feed ? LateNightTheme.handleText : LateNightTheme.timeText)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                     .accessibilityLabel("Home")
@@ -128,12 +128,13 @@ struct MainTabView: View {
                     } label: {
                         ZStack {
                             Circle()
-                                .fill(Color.toskaBlue)
-                                .frame(width: 40, height: 40)
+                                .fill(ToskaColor.accent)
+                                .frame(width: 50, height: 50)
                             Image(systemName: "plus")
-                                .font(.system(size: 18, weight: .medium))
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundColor(.white)
                         }
+                        .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
                     }
                     .accessibilityLabel("New post")
                     .frame(maxWidth: .infinity)
@@ -154,7 +155,7 @@ struct MainTabView: View {
                     } label: {
                         Image(systemName: selectedTab == .notifications ? "bell.fill" : "bell")
                             .font(.system(size: 20, weight: selectedTab == .notifications ? .medium : .light))
-                            .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : Color.toskaTimestamp)
+                            .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : LateNightTheme.timeText)
                             .overlay(alignment: .topTrailing) {
                                 if unreadCount > 0 {
                                     Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
@@ -162,7 +163,7 @@ struct MainTabView: View {
                                         .foregroundColor(.white)
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 2)
-                                        .background(Color(hex: "c47a8a"))
+                                        .background(ToskaColor.badge)
                                         .clipShape(Capsule())
                                         // Hug the bell's top-right corner. Overlay
                                         // attaches to the bell's bounding box (vs.
@@ -178,18 +179,15 @@ struct MainTabView: View {
 
                     tabIcon(icon: "person", activeIcon: "person.fill", tab: .profile)
                 }
-                .frame(height: 50)
+                .frame(height: 56)
                 .padding(.horizontal, 8)
-                .padding(.bottom, 20)
-                .background(
-                    Group {
-                        if LateNightTheme.isLateNight {
-                            LateNightTheme.cardBackground
-                        } else {
-                            Color.clear.background(.ultraThinMaterial)
-                        }
-                    }
-                )
+                .padding(.top, 8)
+                .padding(.bottom, 28)
+                // Flat bottom bar — edge-to-edge, a touch lighter than the page
+                // surface (card2) so it reads as a calm panel. Background extends
+                // through the home indicator (the enclosing ZStack ignores the
+                // bottom safe area).
+                .background(LateNightTheme.card2)
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
             } // end if !tabBarHidden
@@ -411,7 +409,7 @@ struct MainTabView: View {
         } label: {
             Image(systemName: selectedTab == tab ? activeIcon : icon)
                 .font(.system(size: 20, weight: selectedTab == tab ? .medium : .light))
-                .foregroundColor(selectedTab == tab ? LateNightTheme.handleText : Color.toskaTimestamp)
+                .foregroundColor(selectedTab == tab ? LateNightTheme.handleText : LateNightTheme.timeText)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityLabel(

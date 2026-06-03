@@ -89,7 +89,7 @@ struct NotificationsView: View {
                                     .foregroundColor(Color.toskaBlue.opacity(0.4))
                                     .padding(.bottom, 4)
                                 Text("\"someone will feel\nwhat you wrote.\"")
-                                    .font(.custom("Georgia-Italic", size: 20))
+                                    .font(ToskaFont.serifItalic(20))
                                     .foregroundColor(Color.toskaTimestamp)
                                     .multilineTextAlignment(.center)
                                     .lineSpacing(4)
@@ -261,12 +261,15 @@ struct NotificationsView: View {
     func sectionHeader(_ title: String) -> some View {
         HStack {
             Text(title)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(Color(hex: "1a1a1a"))
+                .font(ToskaFont.eyebrow)
+                .textCase(.uppercase)
+                .tracking(1.4)
+                .foregroundColor(ToskaColor.text3)
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 6)
         .background(LateNightTheme.background)
     }
 
@@ -281,36 +284,39 @@ struct NotificationsView: View {
                     // sizing on the feed row's action bar (15pt → 17pt).
                     ZStack {
                         Circle()
-                            .fill(iconColor(for: notif.type).opacity(0.12))
-                            .frame(width: 36, height: 36)
+                            .fill(iconColor(for: notif.type).opacity(notif.isUnread ? 0.16 : 0.11))
+                            .frame(width: 34, height: 34)
                         Image(systemName: notif.icon)
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundColor(iconColor(for: notif.type))
                     }
 
                     // Text
                     VStack(alignment: .leading, spacing: 3) {
                         Text(notif.displayText)
-                            .font(.system(size: 14, weight: notif.isUnread ? .medium : .regular))
-                            .foregroundColor(Color.toskaTextDark)
+                            .font(.system(size: 13.5, weight: notif.isUnread ? .medium : .regular))
+                            .foregroundColor(ToskaColor.text)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Text(notif.time)
-                            .font(.system(size: 11))
-                            .foregroundColor(notif.isUnread ? Color.toskaBlue : Color.toskaTimestamp)
+                            .font(.system(size: 11.5))
+                            .foregroundColor(notif.isUnread ? ToskaColor.accent : ToskaColor.time)
                     }
 
                     Spacer()
-
-                    if notif.isUnread {
-                        Circle()
-                            .fill(Color.toskaBlue)
-                            .frame(width: 7, height: 7)
-                    }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .background(notif.isUnread ? Color.toskaBlue.opacity(0.04) : Color.clear)
+                .padding(.vertical, 13)
+                // Unread → accent left bar (per design); all rows get a hairline.
+                .overlay(alignment: .leading) {
+                    if notif.isUnread {
+                        Rectangle()
+                            .fill(ToskaColor.accent)
+                            .frame(width: 2.5)
+                            .padding(.vertical, 14)
+                    }
+                }
+                .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 0.5), alignment: .bottom)
             }
             .buttonStyle(.plain)
         }
@@ -435,9 +441,13 @@ struct NotificationsView: View {
     func markAllRemainingAsRead() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
+        // 400 keeps each batch under Firestore's 500-op limit. If a full page
+        // comes back there may be more unread, so we keep sweeping until the
+        // backlog is cleared — otherwise a user with >500 unread keeps the
+        // badge visually zeroed (onAppear) while server isRead stays false.
         db.collection("users").document(uid).collection("notifications")
             .whereField("isRead", isEqualTo: false)
-            .limit(to: 500)
+            .limit(to: 400)
             .getDocuments { snapshot, _ in
                 guard let docs = snapshot?.documents, !docs.isEmpty else { return }
                 let batch = db.batch()
@@ -445,7 +455,9 @@ struct NotificationsView: View {
                 batch.commit { error in
                     if let error = error {
                         print("⚠️ markAllRemainingAsRead batch failed: \(error)")
+                        return
                     }
+                    if docs.count >= 400 { self.markAllRemainingAsRead() }
                 }
             }
     }
@@ -579,7 +591,7 @@ struct NotificationsView: View {
                     .foregroundColor(Color.toskaBlue)
 
                 Text("turn on notifications?")
-                    .font(.custom("Georgia-Italic", size: 18))
+                    .font(ToskaFont.serifItalic(18))
                     .foregroundColor(LateNightTheme.handleText)
 
                 Text("we'll let you know when someone feels what you wrote, replies to you, or follows you.\n\nthats it. no marketing. no daily nudges.")

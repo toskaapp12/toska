@@ -11,6 +11,8 @@ struct WitnessPostData {
     let text: String
     let tag: String?
     let timeString: String
+    let likeCount: Int
+    let repostCount: Int
 }
 
 // MARK: - Anniversary Post Data
@@ -762,8 +764,9 @@ class FeedViewModel: ObservableObject {
                         return
                     }
                     let filtered = self.filterBlocked(documents: documents)
-                    let existingIds = Set(self.posts.map { $0.id })
+                    var existingIds = Set(self.posts.map { $0.id })
                     for doc in filtered where !existingIds.contains(doc.documentID) {
+                        existingIds.insert(doc.documentID)
                         self.posts.append(FeedView.feedPost(from: doc))
                         self.extractPostMetadata(from: doc)
                     }
@@ -906,7 +909,9 @@ class FeedViewModel: ObservableObject {
                         handle: data["authorHandle"] as? String ?? "anonymous",
                         text: data["text"] as? String ?? "",
                         tag: data["tag"] as? String,
-                        timeString: ToskaFormatters.hourMinute.string(from: createdAt).lowercased()
+                        timeString: ToskaFormatters.hourMinute.string(from: createdAt).lowercased(),
+                        likeCount: data["likeCount"] as? Int ?? 0,
+                        repostCount: data["repostCount"] as? Int ?? 0
                     )
                 }
             }

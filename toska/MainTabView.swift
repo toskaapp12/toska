@@ -294,9 +294,8 @@ struct MainTabView: View {
             selectedTab = .feed
             pushPostId = postId
         }
-        // openConversationFromPush observer removed when DMs were cut. The
-        // push payload may still arrive for users on older builds; we just
-        // don't route it to ConversationView anymore.
+        // DM push routing was removed when DMs were cut; a legacy 'message'
+        // push from an older build simply has no handler and is ignored.
         .onReceive(NotificationCenter.default.publisher(for: .openProfileFromPush)) { notification in
             guard let userId = notification.userInfo?["userId"] as? String, !userId.isEmpty else { return }
             PushNotificationManager.shared.pendingIntent = nil
@@ -327,9 +326,6 @@ struct MainTabView: View {
                 case .post where !intent.postId.isEmpty:
                     selectedTab = .feed
                     pushPostId = intent.postId
-                case .conversation:
-                    // DM intent ignored when DMs were cut.
-                    break
                 case .profile where !intent.userId.isEmpty:
                     pushProfileUser = UserSelection(id: intent.userId, handle: "")
                 default:

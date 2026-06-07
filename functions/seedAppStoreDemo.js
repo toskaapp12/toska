@@ -673,59 +673,6 @@ async function setBlocked(blockerUid, blockedUid, blockedHandle, minutesAgo = 24
   });
 }
 
-async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
-  // Deterministic convo id, lower uid first so both clients land on the same
-  // doc regardless of who initiated. Matches OtherProfileView.startConversation
-  // pattern.
-  const ids = [demoUid, buddyUid].sort();
-  const convoId = `${ids[0]}_${ids[1]}`;
-  const convoPath = `conversations/${convoId}`;
-  const messages = [
-    { id: "m1", senderId: buddyUid, text: "hey. i saw your post earlier. it landed." },
-    { id: "m2", senderId: demoUid, text: "thank you. some days the words just need to leave." },
-  ];
-
-  plan("set", convoPath, {
-    participants: [demoUid, buddyUid],
-    participantHandles: { [demoUid]: demoHandle, [buddyUid]: buddyHandle },
-    messageCount: { [demoUid]: 1, [buddyUid]: 1 },
-    typing: { [demoUid]: false, [buddyUid]: false },
-    typingAt: {},
-    lastRead: {},
-    lastMessage: messages[messages.length - 1].text,
-    lastMessageAt: "<server-timestamp>",
-    createdAt: "<server-timestamp>",
-  });
-  for (const m of messages) {
-    plan("set", `${convoPath}/messages/${m.id}`, {
-      senderId: m.senderId,
-      text: m.text,
-      clientCountedV1: true,
-      createdAt: "<server-timestamp>",
-    });
-  }
-  if (!APPLY) return;
-  await db.doc(convoPath).set({
-    participants: [demoUid, buddyUid],
-    participantHandles: { [demoUid]: demoHandle, [buddyUid]: buddyHandle },
-    messageCount: { [demoUid]: 1, [buddyUid]: 1 },
-    typing: { [demoUid]: false, [buddyUid]: false },
-    typingAt: {},
-    lastRead: {},
-    lastMessage: messages[messages.length - 1].text,
-    lastMessageAt: FieldValue.serverTimestamp(),
-    createdAt: FieldValue.serverTimestamp(),
-  });
-  for (const m of messages) {
-    await db.doc(`${convoPath}/messages/${m.id}`).set({
-      senderId: m.senderId,
-      text: m.text,
-      clientCountedV1: true,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  }
-}
-
 // ---------- main ----------
 
 (async () => {
@@ -877,8 +824,8 @@ async function setConversation(demoUid, demoHandle, buddyUid, buddyHandle) {
   // the reviewer when posts vanish).
   await setBlocked(demoUid, quietUid, BUDDIES[2].handle, 480);
 
-  // Conversation between demo and soft — unchanged from before.
-  await setConversation(demoUid, DEMO_HANDLE, softUid, BUDDIES[0].handle);
+  // DMs were cut (2026-06-03). No conversation is seeded for the demo account;
+  // the conversations/messages collections are denied in firestore.rules.
 
   // ---------- print summary ----------
 

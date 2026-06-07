@@ -10,10 +10,9 @@ import UserNotifications
 /// NotificationCenter observers — the immediate post would be lost. We
 /// stash the intent here and MainTabView consumes it on first appear.
 struct PendingPushIntent {
-    enum Kind { case post, conversation, profile }
+    enum Kind { case post, profile }
     let kind: Kind
     let postId: String
-    let conversationId: String
     let userId: String
 }
 
@@ -118,19 +117,17 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         // Validate every ID pulled from the push payload before routing.
         // A push sender (or anyone who can plant a notification doc in our
         // subcollection — see firestore.rules) controls this userInfo; an
-        // unvalidated postId/conversationId/userId can send the app to
-        // arbitrary screens or crash views downstream that assume a Firestore
-        // doc ID pattern. `isValidFirestoreDocId` lives in FirestoreExtensions.
+        // unvalidated postId/userId can send the app to arbitrary screens or
+        // crash views downstream that assume a Firestore doc ID pattern.
+        // `isValidFirestoreDocId` lives in FirestoreExtensions.
         let rawPostId = userInfo["postId"] as? String ?? ""
         let rawFromUserId = userInfo["fromUserId"] as? String ?? ""
-        let rawConversationId = userInfo["conversationId"] as? String ?? ""
         let postId = isValidFirestoreDocId(rawPostId) ? rawPostId : ""
         let fromUserId = isValidFirestoreDocId(rawFromUserId) ? rawFromUserId : ""
-        let conversationId = isValidFirestoreDocId(rawConversationId) ? rawConversationId : ""
 
         // Route based on notification type. The Cloud Function forwards
-        // postId, fromUserId, and conversationId in the data payload so we
-        // can pick the right surface for each kind of notification.
+        // postId and fromUserId in the data payload so we can pick the right
+        // surface for each kind of notification.
         //
         // We ALSO stash the intent in PushNotificationManager.shared.pendingIntent
         // so MainTabView can consume it on appear. That covers the cold-launch
@@ -149,23 +146,10 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         completionHandler()
         Task { @MainActor in
             switch type {
-            case "message" where !conversationId.isEmpty:
-                Self.shared.pendingIntent = PendingPushIntent(
-                    kind: .conversation,
-                    postId: "",
-                    conversationId: conversationId,
-                    userId: fromUserId
-                )
-                NotificationCenter.default.post(
-                    name: .openConversationFromPush,
-                    object: nil,
-                    userInfo: ["conversationId": conversationId, "otherUserId": fromUserId]
-                )
             case "follow" where !fromUserId.isEmpty:
                 Self.shared.pendingIntent = PendingPushIntent(
                     kind: .profile,
                     postId: "",
-                    conversationId: "",
                     userId: fromUserId
                 )
                 NotificationCenter.default.post(
@@ -179,7 +163,6 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                     Self.shared.pendingIntent = PendingPushIntent(
                         kind: .post,
                         postId: postId,
-                        conversationId: "",
                         userId: ""
                     )
                     NotificationCenter.default.post(

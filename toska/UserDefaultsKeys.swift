@@ -36,11 +36,8 @@ enum UserDefaultsKeys {
 
     // Offline drafts — keyed per surface so a kill mid-typing doesn't lose
     // the user's words. Compose drafts already use @AppStorage on a single
-    // key (one draft); messages and replies are keyed per conversation /
-    // per post so drafts in different threads don't clobber each other.
-    static func messageDraft(conversationId: String) -> String {
-        "toska_msgDraft_\(conversationId)"
-    }
+    // key (one draft); replies are keyed per post so drafts in different
+    // threads don't clobber each other.
     static func replyDraft(postId: String) -> String {
         "toska_replyDraft_\(postId)"
     }

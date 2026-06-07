@@ -649,7 +649,7 @@ extension Telemetry {
         event("crisis_modal_shown", parameters: ["level": level == .explicit ? "explicit" : "soft"])
     }
 
-    enum ReportTargetType: String { case post, reply, user, conversation }
+    enum ReportTargetType: String { case post, reply, user }
 
     static func reportSubmitted(target: ReportTargetType, reasonCode: String) {
         event("report_submitted", parameters: ["target_type": target.rawValue, "reason_code": reasonCode])
@@ -1369,7 +1369,6 @@ enum ReportTarget {
     case post(postId: String, authorId: String, authorHandle: String, text: String)
     case reply(postId: String, replyId: String, authorId: String, authorHandle: String, text: String)
     case user(userId: String, handle: String)
-    case conversation(conversationId: String, otherUserId: String, otherHandle: String)
 }
 
 @MainActor
@@ -1422,7 +1421,6 @@ struct ReportSheet: View {
         case .post:         return "report post"
         case .reply:        return "report reply"
         case .user:         return "report user"
-        case .conversation: return "report conversation"
         }
     }
 
@@ -1588,7 +1586,6 @@ struct ReportSheet: View {
         case .post(_, let authorId, let handle, _): return (authorId, handle)
         case .reply(_, _, let authorId, let handle, _): return (authorId, handle)
         case .user(let userId, let handle): return (userId, handle)
-        case .conversation(_, let otherUserId, let otherHandle): return (otherUserId, otherHandle)
         }
     }
 
@@ -1623,11 +1620,6 @@ struct ReportSheet: View {
             payload["type"]          = "user"
             payload["reportedUserId"] = userId
             payload["reportedHandle"] = handle
-        case .conversation(let conversationId, let otherUserId, let otherHandle):
-            payload["type"]           = "conversation"
-            payload["conversationId"] = conversationId
-            payload["reportedUserId"]  = otherUserId
-            payload["reportedHandle"]  = otherHandle
         }
 
         let telemetryTarget: Telemetry.ReportTargetType = {
@@ -1635,7 +1627,6 @@ struct ReportSheet: View {
             case .post:         return .post
             case .reply:        return .reply
             case .user:         return .user
-            case .conversation: return .conversation
             }
         }()
 
@@ -1759,26 +1750,11 @@ struct SkeletonNotificationRow: View {
     }
 }
 
-struct SkeletonConversationRow: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            ShimmerView(cornerRadius: 18).frame(width: 36, height: 36)
-            VStack(alignment: .leading, spacing: 6) {
-                ShimmerView().frame(width: 110, height: 12)
-                ShimmerView().frame(height: 10).padding(.trailing, 50)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-}
-
 /// Drop-in replacement for `ProgressView()` at the center of a feed-style
 /// list. Renders 4 skeleton rows of the requested kind so the loading view
 /// has the same vertical rhythm as the loaded view.
 struct SkeletonFeed: View {
-    enum Kind { case post, notification, conversation }
+    enum Kind { case post, notification }
     let kind: Kind
     var count: Int = 4
 
@@ -1788,7 +1764,6 @@ struct SkeletonFeed: View {
                 switch kind {
                 case .post:         SkeletonPostRow()
                 case .notification: SkeletonNotificationRow()
-                case .conversation: SkeletonConversationRow()
                 }
             }
         }

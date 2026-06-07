@@ -15,11 +15,6 @@ extension NSNotification.Name {
     static let scrollFeedToTop     = NSNotification.Name("ScrollFeedToTop")
     static let dismissAllSheets    = NSNotification.Name("DismissAllSheets")
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")
-        // Push tap on a DM notification routes through here. Emitted by
-        // PushNotificationManager and handled by MainTabView to open the
-        // ConversationView sheet. Raw name preserved across the migration so
-        // existing production installs with in-flight notifications still route.
-        static let openConversationFromPush = NSNotification.Name("OpenConversationFromPush")
         // Push tap on a follow notification routes through here — opens
         // OtherProfileView. Same migration concern as above.
         static let openProfileFromPush      = NSNotification.Name("OpenProfileFromPush")

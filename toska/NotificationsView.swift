@@ -350,15 +350,13 @@ struct NotificationsView: View {
                     selectedFollowUser = NotifFollowUser(id: notif.fromUserId, handle: handle)
                 }
             }
-        } else if notif.type == "message" {
-            // DMs were cut — message notifications are inert. No-op tap.
-            // (The legacy notification row may still arrive for users on
-            // older builds; we just don't route it to ConversationView.)
         } else {
+            // like / reply / repost / save / milestone all open the post.
+            // A legacy "message" notif (DMs cut) has an empty postId, so
+            // openPost() guards it to a no-op.
             openPost(postId: notif.postId)
         }
     }
-    // openConversation removed when DMs were cut.
 
     func openPost(postId: String) {
         guard !postId.isEmpty else { return }
@@ -416,7 +414,6 @@ struct NotificationsView: View {
         case "repost": return Color(hex: "5a9e8f")
         case "save": return Color(hex: "c49a6c")
         case "milestone": return Color(hex: "c9a97a")
-        case "message": return Color.toskaBlue
         default: return Color(hex: "cccccc")
         }
     }
@@ -429,7 +426,6 @@ struct NotificationsView: View {
         case "repost": return "arrow.2.squarepath"
         case "save": return "bookmark.fill"
         case "milestone": return "star.fill"
-        case "message": return "envelope.fill"
         default: return "bell.fill"
         }
     }
@@ -528,7 +524,6 @@ struct NotificationsView: View {
                         case "repost": displayText = "\(fromHandle) shared your words"
                         case "save": displayText = "\(fromHandle) saved your post"
                         case "milestone": displayText = message.isEmpty ? "your words reached people" : message
-                        case "message": displayText = "\(fromHandle) sent you a message"
                         default: displayText = message
                         }
 

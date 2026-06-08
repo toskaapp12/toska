@@ -38,7 +38,7 @@ Everything else is HIGH/MED/LOW and mostly already documented/accepted in prior 
 **Whole rules suite green (129 passing). App target compiles clean** (the only build failure is the CodeSign step — an environment keychain limitation, not a code error).
 
 ### 0.2 REMAINING BEFORE SUBMIT
-1. **Deploy** the rules + indexes + functions to prod/staging (removes the DM triggers + conversations index; activates the deny rules). **Not done — needs per-round deploy authorization.** Recommend deploy order: indexes → rules → functions, staging first.
+1. **Deploy.** ✅ **STAGING (`toskastaging`) deployed 2026-06-07** — rules compiled server-side + released; indexes deployed (old `conversations` index left orphaned on project, harmless); functions deployed with `onMessageCreatedModerate` + `onMessageCreatedUpdateCount` **deleted**, `cleanupExpiredCircles` kept. ⏳ **PROD (`toska-4ebf4`) NOT deployed — needs explicit per-round authorization.** Branch `appstore-review-2026-06` pushed (commit `db4c5fe`).
 2. **App Check "Enforced"** re-confirm on prod Firestore at submission.
 3. ~~DM plumbing remnants~~ — **DONE** (CLEAN-1, 2026-06-07): all removed, app compiles, rules green.
 4. Pre-existing documented items (CORR-1 password-reset enumeration UI, DEL-1 cascade orphan caps) — confirm-accept.

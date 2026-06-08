@@ -210,255 +210,6 @@ describe("post create: client moderationStatus is start-hidden only (audit 2026-
   });
 });
 
-describe("Finding 1: conversation participants must be exactly 2", () => {
-  it("allows 2-party conversation create", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("rejects 3-party conversation create", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob", "charlie"],
-        messageCount: { alice: 0, bob: 0, charlie: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("rejects 1-party (self-only) conversation create", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice"],
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("rejects 2-party conversation where participants[0] == participants[1]", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "alice"],
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("blocked user cannot send message in 2-party conversation", async () => {
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await setBlock("bob", "alice"); // bob blocks alice
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      });
-    });
-
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").collection("messages").doc("m1").set({
-        senderId: "alice",
-        text: "hi",
-        createdAt: new Date(),
-        clientCountedV1: true,
-      })
-    );
-  });
-
-  it("blocked user cannot send message even in legacy 3-party conversation", async () => {
-    // Belt-and-suspenders: even if a 3-party convo somehow exists (legacy
-    // data, admin SDK write), the message-create rule's strict size==2
-    // assertion blocks the write. Closes the original short-circuit gap.
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await setBlock("bob", "alice");
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("conversations").doc("c1").set({
-        participants: ["alice", "bob", "charlie"],
-        messageCount: { alice: 0, bob: 0, charlie: 0 },
-        createdAt: new Date(),
-      });
-    });
-
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").collection("messages").doc("m1").set({
-        senderId: "alice",
-        text: "hi",
-        createdAt: new Date(),
-        clientCountedV1: true,
-      })
-    );
-  });
-
-  // 8b9923c: phantom-convo bypass close. Without the new !exists(.../blocked/...)
-  // clause on convo create, blocked users could write the convo doc itself
-  // (just not messages), surfacing an empty conversation in the blocker's
-  // MessagesListView.
-  it("blocked user cannot create the conversation doc in the first place (caller is participants[0])", async () => {
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await setBlock("bob", "alice"); // bob blocks alice
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("blocked user cannot create the conversation doc when caller is participants[1]", async () => {
-    // Exercises the other branch of the ternary that picks "the other
-    // participant" — make sure both orderings deny.
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await setBlock("alice", "bob"); // alice blocks bob
-    const b = env.authenticatedContext("bob").firestore();
-    await assertFails(
-      b.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"], // bob is participants[1]
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("allows convo create when neither side has blocked the other", async () => {
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c2").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("allows convo create when caller blocked the OTHER user (block is one-directional)", async () => {
-    // Mirrors the existing message-create semantics: only the recipient's
-    // block stops the sender. If the caller blocked the other user, they
-    // can still initiate (and presumably immediately leave / not respond).
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await setBlock("alice", "bob"); // alice blocks bob
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c3").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-});
-
-describe("Finding 2: feelingCircles update can only add/remove caller", () => {
-  it("allows joining a circle (adds caller)", async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        participants: ["alice"],
-        createdAt: new Date(),
-      });
-    });
-    const b = env.authenticatedContext("bob").firestore();
-    await assertSucceeds(
-      b.collection("feelingCircles").doc("fc1").update({
-        participants: ["alice", "bob"],
-      })
-    );
-  });
-
-  it("allows leaving a circle (removes caller)", async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        participants: ["alice", "bob"],
-        createdAt: new Date(),
-      });
-    });
-    const b = env.authenticatedContext("bob").firestore();
-    await assertSucceeds(
-      b.collection("feelingCircles").doc("fc1").update({
-        participants: ["alice"],
-      })
-    );
-  });
-
-  it("rejects force-add of another user without consent", async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        participants: ["alice"],
-        createdAt: new Date(),
-      });
-    });
-    const a = env.authenticatedContext("alice").firestore();
-    // alice tries to add bob and charlie without their consent
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").update({
-        participants: ["alice", "bob", "charlie"],
-      })
-    );
-  });
-
-  it("second joiner can update participants only (matches iOS branched path)", async () => {
-    // Mirrors the UPDATE branch of FeelingCircleView.joinCircle: when the
-    // doc already exists, iOS issues an updateData with ONLY participants
-    // (arrayUnion). The previous shape — a single setData(merge:true)
-    // re-writing createdAt as serverTimestamp — was silently denied here
-    // and joinCircle quietly logged + bailed for every Nth joiner.
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        date: "2026-05-04",
-        participants: ["alice"],
-        createdAt: new Date(2026, 4, 4, 12, 0),
-        expiresAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
-      });
-    });
-    const { arrayUnion } = require("firebase/firestore");
-    const b = env.authenticatedContext("bob").firestore();
-    await assertSucceeds(
-      b.collection("feelingCircles").doc("fc1").update({
-        participants: arrayUnion("bob"),
-      })
-    );
-  });
-
-  it("rejects evicting another participant", async () => {
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        participants: ["alice", "bob", "charlie"],
-        createdAt: new Date(),
-      });
-    });
-    const a = env.authenticatedContext("alice").firestore();
-    // alice tries to remove bob
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").update({
-        participants: ["alice", "charlie"],
-      })
-    );
-  });
-});
-
 describe("Finding 3: blocked user cannot create save notification", () => {
   it("rejects save notification when post author has blocked the actor", async () => {
     await setUserDoc("alice"); // post author
@@ -913,320 +664,6 @@ describe("regression: prior audit fixes (2026-04-26)", () => {
         likeCount: 0,
         repostCount: 0,
         replyCount: 0,
-      })
-    );
-  });
-});
-
-describe("conversations update is schema-locked to allow-listed fields", () => {
-  async function seedConvo(extra = {}) {
-    // User docs are required so the participantHandles-slot pin (which
-    // reads the caller's user-doc handle) has something to resolve to.
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        typing: { alice: false, bob: false },
-        typingAt: {},
-        lastRead: {},
-        participantHandles: { alice: "handle_alice", bob: "handle_bob" },
-        createdAt: new Date(),
-        ...extra,
-      });
-    });
-  }
-
-  it("allows lastMessage + lastMessageAt + own messageCount slot bumped by 1", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c1").update({
-        lastMessage: "hi",
-        lastMessageAt: new Date(),
-        "messageCount.alice": 1,
-      })
-    );
-  });
-
-  it("allows updating own typing slot", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c1").update({
-        "typing.alice": true,
-      })
-    );
-  });
-
-  it("allows refreshing own participantHandles slot to canonical handle", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c1").update({
-        "participantHandles.alice": "handle_alice",
-      })
-    );
-  });
-
-  it("rejects refreshing own participantHandles slot to a spoofed value", async () => {
-    // The slot value must match the caller's canonical user-doc handle.
-    // Without this pin, a participant could write any string into their
-    // own slot and the peer would see that spoofed handle in their
-    // MessagesListView row for this conversation.
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").update({
-        "participantHandles.alice": "@victim_lookalike",
-      })
-    );
-  });
-
-  it("rejects writing the other peer's participantHandles slot", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").update({
-        "participantHandles.bob": "spoofed",
-      })
-    );
-  });
-
-  it("rejects writing the other peer's typing slot", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").update({
-        "typing.bob": true,
-      })
-    );
-  });
-
-  it("rejects writing the other peer's lastRead slot", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").update({
-        "lastRead.bob": new Date(),
-      })
-    );
-  });
-
-  it("rejects messageCount jump of more than +1", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").update({
-        "messageCount.alice": 5,
-      })
-    );
-  });
-
-  it("rejects writing arbitrary unlisted top-level fields", async () => {
-    await seedConvo();
-    const a = env.authenticatedContext("alice").firestore();
-    // `flagged` would let a future trigger trust client-supplied moderation
-    // state; the schema lock keeps it (and any other unlisted key) out.
-    await assertFails(
-      a.collection("conversations").doc("c1").update({
-        flagged: false,
-      })
-    );
-  });
-});
-
-describe("feelingCircles create is constrained to caller-only participants", () => {
-  // serverTimestamp() resolves to request.time inside the rule evaluation,
-  // matching the createdAt == request.time predicate.
-  function tomorrowMidnight() {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + 1);
-    return d;
-  }
-
-  it("allows legitimate first-joiner create", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        date: "2026-05-04",
-        participants: ["alice"],
-        createdAt: serverTimestamp(),
-        expiresAt: tomorrowMidnight(),
-      })
-    );
-  });
-
-  it("rejects create with another user pre-seeded into participants", async () => {
-    // The original wide-open create rule let a tampered client force-seed
-    // victims into a circle's participants list at creation time, bypassing
-    // the size-20 + own-uid-only enforcement on update.
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        date: "2026-05-04",
-        participants: ["alice", "victim1", "victim2"],
-        createdAt: serverTimestamp(),
-        expiresAt: tomorrowMidnight(),
-      })
-    );
-  });
-
-  it("rejects create where the caller isn't the participant", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        date: "2026-05-04",
-        participants: ["bob"],
-        createdAt: serverTimestamp(),
-        expiresAt: tomorrowMidnight(),
-      })
-    );
-  });
-
-  it("rejects create with expiresAt far in the future (defeats hourly cleanup)", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    const farFuture = new Date();
-    farFuture.setDate(farFuture.getDate() + 7);
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        date: "2026-05-04",
-        participants: ["alice"],
-        createdAt: serverTimestamp(),
-        expiresAt: farFuture,
-      })
-    );
-  });
-
-  it("rejects create with a scratch field outside the schema", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        date: "2026-05-04",
-        participants: ["alice"],
-        createdAt: serverTimestamp(),
-        expiresAt: tomorrowMidnight(),
-        flagged: false,
-      })
-    );
-  });
-});
-
-describe("feelingCircles message create lockdown", () => {
-  // The 2026-05-07 audit closed two gaps on this surface:
-  //   1. no keys().hasOnly([...]) → tampered client could inject scratch
-  //      fields (flagged / trustedByAdmin) that future triggers might trust
-  //   2. no createdAt == request.time pin → message could be backdated
-  // Each test below pins one of those gates as a regression.
-  beforeEach(async () => {
-    await setUserDoc("alice");
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").set({
-        tag: "lonely",
-        participants: ["alice"],
-        createdAt: new Date(),
-      });
-    });
-  });
-
-  it("allows a well-formed message create", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "alice",
-        authorHandle: "handle_alice", // matches setUserDoc default
-        text: "feeling lonely",
-        createdAt: serverTimestamp(),
-      })
-    );
-  });
-
-  it("rejects a message with an extra scratch field", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "alice",
-        text: "feeling lonely",
-        createdAt: serverTimestamp(),
-        flagged: false,
-      })
-    );
-  });
-
-  it("rejects a message with a client-supplied past createdAt", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    const yesterday = new Date(Date.now() - 86_400_000);
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "alice",
-        text: "backdated",
-        createdAt: yesterday,
-      })
-    );
-  });
-
-  it("rejects a message missing createdAt entirely", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "alice",
-        text: "no timestamp",
-      })
-    );
-  });
-
-  it("rejects a message with non-string authorHandle", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "alice",
-        authorHandle: 12345,
-        text: "type-confused handle",
-        createdAt: serverTimestamp(),
-      })
-    );
-  });
-
-  it("rejects a message with authorHandle spoofed to another user's handle", async () => {
-    // Without the user-doc handle pin, a circle member could write a message
-    // with authorHandle="@victim_handle" and the in-circle UI would render
-    // the message under that spoofed byline. authorId stays correct (rule
-    // pins it to auth.uid) so backend traces resolve to the real actor —
-    // but the in-circle display is what other participants see.
-    await setUserDoc("bob");
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("feelingCircles").doc("fc1").update({
-        participants: ["alice", "bob"],
-      });
-    });
-    const b = env.authenticatedContext("bob").firestore();
-    await assertFails(
-      b.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "bob",
-        authorHandle: "handle_alice", // spoofed — bob's real handle is handle_bob
-        text: "looks like alice typed this",
-        createdAt: serverTimestamp(),
-      })
-    );
-  });
-
-  it("allows a message with authorHandle omitted entirely", async () => {
-    // Omission is the legitimate fallback for callers that don't render an
-    // in-circle handle. Schema lockdown gates the pin on 'authorHandle' in
-    // keys() so absent is accepted.
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("feelingCircles").doc("fc1").collection("messages").add({
-        authorId: "alice",
-        text: "no byline",
-        createdAt: serverTimestamp(),
       })
     );
   });
@@ -1704,62 +1141,6 @@ describe("conversation message create: createdAt pinned (audit P2)", () => {
           createdAt: new Date("2025-01-01"),
           clientCountedV1: true,
         })
-    );
-  });
-});
-
-describe("conversation update: lastMessage must bundle with caller's messageCount (audit P2)", () => {
-  beforeEach(async () => {
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-    await env.withSecurityRulesDisabled(async (ctx) => {
-      await ctx.firestore().collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      });
-    });
-  });
-
-  it("rejects standalone lastMessage update (preview spoofing)", async () => {
-    // Bob trying to plant "alice: i love you" in the conversation
-    // preview without alice having sent it. Without the bundle requirement,
-    // both participants see this fake preview in MessagesListView until
-    // a real message arrives.
-    const b = env.authenticatedContext("bob").firestore();
-    await assertFails(
-      b.collection("conversations").doc("c1").update({
-        lastMessage: "alice: i love you",
-        lastMessageAt: serverTimestamp(),
-      })
-    );
-  });
-
-  it("allows lastMessage update bundled with caller's messageCount increment", async () => {
-    // The legitimate sendMessage path: caller writes their own message,
-    // increments messageCount.{auth.uid}, and updates lastMessage* in
-    // the same update operation.
-    const b = env.authenticatedContext("bob").firestore();
-    await assertSucceeds(
-      b.collection("conversations").doc("c1").update({
-        lastMessage: "bob: hi",
-        lastMessageAt: serverTimestamp(),
-        "messageCount.bob": 1,
-      })
-    );
-  });
-
-  it("rejects lastMessage bundled with the OTHER participant's messageCount", async () => {
-    // Defense-in-depth: the existing per-uid map guard should already
-    // deny this via the messageCount slot check, but the bundling rule
-    // must not accidentally relax that constraint.
-    const b = env.authenticatedContext("bob").firestore();
-    await assertFails(
-      b.collection("conversations").doc("c1").update({
-        lastMessage: "alice: i love you",
-        lastMessageAt: serverTimestamp(),
-        "messageCount.alice": 1,
-      })
     );
   });
 });
@@ -2579,68 +1960,6 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
   });
 });
 
-describe("conversation create: participantHandles slot pin", () => {
-  // Pin closes the spoof gap on convo creation. The convo creator could
-  // pre-seed their own slot with an arbitrary handle string ("@victim_handle")
-  // visible in the OTHER participant's MessagesListView row. Same shape as
-  // the participantHandles update-rule pin and the post / reply / circle-
-  // message authorHandle pins.
-  beforeEach(async () => {
-    await setUserDoc("alice");
-    await setUserDoc("bob");
-  });
-
-  it("allows convo create with participantHandles caller-slot matching canonical handle", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        participantHandles: { alice: "handle_alice", bob: "handle_bob" },
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("rejects convo create with caller-slot spoofed to peer's handle", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        participantHandles: { alice: "handle_bob", bob: "handle_bob" }, // alice slot spoofed
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("rejects convo create with caller-slot fabricated string", async () => {
-    const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        participantHandles: { alice: "@victim_lookalike", bob: "handle_bob" },
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-
-  it("allows convo create when participantHandles is omitted entirely", async () => {
-    // OtherProfileView always writes participantHandles, but the rule
-    // gates the pin on the field being present so older legacy paths
-    // and admin-SDK writes that omit it continue to work.
-    const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
-      a.collection("conversations").doc("c1").set({
-        participants: ["alice", "bob"],
-        messageCount: { alice: 0, bob: 0 },
-        createdAt: new Date(),
-      })
-    );
-  });
-});
-
 // 2026-06-01 audit — pending-review subcollections must inherit the parent
 // post's visibility. Before the fix, replies/likes under a held
 // (moderationStatus != 'live') post were readable by any authed user, which
@@ -2765,5 +2084,110 @@ describe("pending-review: post subcollections inherit parent visibility", () => 
   it("collectionGroup: an unfiltered replies dump is denied", async () => {
     const bob = env.authenticatedContext("bob").firestore();
     await assertFails(bob.collectionGroup("replies").get());
+  });
+});
+
+// ============================================================
+// Cut features denied entirely (DMs + FeelingCircle), 2026-06-03.
+// conversations/messages and feelingCircles/messages reject all client
+// reads and writes. Only the Admin SDK (cleanup/cascade) touches leftovers.
+// Replaces the prior feature-tests that asserted these writes SUCCEED.
+// ============================================================
+describe("cut features: conversations + feelingCircles fully denied", () => {
+  it("rejects conversation create", async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("alice_bob").set({
+        participants: ["alice", "bob"],
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects conversation read", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+      });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("conversations").doc("c1").get());
+  });
+
+  it("rejects conversation message create", async () => {
+    await setUserDoc("alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("conversations").doc("c1").set({
+        participants: ["alice", "bob"],
+      });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("conversations").doc("c1").collection("messages").doc("m1").set({
+        senderId: "alice", text: "hi", clientCountedV1: true, createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects feelingCircle create", async () => {
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").set({
+        tag: "lonely", participants: ["alice"],
+        createdAt: new Date(), expiresAt: new Date(Date.now() + 3600 * 1000),
+      })
+    );
+  });
+
+  it("rejects feelingCircle read", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("feelingCircles").doc("fc1").set({ participants: ["alice"] });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("feelingCircles").doc("fc1").get());
+  });
+
+  it("rejects feelingCircle message create", async () => {
+    await setUserDoc("alice");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("feelingCircles").doc("fc1").set({ participants: ["alice"] });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("feelingCircles").doc("fc1").collection("messages").add({
+        authorId: "alice", authorHandle: "handle_alice", text: "hi", createdAt: new Date(),
+      })
+    );
+  });
+});
+
+// ============================================================
+// SEC-1: aggregate counters on the user doc are server-owned. A client
+// must not forge followerCount/followingCount/totalLikes/postCount on its
+// own user doc (OtherProfileView reads these -> forged value = fake
+// follower-count social proof). Only the Cloud Functions (Admin SDK) write them.
+// ============================================================
+describe("user doc: aggregate counters are server-owned (SEC-1)", () => {
+  it("rejects owner forging followerCount on own user doc", async () => {
+    await setUserDoc("alice", { followerCount: 0 });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("users").doc("alice").update({ followerCount: 999999 }));
+  });
+
+  it("rejects owner forging followingCount / totalLikes / postCount", async () => {
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("users").doc("alice").update({ followingCount: 500 }));
+    await assertFails(a.collection("users").doc("alice").update({ totalLikes: 12345 }));
+    await assertFails(a.collection("users").doc("alice").update({ postCount: 999 }));
+  });
+
+  it("still allows owner to update a normal field (allowSharing)", async () => {
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("users").doc("alice").update({ allowSharing: false }));
   });
 });

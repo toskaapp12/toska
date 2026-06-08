@@ -2725,59 +2725,9 @@ exports.onReplyUpdated = onDocumentUpdated(
   }
 );
 
-// ============================================================
-// Content moderation — flag DM messages with prohibited content
-// ============================================================
-
-exports.onMessageCreatedModerate = onDocumentCreated(
-  "conversations/{convoId}/messages/{messageId}",
-  async (event) => {
-    const convoId = event.params.convoId;
-    const messageId = event.params.messageId;
-    const data = event.data.data();
-    if (!data) return;
-
-    const text = (data.text || "").toLowerCase();
-
-    let flagReason = null;
-    if (MOD_HATE.some((p) => p.test(text))) flagReason = "hate_speech";
-    else if (MOD_HARASSMENT.some((p) => text.includes(p))) flagReason = "harassment";
-    else if (MOD_THREAT.some((p) => text.includes(p))) flagReason = "targeted_threat";
-    else if (containsPII(data.text || "")) flagReason = "personal_information";
-    else if (containsURL(data.text || "")) flagReason = "contains_link";
-
-    if (flagReason) {
-      if (flagReason === "personal_information" || flagReason === "contains_link") {
-        // PII and links: flag for review instead of deleting (higher false positive rate)
-        await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).update({
-          flagged: true,
-          flaggedAt: FieldValue.serverTimestamp(),
-          flagReason,
-        });
-        console.log(`Message ${messageId} in convo ${convoId} flagged: ${flagReason}`);
-      } else {
-        await db.collection("conversations").doc(convoId).collection("messages").doc(messageId).delete();
-        // The client transaction in ConversationView.sendMessage already
-        // incremented messageCount.{senderId} and tagged the message with
-        // clientCountedV1: true, which makes onMessageCreatedUpdateCount
-        // skip its server-side increment. If we delete the message without
-        // also decrementing here, the sender's per-conversation count is
-        // permanently inflated by one for every moderated message — they
-        // hit the 5-message cap with fewer real messages than they sent.
-        if (data.senderId) {
-          try {
-            await db.collection("conversations").doc(convoId).update({
-              [`messageCount.${data.senderId}`]: FieldValue.increment(-1),
-            });
-          } catch (err) {
-            console.warn(`messageCount decrement after moderation delete failed:`, err.message);
-          }
-        }
-        console.log(`Message ${messageId} in convo ${convoId} deleted: ${flagReason}`);
-      }
-    }
-  }
-);
+// DMs were cut (2026-06-03): onMessageCreatedModerate removed. The
+// conversations/messages collections are denied in firestore.rules, so no
+// message docs can be created and this trigger has nothing to moderate.
 
 // ============================================================
 // Server-side rate limiting — replies
@@ -3227,40 +3177,9 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
   }
 );
 
-// ============================================================
-// Counter: DM message count (server-side only)
-// ============================================================
-
-exports.onMessageCreatedUpdateCount = onDocumentCreated(
-  "conversations/{convoId}/messages/{messageId}",
-  async (event) => {
-    const convoId = event.params.convoId;
-    const messageData = event.data.data();
-    if (!messageData) return;
-
-    // Messages from the new client carry clientCountedV1: true because they
-    // increment messageCount inside the same transaction as the message
-    // create. Skipping here prevents a double-count. Old-client messages
-    // (no marker) still get incremented server-side so legacy installs
-    // continue to enforce the per-user 5-message cap.
-    if (messageData.clientCountedV1 === true) return;
-
-    const senderId = messageData.senderId;
-    if (!senderId) return;
-    // Claim gated below the early returns so the v1-client skip path
-    // doesn't burn a processedTriggerEvents row per message.
-    if (!await claimTriggerEvent(event.id)) return;
-
-    try {
-      await db.collection("conversations").doc(convoId).update({
-        [`messageCount.${senderId}`]: FieldValue.increment(1),
-      });
-    } catch (err) {
-      logCounterDrift("onMessageCreatedUpdateCount", event.id, err,
-        { convoId, senderId });
-    }
-  }
-);
+// DMs were cut (2026-06-03): onMessageCreatedUpdateCount removed. No message
+// docs can be created (conversations/messages denied in firestore.rules), so
+// there is no per-conversation message count to maintain.
 
 // ============================================================
 // Scheduled post-deletion continuation — drains postDeletionQueue

@@ -9,8 +9,6 @@ import FirebaseAppCheck
 struct ProfileView: View {
     @State private var selectedTab = 0
     @State private var showSettings = false
-    @State private var showFollowing = false
-    @State private var showFollowers = false
     @State private var userHandle = "anonymous"
     @State private var followerCount = 0
     @State private var followingCount = 0
@@ -150,7 +148,10 @@ struct ProfileView: View {
                                             Rectangle().fill(ToskaColor.divider).frame(height: 1),
                                             alignment: .bottom
                                         )
-                        
+                                        // Breathing room between the tab underline/divider
+                                        // and the first content card below it.
+                                        .padding(.bottom, 10)
+
                                         switch selectedTab {
                                                                 case 0:
                                                                     if myPosts.isEmpty {
@@ -286,8 +287,6 @@ struct ProfileView: View {
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
-        .navigationDestination(isPresented: $showFollowers) { FollowListView(title: "followers").navigationBarHidden(true) }
-        .navigationDestination(isPresented: $showFollowing) { FollowListView(title: "following").navigationBarHidden(true) }
         .navigationDestination(isPresented: $showPost) {
                             if let postData = selectedPostData, let postId = selectedPostId {
                                 PostDetailView(postId: postId, handle: postData.handle, text: postData.text, tag: postData.tag, likes: postData.likes, reposts: postData.reposts, replies: postData.replies, time: postData.time, authorId: postData.authorId)
@@ -373,8 +372,6 @@ struct ProfileView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     showSettings = false
-                    showFollowers = false
-                    showFollowing = false
                     showEditReply = false
                 }
     }

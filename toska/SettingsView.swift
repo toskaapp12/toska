@@ -11,7 +11,6 @@ struct UserSettings: Equatable {
     var notifyFollows = true
     var notifyReposts = true
     var notifySaves = true
-    var notifyMessages = true
     var notifyMilestones = true
     var pushEnabled = true
     var gentleCheckIn = true
@@ -121,8 +120,6 @@ struct SettingsView: View {
                                     Divider().padding(.leading, 28)
                                     miniToggle("replies", isOn: $settings.notifyReplies)
                                     Divider().padding(.leading, 28)
-                                    miniToggle("messages", isOn: $settings.notifyMessages)
-                                    Divider().padding(.leading, 28)
                                     miniToggle("reposts", isOn: $settings.notifyReposts)
                                     Divider().padding(.leading, 28)
                                     miniToggle("saves", isOn: $settings.notifySaves)
@@ -171,6 +168,34 @@ struct SettingsView: View {
                                                 .font(.system(size: 12))
                                                 .foregroundColor(ToskaColor.text2)
                                         }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .regular))
+                                            .foregroundColor(ToskaColor.text3)
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 14)
+                                }
+                                Divider().padding(.leading, 14)
+                                NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
+                                    HStack {
+                                        Text("followers")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(ToskaColor.text)
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .regular))
+                                            .foregroundColor(ToskaColor.text3)
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 14)
+                                }
+                                Divider().padding(.leading, 14)
+                                NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
+                                    HStack {
+                                        Text("following")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(ToskaColor.text)
                                         Spacer()
                                         Image(systemName: "chevron.right")
                                             .font(.system(size: 12, weight: .regular))
@@ -531,7 +556,6 @@ struct SettingsView: View {
                    notifyFollows: boolPref("notifyFollows", default: true),
                    notifyReposts: boolPref("notifyReposts", default: true),
                    notifySaves: boolPref("notifySaves", default: true),
-                   notifyMessages: boolPref("notifyMessages", default: true),
                    notifyMilestones: boolPref("notifyMilestones", default: true),
                    pushEnabled: boolPref("pushEnabled", default: true),
                    gentleCheckIn: boolPref("gentleCheckIn", default: true)
@@ -614,7 +638,6 @@ struct SettingsView: View {
                             "notifyFollows": settings.notifyFollows,
                             "notifyReposts": settings.notifyReposts,
                             "notifySaves": settings.notifySaves,
-                            "notifyMessages": settings.notifyMessages,
                             "notifyMilestones": settings.notifyMilestones,
                             "pushEnabled": settings.pushEnabled,
                             "gentleCheckIn": settings.gentleCheckIn,

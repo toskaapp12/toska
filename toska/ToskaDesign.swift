@@ -42,7 +42,7 @@ enum ToskaFont {
 
     // Sans — all UI chrome
     static var eyebrow: Font     { .system(size: 10.5, weight: .semibold) } // UPPERCASE, tracking 1.4
-    static var handle: Font      { .system(size: 14,   weight: .semibold) }
+    static var handle: Font      { .system(size: 13,   weight: .semibold) }
     static var meta: Font        { .system(size: 12.5, weight: .regular) }
     static var actionCount: Font { .system(size: 11.5, weight: .medium) }
     static var chip: Font        { .system(size: 12,   weight: .semibold) }

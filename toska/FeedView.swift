@@ -890,10 +890,9 @@ struct FeedPostRow: View {
                     .padding(.bottom, 6)
                 }
 
-                // Handle row — Threads-ish: bigger handle for stronger
-                // visual anchor, slightly bigger time for legibility, the
-                // separator dot and ellipsis bumped to match.
-                    HStack(spacing: 6) {
+                // Handle row — compact: handle is the anchor with the
+                // separator dot and time trailing it.
+                    HStack(spacing: 5) {
                                             Text(handle)
                                                 .font(ToskaFont.handle)
                                                 .foregroundColor(ToskaColor.accent)
@@ -953,7 +952,7 @@ struct FeedPostRow: View {
                                                 .accessibilityLabel("More options for \(handle)'s post")
                                             }
                                         }
-                                        .padding(.bottom, 8)
+                                        .padding(.bottom, 6)
                 
                 // Post text
                 if !text.isEmpty {

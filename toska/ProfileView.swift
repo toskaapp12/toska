@@ -148,7 +148,10 @@ struct ProfileView: View {
                                             Rectangle().fill(ToskaColor.divider).frame(height: 1),
                                             alignment: .bottom
                                         )
-                        
+                                        // Breathing room between the tab underline/divider
+                                        // and the first content card below it.
+                                        .padding(.bottom, 10)
+
                                         switch selectedTab {
                                                                 case 0:
                                                                     if myPosts.isEmpty {

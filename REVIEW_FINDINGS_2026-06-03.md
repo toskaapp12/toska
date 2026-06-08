@@ -38,7 +38,8 @@ Everything else is HIGH/MED/LOW and mostly already documented/accepted in prior 
 **Whole rules suite green (129 passing). App target compiles clean** (the only build failure is the CodeSign step — an environment keychain limitation, not a code error).
 
 ### 0.2 REMAINING BEFORE SUBMIT
-1. **Deploy.** ✅ **STAGING (`toskastaging`) deployed 2026-06-07** — rules compiled server-side + released; indexes deployed (old `conversations` index left orphaned on project, harmless); functions deployed with `onMessageCreatedModerate` + `onMessageCreatedUpdateCount` **deleted**, `cleanupExpiredCircles` kept. ⏳ **PROD (`toska-4ebf4`) NOT deployed — needs explicit per-round authorization.** Branch `appstore-review-2026-06` pushed (commit `db4c5fe`).
+1. **Deploy.** ✅ **STAGING (`toskastaging`) 2026-06-07** and ✅ **PROD (`toska-4ebf4`) 2026-06-08** both deployed — rules compiled server-side + released; indexes deployed (old `conversations` index left orphaned on each project, harmless); functions deployed with `onMessageCreatedModerate` + `onMessageCreatedUpdateCount` **deleted**, `cleanupExpiredCircles` kept. Branch `appstore-review-2026-06` pushed (`db4c5fe` backend, `84a7a70` UI).
+   - ⚠️ **Still verify App Check is "Enforced" on prod Firestore** in the console (documented gotcha — can silently flip during deploys). The Firebase backend is now live; the iOS visual changes ship via a new app build/TestFlight, NOT this deploy.
 2. **App Check "Enforced"** re-confirm on prod Firestore at submission.
 3. ~~DM plumbing remnants~~ — **DONE** (CLEAN-1, 2026-06-07): all removed, app compiles, rules green.
 4. Pre-existing documented items (CORR-1 password-reset enumeration UI, DEL-1 cascade orphan caps) — confirm-accept.

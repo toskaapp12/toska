@@ -168,9 +168,11 @@ struct PostDetailView: View {
                                 }
                                 // Restore any reply draft persisted from a
                                 // prior session that was killed mid-typing.
+                                // N-4: from the protected DraftStore (migrates +
+                                // scrubs a legacy UserDefaults copy on first read).
                                 if replyText.isEmpty {
                                     let key = UserDefaultsKeys.replyDraft(postId: postId)
-                                    if let saved = UserDefaults.standard.string(forKey: key), !saved.isEmpty {
+                                    if let saved = DraftStore.get(forKey: key), !saved.isEmpty {
                                         replyText = saved
                                     }
                                 }
@@ -559,8 +561,9 @@ struct PostDetailView: View {
                         if newValue.count > 500 { replyText = String(newValue.prefix(500)) }
                         // Persist reply draft per post so a kill mid-typing
                         // doesn't lose words. Cleared on successful send.
+                        // N-4: protected DraftStore instead of UserDefaults.
                         if !postId.isEmpty {
-                            UserDefaults.standard.set(
+                            DraftStore.set(
                                 replyText,
                                 forKey: UserDefaultsKeys.replyDraft(postId: postId)
                             )
@@ -1521,7 +1524,8 @@ struct PostDetailView: View {
                 }
                 self.replyText = ""
                 if !self.postId.isEmpty {
-                    UserDefaults.standard.removeObject(
+                    // N-4: clear the protected reply draft on successful send.
+                    DraftStore.remove(
                         forKey: UserDefaultsKeys.replyDraft(postId: self.postId)
                     )
                 }
@@ -1918,6 +1922,15 @@ struct SwipeToReplyRow: View {
         // .plain so the row content is rendered as-is instead of in the
         // default tinted NavigationLink style.
         .buttonStyle(.plain)
+        // N-3 (2026-06-09 re-review): a held (pending_review) reply must not
+        // drill into ReplyDetailView — that page filters its children to
+        // moderationStatus=="live" and has no pending banner, so it rendered a
+        // held reply as a normal post with a working composer and like stats.
+        // The row already shows the PendingReviewBanner inline; disable the
+        // navigation so the held reply has no normal-post detail surface.
+        // (Held replies are visible only to their own author, so this is a
+        // self-consistency fix, not a third-party leak.)
+        .disabled(item.reply.isPending)
         // Long-press context menu — mirror of FeedPostRow's context menu so
         // every reply gets the same like / save / repost / share / reply
         // action surface as a post does. The tap-row at the top of the

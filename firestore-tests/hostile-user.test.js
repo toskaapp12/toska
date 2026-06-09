@@ -435,3 +435,40 @@ describe("#3b held reply's liker list is gated on the reply's moderationStatus",
     await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r").collection("likes").doc("liker1").get());
   });
 });
+
+describe("N-1 FIXED: reply author cannot spoof authorHandle / inject fields via update", () => {
+  beforeEach(async () => {
+    await env.clearFirestore();
+    await seedUser("postauthor");
+    await seedUser("replyauthor", { handle: "handle_replyauthor" });
+    await seedUser("victim", { handle: "handle_victim" });
+    await seedPost("p", "postauthor"); // live post
+    await seedReplyDoc("p", "r1", "replyauthor", {
+      authorHandle: "handle_replyauthor", moderationStatus: "live",
+    });
+  });
+
+  it("CONTROL: the reply author CAN make a text-only edit", async () => {
+    const db = env.authenticatedContext("replyauthor").firestore();
+    await assertSucceeds(
+      db.collection("posts").doc("p").collection("replies").doc("r1")
+        .update({ text: "edited reply", editedAt: serverTimestamp() })
+    );
+  });
+
+  it("DENIED: reply author cannot re-write authorHandle to a victim's handle (byline spoof)", async () => {
+    const db = env.authenticatedContext("replyauthor").firestore();
+    await assertFails(
+      db.collection("posts").doc("p").collection("replies").doc("r1")
+        .update({ text: "edited reply", authorHandle: "handle_victim" })
+    );
+  });
+
+  it("DENIED: reply author cannot inject an arbitrary scratch field via update (R-1 class)", async () => {
+    const db = env.authenticatedContext("replyauthor").firestore();
+    await assertFails(
+      db.collection("posts").doc("p").collection("replies").doc("r1")
+        .update({ text: "edited reply", trustedByAdmin: true })
+    );
+  });
+});

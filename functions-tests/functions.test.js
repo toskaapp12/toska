@@ -24,7 +24,7 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "toska-test";
 const fns = require("../functions/index.js");
 const { __test } = fns;
 const { db, FieldValue, setReplyPendingReview, setReplyLive, cleanupLikesForUid,
-        cleanupRepliesForUid, claimedTransaction, checkRateLimit,
+        cleanupRepliesForUid, clearPostSubtree, claimedTransaction, checkRateLimit,
         isPostExplicitCrisis, isPostConcerning, computePostFlagReason,
         computeReplyFlagReason } = __test;
 
@@ -218,6 +218,40 @@ describe("cascade cleanupRepliesForUid", () => {
     assert.strictEqual((await replyRef("p1", "r1").get()).exists, false);
     assert.strictEqual((await replyRef("p2", "r2").get()).exists, false);
     assert.strictEqual((await replyRef("p1", "other").get()).exists, true, "other users' replies untouched");
+  });
+});
+
+// N-2 (2026-06-09 re-review): a single-post delete must drain the post's own
+// subtree — replies (+ their nested likes), post likes, reflections — or held
+// pending_review PII replies orphan under a deleted parent.
+describe("N-2 clearPostSubtree", () => {
+  it("deletes replies (+ their likes), post likes, and reflections; terminates", async () => {
+    const postRef = db.collection("posts").doc("p1");
+    // A held PII reply (the GDPR-sensitive case) + a live reply with a liker.
+    await replyRef("p1", "held").set({
+      authorId: "u1", text: "my ex Sarah Johnson", createdAt: new Date(),
+      moderationStatus: "pending_review", pendingReason: "pii",
+    });
+    await replyRef("p1", "live").set({
+      authorId: "u2", text: "hang in there", createdAt: new Date(), moderationStatus: "live",
+    });
+    await replyRef("p1", "live").collection("likes").doc("liker").set({ createdAt: new Date() });
+    await postRef.collection("likes").doc("u3").set({ createdAt: new Date() });
+    await postRef.collection("reflections").doc("ref1").set({ authorId: "p1author", text: "r", createdAt: new Date() });
+
+    const capHit = await clearPostSubtree("p1", 20);
+
+    assert.strictEqual(capHit, false);
+    assert.strictEqual((await replyRef("p1", "held").get()).exists, false, "held PII reply must be gone");
+    assert.strictEqual((await replyRef("p1", "live").get()).exists, false);
+    assert.strictEqual((await replyRef("p1", "live").collection("likes").doc("liker").get()).exists, false, "reply's nested likes must be gone");
+    assert.strictEqual((await postRef.collection("likes").doc("u3").get()).exists, false);
+    assert.strictEqual((await postRef.collection("reflections").doc("ref1").get()).exists, false);
+  });
+
+  it("is idempotent / safe on an already-empty subtree (capHit false)", async () => {
+    const capHit = await clearPostSubtree("nonexistent", 20);
+    assert.strictEqual(capHit, false);
   });
 });
 

@@ -1680,6 +1680,80 @@ exports.onPostDeletedCleanupReposts = onDocumentDeleted("posts/{postId}", async 
   }
 });
 
+// N-2 (2026-06-09 re-review): clears a deleted post's OWN subtree — its
+// replies (and each reply's nested likes), its likes, and its reflections.
+// Previously NOTHING did this on a single-post delete: onPostDeletedCleanupReposts
+// only clears reposts POINTING AT the post, and the post's own subcollections
+// were swept solely by the account-deletion cascade (cleanupPostsForUid) and
+// cleanupExpiredPosts. So every admin.html removePost/deletePost — and any
+// direct delete — orphaned the subtree forever (parent gone → no re-fire).
+// That's storage/cost residue AND a GDPR/anonymity problem, because held
+// pending_review replies (which may carry real PII — the whole reason for the
+// M-1 hold) persisted under a deleted parent. Firestore deletes don't cascade
+// to subcollections, so this must be explicit.
+//
+// Bounded to `maxReplyPages` pages of 100 replies per invocation so a
+// mega-thread drains across the resume scheduler instead of timing out.
+// Idempotent: deletes only what's still present, safe to re-run. The reply
+// and reply-like deletes fire onReplyDeleted*/onReplyLike* counter triggers,
+// but those read the (now-deleted) parent post in a transaction and no-op when
+// it's missing, so no errant counter writes result. Returns capHit.
+async function clearPostSubtree(postId, maxReplyPages = 20) {
+  const postRef = db.collection("posts").doc(postId);
+  let pages = 0;
+  let capHit = false;
+  for (; pages < maxReplyPages; pages++) {
+    const snap = await postRef.collection("replies").limit(100).get();
+    if (snap.empty) break;
+    // Clear each reply's nested likes BEFORE deleting the reply doc, so the
+    // likes aren't stranded (a delete doesn't cascade to subcollections).
+    for (const reply of snap.docs) {
+      await deleteCollection(reply.ref.collection("likes"));
+    }
+    const batch = db.batch();
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.warn(`clearPostSubtree replies batch failed for ${postId}:`, err.message);
+      capHit = true;
+      break;
+    }
+    if (snap.size < 100) break;
+  }
+  if (pages >= maxReplyPages) capHit = true;
+  const lk = await deleteCollection(postRef.collection("likes"));
+  const rf = await deleteCollection(postRef.collection("reflections"));
+  if (lk.capHit || rf.capHit) capHit = true;
+  return capHit;
+}
+
+// Fires on EVERY post delete (originals AND reposts — both can carry replies/
+// likes). On the account-deletion / expired-post paths the subcollections are
+// already drained before the post doc is deleted, so this trigger does a few
+// empty reads and returns — harmless and idempotent.
+exports.onPostDeletedCleanupSubtree = onDocumentDeleted("posts/{postId}", async (event) => {
+  const postId = event.params.postId;
+  let capHit = false;
+  try {
+    capHit = await clearPostSubtree(postId, 20);
+  } catch (err) {
+    console.error(`onPostDeletedCleanupSubtree failed for ${postId}:`, err.message);
+    capHit = true; // re-queue so the subtree isn't stranded
+  }
+  if (capHit) {
+    try {
+      await db.collection("postSubtreeCleanupQueue").doc(postId).set({
+        postId,
+        queuedAt: FieldValue.serverTimestamp(),
+      });
+      console.warn(`onPostDeletedCleanupSubtree: cap hit for ${postId}; queued for resume.`);
+    } catch (err) {
+      console.error(`postSubtreeCleanupQueue write failed for ${postId}:`, err.message);
+    }
+  }
+});
+
 // ============================================================
 // Counter: follow counts (server-side only)
 // ============================================================
@@ -3476,6 +3550,31 @@ exports.resumeRepostCleanup = onSchedule("every 60 minutes", async () => {
   }
 });
 
+// N-2 (2026-06-09 re-review): drains postSubtreeCleanupQueue markers written by
+// onPostDeletedCleanupSubtree when a mega-thread had more replies than one
+// trigger invocation could clear. Each pass clears up to 50 more reply pages
+// and only removes the marker once the post's subtree is fully empty.
+exports.resumePostSubtreeCleanup = onSchedule("every 60 minutes", async () => {
+  const queueSnap = await db.collection("postSubtreeCleanupQueue").limit(10).get();
+  if (queueSnap.empty) return;
+
+  for (const queueDoc of queueSnap.docs) {
+    const postId = queueDoc.id;
+    try {
+      const capHit = await clearPostSubtree(postId, 50);
+      if (capHit) {
+        await queueDoc.ref.update({ lastResumedAt: FieldValue.serverTimestamp() });
+        console.log(`Partial post-subtree cleanup for ${postId}: staying in queue.`);
+      } else {
+        console.log(`Completed post-subtree cleanup for ${postId}.`);
+        await queueDoc.ref.delete();
+      }
+    } catch (err) {
+      console.error(`resumePostSubtreeCleanup failed for ${postId}:`, err.message);
+    }
+  }
+});
+
 // ============================================================
 // Scheduled stale pendingDeletions monitor — runs every hour
 // ============================================================
@@ -4109,6 +4208,7 @@ module.exports.__test = {
   cleanupLikesForUid,
   cleanupRepliesForUid,
   clearRepostsOfPost,
+  clearPostSubtree,
   claimedTransaction,
   claimTriggerEvent,
   checkRateLimit,

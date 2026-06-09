@@ -826,6 +826,13 @@ struct FeedPostRow: View {
         @State private var localLikeCount: Int = 0
         @State private var localRepostCount: Int = 0
     @State private var hasInitialized = false
+        // N-7 (2026-06-09 re-review): absorb the feed re-delivery echo after an
+        // optimistic like, mirroring PostDetailView's suppressListenerUntil. A
+        // refresh arriving in the ~1-2s before the Cloud Function increments the
+        // server likeCount used to snap localLikeCount back to N then forward to
+        // N+1 again — a visible flicker. Skip the listener overwrite inside the
+        // window.
+        @State private var suppressLikeListenerUntil: Date = .distantPast
         @State private var likePulse = false
             @State private var repostPulse = false
             @State private var likePulseTask: Task<Void, Never>? = nil
@@ -1227,7 +1234,11 @@ struct FeedPostRow: View {
                 // re-delivered by a feed refresh — without these, the row keeps
                 // its first-seen like/repost numbers and drifts from the server.
                 .onChange(of: likes) { _, newValue in
-                    if !postId.isEmpty { localLikeCount = newValue }
+                    // N-7: ignore the server echo during the post-tap suppression
+                    // window so the optimistic count doesn't flicker.
+                    if !postId.isEmpty && Date() > suppressLikeListenerUntil {
+                        localLikeCount = newValue
+                    }
                 }
                 .onChange(of: reposts) { _, newValue in
                     if !postId.isEmpty { localRepostCount = newValue }
@@ -1289,6 +1300,10 @@ struct FeedPostRow: View {
     // MARK: - Like
         
         func toggleLike() {
+            // N-7: arm the suppression window at tap time, re-arm on completion
+            // (mirrors PostDetailView.toggleLike) so a feed refresh can't snap
+            // the optimistic count back mid-round-trip.
+            suppressLikeListenerUntil = Date().addingTimeInterval(2.0)
             PostInteractionManager.toggleLike(
                 postId: postId,
                 authorId: authorId,
@@ -1297,6 +1312,7 @@ struct FeedPostRow: View {
             ) { result in
                 isLiked = result.isLiked
                 localLikeCount = result.newCount
+                suppressLikeListenerUntil = Date().addingTimeInterval(1.5)
                 if result.isLiked {
                                     likePulse = true
                                     likePulseTask?.cancel()

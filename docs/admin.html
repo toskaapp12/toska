@@ -172,9 +172,17 @@
         // working without App Check. No fail-closed surprise.
         // reCAPTCHA Enterprise key for www.toskaapp.com / toskaapp.com,
         // attached to the Web app's App Check config 2026-05-31. Public
-        // identifier; safe to commit. Firestore App Check is ENFORCED in
-        // prod, so this site key must be valid for the dashboard to read
-        // anything from Firestore.
+        // identifier; safe to commit.
+        //
+        // N-9 (2026-06-09 re-review): an earlier comment here claimed Firestore
+        // App Check is ENFORCED in prod. It is NOT — checkAppCheck.js confirmed
+        // enforcementMode=(unset) on firestore/identitytoolkit (see AC-1 in
+        // AUDIT.md). The App Check init below is therefore best-effort and NOT
+        // a security layer today: firestore.rules is the SOLE perimeter for
+        // every privileged read/write. Do not weaken any isAdmin() rule on the
+        // assumption App Check provides a second gate — it doesn't until the
+        // owner flips enforcement on in both consoles. Once enforcement is on,
+        // this site key must be valid for the dashboard to reach Firestore.
         const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
         if (RECAPTCHA_SITE_KEY) {
             const { initializeAppCheck, ReCaptchaEnterpriseProvider } =

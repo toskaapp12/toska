@@ -83,7 +83,8 @@
         </div>
         <div class="tabs">
             <button class="active" data-tab="reports">reports</button>
-            <button data-tab="pending">pending review</button>
+            <button data-tab="pending">pending posts</button>
+            <button data-tab="pendingReplies">pending replies</button>
             <button data-tab="flagged">flagged posts</button>
             <button data-tab="crisis">crisis</button>
             <button data-tab="restricted">restricted users</button>
@@ -131,7 +132,7 @@
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-        import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
         // Web app config (NOT iOS). App Check is registered per-app, so
         // the dashboard needs its own Web appId — using the iOS appId
@@ -290,6 +291,7 @@
             loadingState(content);
             if (currentTab === "reports") await loadReports(content);
             else if (currentTab === "pending") await loadPending(content);
+            else if (currentTab === "pendingReplies") await loadPendingReplies(content);
             else if (currentTab === "flagged") await loadFlagged(content);
             else if (currentTab === "crisis") await loadCrisis(content);
             else if (currentTab === "restricted") await loadRestricted(content);
@@ -423,6 +425,113 @@
             } catch (e) {
                 alert(`couldn't approve: ${e.message}`);
             }
+        }
+
+        // --- Pending replies (M-1) ---
+        //
+        // Replies held at moderationStatus == "pending_review" by validateReply /
+        // onReplyUpdated / applyReplyModeration (PII or links). The author still
+        // sees their own held reply with an "under review" banner; everyone else
+        // is denied by the reply read rule. Approve flips it back to "live" so it
+        // rejoins the thread; remove deletes it. Uses a collectionGroup query
+        // (admins get a dedicated leg in firestore.rules) ordered by
+        // pendingDetectedAt DESC. Index: replies(moderationStatus, pendingDetectedAt DESC).
+
+        async function loadPendingReplies(container) {
+            try {
+                const q = query(
+                    collectionGroup(db, "replies"),
+                    where("moderationStatus", "==", "pending_review"),
+                    orderBy("pendingDetectedAt", "desc"),
+                    limit(50)
+                );
+                const snap = await getDocs(q);
+                if (snap.empty) {
+                    emptyState(container, "no replies pending review", "auto-detection is keeping the queue clear");
+                    return;
+                }
+                container.replaceChildren();
+                snap.docs.forEach(d => {
+                    const r = d.data();
+                    const detectedAt = r.pendingDetectedAt?.toDate?.() ?? r.createdAt?.toDate?.();
+                    const time = detectedAt ? timeAgo(detectedAt) : "unknown";
+                    const reasonKey = typeof r.pendingReason === "string" ? r.pendingReason : "";
+                    const reasonText = PENDING_REASON_LABELS[reasonKey] || reasonKey || "held for review";
+
+                    const card = el("div", "card");
+                    card.id = `pendingreply-${d.id}`;
+
+                    const header = el("div", "card-header");
+                    header.append(
+                        span("card-type type-reply", "reply"),
+                        span("flagged-label", reasonText),
+                        span("card-time", time)
+                    );
+                    card.appendChild(header);
+
+                    const textDiv = el("div", "card-text");
+                    textDiv.textContent = r.text || "";
+                    card.appendChild(textDiv);
+
+                    const meta = el("div", "card-meta");
+                    const bySpan = el("span");
+                    bySpan.textContent = `by: ${r.authorHandle || "unknown"}`;
+                    const onSpan = el("span");
+                    onSpan.textContent = `on post by: ${r.parentPostHandle || "unknown"}`;
+                    meta.append(bySpan, onSpan);
+                    card.appendChild(meta);
+
+                    const actions = el("div", "card-actions");
+
+                    const approveBtn = el("button", "btn-dismiss");
+                    approveBtn.textContent = "approve (publish)";
+                    approveBtn.addEventListener("click", () => approvePendingReply(d.ref, d.id));
+                    actions.appendChild(approveBtn);
+
+                    const deleteBtn = el("button", "btn-remove");
+                    deleteBtn.textContent = "remove reply";
+                    deleteBtn.addEventListener("click", () => removeReply(d.ref, d.id));
+                    actions.appendChild(deleteBtn);
+
+                    if (r.authorId) {
+                        const restrictBtn = el("button", "btn-restrict");
+                        restrictBtn.textContent = "restrict author";
+                        restrictBtn.addEventListener("click", () => restrictUserDirect(r.authorId, r.authorHandle || ""));
+                        actions.appendChild(restrictBtn);
+                    }
+
+                    card.appendChild(actions);
+                    container.appendChild(card);
+                });
+            } catch (e) {
+                container.replaceChildren();
+                const errDiv = el("div", "card");
+                errDiv.textContent = `error loading pending replies: ${e.message}`;
+                container.appendChild(errDiv);
+            }
+        }
+
+        async function approvePendingReply(replyRef, cardKey) {
+            try {
+                const uid = auth.currentUser?.uid || "";
+                await updateDoc(replyRef, {
+                    moderationStatus: "live",
+                    pendingApprovedAt: serverTimestamp(),
+                    pendingApprovedBy: uid,
+                });
+                document.getElementById(`pendingreply-${cardKey}`)?.remove();
+            } catch (e) {
+                alert(`couldn't approve: ${e.message}`);
+            }
+        }
+
+        async function removeReply(replyRef, cardKey) {
+            if (!confirm("delete this reply permanently?")) return;
+            try {
+                await deleteDoc(replyRef);
+                document.getElementById(`pendingreply-${cardKey}`)?.remove();
+                showToast("reply deleted");
+            } catch (e) { showToast("error: " + e.message); }
         }
 
         // --- Crisis (concerningContent posts) ---

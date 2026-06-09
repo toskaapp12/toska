@@ -1,0 +1,11 @@
+{
+  "name": "toska-functions-tests",
+  "private": true,
+  "description": "Emulator-backed unit tests for the Cloud Functions Admin-SDK logic (deletion cascade, M-1 reply hold, counter dedup, rate limiting).",
+  "scripts": {
+    "test": "PATH=\"/opt/homebrew/opt/openjdk@21/bin:$PATH\" firebase emulators:exec --only firestore --project=toska-test 'npx mocha --timeout 20000 functions.test.js'"
+  },
+  "devDependencies": {
+    "mocha": "^11.0.0"
+  }
+}

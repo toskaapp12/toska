@@ -407,3 +407,22 @@ describe("full-name heuristic: two consecutive Capitalized words (audit 2026-06-
   noFlag("brand bigram does not flag", "we grabbed Taco Bell after");
   noFlag("all-lowercase prose does not flag", "i keep replaying the last conversation we had");
 });
+
+describe("M-2 false-positive fixes (audit 2026-06-08)", () => {
+  // Breakup-timeline year lists were collapsed into one long digit run that
+  // survived the year-strip and tripped the >=10-digit phone heuristic.
+  noFlag("year list does not flag as phone", "I dated her in 2019 2020 2021 2022 2023");
+  noFlag("score/number list does not flag as phone", "scores were 100 95 88 76 65 54 43 32 21 10");
+  // looksLikeFullName: common English title/phrase bigrams are not names.
+  noFlag("title bigram does not flag", "Last Night was the worst");
+  noFlag("media title with article does not flag", "The Notebook made me cry");
+  noFlag("band bigram does not flag", "we loved Pearl Jam concerts");
+  noFlag("landmark bigram does not flag", "the Grand Canyon trip we took");
+
+  // Regressions the fix must NOT break:
+  flag("international phone still flags", "+44 20 7946 0958");
+  flag("US phone still flags", "call me at 555 123 4567");
+  flag("real first+last name still flags", "my ex Sarah Jones broke my heart");
+  flag("uncommon full name still flags", "Tess Salinaro ruined me");
+  flag("name + common-word surname still flags", "Sarah Park texted me again");
+});

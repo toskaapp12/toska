@@ -18,6 +18,7 @@ struct OtherProfileView: View {
     @State private var showReport = false
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
+    @State private var showReportFailedAlert = false
     @State private var lastFollowTime: Date? = nil
     @State private var hasFetchedInitial = false
     @State private var showFollowerCount = true
@@ -44,7 +45,6 @@ struct OtherProfileView: View {
                         Menu {
                             Button {
                                 reportUser()
-                                showReportedAlert = true
                             } label: {
                                 Label("report", systemImage: "flag")
                             }
@@ -267,6 +267,11 @@ struct OtherProfileView: View {
             Button("ok") {}
         } message: {
             Text("we hear you. well look into it.")
+        }
+        .alert("couldnt report", isPresented: $showReportFailedAlert) {
+            Button("ok") {}
+        } message: {
+            Text("something went wrong. please try again in a bit.")
         }
         // Tapping any bottom-tab button (home, trending, notifications, profile)
         // posts .dismissAllSheets via MainTabView. Pop ourselves on receive so
@@ -554,8 +559,16 @@ struct OtherProfileView: View {
             "createdAt": FieldValue.serverTimestamp(),
             "reportedUserId": userId,
             "reportedHandle": handle,
-        ])
-        Telemetry.reportSubmitted(target: .user, reasonCode: "other")
+        ]) { error in
+            // Only confirm success when the write actually lands — a rules
+            // denial otherwise showed a false "user reported" alert.
+            if error != nil {
+                showReportFailedAlert = true
+            } else {
+                Telemetry.reportSubmitted(target: .user, reasonCode: "other")
+                showReportedAlert = true
+            }
+        }
     }
 
     // startConversation was removed when DMs were cut as a product decision.

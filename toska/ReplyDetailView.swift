@@ -311,8 +311,15 @@ struct ReplyDetailView: View {
         guard !postId.isEmpty else { return }
         replyListener?.remove()
         let capturedUid = Auth.auth().currentUser?.uid
+        // M-1: filter to live replies. A held reply (moderationStatus ==
+        // "pending_review") is denied to non-authors by the reply read rule,
+        // so an unfiltered list query would fail. The author's own held replies
+        // still surface in the main PostDetailView thread (with a banner); this
+        // drill-down view intentionally shows only live children to keep the
+        // query rule-safe without a second listener.
         replyListener = Firestore.firestore()
             .collection("posts").document(postId).collection("replies")
+            .whereField("moderationStatus", isEqualTo: "live")
             .order(by: "createdAt", descending: false)
             .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
@@ -334,6 +341,7 @@ struct ReplyDetailView: View {
                             text: data["text"] as? String ?? "",
                             likes: data["likeCount"] as? Int ?? 0,
                             time: FeedView.timeAgoString(from: createdAt),
+                            createdAt: createdAt,
                             authorId: authorId,
                             parentReplyId: data["parentReplyId"] as? String,
                             children: [],

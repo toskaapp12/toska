@@ -59,8 +59,23 @@ class RateLimiter {
     private var lastSaveByPost: [String: Date] = [:]
     private var lastRepostByPost: [String: Date] = [:]
 
+    // The per-post dictionaries would otherwise grow unbounded for the whole
+    // session (one entry per post the user ever interacts with). The longest
+    // rate-limit window here is 0.8s, so any entry older than this retention
+    // window can never gate a new action — prune it on each record to keep
+    // memory bounded while leaving recent (still-throttling) entries intact.
+    private static let entryRetention: TimeInterval = 60
+
+    private func prune(_ dict: inout [String: Date]) {
+        let cutoff = Date().addingTimeInterval(-Self.entryRetention)
+        dict = dict.filter { $0.value > cutoff }
+    }
+
     func lastLikeTime(for postId: String) -> Date? { lastLikeByPost[postId] }
-    func recordLike(for postId: String) { lastLikeByPost[postId] = Date() }
+    func recordLike(for postId: String) {
+        prune(&lastLikeByPost)
+        lastLikeByPost[postId] = Date()
+    }
 
     // In-flight like guard. The 0.8s rate-limit window is enough to debounce
     // a quick double-tap, but a slow transaction that runs longer than 0.8s
@@ -75,10 +90,16 @@ class RateLimiter {
     func markLikeComplete(_ postId: String) { inFlightLikes.remove(postId) }
 
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
-    func recordSave(for postId: String) { lastSaveByPost[postId] = Date() }
+    func recordSave(for postId: String) {
+        prune(&lastSaveByPost)
+        lastSaveByPost[postId] = Date()
+    }
 
     func lastRepostTime(for postId: String) -> Date? { lastRepostByPost[postId] }
-    func recordRepost(for postId: String) { lastRepostByPost[postId] = Date() }
+    func recordRepost(for postId: String) {
+        prune(&lastRepostByPost)
+        lastRepostByPost[postId] = Date()
+    }
 
     private init() {}
 }

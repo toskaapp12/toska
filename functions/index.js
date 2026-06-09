@@ -315,6 +315,65 @@ async function cleanupRepliesForUid(uid, maxIterations) {
   return { totalDeleted, capHit: batchCount >= maxIterations };
 }
 
+// F-2 (2026-06-08 audit): a deleted user's LIKE docs on OTHER users' posts and
+// replies are keyed by the liker's uid (posts/{p}/likes/{uid},
+// posts/{p}/replies/{r}/likes/{uid}) and carry no authorId field, so a
+// collectionGroup("likes") query can't locate them by owner. The user's own
+// reverse indices DO enumerate them: users/{uid}/liked/{postId} and
+// users/{uid}/likedReplies/{replyId} (payload carries the parent postId). Walk
+// those indices and delete BOTH the like doc on the third-party content (which
+// fires onLikeDeletedUpdateCounts → corrects the post's likeCount and the post
+// author's totalLikes) AND the index entry itself. Without this, a deleted
+// user's likes persisted on everyone else's posts forever — a GDPR Art. 17
+// residue and permanently inflated likeCount/totalLikes.
+//
+// This helper now OWNS liked/likedReplies cleanup, so those are dropped from
+// the generic subs loop in onUserDocDeleted; deleting the index entry as we go
+// (rather than relying on the subs loop) keeps resume idempotent — a resumed
+// pass re-reads only the entries that remain. Page size is 250 because each
+// index doc fans out to two deletes (third-party like + index entry) and a
+// Firestore batch caps at 500 writes.
+async function cleanupLikesForUid(uid, maxIterations) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  // Post likes via users/{uid}/liked (doc id == postId).
+  const likedRef = db.collection("users").doc(uid).collection("liked");
+  while (batchCount < maxIterations) {
+    const snap = await likedRef.limit(250).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => {
+      batch.delete(db.collection("posts").doc(doc.id).collection("likes").doc(uid));
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 250) break;
+  }
+  if (batchCount >= maxIterations) return { totalDeleted, capHit: true };
+  // Reply likes via users/{uid}/likedReplies (doc id == replyId, data.postId == parent).
+  const likedRepliesRef = db.collection("users").doc(uid).collection("likedReplies");
+  while (batchCount < maxIterations) {
+    const snap = await likedRepliesRef.limit(250).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => {
+      const postId = doc.data()?.postId;
+      if (typeof postId === "string" && postId.length > 0) {
+        batch.delete(db.collection("posts").doc(postId)
+          .collection("replies").doc(doc.id).collection("likes").doc(uid));
+      }
+      batch.delete(doc.ref);
+    });
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < 250) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
 // Paginated cleanup of conversations where a deleted user is a participant.
 // Per-convo work: deleteCollection(messages), then scrub the deleted user's
 // slot from participantHandles so the surviving participant's UI doesn't
@@ -722,7 +781,7 @@ const RATE_LIMIT_ALLOWED_ENDPOINTS = new Set([
   "report_target",  // per-target cap (audit P1: report flooding)
 ]);
 
-async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds) {
+async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds, failClosed = false) {
   if (!RATE_LIMIT_ALLOWED_ENDPOINTS.has(endpoint)) {
     throw new Error(`checkRateLimit: unknown endpoint "${endpoint}"`);
   }
@@ -745,11 +804,13 @@ async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds) {
     });
     return allowed;
   } catch (err) {
-    // Failing open on a transaction error is the right call here — a Firestore
-    // hiccup shouldn't lock legitimate users out of features. Log so it shows
-    // up if it ever becomes a pattern.
-    console.warn(`checkRateLimit ${endpoint} for ${uid} errored, failing open:`, err.message);
-    return true;
+    // F-5 (2026-06-08 audit): callers guarding an EXTERNAL PAID quota
+    // (giphyProxy) pass failClosed=true so a Firestore outage that disables
+    // the rate-limiter can't be used to storm the Giphy API. For purely
+    // internal features (confirmAdult, reconcileMyCounts, reports) we still
+    // fail OPEN — a Firestore hiccup shouldn't lock legitimate users out.
+    console.warn(`checkRateLimit ${endpoint} for ${uid} errored, failing ${failClosed ? "closed" : "open"}:`, err.message);
+    return !failClosed;
   }
 }
 
@@ -805,6 +866,12 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // there.
     await runWithResume(uid, "follows", cleanupMirrorFollowsForUid, "follow edges");
 
+    // F-2: clean the user's like docs on OTHER users' posts/replies (and the
+    // liked/likedReplies indices that enumerate them). MUST run before the
+    // subs loop below so the indices still exist to walk; this helper now owns
+    // liked/likedReplies cleanup, so they're removed from `subs`.
+    await runWithResume(uid, "likesOnOthers", cleanupLikesForUid, "likes on others' content");
+
     // `drafts` is included so a user's pre-publish rehearsal text doesn't
     // survive their account delete. Without it, drafts persist forever
     // (rules deny reads to anyone but the now-deleted owner — orphaned
@@ -823,7 +890,10 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // without them here the deleted user's reply like/save history (replyId +
     // parent postId) survives account deletion as owner-only orphans — a GDPR
     // Art. 17 gap and a storage leak.
-    const subs = ["saved", "liked", "likedReplies", "savedReplies", "notifications", "blocked", "presence", "private", "drafts"];
+    // liked/likedReplies are intentionally NOT here — cleanupLikesForUid
+    // (F-2, above) owns them so it can also delete the corresponding like docs
+    // on third-party content before the index entries are removed.
+    const subs = ["saved", "savedReplies", "notifications", "blocked", "presence", "private", "drafts"];
     for (const sub of subs) {
       try {
         const result = await deleteCollection(db.collection("users").doc(uid).collection(sub));
@@ -1292,9 +1362,13 @@ exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
 // ============================================================
 
 exports.onReplyCreatedUpdateCount = onDocumentCreated(
-  "posts/{postId}/replies/{replyId}",
+  // F-1 (2026-06-08 audit): migrated from the claim-first claimTriggerEvent
+  // shape (which drifted permanently if the increment failed after the claim
+  // was set) to the atomic claimedTransaction + retry:true pattern. The claim
+  // now lands inside the same transaction as the increment, so a failed write
+  // rolls back the claim and Eventarc redelivers cleanly.
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
     const replyData = event.data.data();
     if (!replyData) return;
@@ -1302,13 +1376,12 @@ exports.onReplyCreatedUpdateCount = onDocumentCreated(
     if (typeof replyData.text !== "string" || replyData.text.trim().length === 0) return;
     if (!replyData.authorId) return;
 
-    try {
-      await db.collection("posts").doc(postId).update({
-        replyCount: FieldValue.increment(1),
-      });
-    } catch (err) {
-      logCounterDrift("onReplyCreatedUpdateCount", event.id, err, { postId });
-    }
+    const postRef = db.collection("posts").doc(postId);
+    await claimedTransaction(event.id, "replyCount", async (tx) => {
+      const snap = await tx.get(postRef);
+      if (!snap.exists) return; // parent post deleted before this trigger
+      tx.update(postRef, { replyCount: FieldValue.increment(1) });
+    });
   }
 );
 
@@ -1326,17 +1399,49 @@ exports.onReplyCreatedUpdateCount = onDocumentCreated(
 // decrement path at all. The comment in ProfileView.deleteReply references
 // this function by name; now it actually exists.
 exports.onReplyDeletedUpdateCount = onDocumentDeleted(
-  "posts/{postId}/replies/{replyId}",
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const postId = event.params.postId;
-    try {
-      await db.collection("posts").doc(postId).update({
-        replyCount: FieldValue.increment(-1),
-      });
-    } catch (err) {
-      logCounterDrift("onReplyDeletedUpdateCount", event.id, err, { postId });
-    }
+    // #1 (2026-06-09 audit): a HELD reply (moderationStatus == "pending_review")
+    // was already decremented out of replyCount when it was held (by
+    // onReplyVisibilityCountAdjust), so deleting it must NOT decrement again —
+    // otherwise a held-then-deleted reply drives the count one too low.
+    const deletedData = event.data?.data();
+    if (deletedData?.moderationStatus === "pending_review") return;
+    const postRef = db.collection("posts").doc(postId);
+    await claimedTransaction(event.id, "replyCount", async (tx) => {
+      const snap = await tx.get(postRef);
+      if (!snap.exists) return;
+      tx.update(postRef, { replyCount: FieldValue.increment(-1) });
+    });
+  }
+);
+
+// #1 (2026-06-09 audit): replyCount must track VISIBLE replies, not all replies.
+// A reply is counted at create (onReplyCreatedUpdateCount) regardless of
+// moderation; this trigger adjusts the count when a reply crosses the
+// visible<->hidden boundary:
+//   - held      (moderationStatus -> "pending_review"): -1
+//   - un-held / admin-approved (-> not "pending_review"): +1
+// Without it, a user could inflate any post's replyCount by spamming held
+// (PII) replies — each fired the create-increment but stayed hidden. No-op on
+// non-visibility updates (text edits, like-count writes). Atomic + deduped via
+// claimedTransaction + retry, same discipline as the other counters (F-1).
+exports.onReplyVisibilityCountAdjust = onDocumentUpdated(
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
+  async (event) => {
+    const before = event.data?.before?.data() || {};
+    const after = event.data?.after?.data() || {};
+    const wasHidden = before.moderationStatus === "pending_review";
+    const nowHidden = after.moderationStatus === "pending_review";
+    if (wasHidden === nowHidden) return; // no visibility transition
+    const delta = wasHidden ? 1 : -1;    // hidden->visible: +1; visible->hidden: -1
+    const postRef = db.collection("posts").doc(event.params.postId);
+    await claimedTransaction(event.id, "replyVisCount", async (tx) => {
+      const snap = await tx.get(postRef);
+      if (!snap.exists) return;
+      tx.update(postRef, { replyCount: FieldValue.increment(delta) });
+    });
   }
 );
 
@@ -1357,32 +1462,28 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
 // ============================================================
 
 exports.onReplyLikeCreatedUpdateCount = onDocumentCreated(
-  "posts/{postId}/replies/{replyId}/likes/{likeUserId}",
+  { document: "posts/{postId}/replies/{replyId}/likes/{likeUserId}", retry: true },
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const { postId, replyId } = event.params;
-    try {
-      await db.collection("posts").doc(postId)
-        .collection("replies").doc(replyId)
-        .update({ likeCount: FieldValue.increment(1) });
-    } catch (err) {
-      logCounterDrift("onReplyLikeCreatedUpdateCount", event.id, err, { postId, replyId });
-    }
+    const replyRef = db.collection("posts").doc(postId).collection("replies").doc(replyId);
+    await claimedTransaction(event.id, "replyLikeCount", async (tx) => {
+      const snap = await tx.get(replyRef);
+      if (!snap.exists) return;
+      tx.update(replyRef, { likeCount: FieldValue.increment(1) });
+    });
   }
 );
 
 exports.onReplyLikeDeletedUpdateCount = onDocumentDeleted(
-  "posts/{postId}/replies/{replyId}/likes/{likeUserId}",
+  { document: "posts/{postId}/replies/{replyId}/likes/{likeUserId}", retry: true },
   async (event) => {
-    if (!await claimTriggerEvent(event.id)) return;
     const { postId, replyId } = event.params;
-    try {
-      await db.collection("posts").doc(postId)
-        .collection("replies").doc(replyId)
-        .update({ likeCount: FieldValue.increment(-1) });
-    } catch (err) {
-      logCounterDrift("onReplyLikeDeletedUpdateCount", event.id, err, { postId, replyId });
-    }
+    const replyRef = db.collection("posts").doc(postId).collection("replies").doc(replyId);
+    await claimedTransaction(event.id, "replyLikeCount", async (tx) => {
+      const snap = await tx.get(replyRef);
+      if (!snap.exists) return;
+      tx.update(replyRef, { likeCount: FieldValue.increment(-1) });
+    });
   }
 );
 
@@ -1391,7 +1492,7 @@ exports.onReplyLikeDeletedUpdateCount = onDocumentDeleted(
 // ============================================================
 
 exports.onRepostCreatedUpdateCount = onDocumentCreated(
-  "posts/{postId}",
+  { document: "posts/{postId}", retry: true },
   async (event) => {
     const postData = event.data.data();
     if (!postData) return;
@@ -1404,17 +1505,15 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
         && postData.originalReplyId.length > 0) return;
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
-    // Claim is gated on the isRepost guards above so non-repost create
-    // events don't burn a processedTriggerEvents row for a no-op.
-    if (!await claimTriggerEvent(event.id)) return;
-
-    try {
-      await db.collection("posts").doc(originalPostId).update({
-        repostCount: FieldValue.increment(1),
-      });
-    } catch (err) {
-      logCounterDrift("onRepostCreatedUpdateCount", event.id, err, { originalPostId });
-    }
+    // Atomic claim+increment (F-1): the claim lands inside the transaction so
+    // a failed increment rolls it back and Eventarc redelivers. Non-repost
+    // create events short-circuit above before any claim is written.
+    const originalRef = db.collection("posts").doc(originalPostId);
+    await claimedTransaction(event.id, "repostCount", async (tx) => {
+      const snap = await tx.get(originalRef);
+      if (!snap.exists) return;
+      tx.update(originalRef, { repostCount: FieldValue.increment(1) });
+    });
   }
 );
 
@@ -1427,7 +1526,7 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
 // the decrement when the increment hadn't landed yet, then the increment
 // landed afterward and stuck).
 exports.onRepostDeletedUpdateCount = onDocumentDeleted(
-  "posts/{postId}",
+  { document: "posts/{postId}", retry: true },
   async (event) => {
     const postData = event.data.data();
     if (!postData) return;
@@ -1439,15 +1538,13 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
         && postData.originalReplyId.length > 0) return;
     const originalPostId = postData.originalPostId;
     if (!originalPostId || typeof originalPostId !== "string") return;
-    if (!await claimTriggerEvent(event.id)) return;
 
-    try {
-      await db.collection("posts").doc(originalPostId).update({
-        repostCount: FieldValue.increment(-1),
-      });
-    } catch (err) {
-      logCounterDrift("onRepostDeletedUpdateCount", event.id, err, { originalPostId });
-    }
+    const originalRef = db.collection("posts").doc(originalPostId);
+    await claimedTransaction(event.id, "repostCount", async (tx) => {
+      const snap = await tx.get(originalRef);
+      if (!snap.exists) return;
+      tx.update(originalRef, { repostCount: FieldValue.increment(-1) });
+    });
   }
 );
 
@@ -1462,7 +1559,7 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
 // ============================================================
 
 exports.onReplyRepostCreatedUpdateCount = onDocumentCreated(
-  "posts/{postId}",
+  { document: "posts/{postId}", retry: true },
   async (event) => {
     const postData = event.data.data();
     if (!postData) return;
@@ -1471,20 +1568,19 @@ exports.onReplyRepostCreatedUpdateCount = onDocumentCreated(
     const originalPostId = postData.originalPostId;
     if (!originalReplyId || typeof originalReplyId !== "string" || originalReplyId.length === 0) return;
     if (!originalPostId || typeof originalPostId !== "string") return;
-    if (!await claimTriggerEvent(event.id)) return;
 
-    try {
-      await db.collection("posts").doc(originalPostId)
-        .collection("replies").doc(originalReplyId)
-        .update({ repostCount: FieldValue.increment(1) });
-    } catch (err) {
-      logCounterDrift("onReplyRepostCreatedUpdateCount", event.id, err, { originalPostId, originalReplyId });
-    }
+    const replyRef = db.collection("posts").doc(originalPostId)
+      .collection("replies").doc(originalReplyId);
+    await claimedTransaction(event.id, "replyRepostCount", async (tx) => {
+      const snap = await tx.get(replyRef);
+      if (!snap.exists) return;
+      tx.update(replyRef, { repostCount: FieldValue.increment(1) });
+    });
   }
 );
 
 exports.onReplyRepostDeletedUpdateCount = onDocumentDeleted(
-  "posts/{postId}",
+  { document: "posts/{postId}", retry: true },
   async (event) => {
     const postData = event.data.data();
     if (!postData) return;
@@ -1493,15 +1589,14 @@ exports.onReplyRepostDeletedUpdateCount = onDocumentDeleted(
     const originalPostId = postData.originalPostId;
     if (!originalReplyId || typeof originalReplyId !== "string" || originalReplyId.length === 0) return;
     if (!originalPostId || typeof originalPostId !== "string") return;
-    if (!await claimTriggerEvent(event.id)) return;
 
-    try {
-      await db.collection("posts").doc(originalPostId)
-        .collection("replies").doc(originalReplyId)
-        .update({ repostCount: FieldValue.increment(-1) });
-    } catch (err) {
-      logCounterDrift("onReplyRepostDeletedUpdateCount", event.id, err, { originalPostId, originalReplyId });
-    }
+    const replyRef = db.collection("posts").doc(originalPostId)
+      .collection("replies").doc(originalReplyId);
+    await claimedTransaction(event.id, "replyRepostCount", async (tx) => {
+      const snap = await tx.get(replyRef);
+      if (!snap.exists) return;
+      tx.update(replyRef, { repostCount: FieldValue.increment(-1) });
+    });
   }
 );
 
@@ -1524,6 +1619,35 @@ exports.onReplyRepostDeletedUpdateCount = onDocumentDeleted(
 // so for posts with > 5000 reposts the leftovers would orphan; if that
 // becomes a concern, swap in the queueUserCleanupContinuation pattern
 // keyed by originalPostId.
+// Delete up to maxBatches×100 reposts of a now-deleted original post, plus
+// each repost's replies/likes/reflections subcollections. Returns capHit so
+// callers can queue a continuation.
+async function clearRepostsOfPost(postId, maxBatches) {
+  let totalDeleted = 0;
+  let batches = 0;
+  for (; batches < maxBatches; batches++) {
+    const snap = await db.collection("posts")
+      .where("isRepost", "==", true)
+      .where("originalPostId", "==", postId)
+      .limit(100)
+      .get();
+    if (snap.empty) break;
+    for (const repostDoc of snap.docs) {
+      await deleteCollection(repostDoc.ref.collection("replies"));
+      await deleteCollection(repostDoc.ref.collection("likes"));
+      await deleteCollection(repostDoc.ref.collection("reflections"));
+      try {
+        await repostDoc.ref.delete();
+      } catch (err) {
+        console.warn(`clearRepostsOfPost: failed to delete repost ${repostDoc.id}:`, err.message);
+      }
+    }
+    totalDeleted += snap.size;
+    if (snap.size < 100) break;
+  }
+  return { totalDeleted, capHit: batches >= maxBatches };
+}
+
 exports.onPostDeletedCleanupReposts = onDocumentDeleted("posts/{postId}", async (event) => {
   const postData = event.data.data();
   if (!postData) return;
@@ -1534,32 +1658,25 @@ exports.onPostDeletedCleanupReposts = onDocumentDeleted("posts/{postId}", async 
   if (postData.isRepost === true) return;
   const postId = event.params.postId;
 
-  let totalDeleted = 0;
-  for (let i = 0; i < 50; i++) {
-    const snap = await db.collection("posts")
-      .where("isRepost", "==", true)
-      .where("originalPostId", "==", postId)
-      .limit(100)
-      .get();
-    if (snap.empty) break;
-    for (const repostDoc of snap.docs) {
-      // Each repost may itself carry replies/likes/reflections that
-      // accumulated while the repost was live. Clean them up before
-      // deleting the repost doc — same shape as cleanupPostsForUid.
-      await deleteCollection(repostDoc.ref.collection("replies"));
-      await deleteCollection(repostDoc.ref.collection("likes"));
-      await deleteCollection(repostDoc.ref.collection("reflections"));
-      try {
-        await repostDoc.ref.delete();
-      } catch (err) {
-        console.warn(`onPostDeletedCleanupReposts: failed to delete repost ${repostDoc.id}:`, err.message);
-      }
-    }
-    totalDeleted += snap.size;
-    if (snap.size < 100) break;
-  }
+  const { totalDeleted, capHit } = await clearRepostsOfPost(postId, 50);
   if (totalDeleted > 0) {
     console.log(`onPostDeletedCleanupReposts: cleared ${totalDeleted} reposts of ${postId}`);
+  }
+  // F-6 (2026-06-08 audit): for a viral post with >5000 reposts the single
+  // invocation can't clear them all, and the parent post is already gone so
+  // this trigger will never re-fire — the leftovers would orphan forever.
+  // Queue a marker for the scheduled resumeRepostCleanup sweep to drain.
+  if (capHit) {
+    try {
+      await db.collection("repostCleanupQueue").doc(postId).set({
+        originalPostId: postId,
+        queuedAt: FieldValue.serverTimestamp(),
+        cumulativeDeleted: totalDeleted,
+      });
+      console.warn(`onPostDeletedCleanupReposts: cap hit for ${postId}; queued for resume.`);
+    } catch (err) {
+      console.error(`repostCleanupQueue write failed for ${postId}:`, err.message);
+    }
   }
 });
 
@@ -1690,7 +1807,7 @@ const ALLOWED_BREAKUP_STAGES = new Set([
 ]);
 
 exports.onBreakupStageChanged = onDocumentWritten(
-  "users/{userId}/private/{docId}",
+  { document: "users/{userId}/private/{docId}", retry: true },
   async (event) => {
     if (event.params.docId !== "data") return;
 
@@ -1708,18 +1825,15 @@ exports.onBreakupStageChanged = onDocumentWritten(
     const afterStage  = rawAfter  && ALLOWED_BREAKUP_STAGES.has(rawAfter)  ? rawAfter  : null;
     if (!beforeStage && !afterStage) return;
 
-    if (!await claimTriggerEvent(event.id)) return;
-
     const ref = db.collection("meta").doc("breakupStageCounts");
     const updates = { updatedAt: FieldValue.serverTimestamp() };
     if (afterStage)  updates[afterStage]  = FieldValue.increment(1);
     if (beforeStage) updates[beforeStage] = FieldValue.increment(-1);
-    try {
-      await ref.set(updates, { merge: true });
-    } catch (err) {
-      logCounterDrift("onBreakupStageChanged", event.id, err,
-        { beforeStage, afterStage });
-    }
+    // Atomic claim+set (F-1). tx.set with merge is safe on a missing meta doc,
+    // so no read is required; the claim rolls back with the write on failure.
+    await claimedTransaction(event.id, "breakupStageCounts", async (tx) => {
+      tx.set(ref, updates, { merge: true });
+    });
   }
 );
 
@@ -1728,25 +1842,25 @@ exports.onBreakupStageChanged = onDocumentWritten(
 // clients read one document instead of 200 posts.
 // ============================================================
 
-exports.onPostCreatedUpdateTagCounts = onDocumentCreated("posts/{postId}", async (event) => {
-  const postData = event.data.data();
-  if (!postData) return;
-  const tag = postData.tag;
-  if (!tag || typeof tag !== "string") return;
-  if (postData.isRepost === true) return;
-  // Claim is gated on the no-op early returns above so non-tag-bearing
-  // posts don't burn a processedTriggerEvents row.
-  if (!await claimTriggerEvent(event.id)) return;
+exports.onPostCreatedUpdateTagCounts = onDocumentCreated(
+  { document: "posts/{postId}", retry: true },
+  async (event) => {
+    const postData = event.data.data();
+    if (!postData) return;
+    const tag = postData.tag;
+    if (!tag || typeof tag !== "string") return;
+    if (postData.isRepost === true) return;
 
-  try {
-    await db.collection("meta").doc("tagCounts").set(
-      { [tag]: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-  } catch (err) {
-    logCounterDrift("onPostCreatedUpdateTagCounts", event.id, err, { tag });
+    // Atomic claim+set (F-1); non-tag-bearing posts short-circuit above
+    // before any claim doc is written.
+    const ref = db.collection("meta").doc("tagCounts");
+    await claimedTransaction(event.id, "tagCounts", async (tx) => {
+      tx.set(ref,
+        { [tag]: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true });
+    });
   }
-});
+);
 
 // Atomic FieldValue.increment(-1) — same rationale as the other counter
 // triggers. The previous transactional shape with a `current > 0` guard
@@ -1755,23 +1869,23 @@ exports.onPostCreatedUpdateTagCounts = onDocumentCreated("posts/{postId}", async
 // increment to land afterward and stick). Tag counts can briefly dip
 // negative under concurrent create+delete and converge correctly once
 // both writes complete.
-exports.onPostDeletedUpdateTagCounts = onDocumentDeleted("posts/{postId}", async (event) => {
-  const postData = event.data.data();
-  if (!postData) return;
-  const tag = postData.tag;
-  if (!tag || typeof tag !== "string") return;
-  if (postData.isRepost === true) return;
-  if (!await claimTriggerEvent(event.id)) return;
+exports.onPostDeletedUpdateTagCounts = onDocumentDeleted(
+  { document: "posts/{postId}", retry: true },
+  async (event) => {
+    const postData = event.data.data();
+    if (!postData) return;
+    const tag = postData.tag;
+    if (!tag || typeof tag !== "string") return;
+    if (postData.isRepost === true) return;
 
-  try {
-    await db.collection("meta").doc("tagCounts").set(
-      { [tag]: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-  } catch (err) {
-    logCounterDrift("onPostDeletedUpdateTagCounts", event.id, err, { tag });
+    const ref = db.collection("meta").doc("tagCounts");
+    await claimedTransaction(event.id, "tagCounts", async (tx) => {
+      tx.set(ref,
+        { [tag]: FieldValue.increment(-1), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true });
+    });
   }
-});
+);
 
 // ============================================================
 // Server-side post validation
@@ -1928,11 +2042,19 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
 
   // Clean on the PII axis here. Promote to live only if ALSO clean on the
   // flag/crisis axes that onPostCreated enforces, so we never briefly surface
-  // a post that onPostCreated is about to hold. Bad posts are left without a
-  // moderationStatus (hidden from feed queries) and onPostCreated flips them
-  // to pending_review.
+  // a post that onPostCreated is about to hold.
+  //
+  // F-4 (2026-06-08 audit): previously the not-clean case was a no-op that
+  // relied entirely on onPostCreated (and, if that failed, the 30-min
+  // reconcilePostVisibility backstop) to apply the hold. Now validatePost
+  // applies the same flag/crisis/PII hold itself via holdReconciledPost, so a
+  // post can't sit field-less/hidden waiting on a sibling trigger.
+  // setPendingReview is idempotent (first reason wins), so onPostCreated
+  // running concurrently is a safe no-op.
   if (isPostClean(text)) {
     await setPostLive(db.collection("posts").doc(postId));
+  } else {
+    await holdReconciledPost(db.collection("posts").doc(postId), text);
   }
 });
 
@@ -2009,41 +2131,101 @@ exports.reconcilePostVisibility = onSchedule("every 30 minutes", async () => {
 // the firestore.rules text-length cap and runs on the same trigger as
 // rateLimitReplies for parity.
 
+// M-1 (2026-06-08 audit): recoverable hold for replies, mirroring posts.
+// Previously a reply that tripped the (high-false-positive) PII detector was
+// HARD-DELETED with no banner, appeal, or recovery — silently destroying
+// legitimate grief replies that merely mention a name. Now PII replies are
+// held at moderationStatus="pending_review" instead: hidden from other
+// readers (firestore.rules reply read gate), still visible to their author
+// with an "under review" banner, and rescuable by an admin via the
+// pending-replies tab in admin.html. Hard-delete is retained only for the
+// low-false-positive abuse categories (hate/threat/sexual/harassment) in
+// applyReplyModeration. Idempotent: first reason wins, like setPendingReview.
+async function setReplyPendingReview(replyRef, reason) {
+  const snap = await replyRef.get();
+  if (!snap.exists) return false;
+  const data = snap.data() || {};
+  if (data.moderationStatus === "pending_review") return false;
+  await replyRef.update({
+    moderationStatus: "pending_review",
+    pendingReason: reason,
+    pendingDetectedAt: FieldValue.serverTimestamp(),
+  });
+  return true;
+}
+
+// Promote a clean reply to moderationStatus="live" (M-1). Unlike posts, the
+// client doesn't write a create-time moderationStatus on replies, so a clean
+// reply would otherwise have NO field — and the iOS thread query
+// (where moderationStatus == "live") can't match a missing field. validateReply
+// stamps "live" on clean replies so they're queryable. Transactional + guarded
+// exactly like setPostLive: never override a concurrent pending_review hold,
+// idempotent on an already-live reply.
+async function setReplyLive(replyRef) {
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(replyRef);
+      if (!snap.exists) return;
+      const status = snap.data().moderationStatus;
+      if (status === "pending_review" || status === "live") return;
+      tx.update(replyRef, { moderationStatus: "live" });
+    });
+  } catch (err) {
+    console.warn(`setReplyLive ${replyRef.id} failed:`, err.message);
+  }
+}
+
 exports.validateReply = onDocumentCreated(
-  "posts/{postId}/replies/{replyId}",
+  // retry:true (2026-06-08 re-review): the handler is idempotent (setReplyLive
+  // / setReplyPendingReview / delete are all no-ops on re-run). Without retry,
+  // a transient Firestore error mid-moderation would leave the reply field-less
+  // — and a field-less CLEAN reply is invisible to everyone but its author
+  // forever (the client thread query filters moderationStatus == "live").
+  // Replies have no reconcilePostVisibility backstop, so retry is the safety net.
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
     const postId = event.params.postId;
     const replyId = event.params.replyId;
     const replyData = event.data.data();
     if (!replyData) return;
+    const replyRef = db.collection("posts").doc(postId).collection("replies").doc(replyId);
 
     const text = replyData.text;
-    // Counter decrements are handled by onReplyDeletedUpdateCount on the
-    // subsequent delete trigger; no safeDecrement needed here (would race
-    // with the create-trigger's increment and corrupt the count).
+    // Blank / over-length stay HARD deletes — those aren't recoverable content
+    // (a blank reply is nothing; >500 chars is a tampered client past the UI
+    // cap). Counter decrements are handled by onReplyDeletedUpdateCount.
     if (typeof text !== "string" || text.trim().length === 0) {
       console.warn(`Deleting reply ${replyId} — missing or blank text`);
-      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      await replyRef.delete();
       return;
     }
 
     if (text.length > 500) {
       console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
-      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      await replyRef.delete();
       return;
     }
 
-    // Same rationale as validatePost: tampered client bypassing the iOS
-    // detector cannot slip a named-target reply through. Reply moderation
-    // (onReplyCreatedModerate) would soft-flag PII rather than delete, so
-    // doing the harder takedown here at the validate-trigger boundary
-    // matches the existing blank/over-length policy and ensures the worst
-    // cases never reach a reader.
+    // PII → recoverable HOLD (M-1), not delete. The reply is hidden from other
+    // readers but preserved for the author + admin rescue. Jitter before the
+    // status flip preserves the timing-oracle defense (same as validatePost).
+    // #2 (2026-06-09 audit): the detector trips on both names and URLs; label
+    // a URL-bearing reply "abuse_link" so the admin queue shows the right
+    // category ("contains link") rather than "names / contact info".
     if (containsNameOrIdentifyingInfo(text)) {
-      console.warn(`Deleting reply ${replyId} on post ${postId} — server-side identifying-info detector tripped`);
+      const reason = containsURL(text) ? "abuse_link" : "pii";
+      console.warn(`Holding reply ${replyId} on post ${postId} for review — identifying-info detector tripped (${reason})`);
       await moderationDeleteJitter();
-      await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+      await setReplyPendingReview(replyRef, reason);
       return;
+    }
+
+    // Clean on PII. Promote to live only if ALSO clean on the flag/abuse axes
+    // that onReplyCreatedModerate enforces (mirror of validatePost/isPostClean),
+    // so we never briefly surface a reply onReplyCreatedModerate is about to
+    // hold/delete — and so clean replies carry a queryable moderationStatus.
+    if (!computeReplyFlagReason(text)) {
+      await setReplyLive(replyRef);
     }
   }
 );
@@ -2337,9 +2519,17 @@ function isPostConcerning(rawText) {
 async function checkRepeatOffenderPosts(authorId) {
   if (!authorId) return;
   try {
+    // F-3 (2026-06-08 audit): order by flaggedAt DESC before the limit so a
+    // user with >20 all-time flagged posts has their MOST RECENT flags
+    // examined, not an arbitrary 20. Without the orderBy, a determined
+    // offender could accumulate >20 old flags and have the recent-window
+    // count silently under-read, evading auto-restriction. Requires the
+    // composite index posts(authorId ASC, flagged ASC, flaggedAt DESC) —
+    // added to firestore.indexes.json.
     const flaggedSnap = await db.collection("posts")
       .where("authorId", "==", authorId)
       .where("flagged", "==", true)
+      .orderBy("flaggedAt", "desc")
       .limit(20)
       .get();
     const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -2592,7 +2782,13 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (ev
   // `system/crisisAlertRecipients` is seeded in Firestore. To add or
   // change admins later without redeploying, write `{ uids: [...] }` to
   // that doc — Firestore values override this fallback.
-  const FALLBACK_ADMIN_UIDS = ["fKcz0r7wYih8ePNg5019ZEOhSWB2"];
+  //
+  // A-1 (2026-06-09 audit): corrected from fKcz0r7wYih8ePNg5019ZEOhSWB2 (which
+  // is a TEST account, not an admin — confirmed via checkAdminUid.js) to the
+  // real prod admin uid (salinarotess@gmail.com). With the wrong uid, crisis
+  // pages routed to a non-admin's (possibly absent) FCM token and were dropped.
+  // Best practice: seed system/crisisAlertRecipients so this literal is moot.
+  const FALLBACK_ADMIN_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
   try {
     const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
     const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
@@ -2613,16 +2809,20 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (ev
       return;
     }
 
-    const preview = data.text.length > 100 ? data.text.slice(0, 100) + "…" : data.text;
+    // L-1 (2026-06-08 audit): do NOT put raw post text (or the author handle)
+    // in the push — it lands on the admin's lock screen / notification mirror,
+    // exactly the leak the user-facing pushes were hardened against. Send a
+    // neutral body; the admin taps through to the crisis tab in admin.html
+    // (gated by App Check + the admins/{uid} check) to read the content. Only
+    // the non-identifying postId rides in the data payload for deep-linking.
     const message = {
       notification: {
         title: "crisis post",
-        body: preview,
+        body: "a post needs review in the crisis queue",
       },
       data: {
         type: "admin_crisis_alert",
         postId,
-        authorHandle: data.authorHandle || "",
       },
       tokens,
     };
@@ -2659,24 +2859,28 @@ function computeReplyFlagReason(rawText) {
 
 async function applyReplyModeration(postId, replyId, flagReason) {
   if (!flagReason) return;
+  const replyRef = db.collection("posts").doc(postId).collection("replies").doc(replyId);
   if (flagReason === "personal_information" || flagReason === "contains_link") {
-    // PII and links: flag for review instead of deleting (higher false positive rate)
-    await db.collection("posts").doc(postId).collection("replies").doc(replyId).update({
-      flagged: true,
-      flaggedAt: FieldValue.serverTimestamp(),
-      flagReason,
-    });
-    console.log(`Reply ${replyId} on post ${postId} flagged: ${flagReason}`);
+    // M-1: high-false-positive categories (names/links) get a recoverable
+    // HOLD (hidden pending admin review) rather than the old visible-but-
+    // flagged state — consistent with validateReply and posts. pendingReason
+    // mirrors the admin.html label keys ("pii" / "abuse_link").
+    await setReplyPendingReview(replyRef, flagReason === "contains_link" ? "abuse_link" : "pii");
+    console.log(`Reply ${replyId} on post ${postId} held for review: ${flagReason}`);
   } else {
-    // Counter decrement is handled by onReplyDeletedUpdateCount on the
-    // subsequent delete trigger.
-    await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
+    // Abuse (hate/threat/sexual/harassment): low false-positive, genuinely
+    // removable — keep the hard delete. Counter decrement is handled by
+    // onReplyDeletedUpdateCount on the subsequent delete trigger.
+    await replyRef.delete();
     console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
   }
 }
 
 exports.onReplyCreatedModerate = onDocumentCreated(
-  "posts/{postId}/replies/{replyId}",
+  // retry:true (2026-06-08 re-review): idempotent (applyReplyModeration →
+  // setReplyPendingReview/delete are no-ops on re-run). Without it, a transient
+  // error on a flag-reason reply leaves it field-less/invisible with no backstop.
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
     const data = event.data.data();
     if (!data) return;
@@ -2699,25 +2903,30 @@ exports.onReplyCreatedModerate = onDocumentCreated(
 // (Severe-content path issues a delete, which fires onDocumentDeleted —
 // not this handler — so no loop concern there either.)
 exports.onReplyUpdated = onDocumentUpdated(
-  "posts/{postId}/replies/{replyId}",
+  // retry:true (2026-06-08 re-review): idempotent re-moderation on edit; the
+  // before.text === after.text guard still holds on redelivery.
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
     const before = (event.data && event.data.before && event.data.before.data()) || {};
     const after = (event.data && event.data.after && event.data.after.data()) || {};
     if (before.text === after.text) return;
 
-    // Identifying-info detection on edit: take down outright. Mirrors the
-    // onPostUpdated handling — applyReplyModeration would otherwise route
-    // a "personal_information" flagReason to the soft-flag path.
+    const replyRef = db.collection("posts").doc(event.params.postId)
+      .collection("replies").doc(event.params.replyId);
+
+    // PII introduced on edit → recoverable HOLD (M-1), not delete.
+    // #2: label a URL-bearing edit "abuse_link" rather than "pii".
     if (containsNameOrIdentifyingInfo(after.text)) {
-      console.warn(`Deleting reply ${event.params.replyId} on post ${event.params.postId} after edit — server-side identifying-info detector tripped`);
-      await db.collection("posts").doc(event.params.postId).collection("replies").doc(event.params.replyId).delete();
+      const reason = containsURL(after.text) ? "abuse_link" : "pii";
+      console.warn(`Holding reply ${event.params.replyId} on post ${event.params.postId} after edit — identifying-info detector tripped (${reason})`);
+      await setReplyPendingReview(replyRef, reason);
       return;
     }
 
     const flagReason = computeReplyFlagReason(after.text);
     if (!flagReason) return;
-    // Skip the soft-flag rewrite if it's already flagged with the same reason.
-    if (after.flagged === true && after.flagReason === flagReason
+    // Skip if already held for the same kind of reason (idempotent re-run).
+    if (after.moderationStatus === "pending_review"
         && (flagReason === "personal_information" || flagReason === "contains_link")) {
       return;
     }
@@ -3024,6 +3233,17 @@ exports.enrichReplyNotification = onDocumentCreated(
         return;
       }
 
+      // M-1 (2026-06-08 audit): if the backing reply is HELD for review
+      // (moderationStatus == "pending_review"), do NOT leak its text into the
+      // recipient's in-app notification preview — the whole point of the hold
+      // is that this recipient can't see the (possibly PII) reply. Leave the
+      // message unset so NotificationsView shows the generic "replied to your
+      // post" fallback; if an admin later approves the reply it rejoins the
+      // thread normally.
+      if (replySnap.docs[0].data().moderationStatus === "pending_review") {
+        console.log("enrichReplyNotification: backing reply is held; suppressing preview:", notifRef.path);
+        return;
+      }
       replyText = replySnap.docs[0].data().text || "";
     } catch (err) {
       console.warn("enrichReplyNotification reply lookup failed:", err.message);
@@ -3228,6 +3448,34 @@ exports.resumePostDeletion = onSchedule("every 60 minutes", async () => {
   }
 });
 
+// F-6 (2026-06-08 audit): drains repostCleanupQueue markers written by
+// onPostDeletedCleanupReposts when a viral post had more reposts than one
+// trigger invocation could clear. Each pass clears up to 5000 more and only
+// removes the marker once the originalPostId has no remaining reposts.
+exports.resumeRepostCleanup = onSchedule("every 60 minutes", async () => {
+  const queueSnap = await db.collection("repostCleanupQueue").limit(10).get();
+  if (queueSnap.empty) return;
+
+  for (const queueDoc of queueSnap.docs) {
+    const postId = queueDoc.id;
+    try {
+      const result = await clearRepostsOfPost(postId, 50);
+      if (result.capHit) {
+        await queueDoc.ref.update({
+          lastResumedAt: FieldValue.serverTimestamp(),
+          cumulativeDeleted: FieldValue.increment(result.totalDeleted),
+        });
+        console.log(`Partial repost cleanup for ${postId}: +${result.totalDeleted}, staying in queue.`);
+      } else {
+        console.log(`Completed repost cleanup for ${postId}: +${result.totalDeleted} this pass.`);
+        await queueDoc.ref.delete();
+      }
+    } catch (err) {
+      console.error(`resumeRepostCleanup failed for ${postId}:`, err.message);
+    }
+  }
+});
+
 // ============================================================
 // Scheduled stale pendingDeletions monitor — runs every hour
 // ============================================================
@@ -3263,6 +3511,7 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     reflections: cleanupReflectionsForUid,
     replies: cleanupRepliesForUid,
     convos: cleanupUserConversationsForUid,
+    likesOnOthers: cleanupLikesForUid,
   };
 
   // sub_* types resume the owner-only subcollection cleanup that the main
@@ -3402,7 +3651,9 @@ exports.giphyProxy = onCall(
     // 60 GIF picker calls per minute per uid is comfortably above legitimate
     // browsing (one search + a few page loads) but well below what a tampered
     // client would need to exhaust the Giphy free-tier quota in a day.
-    const allowed = await checkRateLimit(uid, "giphyProxy", 60, 60);
+    // F-5: fail closed — Giphy is an external paid quota, so a rate-limiter
+    // outage must not become an unthrottled-storm vector.
+    const allowed = await checkRateLimit(uid, "giphyProxy", 60, 60, true);
     if (!allowed) {
       throw new HttpsError("resource-exhausted", "rate limit exceeded");
     }
@@ -3828,8 +4079,46 @@ exports.notifyAdminsOfNewReport = onDocumentCreated(
       reportId: event.params.reportId,
       type: data.type || "unknown",
       reason: data.reason || "unknown",
-      reportedHandle: data.reportedHandle || null,
+      // L-2 (2026-06-08 audit): log the uid, not the handle. In an
+      // anonymity-first app the handle is the user-facing identifier, and
+      // Cloud Logging would otherwise persist a durable handle↔report linkage.
+      // An admin can resolve the uid in the dashboard when triaging.
+      reportedUserId: data.reportedUserId || null,
       severity: "WARNING",
     }));
   }
 );
+
+// ============================================================
+// Test-only exports (consumed by functions-tests/functions.test.js).
+// Firebase deploy only deploys exports that are CloudFunctions, so this
+// plain object is inert in production. Exposing the internal Admin-SDK
+// helpers + the shared db handle lets the emulator suite exercise the
+// remediation logic directly (deletion cascade, the M-1 reply hold,
+// counter dedup, rate limiting) without the flaky trigger machinery, and
+// reusing this module's `db` avoids a second firebase-admin instance.
+// ============================================================
+module.exports.__test = {
+  db,
+  FieldValue,
+  Timestamp,
+  setReplyPendingReview,
+  setReplyLive,
+  setPendingReview,
+  setPostLive,
+  cleanupLikesForUid,
+  cleanupRepliesForUid,
+  clearRepostsOfPost,
+  claimedTransaction,
+  claimTriggerEvent,
+  checkRateLimit,
+  // Moderation classifiers (pure — no Firestore). #1 crisis/abuse coverage.
+  isPostExplicitCrisis,
+  isPostConcerning,
+  computePostFlagReason,
+  computeReplyFlagReason,
+  containsURL,
+  matchesCrisisPhrase,
+  MOD_EXPLICIT_CRISIS,
+  MOD_CONCERNING,
+};

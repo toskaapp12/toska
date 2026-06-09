@@ -65,10 +65,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 FirebaseApp.configure(options: stagingOptions)
                 print("🔥 Firebase configured against STAGING (toskastaging)")
             } else {
-                // Fallback so a missing staging plist doesn't wedge the
-                // dev build — fall back to prod with a loud warning.
-                print("⚠️ GoogleService-Info-Staging.plist not found; falling back to prod")
-                FirebaseApp.configure()
+                // Fail closed: a missing staging plist must NOT silently
+                // configure Debug against prod — that's how prior incidents
+                // leaked test data into the live feed. Crash the dev build so
+                // the misconfiguration is caught immediately instead of
+                // cross-talking to production.
+                fatalError("GoogleService-Info-Staging.plist not found — Debug builds must not fall back to prod. Add the staging plist to the bundle.")
             }
             #else
             FirebaseApp.configure()

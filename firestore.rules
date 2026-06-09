@@ -192,7 +192,15 @@ service cloud.firestore {
       // OtherProfileView, observe handle/follower counts, and use the public
       // projection to escalate harassment with a sock-puppet that mirrors
       // the victim's identity. Costs +1 doc read per non-owner read.
+      // R-2 (2026-06-08 audit): admins can read any user doc. Without this
+      // leg the moderation dashboard's "restricted users" tab and
+      // restrictUserDirect silently failed to read any user doc still
+      // carrying legacy PII (noLegacyPIIVisible() denied it), so pre-scrub
+      // accounts were invisible to moderation. Admins are trusted to see PII
+      // as part of moderation; isAdmin() costs one extra get() on non-owner,
+      // non-admin reads only when the cheaper legs already passed/failed.
       allow read: if isOwner(userId)
+        || isAdmin()
         || (isAuth()
             && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
             && noLegacyPIIVisible());
@@ -673,6 +681,13 @@ service cloud.firestore {
                 && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId))
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.authorId == request.resource.data.originalAuthorId
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.text == request.resource.data.text
+                // #3a (2026-06-09 audit): can't repost a HELD reply
+                // (moderationStatus == "pending_review") — that would
+                // republish hidden, possibly-PII content. Legacy/clean replies
+                // default to 'live'. Defense-in-depth: a non-author can't read a
+                // held reply's text to satisfy the text-match above anyway, but
+                // this closes it explicitly.
+                && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.get('moderationStatus', 'live') == 'live'
                 && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
                 && (
                      !('originalHandle' in request.resource.data.keys())
@@ -719,6 +734,18 @@ service cloud.firestore {
             && request.resource.data.text is string
             && request.resource.data.text.size() > 0
             && request.resource.data.text.size() <= 2000
+            // R-1 (2026-06-08 audit): lock the author-editable field set.
+            // Post CREATE has a hasOnly() schema lock but UPDATE only had the
+            // denylist below — so an author could inject arbitrary fields onto
+            // their own post, including the moderation audit-attribution fields
+            // (deletedBy / unflaggedBy / crisisReviewedBy) that auditPostModeration
+            // / auditPostDeletion key on, forging adminAuditLog entries, or
+            // scratch fields a future trigger might trust. The only fields the
+            // iOS edit path writes are text + editedAt (PostDetailView.swift:1644,
+            // ProfileView.swift:1595). The denylist is retained below as
+            // defense-in-depth. Admins keep the unconstrained isAdmin() leg.
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['text', 'editedAt'])
             && !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(['likeCount', 'replyCount', 'repostCount', 'authorId', 'createdAt',
                          'flagged', 'flagReason', 'flaggedAt', 'concerningContent',
@@ -744,7 +771,20 @@ service cloud.firestore {
         // post text (parentPostText/parentPostHandle), so an isAuth()-only
         // read leaked the content of pending-review (held) posts. See
         // postVisibleToCaller (firestore.rules:18).
-        allow read: if postVisibleToCaller(postId);
+        //
+        // M-1 (2026-06-08 audit): a reply that moderation holds
+        // (moderationStatus == 'pending_review') is hidden from other readers
+        // — only its author and admins can see it. Legacy replies (no field,
+        // post-backfillReplyModerationStatus.js) default to 'live'. The client
+        // reads the thread with TWO constrained queries so the list stays
+        // rule-safe: (A) where moderationStatus == 'live' for everyone, and
+        // (B) where authorId == me && moderationStatus == 'pending_review' so
+        // the author still sees their own held reply (with an "under review"
+        // banner). Each query satisfies exactly one disjunct below.
+        allow read: if postVisibleToCaller(postId)
+          && (resource.data.get('moderationStatus', 'live') == 'live'
+              || resource.data.authorId == request.auth.uid
+              || isAdmin());
         // Block enforcement: the post author can't be replied to by a user
         // they've blocked. Without this check, blocked users could keep
         // engaging server-side; the client filter (BlockedUsersCache) only
@@ -787,14 +827,28 @@ service cloud.firestore {
         // length cap and (combined with onReplyUpdated re-running moderation
         // in functions/index.js) the original-text moderation pass that ran
         // at create time.
-        allow update: if isAuth()
-          && resource.data.authorId == request.auth.uid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 500;
-        allow delete: if isAuth()
-          && (resource.data.authorId == request.auth.uid
-              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
+        // M-1: the author may edit text/editedAt but MUST NOT touch the
+        // server-owned moderation fields — otherwise an author whose reply was
+        // held could set moderationStatus='live' to self-approve it back into
+        // the thread. Admins (admin.html pending-replies tab, web SDK subject
+        // to rules) get an unconstrained leg to approve (set 'live') or edit.
+        allow update: if (isAuth()
+            && resource.data.authorId == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 500
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['moderationStatus', 'pendingReason', 'pendingDetectedAt',
+                         'pendingApprovedAt', 'pendingApprovedBy',
+                         'likeCount', 'repostCount', 'flagged', 'flagReason', 'flaggedAt',
+                         'authorId', 'createdAt']))
+          || isAdmin();
+        // Author or post-author can delete; admins can remove a held reply
+        // from the pending-replies tab.
+        allow delete: if isAdmin()
+          || (isAuth()
+              && (resource.data.authorId == request.auth.uid
+                  || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid));
 
         // Reply likes — full parity with post likes (firestore.rules:673).
         // Schema: a single doc keyed by likeUserId with `createdAt` only;
@@ -806,7 +860,18 @@ service cloud.firestore {
           // Inherit parent post visibility — enumerating reply likers on a
           // held post leaks the de-anonymizing engager list and confirms the
           // hidden post exists. See postVisibleToCaller (firestore.rules:18).
-          allow read: if postVisibleToCaller(postId);
+          //
+          // #3b (2026-06-09 audit): ALSO gate on the REPLY's own
+          // moderationStatus, mirroring the reply read rule. Without this, a
+          // held reply's liker list was readable by anyone who could see the
+          // parent post (if they knew the auto-generated replyId) — inconsistent
+          // with hiding the held reply itself. Now the likers of a held reply
+          // are visible only to the reply author and admins. Legacy/clean
+          // replies default to 'live'.
+          allow read: if postVisibleToCaller(postId)
+            && (get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.get('moderationStatus', 'live') == 'live'
+                || get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId == request.auth.uid
+                || isAdmin());
           allow create: if isAuth() && request.auth.uid == likeUserId
             && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)/blocked/$(request.auth.uid))
             && request.resource.data.keys().hasOnly(['createdAt'])
@@ -1024,8 +1089,15 @@ service cloud.firestore {
     // ProfileView/SettingsView "my replies" (authorId == uid). The
     // OtherProfileView "replies" tab (querying another user's authorId) is
     // intentionally no longer served here — see audit 2026-06-01.
+    // M-1: admins get a collection-group leg so admin.html's pending-replies
+    // tab can run collectionGroup('replies').where('moderationStatus','==',
+    // 'pending_review'). isAdmin() is not doc-dependent, so an admin's
+    // collection-group query is statically rule-safe; non-admins are still
+    // limited to their own replies (own-author), preserving the held-post
+    // leak protection this rule was written for.
     match /{path=**}/replies/{replyId} {
-      allow read: if isAuth() && resource.data.authorId == request.auth.uid;
+      allow read: if isAdmin()
+        || (isAuth() && resource.data.authorId == request.auth.uid);
     }
 
     // Server-maintained aggregate counters. Cloud Functions write here via

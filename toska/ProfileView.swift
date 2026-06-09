@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseCore
 import FirebaseAuth
 import FirebaseAppCheck
 @preconcurrency import FirebaseFirestore
@@ -693,7 +694,14 @@ struct ProfileView: View {
             // ID token, then reads/writes via Admin SDK so it doesn't
             // depend on the user-doc rule allowing self-writes.
             Task { @MainActor in
-                guard let endpoint = URL(string: "https://us-central1-toska-4ebf4.cloudfunctions.net/reconcileMyCounts") else { return }
+                // Derive the project from the running FirebaseApp so Debug/
+                // staging builds hit their own reconcileMyCounts instead of
+                // cross-calling prod (toska-4ebf4). Fail safe if unavailable.
+                guard let projectID = FirebaseApp.app()?.options.projectID else {
+                    print("⚠️ reconcileMyCounts: no FirebaseApp projectID; skipping")
+                    return
+                }
+                guard let endpoint = URL(string: "https://us-central1-\(projectID).cloudfunctions.net/reconcileMyCounts") else { return }
                 guard let idToken = try? await Auth.auth().currentUser?.getIDToken() else { return }
                 let appCheckToken: String?
                 do {

@@ -12,9 +12,20 @@ struct ThreadedReply: Identifiable, Hashable {
     let text: String
     var likes: Int
     let time: String
+    // Raw createdAt, kept so the two reply queries (M-1: live replies +
+    // the author's own held replies) can be merged back into a single
+    // chronological thread client-side. The server orders each query, but
+    // the merged list has to be re-sorted across both.
+    let createdAt: Date
     let authorId: String
     let parentReplyId: String?
     var children: [ThreadedReply]
+    // M-1: this reply is the current user's own reply held at
+    // moderationStatus == "pending_review" — hidden from everyone else,
+    // shown to its author with an "under review" banner. pendingReasonLabel
+    // is the user-facing category ("may contain names or contact info").
+    var isPending: Bool = false
+    var pendingReasonLabel: String? = nil
     // Per-user interaction state — stamped during fetchReplies by
     // intersecting the snapshot's reply ids with the current user's
     // likedReplies / savedReplies / own reposts. Mutable so the toggle
@@ -106,6 +117,7 @@ struct PostDetailView: View {
     @State private var postGifUrl: String? = nil
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
+    @State private var showReportFailedAlert = false
     @State private var showReplyNameWarning = false
     @State private var showReplyContentWarning = false
     @State private var replyContentWarningMessage = ""
@@ -183,8 +195,7 @@ struct PostDetailView: View {
                         }            .onDisappear {
                             liveListener?.remove()
                             liveListener = nil
-                            replyListener?.remove()
-                            replyListener = nil
+                            teardownReplyListeners()
                             likePulseTask?.cancel()
                             likePulseTask = nil
                         }
@@ -196,8 +207,7 @@ struct PostDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
                 liveListener?.remove()
                 liveListener = nil
-                replyListener?.remove()
-                replyListener = nil
+                teardownReplyListeners()
                 likePulseTask?.cancel()
                 likePulseTask = nil
                 dismiss()
@@ -223,6 +233,9 @@ struct PostDetailView: View {
             .alert("post reported", isPresented: $showReportedAlert) {
                 Button("ok") {}
             } message: { Text("thanks for letting us know. we'll review this post.") }
+            .alert("couldn't report", isPresented: $showReportFailedAlert) {
+                Button("ok") {}
+            } message: { Text("something went wrong. please try again in a bit.") }
             .alert("hold on", isPresented: $showReplyContentWarning) {
                 Button("edit") {}
             } message: { Text(replyContentWarningMessage) }
@@ -341,7 +354,6 @@ struct PostDetailView: View {
                         } else {
                             Button {
                                 reportPost()
-                                showReportedAlert = true
                             } label: {
                                 Label("report", systemImage: "flag")
                             }
@@ -965,8 +977,16 @@ struct PostDetailView: View {
                 "reportedUserId": authorUserId,
                 "reportedHandle": handle,
                 "text": postText,
-            ])
-            Telemetry.reportSubmitted(target: .post, reasonCode: "other")
+            ]) { error in
+                // Only confirm success when the write actually lands — a rules
+                // denial otherwise showed a false "post reported" alert.
+                if error != nil {
+                    showReportFailedAlert = true
+                } else {
+                    Telemetry.reportSubmitted(target: .post, reasonCode: "other")
+                    showReportedAlert = true
+                }
+            }
         }
 
     // MARK: - Delete
@@ -1059,82 +1079,135 @@ struct PostDetailView: View {
 
     // MARK: - Replies
 
-    @State private var replyListener: ListenerRegistration? = nil
+    // M-1: the reply thread is read with TWO constrained queries because the
+    // reply read rule hides held replies from non-authors. Query A = live
+    // replies (everyone); query B = the current user's own held replies (shown
+    // with an "under review" banner). An unfiltered listener would be denied
+    // the moment any held reply existed under the post.
+    @State private var replyListenerLive: ListenerRegistration? = nil
+    @State private var replyListenerHeld: ListenerRegistration? = nil
+    @State private var rawLiveReplies: [ThreadedReply] = []
+    @State private var rawHeldReplies: [ThreadedReply] = []
 
-        func fetchReplies() {
-            guard !postId.isEmpty else { return }
-            replyListener?.remove()
-            // Capture uid so the snapshot callback can verify it's still
-            // serving the same account before writing replyList. Mirrors
-            // startLiveListener above; without this, a sign-out + sign-in
-            // to a different account can let a delayed snapshot land the
-            // previous user's reply thread into the new user's view.
-            let capturedUid = Auth.auth().currentUser?.uid
-            replyListener = Firestore.firestore().collection("posts").document(postId).collection("replies")
-                .order(by: "createdAt", descending: false)
-                .addSnapshotListener { snapshot, error in
-                // Surface listener errors instead of swallowing them. Without
-                // this, a permission-denied / missing-index / App Check
-                // attestation failure leaves replyList empty with no signal —
-                // the UI shows "be the first to reply" under a header that
-                // promises N replies and there's no way to debug it without
-                // attaching Xcode. console output is visible in the device
-                // console via Console.app (filter on "fetchReplies").
+    private func teardownReplyListeners() {
+        replyListenerLive?.remove(); replyListenerLive = nil
+        replyListenerHeld?.remove(); replyListenerHeld = nil
+    }
+
+    // Decode one reply doc into a ThreadedReply (or nil if the author is
+    // blocked). isPending is computed from the doc's own moderationStatus, so
+    // the same decode works for query A (live → never pending) and query B
+    // (the author's own replies → pending iff held).
+    private static func threadedReply(from doc: QueryDocumentSnapshot) -> ThreadedReply? {
+        let data = doc.data()
+        let authorId = data["authorId"] as? String ?? ""
+        if BlockedUsersCache.shared.isBlocked(authorId) { return nil }
+        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        let isPending = (data["moderationStatus"] as? String) == "pending_review"
+        return ThreadedReply(
+            id: doc.documentID,
+            handle: data["authorHandle"] as? String ?? "anonymous",
+            text: data["text"] as? String ?? "",
+            likes: data["likeCount"] as? Int ?? 0,
+            time: FeedView.timeAgoString(from: createdAt),
+            createdAt: createdAt,
+            authorId: authorId,
+            parentReplyId: data["parentReplyId"] as? String,
+            children: [],
+            isPending: isPending,
+            pendingReasonLabel: isPending ? pendingReasonLabelFor(data["pendingReason"] as? String) : nil,
+            isLiked: false,
+            isSaved: false,
+            isReposted: false,
+            repostCount: data["repostCount"] as? Int ?? 0
+        )
+    }
+
+    func fetchReplies() {
+        guard !postId.isEmpty else { return }
+        teardownReplyListeners()
+        // Capture uid so the snapshot callbacks can verify they're still
+        // serving the same account before writing replyList (sign-out/sign-in
+        // race guard — see startLiveListener).
+        let capturedUid = Auth.auth().currentUser?.uid
+        let repliesRef = Firestore.firestore().collection("posts").document(postId).collection("replies")
+
+        // Query A — live replies, visible to everyone. MUST filter to "live":
+        // the reply read rule denies held replies to non-authors, and a list
+        // query fails entirely if any returned doc is rule-denied. Clean
+        // replies are stamped "live" server-side by validateReply; legacy
+        // replies were backfilled by backfillReplyModerationStatus.js.
+        replyListenerLive = repliesRef
+            .whereField("moderationStatus", isEqualTo: "live")
+            .order(by: "createdAt", descending: false)
+            .addSnapshotListener { snapshot, error in
                 if let error = error {
-                    print("⚠️ fetchReplies listener error for post \(postId): \(error)")
-                    Telemetry.recordError(error, context: "PostDetailView.fetchReplies")
+                    print("⚠️ fetchReplies(live) listener error for post \(postId): \(error)")
+                    Telemetry.recordError(error, context: "PostDetailView.fetchReplies.live")
                     return
                 }
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     guard let documents = snapshot?.documents else { return }
-                    var flat = documents.compactMap { doc -> ThreadedReply? in
-                        let data = doc.data()
-                        let authorId = data["authorId"] as? String ?? ""
-                        if BlockedUsersCache.shared.isBlocked(authorId) { return nil }
-                        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                        return ThreadedReply(
-                            id: doc.documentID,
-                            handle: data["authorHandle"] as? String ?? "anonymous",
-                            text: data["text"] as? String ?? "",
-                            likes: data["likeCount"] as? Int ?? 0,
-                            time: FeedView.timeAgoString(from: createdAt),
-                            authorId: authorId,
-                            parentReplyId: data["parentReplyId"] as? String,
-                            children: [],
-                            isLiked: false,
-                            isSaved: false,
-                            isReposted: false,
-                            repostCount: data["repostCount"] as? Int ?? 0
-                        )
-                    }
-                    print("ℹ️ fetchReplies snapshot for post \(postId): \(documents.count) raw docs → \(flat.count) after block filter")
-                    // Show reply text IMMEDIATELY, before the per-user
-                    // interaction-state stamping below. Stamping runs three
-                    // extra Firestore queries; holding replyList back until it
-                    // finished added a visible pause where the reply text was
-                    // already known but not shown. Render now, enrich after.
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        replyList = buildThreadedReplies(from: flat)
-                        hasLoadedReplies = true
-                    }
-                    // Stamp per-user interaction state (like/save/repost). Three
-                    // parallel one-shot queries against the user's reverse
-                    // indices + the posts collection (own reposts). The icons
-                    // fill in a moment after the text appears.
-                    if let uid = Auth.auth().currentUser?.uid, !flat.isEmpty {
-                        let replyIds = flat.map { $0.id }
-                        let db = Firestore.firestore()
-                        let stamped = await Self.stampReplyInteractionState(
-                            replies: flat,
-                            replyIds: replyIds,
-                            uid: uid,
-                            db: db
-                        )
-                        replyList = buildThreadedReplies(from: stamped)
-                    }
+                    rawLiveReplies = documents.compactMap { Self.threadedReply(from: $0) }
+                    await recombineReplies()
                 }
             }
+
+        // Query B — ALL of the current user's own replies under this post
+        // (live, held, or freshly-created-not-yet-promoted). authorId == me
+        // satisfies the read rule's author disjunct, keeping the query
+        // rule-safe, and including the not-yet-"live" window means the author's
+        // just-posted reply shows immediately instead of flickering out until
+        // validateReply stamps "live". Held ones (moderationStatus ==
+        // "pending_review") render with the "under review" banner; the rest are
+        // deduped against query A in recombineReplies.
+        if let uid = capturedUid {
+            replyListenerHeld = repliesRef
+                .whereField("authorId", isEqualTo: uid)
+                .order(by: "createdAt", descending: false)
+                .addSnapshotListener { snapshot, error in
+                    if let error = error {
+                        print("⚠️ fetchReplies(mine) listener error for post \(postId): \(error)")
+                        Telemetry.recordError(error, context: "PostDetailView.fetchReplies.mine")
+                        return
+                    }
+                    Task { @MainActor in
+                        guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                        guard let documents = snapshot?.documents else { return }
+                        rawHeldReplies = documents.compactMap { Self.threadedReply(from: $0) }
+                        await recombineReplies()
+                    }
+                }
+        } else {
+            rawHeldReplies = []
+        }
+    }
+
+    // Merge the live + own-held reply sets into one chronological thread,
+    // render immediately, then stamp per-user interaction state. Both listeners
+    // call this; @MainActor serializes them so the raw-store reads are
+    // consistent.
+    @MainActor
+    private func recombineReplies() async {
+        var byId: [String: ThreadedReply] = [:]
+        for r in rawLiveReplies { byId[r.id] = r }
+        for r in rawHeldReplies where byId[r.id] == nil { byId[r.id] = r }
+        let flat = byId.values.sorted { $0.createdAt < $1.createdAt }
+
+        print("ℹ️ fetchReplies recombine for post \(postId): \(rawLiveReplies.count) live + \(rawHeldReplies.count) held → \(flat.count)")
+        withAnimation(.easeInOut(duration: 0.2)) {
+            replyList = buildThreadedReplies(from: flat)
+            hasLoadedReplies = true
+        }
+        if let uid = Auth.auth().currentUser?.uid, !flat.isEmpty {
+            let replyIds = flat.map { $0.id }
+            let db = Firestore.firestore()
+            let stamped = await Self.stampReplyInteractionState(
+                replies: flat, replyIds: replyIds, uid: uid, db: db
+            )
+            replyList = buildThreadedReplies(from: stamped)
+        }
     }
 
     // Walks the threaded replyList recursively, mutating the first reply
@@ -1430,7 +1503,7 @@ struct PostDetailView: View {
                 }
                 let newReply = ThreadedReply(
                     id: replyRef.documentID, handle: replyHandle, text: currentReplyText,
-                    likes: 0, time: "now", authorId: uid,
+                    likes: 0, time: "now", createdAt: Date(), authorId: uid,
                     parentReplyId: self.replyingToId, children: []
                 )
                 if let parentId = self.replyingToId {
@@ -1732,6 +1805,13 @@ struct SwipeToReplyRow: View {
                 Text(item.reply.text)
                     .toskaReplyBody()
                     .foregroundColor(ToskaColor.text)
+                // M-1: the author's own held reply shows an "under review"
+                // banner (it's hidden from everyone else). The interaction row
+                // is suppressed below since a hidden reply can't be engaged with.
+                if item.reply.isPending {
+                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel)
+                        .padding(.top, 4)
+                }
                 // Interactive action row — like, save, repost. Matches the
                 // affordances on a top-level post. Each icon is hidden when
                 // the corresponding handler isn't wired (defensive — current
@@ -1740,7 +1820,7 @@ struct SwipeToReplyRow: View {
                 // on the user's own reply since reposting yourself doesn't
                 // make sense and the PostInteractionManager.repostReply guard
                 // would reject it anyway.
-                if onToggleLike != nil || onToggleSave != nil || onRepost != nil || onComment != nil || onShare != nil {
+                if !item.reply.isPending && (onToggleLike != nil || onToggleSave != nil || onRepost != nil || onComment != nil || onShare != nil) {
                     // Layout mirrors FeedPostRow's action bar (FeedView.swift:790)
                     // exactly: comment / repost / bookmark / share clustered on the
                     // left at 28pt spacing, then Spacer, then heart on the right

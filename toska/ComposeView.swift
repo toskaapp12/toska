@@ -1033,13 +1033,21 @@ struct StableGifPreview: View {
             }
         }
         .task(id: urlString) {
-            guard let url = URL(string: urlString) else {
+            guard let url = URL(string: urlString),
+                  GifLoadGuard.isAllowedHost(url) else {
+                // Unknown/hostile host (a post's gifUrl is attacker-controlled).
+                // Don't download arbitrary URLs — show the failed placeholder.
                 failed = true
                 return
             }
             failed = false
             do {
                 let (downloaded, _) = try await URLSession.shared.data(from: url)
+                guard downloaded.count <= GifLoadGuard.maxBytes else {
+                    // Oversized payload — abort before decoding to avoid OOM.
+                    failed = true
+                    return
+                }
                 withAnimation(.easeIn(duration: 0.2)) { data = downloaded }
             } catch is CancellationError {
                 // URL changed or view torn down — don't flip to failed.
@@ -1047,6 +1055,24 @@ struct StableGifPreview: View {
                 failed = true
             }
         }
+    }
+}
+
+// Shared defenses for rendering attacker-controlled gifUrl values stored on
+// posts/replies. Giphy is the only legitimate source (URLs are picked via
+// GifPickerView -> giphyProxy), so we host-allowlist and cap payload/frames
+// to keep a hostile post from OOM-crashing viewers.
+enum GifLoadGuard {
+    // Cap downloaded GIF bytes before decoding (Giphy fixed_width ~700KB,
+    // original ~2.5MB; 8MB leaves generous headroom for legit content).
+    static let maxBytes = 8 * 1024 * 1024
+    // Cap decoded frames so a many-frame GIF can't blow memory.
+    static let maxFrames = 120
+
+    static func isAllowedHost(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        // Matches giphy.com, media.giphy.com, media0.giphy.com, etc.
+        return host == "giphy.com" || host.hasSuffix(".giphy.com")
     }
 }
 
@@ -1083,9 +1109,11 @@ private struct AnimatedGifImageView: UIViewRepresentable {
         let count = CGImageSourceGetCount(source)
         guard count > 1 else { return nil }
 
+        // Cap decoded frames so a hostile many-frame GIF can't OOM the viewer.
+        let frameCount = min(count, GifLoadGuard.maxFrames)
         var frames: [UIImage] = []
         var totalDuration: Double = 0
-        for i in 0..<count {
+        for i in 0..<frameCount {
             guard let cg = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
             frames.append(UIImage(cgImage: cg))
             totalDuration += frameDelay(at: i, source: source)

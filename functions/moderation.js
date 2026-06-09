@@ -108,13 +108,50 @@ const SAFE_PROPER_NOUN_BIGRAMS = new Set([
   "thank god",
 ]);
 
+// M-2 (2026-06-08 audit): common English words that appear Capitalized inside
+// titles, place names, bands, and set phrases ("Last Night", "Central Park",
+// "Pearl Jam", "Grand Canyon", "The Notebook", "Empty Promises"). The
+// two-capitalized-words full-name heuristic below false-positived on every one
+// of these on an app where grief posts are full of such phrases. A real
+// person's full name is rarely built from two common English words, so if a
+// bigram contains one of these AND neither token is a known given name, it's
+// treated as a phrase, not a name. This is intentionally a common-ENGLISH-word
+// list (a bounded, stable set) rather than an exhaustive non-name proper-noun
+// list (which can't scale). Real names like "Sarah Jones" or the uncommon
+// "Tess Salinaro" stay flagged because they don't contain a title word.
+const COMMON_TITLE_WORDS = new Set([
+  "the", "a", "an", "of", "and", "to", "in", "on", "at", "for",
+  "last", "first", "next", "final", "every",
+  "night", "day", "days", "morning", "evening", "afternoon", "today", "tomorrow", "yesterday",
+  "central", "grand", "royal", "golden", "old", "new", "big", "little", "great",
+  "park", "city", "town", "river", "lake", "mountain", "mountains", "ocean", "sea", "beach",
+  "street", "avenue", "road", "drive", "lane", "garden", "gardens", "square", "bridge",
+  "tower", "valley", "hill", "hills", "falls", "bay", "island", "forest", "woods", "creek",
+  "heights", "view", "point", "north", "south", "east", "west", "upper", "lower", "middle",
+  "house", "home", "world", "war", "story", "stories", "love", "heart", "hearts",
+  "summer", "winter", "spring", "autumn", "fall", "sunset", "sunrise",
+  "moon", "sun", "star", "stars", "light", "lights", "dark", "darkness",
+  "dream", "dreams", "time", "times", "life", "death", "end", "ending", "beginning",
+  "dead", "alive", "real", "true", "lost", "found", "broken", "empty", "promise", "promises",
+  "gold", "silver", "blue", "red", "green", "white", "black", "gray", "grey",
+  "fire", "water", "earth", "wind", "rain", "snow", "storm", "cloud", "clouds", "sky",
+  "song", "songs", "music", "dance", "band", "club", "bar", "cafe", "coffee",
+  "book", "books", "movie", "film", "show", "game", "games", "play", "party",
+  "school", "college", "work", "office", "store", "shop", "mall", "market",
+  "food", "dinner", "lunch", "breakfast", "pearl", "jam", "canyon", "notebook",
+  "station", "airport", "university", "library", "museum", "hotel", "plaza",
+  "center", "centre", "hall", "theater", "theatre", "stadium", "arena",
+  "church", "temple", "castle", "palace", "diamond", "crystal", "rose", "stone",
+]);
+
 // Full-name shape: two consecutive Capitalized words ("Tess Salinaro",
 // "John Smith") — a strong signal of a person's name even when neither word
 // is in our first/last-name dictionaries. 2026-06-01: added after a real full
 // name slipped through (uncommon name + no relationship context). Guards skip
-// safe words, all-ambiguous pairs, and known non-name bigrams. NOTE: this only
-// catches the BOTH-capitalized shape; "Tess salinaro" (lowercase surname) and
-// bare single names still slip — reliably catching those needs NER/ML.
+// safe words, all-ambiguous pairs, known non-name bigrams, and (M-2) common
+// English title/phrase bigrams. NOTE: this only catches the BOTH-capitalized
+// shape; "Tess salinaro" (lowercase surname) and bare single names still slip
+// — reliably catching those needs NER/ML.
 function looksLikeFullName(text) {
   const re = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g;
   for (const m of text.matchAll(re)) {
@@ -124,6 +161,11 @@ function looksLikeFullName(text) {
     if (SAFE_CAPITALIZED_WORDS.has(w1) || SAFE_CAPITALIZED_WORDS.has(w2)) continue;
     if (AMBIGUOUS_WORDS.has(w1) && AMBIGUOUS_WORDS.has(w2)) continue;
     if (SAFE_PROPER_NOUN_BIGRAMS.has(`${w1} ${w2}`)) continue;
+    // M-2: a bigram containing a common English title/phrase word is a phrase,
+    // not a name — UNLESS the other token is a known given name (keeps "Sarah
+    // Park", "Grace Lake" flagged while clearing "Central Park", "Last Night").
+    if ((COMMON_TITLE_WORDS.has(w1) || COMMON_TITLE_WORDS.has(w2))
+        && !COMMON_NAMES.has(w1) && !COMMON_NAMES.has(w2)) continue;
     return true;
   }
   return false;
@@ -507,6 +549,19 @@ function containsNameOrIdentifyingInfo(text) {
   for (const num of CRISIS_NUMBERS) {
     digitStripped = digitStripped.split(num).join("");
   }
+  // M-2 (2026-06-08 audit): remove breakup-timeline number lists BEFORE the
+  // separator-collapse below, so they don't merge into one long run that
+  // survives the year/small-number strips and inflates the digit count past
+  // the phone threshold. Targeted so real phone groupings — which mix 2–4
+  // digit groups — are untouched (the second pattern needs 4+ consecutive
+  // 1–3 digit tokens; a phone's 4-digit exchange/line groups break that run):
+  //   - 2+ consecutive 4-digit year tokens: "we dated 2019 2020 2021 2022 2023"
+  //   - 4+ consecutive 1–3 digit tokens:    "scores were 100 95 88 76 65 54 …"
+  // A real international phone ("+44 20 7946 0958") matches neither and still
+  // trips the >=10-digit check below.
+  digitStripped = digitStripped
+    .replace(/\b(?:19|20)\d\d(?:\s+(?:19|20)\d\d)+\b/g, " ")
+    .replace(/\b\d{1,3}(?:\s+\d{1,3}){3,}\b/g, " ");
   // Collapse phone-format separators between digits so a formatted phone
   // like `(555) 123-4567` survives the date/year/small-number strips
   // below. Without this, `\b\d{1,3}\b` peels `555`, `123` and `\b\d{4,5}\b`

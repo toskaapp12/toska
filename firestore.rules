@@ -832,11 +832,22 @@ service cloud.firestore {
         // held could set moderationStatus='live' to self-approve it back into
         // the thread. Admins (admin.html pending-replies tab, web SDK subject
         // to rules) get an unconstrained leg to approve (set 'live') or edit.
+        // N-1 (2026-06-09 re-review): lock the author-editable field set, the
+        // same way R-1 locked post UPDATE. The reply UPDATE rule previously had
+        // only the denylist below and NO hasOnly — so a reply author could
+        // (a) re-write authorHandle to a victim's handle (a byline spoof the
+        // create-time pin at firestore.rules:821 deliberately prevents), and
+        // (b) inject arbitrary scratch fields (the same "future trigger may
+        // trust this" risk R-1 closed on posts). The only fields the iOS reply
+        // edit path writes are text + editedAt. The denylist is retained below
+        // as defense-in-depth. Admins keep the unconstrained isAdmin() leg.
         allow update: if (isAuth()
             && resource.data.authorId == request.auth.uid
             && request.resource.data.text is string
             && request.resource.data.text.size() > 0
             && request.resource.data.text.size() <= 500
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['text', 'editedAt'])
             && !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(['moderationStatus', 'pendingReason', 'pendingDetectedAt',
                          'pendingApprovedAt', 'pendingApprovedBy',

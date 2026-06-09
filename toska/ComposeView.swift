@@ -21,11 +21,14 @@ struct ComposeView: View {
     // a successful Publish deletes the draft so the user ends up with
     // one published post instead of a stranded draft + post pair.
     var editingDraftId: String? = nil
-    // Draft persistence keys. AppStorage survives force-quit so a user mid-
-    // compose doesn't lose their words if iOS terminates the app or they
-    // accidentally swipe it away. Cleared on successful post.
-    @AppStorage(UserDefaultsKeys.composeDraftText) private var draftText: String = ""
-    @AppStorage(UserDefaultsKeys.composeDraftTag) private var draftTag: String = ""
+    // Draft persistence survives force-quit so a user mid-compose doesn't lose
+    // their words if iOS terminates the app or they swipe it away. Cleared on
+    // successful post. N-4 (2026-06-09 re-review): persisted via DraftStore
+    // (NSFileProtectionComplete + backup-excluded) instead of UserDefaults
+    // plaintext. These @State vars mirror the on-disk value — onAppear loads
+    // them, the .onChange handlers below write through.
+    @State private var draftText: String = ""
+    @State private var draftTag: String = ""
     @State private var text = ""
     @State private var selectedTag: String? = nil
     @State private var showTagPicker = false
@@ -673,9 +676,17 @@ struct ComposeView: View {
         .interactiveDismissDisabled(false)
         .onChange(of: selectedTag) { _, newValue in
             // Persist tag selection alongside text draft so a kill mid-
-            // compose restores both. Empty string when nil since
-            // @AppStorage doesn't accept Optional<String>.
+            // compose restores both. Empty string when nil.
             draftTag = newValue ?? ""
+        }
+        // N-4: write drafts through to the protected DraftStore on every change
+        // (mirrors the prior per-keystroke @AppStorage persistence). Clearing
+        // draftText/draftTag to "" removes the on-disk file.
+        .onChange(of: draftText) { _, newValue in
+            DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
+        }
+        .onChange(of: draftTag) { _, newValue in
+            DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftTag)
         }
         // Drives the fade/scale transition on the gentle-check overlay
         // regardless of which surface (button, tap-outside, etc.) flips it.
@@ -687,6 +698,11 @@ struct ComposeView: View {
         )
         .onAppear {
                     HapticManager.play(.compose)
+                    // N-4: load any persisted draft from the protected store
+                    // (migrates + scrubs a legacy UserDefaults copy on first read)
+                    // before the restore logic below reads draftText/draftTag.
+                    draftText = DraftStore.get(forKey: UserDefaultsKeys.composeDraftText) ?? ""
+                    draftTag = DraftStore.get(forKey: UserDefaultsKeys.composeDraftTag) ?? ""
                     loadHandle()
                     if text.isEmpty && !initialText.isEmpty {
                         text = initialText

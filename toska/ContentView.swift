@@ -88,6 +88,22 @@ struct ContentView: View {
         // Subtle paper-grain texture over the whole surface (3% light / 5%
         // dark), non-interactive — the editorial "printed page" feel.
         .overlay(ToskaPaperGrain())
+        // N-5 (2026-06-09 re-review): privacy screen for the app switcher.
+        // When the app leaves the foreground, cover sensitive grief content
+        // (posts, drafts, moods) so it isn't captured in the iOS multitasking
+        // snapshot or readable by a shoulder-surfer. Only over logged-in
+        // surfaces — the splash/loading screens carry nothing sensitive.
+        .overlay(alignment: .center) {
+            if isLoggedIn && scenePhase != .active {
+                ZStack {
+                    Color.toskaBlue.ignoresSafeArea()
+                    Text("t")
+                        .font(ToskaFont.serifItalic(42))
+                        .foregroundColor(.white)
+                }
+                .allowsHitTesting(false)
+            }
+        }
         .fullScreenCover(isPresented: $showPolicyUpdate) {
             // Version-bump retro-prompt. A user declining here is signed out
             // rather than deleted — their account and content persist so they
@@ -157,6 +173,11 @@ struct ContentView: View {
             // shown flag IS cleared so the next user gets a fresh primer
             // on their first Notifications visit instead of inheriting
             // User A's "already seen" state.
+            // N-4: clear ALL on-device drafts (compose + per-post replies) from
+            // the protected DraftStore so the next account on this device
+            // inherits none of the previous user's in-progress words. Also scrub
+            // any legacy UserDefaults copies that predate the DraftStore move.
+            DraftStore.clearAll()
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftText)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftTag)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.pushPrimerShown)

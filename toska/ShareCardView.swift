@@ -268,7 +268,18 @@ struct ShareCardView: View {
 
                         // MARK: - Copy Text
                         Button {
-                            UIPasteboard.general.string = "\"\(text)\"\n\n— someone on toska"
+                            // N-6 (2026-06-09 re-review): grief text copied to the
+                            // pasteboard must not linger or sync off-device. Mirror
+                            // the image-share path's options — auto-expire after 5
+                            // min and keep it local (no Universal Clipboard hand-off
+                            // to the user's other Apple devices).
+                            UIPasteboard.general.setItems(
+                                [["public.utf8-plain-text": "\"\(text)\"\n\n— someone on toska"]],
+                                options: [
+                                    .expirationDate: Date().addingTimeInterval(300),
+                                    .localOnly: true,
+                                ]
+                            )
                             showCopied = true
                             HapticManager.play(.feltThis)
                             Task {

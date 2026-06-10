@@ -325,12 +325,17 @@ describe("#1 abuse mapping — computePostFlagReason", () => {
   // A list of independent short numbers must NOT read as a phone; a real phone
   // (contiguous 10+ run, or 10+ digits in <=4 groups) and crisis lines must.
   const n13 = [
-    ["we dated in 2019 2020 2021 2022 2023, then it ended", null],   // year list — was a FP
-    ["scores were 21 19 23 17 25 across the season",        null],   // number list — was a FP
+    ["we dated in 2019 2020 2021 2022 2023, then it ended", null],   // 5-element year list — FP
+    ["scores were 21 19 23 17 25 across the season",        null],   // 5-element number list — FP
+    ["scores 123 456 789 012",                              null],   // 4-element list — FP (1st-pass miss)
+    ["win 100 200 300 400 lottery",                         null],
     ["it happened in 2019",                                 null],
     ["text 1-800-273-8255 if you're struggling",            null],   // crisis line, not personal
-    ["call me at 555 123 4567",                "personal_information"], // real phone, still caught
+    ["call me at 555 123 4567",                "personal_information"], // NANP, still caught
     ["my number is 555-123-4567",              "personal_information"],
+    ["my number is 5551234567",                "personal_information"], // bare 10-digit run
+    ["reach me at +44 20 7946 0958",           "personal_information"], // intl +CC
+    ["call +33 6 12 34 56 78 anytime",         "personal_information"], // intl many-group (regression guard)
   ];
   n13.forEach(([t, reason]) => it(`N-13: ${JSON.stringify(t)} → ${reason}`, () => {
     assert.strictEqual(computePostFlagReason(t), reason);

@@ -2344,30 +2344,37 @@ const socialPatterns = [
 ];
 
 function hasPhoneNumber(text) {
-  // N-13 (2026-06-10 re-review): the prior version stripped ALL separators and
-  // counted total digits >= 10 — so any text with 10+ digits spread across
-  // independent short tokens false-positived as a phone: year lists ("we dated
-  // 2019 2020 2021 2022 2023"), score/duration lists ("21 19 23 17 25"), etc.
-  // This is the M-2 phone false-positive class, which was fixed only in the
-  // PARALLEL moderation.js detector — but validatePost/validateReply reach the
-  // phone check through THIS function (containsPII), which short-circuits before
-  // the fixed detector. A real phone is a SINGLE number: a contiguous 10+ digit
-  // run, OR 10+ digits across only a FEW groups (country/area/prefix/line, <= 4).
-  // A LIST of short numbers produces many groups and must not read as a phone.
+  // N-13 (2026-06-10 re-review): the original stripped ALL separators and counted
+  // total digits >= 10, so any text with 10+ digits across independent short
+  // tokens false-positived as a phone — year lists ("we dated 2019 2020 2021
+  // 2022 2023"), score/duration/weight lists ("21 19 23 17 25"), etc. (the M-2
+  // phone-FP class, fixed only in the parallel moderation.js detector). A first
+  // pass keyed on "few digit groups" still FP'd 4-element lists AND dropped
+  // many-group international numbers ("+33 6 12 34 56 78"). The robust model:
+  // match phone-SHAPED patterns, not digit totals. A LIST of independent numbers
+  // matches none of these shapes; real phones (incl. +CC international) do.
   // Spaced-digit obfuscation ("5 5 5 1 2 3 4 5 6 7") still falls through to
-  // containsNameOrIdentifyingInfo (called next in containsPII), which has the
-  // separator-collapse handling.
-  const crisisNumbers = ['988', '741741', '18002738255', '18007997233', '18006564673'];
-  const groups = text.match(/\d+/g) || [];
-  // A single contiguous run of 10+ digits is a phone (unless it's a crisis line).
-  for (const g of groups) {
-    if (g.length >= 10 && !crisisNumbers.includes(g)) return true;
+  // containsNameOrIdentifyingInfo (called next in containsPII).
+  const patterns = [
+    /\+\d[\d\s().\-]{7,}\d/g,                 // international, leading +
+    /\b00\d[\d\s().\-]{7,}\d/g,               // international, leading 00
+    /\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4}\b/g, // NANP 3-3-4 with separators
+    /\b\d{10,11}\b/g,                          // bare contiguous 10–11 digit run
+  ];
+  // Crisis hotlines (digits only, with the US long-distance 1 stripped) must NOT
+  // read as a personal number — e.g. "text 1-800-273-8255 if you're struggling".
+  const crisis = new Set(['988', '741741', '8002738255', '8007997233', '8006564673']);
+  for (const re of patterns) {
+    const matches = text.match(re);
+    if (!matches) continue;
+    for (const cand of matches) {
+      const digits = cand.replace(/\D/g, '');
+      if (digits.length < 10) continue;
+      if (crisis.has(digits) || crisis.has(digits.replace(/^1/, ''))) continue;
+      return true;
+    }
   }
-  // 10+ digits grouped like a phone (few groups). Remove crisis hotline digits
-  // first so "text 1-800-273-8255" isn't read as a personal number.
-  let joined = groups.join('');
-  for (const num of crisisNumbers) joined = joined.replace(num, '');
-  return joined.length >= 10 && groups.length <= 4;
+  return false;
 }
 
 const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;

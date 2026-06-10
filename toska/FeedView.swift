@@ -158,35 +158,35 @@ struct FeedView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
-            // MARK: - Tab bar (full-width segmented control)
-            HStack(spacing: 3) {
+            // MARK: - Feed tabs (clean underline style)
+            // Replaced the heavy full-width segmented pill track with light
+            // text tabs + a short underline indicator under the selected one —
+            // quieter and more modern, doesn't compete with the cards below.
+            HStack(spacing: 0) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
                     let isSel = vm.selectedTab == index
                     Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
+                        withAnimation(.easeInOut(duration: 0.18)) {
                             vm.selectedTab = index
                         }
                     } label: {
-                        Text(vm.tabs[index])
-                            .font(.system(size: 14, weight: isSel ? .semibold : .medium))
-                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 34)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(isSel ? ToskaColor.card : Color.clear)
-                                    .shadow(color: isSel ? Color.black.opacity(0.08) : Color.clear, radius: 3, x: 0, y: 1)
-                            )
+                        VStack(spacing: 7) {
+                            Text(vm.tabs[index])
+                                .font(.system(size: 14, weight: isSel ? .semibold : .regular))
+                                .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
+                            Capsule()
+                                .fill(isSel ? ToskaColor.text : Color.clear)
+                                .frame(width: 22, height: 2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(3)
-            .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ToskaColor.input)
-            )
             .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
             
             Rectangle()
                 .fill(LateNightTheme.divider)
@@ -901,9 +901,14 @@ struct FeedPostRow: View {
                 // Handle row — compact: handle is the anchor with the
                 // separator dot and time trailing it.
                     HStack(spacing: 5) {
+                                            // De-emphasized: a quiet secondary
+                                            // gray (not the loud accent) so the
+                                            // post TEXT leads the card and the
+                                            // random anonymous handle recedes —
+                                            // fits the anonymity-first brand.
                                             Text(handle)
                                                 .font(ToskaFont.handle)
-                                                .foregroundColor(ToskaColor.accent)
+                                                .foregroundColor(ToskaColor.text2)
 
                                             Circle()
                                                 .fill(ToskaColor.text3)
@@ -1024,15 +1029,19 @@ struct FeedPostRow: View {
                                         if let tag = tag {
                                             HStack(spacing: 4) {
                                                 Image(systemName: ToskaEmotion.icon(tag))
-                                                    .font(.system(size: 10, weight: .medium))
+                                                    .font(.system(size: 10, weight: .regular))
                                                 Text(tag)
-                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .font(.system(size: 11, weight: .medium))
                                             }
+                                            // Softer, clearly-filled pill: a touch
+                                            // more fill + lighter text weight so it
+                                            // reads as a quiet filled chip rather
+                                            // than sharp colored text.
                                             .foregroundColor(tagColor(for: tag))
-                                            .padding(.vertical, 4)
-                                            .padding(.leading, 8)
-                                            .padding(.trailing, 10)
-                                            .background(tagColor(for: tag).opacity(0.13))
+                                            .padding(.vertical, 5)
+                                            .padding(.leading, 9)
+                                            .padding(.trailing, 11)
+                                            .background(tagColor(for: tag).opacity(0.16))
                                             .clipShape(Capsule())
                                             .padding(.bottom, 10)
                                         }

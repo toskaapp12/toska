@@ -317,6 +317,24 @@ describe("#1 abuse mapping — computePostFlagReason", () => {
   cases.forEach(([t, reason]) => it(`${JSON.stringify(t)} → ${reason}`, () => {
     assert.strictEqual(computePostFlagReason(t), reason);
   }));
+
+  // N-13 (2026-06-10 re-review): the M-2 year/number-list phone false-positive
+  // fix lived only in moderation.js, but validatePost reaches the phone check
+  // through computePostFlagReason → containsPII → hasPhoneNumber, which counted
+  // total digits and false-positived year/score lists as "personal_information".
+  // A list of independent short numbers must NOT read as a phone; a real phone
+  // (contiguous 10+ run, or 10+ digits in <=4 groups) and crisis lines must.
+  const n13 = [
+    ["we dated in 2019 2020 2021 2022 2023, then it ended", null],   // year list — was a FP
+    ["scores were 21 19 23 17 25 across the season",        null],   // number list — was a FP
+    ["it happened in 2019",                                 null],
+    ["text 1-800-273-8255 if you're struggling",            null],   // crisis line, not personal
+    ["call me at 555 123 4567",                "personal_information"], // real phone, still caught
+    ["my number is 555-123-4567",              "personal_information"],
+  ];
+  n13.forEach(([t, reason]) => it(`N-13: ${JSON.stringify(t)} → ${reason}`, () => {
+    assert.strictEqual(computePostFlagReason(t), reason);
+  }));
 });
 
 describe("#1 abuse mapping — computeReplyFlagReason (post/reply asymmetry source)", () => {

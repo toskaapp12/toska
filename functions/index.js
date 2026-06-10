@@ -2344,14 +2344,30 @@ const socialPatterns = [
 ];
 
 function hasPhoneNumber(text) {
-  const stripped = text.replace(/[\s\-\(\)\.]/g, '');
-  const digits = stripped.replace(/[^\d]/g, '');
+  // N-13 (2026-06-10 re-review): the prior version stripped ALL separators and
+  // counted total digits >= 10 — so any text with 10+ digits spread across
+  // independent short tokens false-positived as a phone: year lists ("we dated
+  // 2019 2020 2021 2022 2023"), score/duration lists ("21 19 23 17 25"), etc.
+  // This is the M-2 phone false-positive class, which was fixed only in the
+  // PARALLEL moderation.js detector — but validatePost/validateReply reach the
+  // phone check through THIS function (containsPII), which short-circuits before
+  // the fixed detector. A real phone is a SINGLE number: a contiguous 10+ digit
+  // run, OR 10+ digits across only a FEW groups (country/area/prefix/line, <= 4).
+  // A LIST of short numbers produces many groups and must not read as a phone.
+  // Spaced-digit obfuscation ("5 5 5 1 2 3 4 5 6 7") still falls through to
+  // containsNameOrIdentifyingInfo (called next in containsPII), which has the
+  // separator-collapse handling.
   const crisisNumbers = ['988', '741741', '18002738255', '18007997233', '18006564673'];
-  let cleaned = digits;
-  for (const num of crisisNumbers) {
-    cleaned = cleaned.replace(num, '');
+  const groups = text.match(/\d+/g) || [];
+  // A single contiguous run of 10+ digits is a phone (unless it's a crisis line).
+  for (const g of groups) {
+    if (g.length >= 10 && !crisisNumbers.includes(g)) return true;
   }
-  return cleaned.length >= 10;
+  // 10+ digits grouped like a phone (few groups). Remove crisis hotline digits
+  // first so "text 1-800-273-8255" isn't read as a personal number.
+  let joined = groups.join('');
+  for (const num of crisisNumbers) joined = joined.replace(num, '');
+  return joined.length >= 10 && groups.length <= 4;
 }
 
 const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;

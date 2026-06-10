@@ -73,6 +73,13 @@ struct MyPost: Identifiable {
     // inside the banner so the author understands which detection rule
     // tripped (e.g. "names or contact info detected"). Nil for non-pending.
     var pendingReasonLabel: String? = nil
+    // N-14 (2026-06-10 re-review): true when the post was held for crisis/
+    // concerning content (pendingReason == "crisis"). The held-post banner uses
+    // it to surface crisis support resources to the author — "resources on
+    // detection" — so a held safety post never leaves them without help, even
+    // if they'd turned off the compose-time gentle check-in. Server hold
+    // behavior is unchanged (every concerning post still reviewed).
+    var pendingReasonIsCrisis: Bool = false
 }
 
 /// Used in OtherProfileView posts (no handle, no authorId — those are known)

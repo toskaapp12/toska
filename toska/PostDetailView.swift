@@ -598,23 +598,27 @@ struct PostDetailView: View {
                 Button {
                     if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
                 } label: {
+                    // De-emphasized handle (quiet gray, not accent) so the post
+                    // text leads — matches the feed.
                     Text(handle)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(ToskaColor.accent)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(ToskaColor.text2)
                 }
                 if isOwnPost {
                     Text("· you")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(ToskaColor.accent.opacity(0.6))
+                        .foregroundColor(ToskaColor.text3)
                 }
                 if let tag = tag {
                     Text("·").font(.system(size: 9)).foregroundColor(Color.toskaDivider)
+                    // Softer filled chip (Capsule, medium weight, 0.16 fill) —
+                    // matches the feed tag chip vocabulary.
                     Text(tag)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(tagColor(for: tag).opacity(0.8))
-                        .padding(.horizontal, 7).padding(.vertical, 2.5)
-                        .background(tagColor(for: tag).opacity(0.07))
-                        .cornerRadius(4)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(tagColor(for: tag))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(tagColor(for: tag).opacity(0.16))
+                        .clipShape(Capsule())
                 }
                 Spacer()
                 Text(time)
@@ -1770,8 +1774,8 @@ struct SwipeToReplyRow: View {
                             .frame(width: 2, height: 16).cornerRadius(1).padding(.trailing, 4)
                     }
                     Text(item.reply.handle)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.toskaBlue)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(ToskaColor.text2)
                     Text("·")
                         .font(.system(size: 11))
                         .foregroundColor(Color.toskaDivider)

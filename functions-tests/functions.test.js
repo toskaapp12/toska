@@ -534,6 +534,21 @@ describe("#1 replyCount visibility tracking", () => {
   });
 });
 
+// N-16: deleting a reply must clean up any reply-reposts (top-level posts with
+// originalReplyId pointing at it), which previously orphaned with a dangling id.
+describe("N-16 — reply delete cleans up reply-reposts", () => {
+  it("removes reposts of the deleted reply, leaves reposts of other replies", async () => {
+    await db.doc("posts/op16").set({ authorId: "A", text: "orig", isRepost: false, repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date() });
+    await db.doc("posts/rr16a").set({ authorId: "C", text: "a reply", isRepost: true, originalReplyId: "r16", originalPostId: "op16", originalAuthorId: "B", repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date() });
+    await db.doc("posts/rr16b").set({ authorId: "D", text: "a reply", isRepost: true, originalReplyId: "r16", originalPostId: "op16", originalAuthorId: "B", repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date() });
+    await db.doc("posts/keep16").set({ authorId: "E", text: "x", isRepost: true, originalReplyId: "OTHER", originalPostId: "op16", repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date() });
+    await fns.onReplyDeletedCleanupReposts.run({ id: "rr16", data: { data: () => ({}) }, params: { postId: "op16", replyId: "r16" } });
+    assert.strictEqual((await db.doc("posts/rr16a").get()).exists, false);
+    assert.strictEqual((await db.doc("posts/rr16b").get()).exists, false);
+    assert.strictEqual((await db.doc("posts/keep16").get()).exists, true, "reposts of a different reply untouched");
+  }).timeout(8000);
+});
+
 // #2 (edge fix): a link-bearing reply is held with pendingReason "abuse_link",
 // a name reply with "pii".
 describe("#2 reply hold reason: link vs name", () => {

@@ -88,13 +88,15 @@ struct ReplyDetailView: View {
                         // Reply rendered as the "post."
                         VStack(alignment: .leading, spacing: 0) {
                             HStack(spacing: 6) {
+                                // De-emphasized handle (quiet gray, not loud blue)
+                                // so the reply text leads — matches the feed.
                                 Text(replyHandle)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(Color.toskaBlue)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(ToskaColor.text2)
                                 if isOwnReply {
                                     Text("· you")
                                         .font(.system(size: 9, weight: .medium))
-                                        .foregroundColor(Color.toskaBlue.opacity(0.5))
+                                        .foregroundColor(ToskaColor.text3)
                                 }
                                 Spacer()
                                 Text(replyTime)

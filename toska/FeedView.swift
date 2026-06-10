@@ -281,16 +281,18 @@ struct FeedView: View {
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 13)
                                     // Instagram-style "hovering" search pill: an
-                                    // elevated card surface lifted off the page
-                                    // with the floating-bar shadow, rather than a
-                                    // flat inset field. Reads as floating above
-                                    // the feed.
+                                    // elevated card surface clearly lifted off the
+                                    // page, rather than a flat inset field. A bold
+                                    // two-layer drop shadow (tight contact + soft
+                                    // ambient) makes it read as floating above the
+                                    // feed even on the near-white background.
                                     .background(ToskaColor.card)
                                     .clipShape(Capsule())
                                     .overlay(
                                         Capsule().stroke(ToskaColor.divider, lineWidth: 1)
                                     )
-                                    .toskaFloatingShadow()
+                                    .shadow(color: .black.opacity(0.10), radius: 5, x: 0, y: 3)
+                                    .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 13)
 
                                     // Cancel — appears while searching; clears the
                                     // query and drops focus, returning to the feed.
@@ -306,9 +308,13 @@ struct FeedView: View {
                                         .transition(.opacity)
                                     }
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 14)
-                                .padding(.bottom, 6)
+                                // Wider side margins so the pill is visibly
+                                // detached from the screen edges — the Instagram
+                                // floating-bar look — and extra vertical room so
+                                // the drop shadow has space to read.
+                                .padding(.horizontal, 24)
+                                .padding(.top, 16)
+                                .padding(.bottom, 12)
 
                                 // Category pills — appear only while the
                                 // search bar is focused. Tapping a pill

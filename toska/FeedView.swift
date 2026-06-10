@@ -278,13 +278,19 @@ struct FeedView: View {
                                             .accessibilityLabel("Clear search")
                                         }
                                     }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                    .background(ToskaColor.input)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 13)
+                                    // Instagram-style "hovering" search pill: an
+                                    // elevated card surface lifted off the page
+                                    // with the floating-bar shadow, rather than a
+                                    // flat inset field. Reads as floating above
+                                    // the feed.
+                                    .background(ToskaColor.card)
+                                    .clipShape(Capsule())
                                     .overlay(
                                         Capsule().stroke(ToskaColor.divider, lineWidth: 1)
                                     )
-                                    .clipShape(Capsule())
+                                    .toskaFloatingShadow()
 
                                     // Cancel — appears while searching; clears the
                                     // query and drops focus, returning to the feed.

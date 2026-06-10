@@ -175,8 +175,15 @@ const IDENTIFYING_PATTERNS = [
   "instagram", "insta", "snapchat", "snap", "tiktok", "twitter",
   "facebook", "linkedin", "phone number", "my number", "text me",
   "call me", "dm me", "follow me", "find me", "look me up",
-  "last name", "full name", "school name", "works at", "goes to",
-  "lives in", "lives on", "lives at", "address",
+  "last name", "full name", "school name",
+  // Launch-readiness (2026-06-10): removed loose "works at"/"goes to"/"lives
+  // in"/"lives on" — literal substrings that false-positive heavily on normal
+  // grief writing ("she works at the hospital where we met", "lives in my head
+  // rent free now", "he goes to my gym"). index.js's identifyingPhrases already
+  // dropped them for the same reason; this aligns the delegated detector and
+  // cuts a large false-positive class. "lives at" (street context) + "address"
+  // are more specific and kept.
+  "lives at", "address",
   // N-15 (2026-06-10 re-review): removed the loose "apartment"/"apt "/"suite "
   // substrings — they false-positived on benign text ("adapt to change", "the
   // suite life", "my apartment is empty now"). Real unit numbers are still

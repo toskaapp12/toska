@@ -397,7 +397,11 @@ enum CrisisLines {
     /// Region-appropriate hotlines, in display order. CrisisCheckInView
     /// renders these as tappable rows.
     static var resources: [CrisisResource] {
-        let region = Locale.current.region?.identifier ?? "US"
+        // Launch-readiness (2026-06-10): when the device region can't be read,
+        // fall through to the international findahelpline directory rather than
+        // defaulting to "US" (which would show 988 — a dead number abroad) to a
+        // user in crisis whose region is unknown.
+        let region = Locale.current.region?.identifier ?? ""
         switch region {
         case "US":
             return [

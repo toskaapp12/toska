@@ -257,10 +257,10 @@ struct FeedView: View {
                                 HStack(spacing: 10) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 17, weight: .regular))
-                                            .foregroundColor(ToskaColor.text2)
+                                            .font(.system(size: 15, weight: .regular))
+                                            .foregroundColor(ToskaColor.text3)
                                         TextField("search", text: $searchText)
-                                            .font(.system(size: 14))
+                                            .font(.system(size: 15))
                                             .foregroundColor(ToskaColor.handle)
                                             .autocorrectionDisabled()
                                             .textInputAutocapitalization(.never)
@@ -278,21 +278,14 @@ struct FeedView: View {
                                             .accessibilityLabel("Clear search")
                                         }
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 13)
-                                    // Instagram-style "hovering" search pill: an
-                                    // elevated card surface clearly lifted off the
-                                    // page, rather than a flat inset field. A bold
-                                    // two-layer drop shadow (tight contact + soft
-                                    // ambient) makes it read as floating above the
-                                    // feed even on the near-white background.
-                                    .background(ToskaColor.card)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    // Clean, minimal search field: a quiet gray
+                                    // fill that recedes into the page — no heavy
+                                    // shadow or border competing with the floating
+                                    // tab bar. Borderless capsule.
+                                    .background(ToskaColor.input)
                                     .clipShape(Capsule())
-                                    .overlay(
-                                        Capsule().stroke(ToskaColor.divider, lineWidth: 1)
-                                    )
-                                    .shadow(color: .black.opacity(0.10), radius: 5, x: 0, y: 3)
-                                    .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 13)
 
                                     // Cancel — appears while searching; clears the
                                     // query and drops focus, returning to the feed.
@@ -308,13 +301,9 @@ struct FeedView: View {
                                         .transition(.opacity)
                                     }
                                 }
-                                // Wider side margins so the pill is visibly
-                                // detached from the screen edges — the Instagram
-                                // floating-bar look — and extra vertical room so
-                                // the drop shadow has space to read.
-                                .padding(.horizontal, 24)
-                                .padding(.top, 16)
-                                .padding(.bottom, 12)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 12)
+                                .padding(.bottom, 8)
 
                                 // Category pills — appear only while the
                                 // search bar is focused. Tapping a pill

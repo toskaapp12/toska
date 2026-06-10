@@ -45,6 +45,12 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
+            // Continuous page-color base so the area behind/below the floating
+            // tab pill is the SAME surface as the feed — no distinct lighter
+            // panel/seam showing behind the bar. The pill floats over one
+            // uniform background instead of a separate bottom panel.
+            ToskaColor.bg.ignoresSafeArea()
+
             VStack(spacing: 0) {
                 OfflineBannerView()
 
@@ -179,15 +185,26 @@ struct MainTabView: View {
 
                     tabIcon(icon: "person", activeIcon: "person.fill", tab: .profile)
                 }
-                .frame(height: 56)
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                .padding(.bottom, 28)
-                // Flat bottom bar — edge-to-edge, a touch lighter than the page
-                // surface (card2) so it reads as a calm panel. Background extends
-                // through the home indicator (the enclosing ZStack ignores the
-                // bottom safe area).
-                .background(LateNightTheme.card2)
+                .frame(height: 62)
+                .padding(.horizontal, 14)
+                // Instagram-style floating "home bar": the tab row is a rounded
+                // pill lifted OFF the bottom edge — detached on the sides and
+                // above the home indicator, an elevated white (card) surface with
+                // a bold two-layer drop shadow — instead of a flat edge-to-edge
+                // panel. The page shows behind/below it so it reads as floating.
+                .background(ToskaColor.card)
+                .clipShape(Capsule())
+                .overlay(
+                    Capsule().stroke(ToskaColor.divider, lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.10), radius: 6, x: 0, y: 3)
+                .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 13)
+                // Outer margins detach the pill from the screen edges and lift it
+                // above the home indicator (the enclosing ZStack ignores the
+                // bottom safe area, so this padding is the manual home-indicator
+                // clearance).
+                .padding(.horizontal, 16)
+                .padding(.bottom, 30)
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
             } // end if !tabBarHidden

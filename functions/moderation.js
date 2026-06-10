@@ -177,7 +177,11 @@ const IDENTIFYING_PATTERNS = [
   "call me", "dm me", "follow me", "find me", "look me up",
   "last name", "full name", "school name", "works at", "goes to",
   "lives in", "lives on", "lives at", "address",
-  "apartment", "apt ", "suite ",
+  // N-15 (2026-06-10 re-review): removed the loose "apartment"/"apt "/"suite "
+  // substrings — they false-positived on benign text ("adapt to change", "the
+  // suite life", "my apartment is empty now"). Real unit numbers are still
+  // caught by the gated Layer-2 regex below (\b(apt|unit|suite|ste)…\d+), which
+  // requires a following number.
   "her name is", "his name is", "their name is",
   // NOTE: "named " was previously in this list as a broad keyword and
   // false-positived on legitimate sentences like "she named the dog Rex"

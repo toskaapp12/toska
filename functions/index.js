@@ -1417,6 +1417,43 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
   }
 );
 
+// N-16 (2026-06-10 re-review): when a reply is deleted, any reply-reposts
+// (top-level posts with isRepost:true + originalReplyId == this reply) were
+// orphaned with a dangling originalReplyId — no trigger cleaned them (only
+// onReplyRepostDeletedUpdateCount adjusts a count). They surface on the
+// reposter's profile pointing at content that no longer exists. Delete them
+// here; each reply-repost is itself a post, so its own
+// onPostDeletedCleanupSubtree drains its subtree. Reply auto-IDs are globally
+// unique, so matching originalReplyId alone is safe (no need for a composite
+// index on postId). Bounded; reply-reposts of a single reply are few.
+exports.onReplyDeletedCleanupReposts = onDocumentDeleted(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const replyId = event.params.replyId;
+    let cleared = 0;
+    for (let i = 0; i < 50; i++) {
+      const snap = await db.collection("posts")
+        .where("originalReplyId", "==", replyId)
+        .limit(100)
+        .get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      try {
+        await batch.commit();
+      } catch (err) {
+        console.warn(`onReplyDeletedCleanupReposts batch failed for reply ${replyId}:`, err.message);
+        break;
+      }
+      cleared += snap.size;
+      if (snap.size < 100) break;
+    }
+    if (cleared > 0) {
+      console.log(`onReplyDeletedCleanupReposts: cleared ${cleared} repost(s) of reply ${replyId}`);
+    }
+  }
+);
+
 // #1 (2026-06-09 audit): replyCount must track VISIBLE replies, not all replies.
 // A reply is counted at create (onReplyCreatedUpdateCount) regardless of
 // moderation; this trigger adjusts the count when a reply crosses the
@@ -2395,7 +2432,10 @@ const identifyingPhrases = [
   "phone number", "my number", "text me", "call me",
   "dm me", "follow me", "look me up",
   "last name", "full name",
-  "apartment", "apt ", "suite ",
+  // N-15 (2026-06-10 re-review): removed "apartment"/"apt "/"suite " — loose
+  // substrings that flagged "adapt to change", "the suite life", etc. Real unit
+  // numbers are caught by moderation.js's gated regex (apt/unit/suite + number),
+  // reached via containsNameOrIdentifyingInfo below.
 ];
 
 function containsPII(text) {

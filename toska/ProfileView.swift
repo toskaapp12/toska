@@ -174,7 +174,7 @@ struct ProfileView: View {
                                                                                             .padding(.top, 8)
                                                                                         }
                                                                                         if post.pendingReview {
-                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel)
+                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
                                                                                         }
                                                                                         FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
                                                                                     }
@@ -787,7 +787,8 @@ struct ProfileView: View {
                         let reasonLabel = isPending
                             ? pendingReasonLabelFor(data["pendingReason"] as? String)
                             : nil
-                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, pendingReview: isPending, pendingReasonLabel: reasonLabel)
+                        let isCrisisHold = isPending && (data["pendingReason"] as? String) == "crisis"
+                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
                     }
                 }
             }
@@ -1622,10 +1623,14 @@ struct EditReplyView: View {
 // post body but doesn't compete with the post text for attention.
 struct PendingReviewBanner: View {
     let reasonLabel: String?
+    // N-14: when the post was held for crisis/concerning content, surface
+    // region-appropriate support resources right here — "resources on
+    // detection." Additive only; the server still reviews every such post.
+    var isCrisis: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "eye.slash.fill")
+            Image(systemName: isCrisis ? "heart.fill" : "eye.slash.fill")
                 .font(.system(size: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text("under review — visible only to you")
@@ -1634,6 +1639,22 @@ struct PendingReviewBanner: View {
                     Text(label)
                         .font(.system(size: 10))
                         .opacity(0.85)
+                }
+                if isCrisis {
+                    Text("if you're struggling, you're not alone — support is here:")
+                        .font(.system(size: 10))
+                        .opacity(0.9)
+                        .padding(.top, 3)
+                    ForEach(CrisisLines.resources.prefix(2), id: \.url) { res in
+                        if let url = URL(string: res.url) {
+                            Link(destination: url) {
+                                HStack(spacing: 5) {
+                                    Image(systemName: res.icon).font(.system(size: 10))
+                                    Text(res.label).font(.system(size: 11, weight: .semibold)).underline()
+                                }
+                            }
+                        }
+                    }
                 }
             }
             Spacer(minLength: 0)

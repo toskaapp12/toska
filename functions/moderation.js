@@ -497,8 +497,20 @@ function containsURL(text) {
 // Main detector — mirror of containsNameOrIdentifyingInfo in FeedView.swift.
 // ============================================================
 
+// Hard input-length ceiling for the detector (F1, 2026-06-11 security
+// re-review). The separator-collapse normalization and the phone digit-strip
+// chain below are O(n²) in input length, so an unbounded string could burn
+// seconds of function CPU per event. Posts/replies are capped at 2000/500 chars
+// at the RULES layer, but the moderation-only triggers (onPostUpdated /
+// onReplyUpdated / containsPII) invoke this with no server-side guard and would
+// rely entirely on that cap. Truncating here makes the detector self-bounding
+// regardless of caller or a future rule regression — any PII signal worth
+// holding on appears well within the first 2000 chars.
+const DETECTOR_MAX_LEN = 2000;
+
 function containsNameOrIdentifyingInfo(text) {
   if (typeof text !== "string" || text.length === 0) return false;
+  if (text.length > DETECTOR_MAX_LEN) text = text.slice(0, DETECTOR_MAX_LEN);
   const lowered = text.toLowerCase();
 
   // ----- Original chain -----

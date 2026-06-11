@@ -261,7 +261,18 @@ service cloud.firestore {
         || (isAdmin()
             && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']));
-      allow delete: if isOwner(userId);
+      // G-2 (2026-06-11 security re-review): block a restricted user from
+      // deleting their own user doc to escape an active restriction. The
+      // legit account-deletion flow does NOT delete this doc from the client —
+      // SettingsView.deleteAccount() calls Auth.delete(), and the Admin-SDK
+      // cascade (which bypasses rules) removes the doc server-side. So a CLIENT
+      // delete of users/{uid} is not a normal operation; without this guard a
+      // repeat-offender could drop the doc, which makes notRestricted() short-
+      // circuit true on its `!exists` leg, then recreate + re-confirm adult and
+      // post again — fully defeating the repeat-offender / admin restriction.
+      allow delete: if isOwner(userId)
+        && !(resource.data.get('restricted', false) == true
+             && resource.data.get('restrictedUntil', request.time) > request.time);
 
       match /following/{followedId} {
         // Reads are owner-only — exposing the full follow graph to any

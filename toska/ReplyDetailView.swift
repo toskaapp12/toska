@@ -374,6 +374,14 @@ struct ReplyDetailView: View {
         let trimmed = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !postId.isEmpty else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // T-8 (2026-06-11): restricted users can't reply (the reply-create rule
+        // enforces notRestricted() server-side; this gives a clear message
+        // instead of a generic Firestore failure, matching ComposeView/
+        // PostDetailView).
+        guard !UserHandleCache.shared.isRestricted else {
+            postError = "your account is restricted and can't reply right now."
+            return
+        }
         let myHandle = UserHandleCache.shared.handle
         isPosting = true
         postError = nil
@@ -385,7 +393,9 @@ struct ReplyDetailView: View {
             "createdAt": FieldValue.serverTimestamp(),
             "parentPostText": replyText,
             "parentPostHandle": replyHandle,
-            "parentReplyId": reply.id
+            "parentReplyId": reply.id,
+            // T-2 (2026-06-11): start hidden, mirroring posts/PostDetailView.
+            "moderationStatus": "pending_validation"
         ]
         Firestore.firestore().collection("posts").document(postId)
             .collection("replies").addDocument(data: replyData) { err in

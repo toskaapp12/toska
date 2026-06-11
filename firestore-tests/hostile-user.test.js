@@ -359,6 +359,14 @@ describe("M-1 edge: reply create cannot self-set moderationStatus", () => {
     const db = env.authenticatedContext("attacker").firestore();
     await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r0").set(validReply()));
   });
+  it("T-2: reply create with moderationStatus='pending_validation' is ACCEPTED (start-hidden)", async () => {
+    // The client now writes pending_validation at create so a PII reply is never
+    // third-party-readable in the pre-validateReply window. The read rule treats
+    // != 'live' as hidden to non-authors; setReplyLive promotes clean ones.
+    await setupPostAndUser();
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("rpv").set(validReply({ moderationStatus: "pending_validation" })));
+  });
   it("reply create with moderationStatus='live' is DENIED (hasOnly blocks the PII-bypass)", async () => {
     await setupPostAndUser();
     const db = env.authenticatedContext("attacker").firestore();
@@ -383,6 +391,31 @@ describe("M-1 edge: non-author cannot enumerate others' replies via collectionGr
     const db = env.authenticatedContext("snoop").firestore();
     const { collectionGroup, query, where, getDocs } = require("firebase/firestore");
     await assertFails(getDocs(query(collectionGroup(db, "replies"), where("authorId", "==", "victimauthor"))));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// T-10 (2026-06-11): the post-like create rule now has a schema lock
+// (hasOnly(['createdAt']) + createdAt == request.time), mirroring the reply-
+// like sibling. A tampered client must not be able to scribble arbitrary
+// fields onto a like doc.
+// ─────────────────────────────────────────────────────────────────────
+describe("T-10: post-like create is schema-locked", () => {
+  it("CONTROL: a clean like (only server createdAt) is accepted", async () => {
+    await seedUser("liker");
+    await seedPost("p", "author");
+    const db = env.authenticatedContext("liker").firestore();
+    await assertSucceeds(
+      db.collection("posts").doc("p").collection("likes").doc("liker").set({ createdAt: serverTimestamp() })
+    );
+  });
+  it("a like with an injected scratch field is DENIED (hasOnly)", async () => {
+    await seedUser("liker");
+    await seedPost("p", "author");
+    const db = env.authenticatedContext("liker").firestore();
+    await assertFails(
+      db.collection("posts").doc("p").collection("likes").doc("liker").set({ createdAt: serverTimestamp(), trustedByAdmin: true })
+    );
   });
 });
 

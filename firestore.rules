@@ -806,9 +806,20 @@ service cloud.firestore {
           && request.resource.data.text.size() <= 500
           && request.resource.data.keys().hasOnly([
                'authorId', 'authorHandle', 'text', 'likeCount', 'createdAt',
-               'parentPostText', 'parentPostHandle', 'parentReplyId', 'gifUrl'
+               'parentPostText', 'parentPostHandle', 'parentReplyId', 'gifUrl',
+               // T-2 (2026-06-11): replies now start hidden, mirroring posts.
+               // The client writes 'pending_validation' at create so a PII reply
+               // is never third-party-readable in the pre-validateReply window
+               // (the reply read rule treats != 'live' as hidden to non-authors).
+               'moderationStatus'
              ])
           && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
+          // A client can never self-publish a reply as "live" or self-assign the
+          // hold ("pending_review") — only omit the field or start it in
+          // "pending_validation". setReplyLive (Admin SDK) is the sole writer of
+          // "live"; setReplyPendingReview owns "pending_review".
+          && (!('moderationStatus' in request.resource.data.keys())
+              || request.resource.data.moderationStatus == 'pending_validation')
           && request.resource.data.createdAt == request.time
           && (!('likeCount' in request.resource.data.keys())
               || request.resource.data.likeCount == 0)
@@ -901,7 +912,12 @@ service cloud.firestore {
         allow read: if postVisibleToCaller(postId);
         // Same block enforcement as replies — a blocked user shouldn't be
         // able to bump someone's likeCount.
+        // T-10 (2026-06-11): schema lock + createdAt pin, mirroring the reply-
+        // like sibling rule. Without hasOnly, a tampered client could attach
+        // arbitrary scratch fields to a like doc.
         allow create: if isAuth() && request.auth.uid == likeUserId
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
         allow delete: if isAuth()
           && (request.auth.uid == likeUserId

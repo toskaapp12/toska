@@ -1019,8 +1019,12 @@ struct PostDetailView: View {
                     }
                 }
 
-                // Delete all likes
-                let likeSnap = try await db.collection("posts").document(postId).collection("likes").getDocumentsAsync()
+                // Delete likes. T-6 (2026-06-11): cap the read at 500 — the
+                // server trigger onPostDeletedCleanupSubtree deletes any remaining
+                // likes/replies/reflections once the post doc is removed below, so
+                // the client only needs a bounded best-effort first pass instead of
+                // reading the entire (possibly huge) likes set.
+                let likeSnap = try await db.collection("posts").document(postId).collection("likes").limit(to: 500).getDocumentsAsync()
                 let likeDocs = likeSnap.documents
 
                 // Delete only the likes subcollection docs (posts/{postId}/likes/{uid}),
@@ -1048,13 +1052,16 @@ struct PostDetailView: View {
                 return
             }
 
+            // T-6: bounded best-effort; onPostDeletedCleanupReposts /
+            // onPostDeletedCleanupSubtree (Admin SDK) clean up any remainder.
             let repostSnap = try? await db.collection("posts")
                 .whereField("isRepost", isEqualTo: true)
                 .whereField("originalPostId", isEqualTo: postId)
+                .limit(to: 500)
                 .getDocumentsAsync()
             for doc in repostSnap?.documents ?? [] { try? await doc.reference.delete() }
 
-            let reflectionSnap = try? await db.collection("posts").document(postId).collection("reflections").getDocumentsAsync()
+            let reflectionSnap = try? await db.collection("posts").document(postId).collection("reflections").limit(to: 500).getDocumentsAsync()
             for doc in reflectionSnap?.documents ?? [] { try? await doc.reference.delete() }
 
             if let uid = Auth.auth().currentUser?.uid {
@@ -1144,9 +1151,18 @@ struct PostDetailView: View {
         // query fails entirely if any returned doc is rule-denied. Clean
         // replies are stamped "live" server-side by validateReply; legacy
         // replies were backfilled by backfillReplyModerationStatus.js.
+        // T-6 (2026-06-11): bound the live-replies listener. Previously
+        // unbounded, it read the ENTIRE reply set on open + rebuilt the tree on
+        // every new reply — a read-cost/main-thread cost that scales with
+        // engagement. Fetch the NEWEST 500 (descending + limit); recombineReplies
+        // sorts ascending internally, so display order is unchanged and new
+        // replies always enter the window. Threads under 500 are fully intact;
+        // for the rare mega-thread (>500) the oldest replies fall outside the
+        // window — true cursor pagination for deep threads is a follow-up.
         replyListenerLive = repliesRef
             .whereField("moderationStatus", isEqualTo: "live")
-            .order(by: "createdAt", descending: false)
+            .order(by: "createdAt", descending: true)
+            .limit(to: 500)
             .addSnapshotListener { snapshot, error in
                 if let error = error {
                     print("⚠️ fetchReplies(live) listener error for post \(postId): \(error)")
@@ -1488,7 +1504,13 @@ struct PostDetailView: View {
             var replyData: [String: Any] = [
                 "authorId": uid, "authorHandle": replyHandle, "text": currentReplyText,
                 "likeCount": 0, "createdAt": FieldValue.serverTimestamp(),
-                "parentPostText": postText, "parentPostHandle": handle
+                "parentPostText": postText, "parentPostHandle": handle,
+                // T-2 (2026-06-11): start the reply hidden, mirroring posts, so a
+                // reply that validateReply will hold for PII is never third-party-
+                // readable in the pre-trigger window. validateReply promotes a
+                // clean reply to "live". The author sees it immediately via the
+                // optimistic insert below.
+                "moderationStatus": "pending_validation"
             ]
             if let parentId = replyingToId { replyData["parentReplyId"] = parentId }
             if let gifUrl = replyGifUrl { replyData["gifUrl"] = gifUrl }

@@ -556,14 +556,17 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
     await setPost("p1", "alice");
 
     const b = env.authenticatedContext("bob").firestore();
+    // Must use serverTimestamp() — the post-like create rule pins
+    // createdAt == request.time (T-10 schema lock), like every other like/save
+    // write in this file and the real client (PostInteractionManager).
     await assertSucceeds(
       b.collection("posts").doc("p1").collection("likes").doc("bob").set({
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       })
     );
     await assertSucceeds(
       b.collection("users").doc("bob").collection("saved").doc("p1").set({
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
       })
     );
   });

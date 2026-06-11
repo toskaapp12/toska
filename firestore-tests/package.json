@@ -6,6 +6,7 @@
     "test": "npm run test:moderation && npm run test:rules",
     "test:moderation": "npx mocha --timeout 5000 moderation.test.js",
     "test:rules": "PATH=\"/opt/homebrew/opt/openjdk@21/bin:$PATH\" firebase emulators:exec --only firestore,auth --project=toska-test 'npx mocha --timeout 15000 firestore.test.js hostile-user.test.js'",
+    "test:parity": "node detector-parity.mjs",
     "e2e": "node e2e-test.mjs"
   },
   "devDependencies": {

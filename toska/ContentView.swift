@@ -187,6 +187,12 @@ struct ContentView: View {
             verifyTask = nil
             isLoggedIn = false
             isLoading = false
+            // C-2 (2026-06-11): a token-expiry logout must also clear on-device
+            // drafts, like the explicit sign-out path above — otherwise the prior
+            // user's in-progress grief text survives on a shared device.
+            DraftStore.clearAll()
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftText)
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftTag)
         }
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignIn)) { notification in
             guard let uid = notification.userInfo?["uid"] as? String else { return }

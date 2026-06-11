@@ -440,6 +440,31 @@ enum CrisisLines {
                 CrisisResource(label: "call 0800 543 354", sublabel: "lifeline aotearoa", url: "tel://0800543354", icon: "phone.fill"),
                 CrisisResource(label: "text HELP to 4357", sublabel: "lifeline text", url: "sms:4357?body=HELP", icon: "text.bubble.fill"),
             ]
+        // T-5 (2026-06-11): the crisis detector now fires in Spanish/French/
+        // Portuguese, but the curated lines were English-region-only — a
+        // detected non-English user in those countries got the generic
+        // findahelpline link. Add the national lines for those regions so
+        // detection and resources cover the same languages. (A user writing
+        // Spanish on a US-region device still sees the US line; keying resources
+        // on the DETECTED post language, not just device region, is a follow-up
+        // a safety owner should weigh. These numbers should get a final pass
+        // from a local reviewer per country.)
+        case "FR":
+            return [
+                CrisisResource(label: "appelle le 3114", sublabel: "numéro national de prévention du suicide", url: "tel://3114", icon: "phone.fill"),
+            ]
+        case "ES":
+            return [
+                CrisisResource(label: "llama al 024", sublabel: "línea de atención a la conducta suicida", url: "tel://024", icon: "phone.fill"),
+            ]
+        case "MX":
+            return [
+                CrisisResource(label: "llama al 800 911 2000", sublabel: "línea de la vida", url: "tel://8009112000", icon: "phone.fill"),
+            ]
+        case "BR":
+            return [
+                CrisisResource(label: "ligue 188", sublabel: "cvv — centro de valorização da vida", url: "tel://188", icon: "phone.fill"),
+            ]
         default:
             // Outside of the regions we have curated lines for, link to the
             // International Association for Suicide Prevention's directory

@@ -466,6 +466,34 @@ function isUpperFirst(word) {
 }
 
 // ============================================================
+// Shared URL / link detector (T-10, 2026-06-11).
+//
+// Previously there were THREE URL detectors that drifted: this module's inline
+// Layer-1 regexes (the HOLD decision), index.js `urlPatterns`/`containsURL`
+// (the pii-vs-abuse_link LABEL decision), and index.js SPAM_PATTERNS (posts-
+// only). The first two disagreed (e.g. youtu.be held-but-mislabeled). This is
+// now the single source — Layer-1 below uses it, and index.js imports it for
+// the label decision, so the hold and the label can never disagree again.
+//
+// Country-code TLDs (.be/.ru/.it/…) are intentionally NOT matched generically:
+// they collide with ordinary prose ("maybe.be", "split.it") and the false-
+// positive cost on a grief app outweighs catching a bare cc-TLD domain. The
+// few cc-TLD link forms that matter in practice (youtu.be, t.me) are listed
+// explicitly.
+// ============================================================
+const URL_REGEXES = [
+  /https?:\/\//i,
+  /\bwww\.[a-z]/i,
+  /\b[a-z0-9-]+\.(com|net|org|io|co|app|xyz|gg|tv|me|info|link)\b/i,
+  /\b(cash\.app|linktr\.ee|bit\.ly|tinyurl|youtu\.be|t\.me)\b/i,
+];
+
+function containsURL(text) {
+  if (typeof text !== "string" || text.length === 0) return false;
+  return URL_REGEXES.some((re) => re.test(text));
+}
+
+// ============================================================
 // Main detector — mirror of containsNameOrIdentifyingInfo in FeedView.swift.
 // ============================================================
 
@@ -587,16 +615,8 @@ function containsNameOrIdentifyingInfo(text) {
 
   // ----- Evasion-hardening layers (mirror of Swift Layers 1-6) -----
 
-  // Layer 1: URL / social-link detection.
-  const urlRegexes = [
-    /https?:\/\//i,
-    /\bwww\.[a-z]/i,
-    /\b(instagram|tiktok|facebook|twitter|snapchat|linkedin|reddit|youtube|youtu|t|discord|telegram|whatsapp|signal|onlyfans|threads|bluesky|cash\.app|venmo|paypal)\.(com|me|gg|tv|be|co|app|net|org|io)\b/i,
-    /\b(linktr\.ee|bit\.ly|tinyurl)\b/i,
-  ];
-  for (const re of urlRegexes) {
-    if (re.test(text)) return true;
-  }
+  // Layer 1: URL / social-link detection (shared detector, T-10).
+  if (containsURL(text)) return true;
 
   // Layer 2: Apartment / unit / suite numbers.
   if (/\b(apt|unit|suite|ste)\.?\s*#?\s*\d+[a-z]?\b/i.test(text)) return true;
@@ -707,6 +727,7 @@ function containsNameOrIdentifyingInfo(text) {
 
 module.exports = {
   containsNameOrIdentifyingInfo,
+  containsURL,
   canonicalize,
   aggressiveNormalizeForNameMatch,
   // Exposed for tests / future composition.

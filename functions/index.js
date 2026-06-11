@@ -1,5 +1,5 @@
 const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { containsNameOrIdentifyingInfo, aggressiveNormalizeForNameMatch } = require("./moderation");
+const { containsNameOrIdentifyingInfo, aggressiveNormalizeForNameMatch, containsURL } = require("./moderation");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -2265,13 +2265,14 @@ async function setReplyPendingReview(replyRef, reason) {
   return true;
 }
 
-// Promote a clean reply to moderationStatus="live" (M-1). Unlike posts, the
-// client doesn't write a create-time moderationStatus on replies, so a clean
-// reply would otherwise have NO field — and the iOS thread query
-// (where moderationStatus == "live") can't match a missing field. validateReply
-// stamps "live" on clean replies so they're queryable. Transactional + guarded
-// exactly like setPostLive: never override a concurrent pending_review hold,
-// idempotent on an already-live reply.
+// Promote a clean reply to moderationStatus="live" (M-1). The client writes
+// 'pending_validation' at create (T-2, 2026-06-11) — so a clean reply starts
+// hidden, exactly like posts, and validateReply promotes it to "live" so the
+// iOS thread query (where moderationStatus == "live") can match it. (Legacy
+// replies created before T-2 have NO field and default-read as live; this still
+// stamps them on first moderation pass.) Transactional + guarded exactly like
+// setPostLive: never override a concurrent pending_review hold, idempotent on an
+// already-live reply, and promotes from pending_validation OR a missing field.
 async function setReplyLive(replyRef) {
   try {
     await db.runTransaction(async (tx) => {
@@ -2326,8 +2327,15 @@ exports.validateReply = onDocumentCreated(
     if (containsNameOrIdentifyingInfo(text)) {
       const reason = containsURL(text) ? "abuse_link" : "pii";
       console.warn(`Holding reply ${replyId} on post ${postId} for review — identifying-info detector tripped (${reason})`);
-      await moderationDeleteJitter();
+      // T-2 (2026-06-11): flip the status FIRST, then jitter — mirroring the
+      // validatePost fix (2026-05-31). The previous order (jitter THEN hold) ran
+      // the 1.5-3s jitter while the PII reply was still live-readable, widening
+      // the exposure window. Combined with replies now starting hidden
+      // ('pending_validation' at create), a held PII reply is never third-party-
+      // readable. The jitter (timing-oracle defense) now runs after the hold, on
+      // the no-op return — same as validatePost.
       await setReplyPendingReview(replyRef, reason);
+      await moderationDeleteJitter();
       return;
     }
 
@@ -2390,8 +2398,13 @@ function hasPhoneNumber(text) {
   // many-group international numbers ("+33 6 12 34 56 78"). The robust model:
   // match phone-SHAPED patterns, not digit totals. A LIST of independent numbers
   // matches none of these shapes; real phones (incl. +CC international) do.
-  // Spaced-digit obfuscation ("5 5 5 1 2 3 4 5 6 7") still falls through to
-  // containsNameOrIdentifyingInfo (called next in containsPII).
+  // T-10 (2026-06-11): corrected a stale claim here. Fully-spaced single digits
+  // ("5 5 5 1 2 3 4 5 6 7") are NOT caught by the downstream
+  // containsNameOrIdentifyingInfo either — its digit heuristic strips
+  // `\b\d{1,3}\b` single/short tokens, so a fully-spaced phone reaches zero
+  // digits. This is a shared, accepted blind spot (both detectors agree on real
+  // and formatted phones, incl. +CC); a fully-letter-spaced-out phone is rare
+  // and not worth the FP cost of matching arbitrary single-digit runs.
   const patterns = [
     /\+\d[\d\s().\-]{7,}\d/g,                 // international, leading +
     /\b00\d[\d\s().\-]{7,}\d/g,               // international, leading 00
@@ -2456,16 +2469,9 @@ function containsPII(text) {
   return false;
 }
 
-const urlPatterns = [
-  /https?:\/\//i,
-  /www\./i,
-  /[a-z0-9]+\.(com|net|org|io|co|app|xyz|gg|tv|me)\b/i,
-  /bit\.ly|tinyurl|linktr\.ee/i,
-];
-
-function containsURL(text) {
-  return urlPatterns.some((p) => p.test(text));
-}
+// containsURL is imported from ./moderation (T-10, 2026-06-11) — the single
+// shared URL detector, so the moderation HOLD decision (moderation.js Layer-1)
+// and the pii-vs-abuse_link LABEL decision here consult the exact same matcher.
 
 // ============================================================
 // Shared moderation patterns
@@ -2552,17 +2558,31 @@ const MOD_CRISIS_EXPLICIT = [
   // comprehensive — a full i18n crisis effort needs native-speaker review per
   // language. Both accented and unaccented forms are included since not all
   // input is normalized identically.
-  // Spanish
+  //
+  // T-4 (2026-06-11 re-review): the reflexive self-harm verbs (hacerse daño,
+  // lastimarse, se faire du mal) are RELATIONAL when prefixed with a 2nd/3rd
+  // person — "tu vas me faire du mal" / "va a hacerme daño" = "[you/he] will
+  // hurt ME", a normal statement about an ex, NOT self-harm. Substring-matching
+  // the bare verb explicit-paged admins on those. Fix: require first-person
+  // self-intent framing here (quiero/voy a … / je veux/vais … / envie de me …).
+  // Genuinely-ambiguous hyperbole ("envie de mourir de honte", "voy a matarme a
+  // trabajar", "mejor muerto" about a 3rd party) is moved to MOD_CRISIS_SOFT
+  // below — still HELD for review, just not paging a human. A native speaker
+  // should do a final pass per language.
+  // Spanish — unambiguous self-directed intent
   "quiero morir", "no quiero vivir", "ya no quiero vivir", "quiero suicidarme",
-  "voy a suicidarme", "quiero matarme", "me quiero matar", "voy a matarme",
+  "voy a suicidarme", "quiero matarme", "me quiero matar",
   "acabar con mi vida", "terminar con mi vida", "quitarme la vida",
-  "mejor muerto", "mejor muerta", "hacerme dano", "hacerme daño", "lastimarme",
+  "quiero hacerme dano", "quiero hacerme daño", "voy a hacerme dano", "voy a hacerme daño",
+  "quiero lastimarme", "voy a lastimarme",
   // Portuguese
   "quero morrer", "nao quero viver", "não quero viver", "vou me matar",
   "tirar minha vida", "acabar com minha vida",
-  // French
-  "je veux mourir", "envie de mourir", "me suicider", "je vais me suicider",
-  "mettre fin a mes jours", "mettre fin à mes jours", "me faire du mal",
+  // French — first-person self-intent framing (excludes relational "tu vas /
+  // il va me faire du mal")
+  "je veux mourir", "me suicider", "je vais me suicider",
+  "mettre fin a mes jours", "mettre fin à mes jours",
+  "veux me faire du mal", "vais me faire du mal", "envie de me faire du mal",
 ];
 
 // Softer distress / hopelessness — held for review (concerningContent) but
@@ -2578,6 +2598,13 @@ const MOD_CRISIS_SOFT = [
   "nobody cares", "nobody would miss me", "won't be missed",
   "disappear forever", "why am i still here", "wish i wasn't here",
   "wish i didn't exist", "want it to stop", "want it all to end", "nothing left",
+  // T-4 (2026-06-11): non-English phrases demoted here from the explicit tier
+  // because they false-positive on hyperbole/3rd-party speech and were paging
+  // admins. Still HELD for review (over-hold = the safe direction), just not
+  // paged. "envie de mourir" → also "envie de mourir de honte/rire" (die of
+  // shame/laughter); "voy a matarme" → also "matarme a trabajar" (work myself
+  // to death); "mejor muerto/muerta" → can describe a 3rd party/character.
+  "envie de mourir", "voy a matarme", "mejor muerto", "mejor muerta",
 ];
 
 // Derived so MOD_EXPLICIT_CRISIS is, by construction, a subset of
@@ -3701,7 +3728,11 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
   // a separate dispatcher rather than passing arbitrary paths through the
   // queue doc to keep a closed allow-list of subcollections.
   const ALLOWED_SUB_RESUME = new Set([
-    "saved", "liked", "notifications", "blocked", "presence", "private", "drafts",
+    // Must mirror the `subs` list in cleanupPostsForUid (T-3, 2026-06-11):
+    // savedReplies was queued as `sub_savedReplies` on cap-hit but was missing
+    // here, so resumeUserCleanup dropped the queue entry and stranded any
+    // savedReplies past the deleteCollection cap (GDPR Art. 17 residue).
+    "saved", "savedReplies", "liked", "notifications", "blocked", "presence", "private", "drafts",
   ]);
 
   for (const doc of queueSnap.docs) {

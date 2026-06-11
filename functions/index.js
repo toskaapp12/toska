@@ -2544,6 +2544,25 @@ const MOD_CRISIS_EXPLICIT = [
   "don't want to wake up", "dont want to wake up", "don't want to be here",
   "dont want to be here", "don't want to exist", "dont want to exist",
   "want to disappear", "want to vanish",
+  // Non-English explicit crisis (2026-06-11): the detector was English-only, so
+  // a non-English user in crisis got NO hold/banner/admin page — the biggest
+  // clinical gap for an app that already ships curated foreign hotlines. This
+  // is a curated STARTER set for the highest-volume languages (Spanish,
+  // Portuguese, French) covering direct suicidal intent + self-harm. It is NOT
+  // comprehensive — a full i18n crisis effort needs native-speaker review per
+  // language. Both accented and unaccented forms are included since not all
+  // input is normalized identically.
+  // Spanish
+  "quiero morir", "no quiero vivir", "ya no quiero vivir", "quiero suicidarme",
+  "voy a suicidarme", "quiero matarme", "me quiero matar", "voy a matarme",
+  "acabar con mi vida", "terminar con mi vida", "quitarme la vida",
+  "mejor muerto", "mejor muerta", "hacerme dano", "hacerme daño", "lastimarme",
+  // Portuguese
+  "quero morrer", "nao quero viver", "não quero viver", "vou me matar",
+  "tirar minha vida", "acabar com minha vida",
+  // French
+  "je veux mourir", "envie de mourir", "me suicider", "je vais me suicider",
+  "mettre fin a mes jours", "mettre fin à mes jours", "me faire du mal",
 ];
 
 // Softer distress / hopelessness — held for review (concerningContent) but

@@ -1800,6 +1800,17 @@ let explicitCrisisPhrases = [
     "don't want to wake up", "dont want to wake up", "don't want to be here",
     "dont want to be here", "don't want to exist", "dont want to exist",
     "want to disappear", "want to vanish",
+    // Non-English explicit crisis (2026-06-11) — kept in sync with the server's
+    // MOD_CRISIS_EXPLICIT (index.js). Curated starter set (Spanish/Portuguese/
+    // French); not comprehensive — needs native-speaker review per language.
+    "quiero morir", "no quiero vivir", "ya no quiero vivir", "quiero suicidarme",
+    "voy a suicidarme", "quiero matarme", "me quiero matar", "voy a matarme",
+    "acabar con mi vida", "terminar con mi vida", "quitarme la vida",
+    "mejor muerto", "mejor muerta", "hacerme dano", "hacerme daño", "lastimarme",
+    "quero morrer", "nao quero viver", "não quero viver", "vou me matar",
+    "tirar minha vida", "acabar com minha vida",
+    "je veux mourir", "envie de mourir", "me suicider", "je vais me suicider",
+    "mettre fin a mes jours", "mettre fin à mes jours", "me faire du mal",
 ]
 
 let softConcernPhrases = [

@@ -156,6 +156,32 @@ describe("§3-F privileged reads + self-escalation are denied", () => {
     const db = env.authenticatedContext("attacker").firestore();
     await assertFails(db.collection("users").doc("attacker").update({ confirmedAdult: true }));
   });
+  it("G-2: an ACTIVELY-restricted user cannot delete their own user doc to escape restriction", async () => {
+    // notRestricted() short-circuits true on its !exists leg; a client delete
+    // of users/{uid} would let a repeat-offender drop the doc, recreate, and
+    // post again. The legit account-deletion path never deletes this doc from
+    // the client (Auth.delete() → Admin-SDK cascade), so this delete is denied
+    // while a restriction is active.
+    await seedUser("attacker", {
+      restricted: true,
+      restrictedUntil: new Date(Date.now() + 48 * 3600 * 1000), // 48h out
+    });
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(db.collection("users").doc("attacker").delete());
+  });
+  it("G-2 control: an UNrestricted user can still delete their own user doc", async () => {
+    await seedUser("normal");
+    const db = env.authenticatedContext("normal").firestore();
+    await assertSucceeds(db.collection("users").doc("normal").delete());
+  });
+  it("G-2 control: a user whose restriction has EXPIRED can delete their own doc", async () => {
+    await seedUser("expired", {
+      restricted: true,
+      restrictedUntil: new Date(Date.now() - 3600 * 1000), // expired 1h ago
+    });
+    const db = env.authenticatedContext("expired").firestore();
+    await assertSucceeds(db.collection("users").doc("expired").delete());
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

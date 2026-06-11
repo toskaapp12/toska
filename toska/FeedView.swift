@@ -2142,12 +2142,14 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
 
     if text.range(of: "@[a-zA-Z]", options: .regularExpression) != nil { return true }
 
-    // Possessive name pattern: "Jessica's", "Mike's" — a capitalized word followed by 's
+    // Possessive name. N-17 (2026-06-11): a lone FIRST-name possessive
+    // ("Jessica's") is allowed; a LAST-name possessive ("Johnson's") still
+    // flags. Mirror of moderation.js.
     if text.range(of: "\\b[A-Z][a-z]{2,}'s\\b", options: .regularExpression) != nil {
         let matches = text.matches(of: /\b([A-Z][a-z]{2,})'s\b/)
         for match in matches {
             let name = String(match.1).lowercased()
-            if !ambiguousWords.contains(name) { return true }
+            if commonLastNames.contains(name) && name.count >= 3 && !ambiguousWords.contains(name) { return true }
         }
     }
 
@@ -2157,23 +2159,29 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "my mom ", "my dad ", "my mother ", "my father ",
         "my coworker ", "my boss ", "my roommate ", "my neighbor ",
         "this girl ", "this guy ", "this boy ", "this man ", "this woman "]
+    // N-17 (2026-06-11): "my ex Sarah" (prefix + bare FIRST name) is allowed; a
+    // prefix + LAST name ("my ex Johnson") still flags; a prefix + FULL name is
+    // caught by looksLikeFullName below. Mirror of moderation.js.
     for prefix in relationshipPrefixes {
         if let range = lowered.range(of: prefix) {
             let afterPrefix = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
             if let firstWord = afterPrefix.components(separatedBy: CharacterSet.alphanumerics.inverted).first,
-               !firstWord.isEmpty, firstWord.count >= 2, firstWord.first?.isUppercase == true {
+               !firstWord.isEmpty, firstWord.first?.isUppercase == true,
+               commonLastNames.contains(firstWord.lowercased()), firstWord.count >= 3 {
                 return true
             }
         }
     }
 
-    // "named X", "called X", "name is X", "name was X"
+    // "named X" / "called X" / "name is X". N-17: same — a following bare FIRST
+    // name is allowed; a LAST name flags; a FULL name is caught below.
     let namedPatterns = ["named ", "called ", "name is ", "name was "]
     for pattern in namedPatterns {
         if let range = lowered.range(of: pattern) {
             let afterPattern = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
             if let firstWord = afterPattern.components(separatedBy: CharacterSet.alphanumerics.inverted).first,
-               !firstWord.isEmpty, firstWord.first?.isUppercase == true {
+               !firstWord.isEmpty, firstWord.first?.isUppercase == true,
+               commonLastNames.contains(firstWord.lowercased()), firstWord.count >= 3 {
                 return true
             }
         }
@@ -2205,13 +2213,10 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         if lower.count < 2 { continue }
         if ambiguousWords.contains(lower) { continue }
         if safeCapitalizedWords.contains(lower) { continue }
-        // Known name in database — flag it
-        if commonNames.contains(lower) {
-            if word.first?.isUppercase == true {
-                if sentenceStarters.contains(word) { continue }
-                return true
-            }
-        }
+        // N-17 (2026-06-11): the lone-first-name flag was removed — a bare first
+        // name ("I miss John") is allowed. Full names are caught by
+        // looksLikeFullName below; obfuscated names and lone last names by the
+        // canonicalized layers further down. Mirror of moderation.js.
     }
 
     // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
@@ -2372,6 +2377,10 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         // the sentence-start exemption no longer applies — "Mіchael" at the
         // start of a sentence is an attack, not a casual capitalization.
         let isEvasion = word.lowercased() != canonWord
+        // N-17 (2026-06-11): a PLAIN lone FIRST name is allowed (the dominant FP
+        // — "I miss John"); an OBFUSCATED first name (confusables/leet/fullwidth
+        // = isEvasion) or any LAST name is still flagged. Mirror of moderation.js.
+        if isFirstName && !isLastName && !isEvasion { continue }
         if !isEvasion && canonicalSentenceStarters.contains(canonWord) { continue }
         return true
     }

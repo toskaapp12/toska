@@ -487,31 +487,40 @@ function containsNameOrIdentifyingInfo(text) {
   // @handle
   if (/@[a-zA-Z]/.test(text)) return true;
 
-  // Possessive name: "Jessica's", "Mike's"
+  // Possessive name. N-17 launch tuning (2026-06-11): a LONE FIRST-name
+  // possessive ("Jessica's laugh") is allowed — a bare first name identifies
+  // no one and naming a feeling/memory is the modal breakup post. A LAST-name
+  // possessive ("Johnson's") is more identifying and still held.
   const possessiveRegex = /\b([A-Z][a-z]{2,})'s\b/g;
   for (const match of text.matchAll(possessiveRegex)) {
     const name = match[1].toLowerCase();
-    if (!AMBIGUOUS_WORDS.has(name)) return true;
+    if (COMMON_LAST_NAMES.has(name) && name.length >= 3 && !AMBIGUOUS_WORDS.has(name)) return true;
   }
 
-  // Relationship prefix + capitalized first word (>=2 chars).
+  // Relationship prefix + capitalized first word. N-17 (2026-06-11): "my ex
+  // Sarah" (prefix + bare FIRST name) is allowed; a prefix + LAST name ("my ex
+  // Johnson") stays held, and a prefix + FULL name ("my ex Sarah Johnson") is
+  // caught by looksLikeFullName below.
   for (const prefix of RELATIONSHIP_PREFIXES) {
     const idx = lowered.indexOf(prefix);
     if (idx === -1) continue;
     const after = text.slice(idx + prefix.length).trim();
     const firstToken = after.split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 0)[0];
     if (!firstToken) continue;
-    if (firstToken.length >= 2 && isUpperFirst(firstToken)) return true;
+    if (isUpperFirst(firstToken)
+        && COMMON_LAST_NAMES.has(firstToken.toLowerCase()) && firstToken.length >= 3) return true;
   }
 
-  // "named X", "called X", "name is X", "name was X" — capitalized following.
+  // "named X" / "called X" / "name is X". N-17: same — a following bare FIRST
+  // name is allowed; a LAST name is held; a FULL name is caught below.
   for (const pattern of NAMED_PATTERNS) {
     const idx = lowered.indexOf(pattern);
     if (idx === -1) continue;
     const after = text.slice(idx + pattern.length).trim();
     const firstToken = after.split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 0)[0];
     if (!firstToken) continue;
-    if (isUpperFirst(firstToken)) return true;
+    if (isUpperFirst(firstToken)
+        && COMMON_LAST_NAMES.has(firstToken.toLowerCase()) && firstToken.length >= 3) return true;
   }
 
   // Street address.
@@ -526,27 +535,11 @@ function containsNameOrIdentifyingInfo(text) {
     if (re.test(text)) return true;
   }
 
-  // Mid-sentence proper noun matching a known first name.
-  const starters = new Set();
-  for (const sentence of text.split(/[.!?\n]/)) {
-    const trimmed = sentence.trim();
-    if (!trimmed) continue;
-    const t = trimmed.split(/[^\p{L}\p{N}]+/u).filter((s) => s.length > 0)[0];
-    if (t) starters.add(t);
-  }
-  const words = text.split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0);
-  for (const word of words) {
-    const lower = word.toLowerCase();
-    if (lower.length < 2) continue;
-    if (AMBIGUOUS_WORDS.has(lower)) continue;
-    if (SAFE_CAPITALIZED_WORDS.has(lower)) continue;
-    if (COMMON_NAMES.has(lower)) {
-      if (isUpperFirst(word)) {
-        if (starters.has(word)) continue;
-        return true;
-      }
-    }
-  }
+  // N-17 (2026-06-11): the mid-sentence LONE-FIRST-NAME detector was removed —
+  // a bare first name ("I miss John") is the modal breakup post and identifies
+  // no one. Full names are still caught by looksLikeFullName below (the two-
+  // capitalized-words shape), and lone LAST names by the canonicalized
+  // name-layers further down. Contact info / addresses / handles are unchanged.
 
   // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
   if (looksLikeFullName(text)) return true;
@@ -646,6 +639,13 @@ function containsNameOrIdentifyingInfo(text) {
     // longer applies — "Mіchael" at the start of a sentence is an attack,
     // not a casual capitalization. Mirror of the Swift Layer 4 fix.
     const isEvasion = word.toLowerCase() !== canonWord;
+    // N-17 (2026-06-11): a PLAIN lone FIRST name is allowed (the dominant FP —
+    // "I miss John" is the modal breakup post and identifies no one). An
+    // OBFUSCATED first name (confusables / leet / fullwidth / combining-mark =
+    // isEvasion) is still HELD: deliberately evading the name filter signals
+    // intent to identify-and-hide. LAST names are always held; FULL names are
+    // caught by looksLikeFullName + the last-name component.
+    if (isFirst && !isLast && !isEvasion) continue;
     if (!isEvasion && canonStarters.has(canonWord)) continue;
     return true;
   }
@@ -671,6 +671,9 @@ function containsNameOrIdentifyingInfo(text) {
     if (reversed === canonWord) continue; // palindrome — forward layers cover
     if (AMBIGUOUS_WORDS.has(reversed)) continue;
     if (SAFE_CAPITALIZED_WORDS.has(reversed)) continue;
+    // N-17 (2026-06-11): a REVERSED name is by definition an evasion attempt
+    // (nobody writes a name backwards casually), so first names still flag here
+    // — same rationale as the obfuscation gate in Layer 4.
     const isFirstRev = COMMON_NAMES.has(reversed);
     const isLastRev = COMMON_LAST_NAMES.has(reversed) && reversed.length >= 3;
     if (isFirstRev || isLastRev) return true;
@@ -683,6 +686,11 @@ function containsNameOrIdentifyingInfo(text) {
   for (const token of aggressiveTokens) {
     if (AMBIGUOUS_WORDS.has(token)) continue;
     if (SAFE_CAPITALIZED_WORDS.has(token)) continue;
+    // N-17 (2026-06-11): Layer 5 only fires on tokens that emerge AFTER
+    // aggressive normalization but are NOT in the plain canonical tokenization
+    // (the `canonicalTokens.has` skip below) — i.e. spaced/separated names like
+    // "j o h n", which is itself an evasion vector. So first names still flag
+    // here, consistent with the obfuscation gate in Layer 4.
     const isName = COMMON_NAMES.has(token) || (COMMON_LAST_NAMES.has(token) && token.length >= 3);
     if (!isName) continue;
     if (canonicalTokens.has(token)) continue;

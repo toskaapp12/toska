@@ -90,12 +90,16 @@ describe("aggressiveNormalizeForNameMatch — leet + separator collapse", () => 
 
 describe("containsNameOrIdentifyingInfo — regression (original Swift cases still flag)", () => {
   flag("@handle", "follow me at @sarah_lol");
-  flag("possessive name (Jessica's)", "Jessica's birthday was hard");
-  flag("relationship + capitalized name (my ex Michael)", "my ex Michael never apologized");
-  flag("named X with capital", "she was named Olivia and that's all I remember");
-  flag("called X with capital", "he was called David back then");
-  flag("name is X with capital", "her name is Karen and she lives nearby");
-  flag("mid-sentence first name (Sarah)", "we broke up after Sarah moved out");
+  // N-17 (2026-06-11): lone PLAIN first names no longer flag — naming an ex by
+  // first name is the modal breakup post and identifies no one. Full names,
+  // last names, contact info, and OBFUSCATED first names still flag (see the
+  // "N-17 first-name policy" block below). These were lone-first-name cases:
+  noFlag("possessive first name (Jessica's) — N-17 allowed", "Jessica's birthday was hard");
+  noFlag("relationship + first name (my ex Michael) — N-17 allowed", "my ex Michael never apologized");
+  noFlag("named + first name (Olivia) — N-17 allowed", "she was named Olivia and that's all I remember");
+  noFlag("called + first name (David) — N-17 allowed", "he was called David back then");
+  flag("name is X + lives nearby (other signal)", "her name is Karen and she lives nearby");
+  noFlag("mid-sentence first name (Sarah) — N-17 allowed", "we broke up after Sarah moved out");
   flag("street address", "she lives at 123 Main Street");
   flag("10+ digit phone", "call me at 555-867-5309 anytime");
   flag("identifying keyword: dm me", "dm me later if you want");
@@ -103,13 +107,16 @@ describe("containsNameOrIdentifyingInfo — regression (original Swift cases sti
   flag("identifying keyword: snapchat", "we used to talk on snapchat");
   flag("identifying keyword: lives at", "she lives at the corner house");
   flag("apartment keyword (apt with space)", "she's in apt 5 next door");
-  flag("relationship + capital name (this guy Tyler)", "this guy Tyler keeps texting");
+  noFlag("relationship + first name (this guy Tyler) — N-17 allowed", "this guy Tyler keeps texting");
 });
 
 describe("containsNameOrIdentifyingInfo — new evasion vectors flag", () => {
   flag("Cyrillic confusable Sаrah", "I miss Sаrah every single day");
   flag("Fullwidth Ｓａｒａｈ", "I still think about Ｓａｒａｈ");
-  flag("Accented Sårāh (NFD)", "I still think about Sårāh sometimes");
+  // N-17 (2026-06-11): an accented FIRST name is legitimate (José, Renée,
+  // Sårāh) — not a confusable/leet evasion — so a lone accented first name is
+  // allowed. Cyrillic/leet/fullwidth substitutions above are still evasion.
+  noFlag("Accented first name Sårāh (NFD) — N-17 allowed", "I still think about Sårāh sometimes");
   flag("Cyrillic confusable Mіchael", "Mіchael was the worst part");
 
   flag("leet j0hn", "I cant stop thinking about J0hn");
@@ -141,10 +148,31 @@ describe("containsNameOrIdentifyingInfo — new evasion vectors flag", () => {
 
   // Nickname additions (2026-05-01 sprint follow-up).
   flag("nickname Mike mid-sentence", "I keep running into Mike at the gym");
-  flag("nickname Tom mid-sentence", "I miss talking to Tom every night");
-  flag("nickname Liz mid-sentence", "I told Liz everything and she just shrugged");
+  noFlag("first name Tom mid-sentence — N-17 allowed", "I miss talking to Tom every night");
+  noFlag("first name Liz mid-sentence — N-17 allowed", "I told Liz everything and she just shrugged");
   flag("leet nickname M1ke (de-leets to mike)", "I miss M1ke from work so much");
   flag("leet nickname J1m (de-leets to jim)", "I cant stop thinking about J1m");
+});
+
+describe("N-17 first-name policy — lone first names allowed, the rest held", () => {
+  // Lone PLAIN first names → ALLOWED (the dominant false-positive class on a
+  // breakup app — naming an ex by first name identifies no one).
+  noFlag("plain first name, longing", "I miss Rachel so much it hurts");
+  noFlag("relationship + first name", "my ex Brandon blocked me");
+  noFlag("possessive first name", "Jessica's laugh is all I remember");
+  // FULL names (first + last) → still HELD (the two-Capitalized-word shape).
+  flag("full name", "I dated Daniel Foster for three years");
+  flag("relationship + full name", "my ex Rachel Green moved away");
+  // Lone LAST names → still HELD (more identifying).
+  flag("lone last name (Foster)", "I still see Foster around town");
+  // OBFUSCATED first names → still HELD (deliberate evasion signals intent).
+  flag("cyrillic-confusable first name", "I miss Sаrah so much");
+  flag("leet first name", "I cant stop thinking about J0hn");
+  flag("space-separated first name", "this guy s a r a h broke me");
+  // Contact / handle / address → still HELD regardless of the name.
+  flag("phone number", "her number is 555 867 5309 if you want it");
+  flag("social handle", "she is on insta @sarahreal now");
+  flag("street address", "he lives at 42 Oak Street");
 });
 
 describe("containsNameOrIdentifyingInfo — benign prose does NOT flag", () => {
@@ -314,16 +342,20 @@ describe("evasion: combining-mark fragmentation (audit 2026-05-13 L-1)", () => {
   // mark-aware tokenization, `S̶arah` fragments to ['S', 'arah'] and
   // neither piece matches a name. The fix tokenizes the combining-mark-
   // stripped form (case-preserving) in Layers 4 / 4.5.
-  flag(
-    "name with combining stroke mid-sentence",
+  // N-17 (2026-06-11): combining marks strip to a plain FIRST name ("S̶arah" →
+  // "Sarah"), which is now allowed. The LAST-name combining case still flags
+  // (last names are held). The combining-mark tokenization that makes last-name
+  // detection robust is unchanged — only the first-name allowance changed.
+  noFlag(
+    "combining-stroke first name (S̶arah) — N-17 allowed",
     "i still miss S̶arah every single day"
   );
   flag(
     "last name with combining stroke",
     "i bumped into S̶mith from work yesterday"
   );
-  flag(
-    "name with multiple combining marks",
+  noFlag(
+    "multiple-combining-mark first name (Sa̶r̶a̶h̶) — N-17 allowed",
     "she goes by Sa̶r̶a̶h̶ now"
   );
   noFlag(

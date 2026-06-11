@@ -47,8 +47,9 @@ The detector is deliberately tuned to **over-hold** (safe direction for an anony
 - **Inherent / product-tuning (not changed):** the first-name FP is core to PII detection and can't be fixed without NER; the place/location-context FP is a tuning call. **Recommend** the team decides the FP↔FN balance and, ideally, plans the review-queue load for launch volume.
 - **False negatives (narrow):** spelled-out emails ("john dot smith at gmail dot com"), `ig is X` shorthand without a separator, all-lowercase real full names. Acknowledged in code; NER-class problem.
 
-## 6. App Check enforcement — ⚠️ OWNER CONSOLE ACTION
-Verified current state (corrected per N-11): **prod Firestore = ENFORCED** ✓; **prod Auth (identitytoolkit) = UNENFORCED**; **staging Firestore + Auth = UNENFORCED**.
+## 6. App Check enforcement — ✅ DONE (prod) (2026-06-11)
+**prod Firestore = ENFORCED ✓ AND prod Auth (identitytoolkit) = ENFORCED ✓** (Auth flipped 2026-06-11 after a Cloud Monitoring pre-flight — legit clients send VALID tokens; the ~96% unverified Auth requests were `UNKNOWN`-origin bots, which enforcement now blocks). Staging left UNENFORCED so the node E2E rigs keep working. **Post-flip verification (do once):** sign into admin.html + a real-device prod build; if anything breaks, revert prod *Auth* only (keep Firestore enforced).
+Historical (pre-2026-06-11) note:
 - **Owner should:** enforce **prod Auth** and **staging** after the standard pre-flight (verified-request rate ≈ 100% in the UNENFORCED metrics + a real-device App-Attest confirmation). `functions/setAppCheck.js` reads state and can flip it (`--apply --mode=ENFORCED --project=... [--yes-prod]`); it's a careful, deliberate flip (naive enforcement can lock out legit users).
 - Staging's two **scheduled** functions (`cleanupExpiredPosts`, `cleanupProcessedTriggerEvents`) fail to deploy because Cloud Scheduler isn't set up on staging — a staging-infra gap, harmless to prod.
 

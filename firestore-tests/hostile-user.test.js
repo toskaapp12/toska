@@ -446,6 +446,79 @@ describe("T-10: post-like create is schema-locked", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────
+// Defense-in-depth schema locks (2026-06-11 security re-review): presence,
+// reflections-update, and the saved/liked/likedReplies/savedReplies reverse
+// indices all gained hasOnly() allow-lists so a tampered client can't scribble
+// arbitrary fields (or oversized payloads) into its own subtree.
+// ─────────────────────────────────────────────────────────────────────
+describe("Schema locks: owner-tree reverse indices reject scratch fields", () => {
+  it("CONTROL: saved create with only createdAt is accepted", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertSucceeds(db.collection("users").doc("u").collection("saved").doc("p1").set({ createdAt: serverTimestamp() }));
+  });
+  it("saved create with an injected field is DENIED", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertFails(db.collection("users").doc("u").collection("saved").doc("p1").set({ createdAt: serverTimestamp(), pinned: true }));
+  });
+  it("liked create with an injected field is DENIED", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertFails(db.collection("users").doc("u").collection("liked").doc("p1").set({ createdAt: serverTimestamp(), weight: 99 }));
+  });
+  it("CONTROL: likedReplies create with the real shape is accepted", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertSucceeds(db.collection("users").doc("u").collection("likedReplies").doc("r1").set({
+      postId: "p1", replyText: "be kind", replyHandle: "handle_x", createdAt: serverTimestamp(),
+    }));
+  });
+  it("likedReplies create with an injected field is DENIED", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertFails(db.collection("users").doc("u").collection("likedReplies").doc("r1").set({
+      postId: "p1", replyText: "be kind", replyHandle: "handle_x", createdAt: serverTimestamp(), trusted: true,
+    }));
+  });
+  it("savedReplies create with an oversized replyText is DENIED", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertFails(db.collection("users").doc("u").collection("savedReplies").doc("r1").set({
+      postId: "p1", replyText: "x".repeat(501), replyHandle: "handle_x", createdAt: serverTimestamp(),
+    }));
+  });
+  it("CONTROL: presence create with { date, createdAt } is accepted", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertSucceeds(db.collection("users").doc("u").collection("presence").doc("2026-06-11").set({ date: "2026-06-11", createdAt: serverTimestamp() }));
+  });
+  it("presence create with an injected field is DENIED", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertFails(db.collection("users").doc("u").collection("presence").doc("2026-06-11").set({ date: "2026-06-11", createdAt: serverTimestamp(), streak: 999 }));
+  });
+  it("CONTROL: reflection author can edit text on their own post's reflection", async () => {
+    await seedUser("author", { handle: "handle_author" });
+    await seedPost("rp", "author");
+    await seedRaw(["posts", "rp", "reflections", "author"], { authorId: "author", text: "old thought", createdAt: new Date() });
+    const db = env.authenticatedContext("author").firestore();
+    await assertSucceeds(db.collection("posts").doc("rp").collection("reflections").doc("author").set({
+      authorId: "author", text: "new thought", createdAt: serverTimestamp(),
+    }));
+  });
+  it("reflection update injecting a scratch field is DENIED (hasOnly)", async () => {
+    await seedUser("author", { handle: "handle_author" });
+    await seedPost("rp", "author");
+    await seedRaw(["posts", "rp", "reflections", "author"], { authorId: "author", text: "old thought", createdAt: new Date() });
+    const db = env.authenticatedContext("author").firestore();
+    await assertFails(db.collection("posts").doc("rp").collection("reflections").doc("author").set({
+      authorId: "author", text: "new thought", createdAt: serverTimestamp(), pinnedByAdmin: true,
+    }));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
 // #3a: cannot repost a HELD reply.  #3b: held reply's likers are hidden.
 // ─────────────────────────────────────────────────────────────────────
 describe("#3a reply-repost is denied for a held reply", () => {

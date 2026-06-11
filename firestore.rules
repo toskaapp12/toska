@@ -474,12 +474,22 @@ service cloud.firestore {
         allow update, delete: if isOwner(userId);
       }
 
+      // Schema locks (2026-06-11 security re-review, defense-in-depth): these
+      // reverse indices carry only { createdAt } (PostInteractionManager).
+      // hasOnly + the request.time pin stop a tampered client from scribbling
+      // arbitrary fields or backdating its own engagement history.
       match /saved/{postId} {
-        allow read, create, delete: if isOwner(userId);
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
       }
 
       match /liked/{postId} {
-        allow read, create, delete: if isOwner(userId);
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
       }
 
       // Reply-interaction reverse indices — mirror /liked and /saved but
@@ -488,12 +498,31 @@ service cloud.firestore {
       // Used by PostDetailView to bulk-check "did I like / save these
       // replies?" without N per-reply gets. Owner-only at every layer:
       // a user's reply-engagement history is theirs and only theirs.
+      // Schema locks (2026-06-11 security re-review, defense-in-depth): the
+      // reply reverse indices carry { postId, replyText, replyHandle,
+      // createdAt } (PostInteractionManager). hasOnly + size caps + the
+      // request.time pin stop scratch-field injection and oversized-payload
+      // storage abuse in the owner's own tree.
       match /likedReplies/{replyId} {
-        allow read, create, delete: if isOwner(userId);
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['postId', 'replyText', 'replyHandle', 'createdAt'])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.replyText is string
+          && request.resource.data.replyText.size() <= 500
+          && request.resource.data.replyHandle is string
+          && request.resource.data.replyHandle.size() <= 40;
       }
 
       match /savedReplies/{replyId} {
-        allow read, create, delete: if isOwner(userId);
+        allow read, delete: if isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['postId', 'replyText', 'replyHandle', 'createdAt'])
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.replyText is string
+          && request.resource.data.replyText.size() <= 500
+          && request.resource.data.replyHandle is string
+          && request.resource.data.replyHandle.size() <= 40;
       }
 
       match /blocked/{blockedId} {
@@ -502,7 +531,13 @@ service cloud.firestore {
       }
 
       match /presence/{dateId} {
-        allow read, create, update: if isOwner(userId);
+        // Schema lock (2026-06-11 security re-review, defense-in-depth): the
+        // client writes only { date, createdAt } (ContentView/ProfileView,
+        // merge:true). Without hasOnly a tampered client could scribble
+        // arbitrary fields into its own presence tree.
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.keys().hasOnly(['date', 'createdAt']);
       }
 
       // Private subcollection for sensitive user data — email, mood, etc.
@@ -976,11 +1011,18 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
           && request.resource.data.createdAt == request.time
           && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
+        // Schema lock (2026-06-11 security re-review): mirror the R-1/N-1
+        // post/reply-update hardening. The client re-saves { authorId, text,
+        // createdAt } (AnniversaryCardView setData; doc id == uid). hasOnly +
+        // owner-immutability stop a reflection author from injecting scratch
+        // fields or re-pointing authorId on update.
         allow update: if isAuth()
           && resource.data.authorId == request.auth.uid
+          && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 500;
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.keys().hasOnly(['authorId', 'text', 'createdAt']);
         // Post author can also delete reflections under their own post —
         // PostDetailView's pre-delete-post cleanup loop reads + deletes
         // them before deleting the parent. Without this, those `try?`

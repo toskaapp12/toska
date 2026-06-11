@@ -603,6 +603,13 @@ struct FeedView: View {
                                                 }
                                             }
                                             .background(LateNightTheme.background)
+               // Group into a single accessibility container so the identifier
+               // lands on ONE queryable Other element. Without .contain, SwiftUI
+               // propagates the identifier onto every child (header text, tab
+               // buttons, scroll view) and XCUITest's otherElements["feedView"]
+               // matches nothing — which silently broke the UI suite's logged-in
+               // anchor after the feed redesign (2026-06-11 walkthrough finding).
+               .accessibilityElement(children: .contain)
                .accessibilityIdentifier("feedView")
                .onAppear {
                                                  print("⚡️ FeedView onAppear — hasLoadedOnce: \(vm.hasLoadedOnce), hasAuth: \(Auth.auth().currentUser != nil), posts.count: \(vm.posts.count)")
@@ -834,6 +841,10 @@ struct FeedPostRow: View {
         // N+1 again — a visible flicker. Skip the listener overwrite inside the
         // window.
         @State private var suppressLikeListenerUntil: Date = .distantPast
+        // C-3 (2026-06-11): same suppression window for the repost count — a feed
+        // re-delivery mid-round-trip was overwriting the optimistic repost count
+        // and flickering it (the like path already had this; reposts didn't).
+        @State private var suppressRepostListenerUntil: Date = .distantPast
         @State private var likePulse = false
             @State private var repostPulse = false
             @State private var likePulseTask: Task<Void, Never>? = nil
@@ -1251,7 +1262,11 @@ struct FeedPostRow: View {
                     }
                 }
                 .onChange(of: reposts) { _, newValue in
-                    if !postId.isEmpty { localRepostCount = newValue }
+                    // C-3: ignore the server echo during the post-tap suppression
+                    // window so the optimistic repost count doesn't flicker.
+                    if !postId.isEmpty && Date() > suppressRepostListenerUntil {
+                        localRepostCount = newValue
+                    }
                 }
                 // Opening the post uses push navigation (the NavigationLink
                 // wrapping the content above) so it slides in from the right.
@@ -1352,6 +1367,9 @@ struct FeedPostRow: View {
         
         func repostPost() {
             guard !isReposted, !isRepostPost else { return }
+            // C-3: arm the suppression window so the feed listener echo doesn't
+            // clobber the optimistic count (mirrors toggleLike).
+            suppressRepostListenerUntil = Date().addingTimeInterval(2.0)
             PostInteractionManager.repost(
                 postId: postId,
                 postText: text,
@@ -1362,6 +1380,7 @@ struct FeedPostRow: View {
             ) { result in
                 isReposted = result.isReposted
                 localRepostCount = result.newCount
+                suppressRepostListenerUntil = Date().addingTimeInterval(1.5)
                 if result.isReposted {
                                     repostPulse = true
                                     repostPulseTask?.cancel()
@@ -1803,14 +1822,21 @@ let explicitCrisisPhrases = [
     // Non-English explicit crisis (2026-06-11) — kept in sync with the server's
     // MOD_CRISIS_EXPLICIT (index.js). Curated starter set (Spanish/Portuguese/
     // French); not comprehensive — needs native-speaker review per language.
+    // T-4 (2026-06-11): reflexive self-harm verbs require first-person self-
+    // intent framing so relational "tu vas / il va me faire du mal" ("[you/he]
+    // will hurt ME") no longer trips; ambiguous hyperbole moved to
+    // softConcernPhrases. Mirror of index.js.
+    // Spanish — unambiguous self-directed intent
     "quiero morir", "no quiero vivir", "ya no quiero vivir", "quiero suicidarme",
-    "voy a suicidarme", "quiero matarme", "me quiero matar", "voy a matarme",
+    "voy a suicidarme", "quiero matarme", "me quiero matar",
     "acabar con mi vida", "terminar con mi vida", "quitarme la vida",
-    "mejor muerto", "mejor muerta", "hacerme dano", "hacerme daño", "lastimarme",
+    "quiero hacerme dano", "quiero hacerme daño", "voy a hacerme dano", "voy a hacerme daño",
+    "quiero lastimarme", "voy a lastimarme",
     "quero morrer", "nao quero viver", "não quero viver", "vou me matar",
     "tirar minha vida", "acabar com minha vida",
-    "je veux mourir", "envie de mourir", "me suicider", "je vais me suicider",
-    "mettre fin a mes jours", "mettre fin à mes jours", "me faire du mal",
+    "je veux mourir", "me suicider", "je vais me suicider",
+    "mettre fin a mes jours", "mettre fin à mes jours",
+    "veux me faire du mal", "vais me faire du mal", "envie de me faire du mal",
 ]
 
 let softConcernPhrases = [
@@ -1824,6 +1850,10 @@ let softConcernPhrases = [
     "nobody cares", "nobody would miss me", "won't be missed",
     "disappear forever", "why am i still here", "wish i wasn't here",
     "wish i didn't exist", "want it to stop", "want it all to end", "nothing left",
+    // T-4 (2026-06-11): non-English phrases demoted from the explicit tier
+    // (they false-positive on hyperbole / 3rd-party speech). Still held for
+    // review, just not paging. Mirror of index.js MOD_CRISIS_SOFT.
+    "envie de mourir", "voy a matarme", "mejor muerto", "mejor muerta",
 ]
 
 // Back-compat alias so existing call sites that only care about "is it
@@ -2115,9 +2145,15 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "instagram", "insta", "snapchat", "snap", "tiktok", "twitter",
         "facebook", "linkedin", "phone number", "my number", "text me",
         "call me", "dm me", "follow me", "find me", "look me up",
-        "last name", "full name", "school name", "works at", "goes to",
-        "lives in", "lives on", "lives at", "address",
-        "apartment", "apt ", "suite ",
+        "last name", "full name", "school name",
+        // T-1 (2026-06-11): removed the loose "works at"/"goes to"/"lives in"/
+        // "lives on" and "apartment"/"apt "/"suite " substrings to match the
+        // server (moderation.js N-13/N-15 trims). They false-positived heavily
+        // on normal grief writing ("lives in my head", "adapt to change" → "apt ",
+        // "the suite life", "my apartment is empty now") that the server already
+        // accepts. "lives at" (street context) + "address" are specific and kept;
+        // real unit numbers are still caught by the gated apartment regex below.
+        "lives at", "address",
         "her name is", "his name is", "their name is",
         // NOTE: "named " was previously in this list as a broad keyword and
         // false-positived on legitimate sentences like "she named the dog
@@ -2202,22 +2238,11 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     // Street address pattern: "123 Main St" / "456 Oak Avenue"
     let streetSuffixes = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy"
     if text.range(of: "\\d+\\s+[A-Za-z]+\\s+(\(streetSuffixes))\\b", options: .regularExpression) != nil { return true }
-    let sentences = text.components(separatedBy: CharacterSet(charactersIn: ".!?\n"))
-        .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-    let sentenceStarters: Set<String> = Set(sentences.compactMap { sentence in
-        sentence.components(separatedBy: CharacterSet.alphanumerics.inverted).first(where: { !$0.isEmpty })
-    })
-    let words = text.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
-    for word in words {
-        let lower = word.lowercased()
-        if lower.count < 2 { continue }
-        if ambiguousWords.contains(lower) { continue }
-        if safeCapitalizedWords.contains(lower) { continue }
-        // N-17 (2026-06-11): the lone-first-name flag was removed — a bare first
-        // name ("I miss John") is allowed. Full names are caught by
-        // looksLikeFullName below; obfuscated names and lone last names by the
-        // canonicalized layers further down. Mirror of moderation.js.
-    }
+    // C-4 (2026-06-11): the N-17 change gutted the mid-sentence lone-first-name
+    // loop here (a bare first name like "I miss John" is now allowed). The
+    // `sentences` / `sentenceStarters` / `words` locals it used were left behind
+    // as dead code (the compiler warned `sentenceStarters` was never used); they
+    // are removed. Layer 4 below has its own `canonicalSentenceStarters`.
 
     // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
     // Mirror of functions/moderation.js looksLikeFullName (2026-06-02). Catches
@@ -2237,6 +2262,38 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "good morning", "good evening", "good afternoon", "good night", "good luck",
         "thank god",
     ]
+    // T-1 / M-2 (2026-06-11): common English words that appear Capitalized inside
+    // titles, place names, bands, and set phrases ("Last Night", "Central Park",
+    // "Pearl Jam", "Empty Promises", "Broken Heart") — extremely common in grief
+    // posts. The two-capitalized-words heuristic below false-positived on every
+    // one of these. A real full name is rarely built from two common English
+    // words, so if a bigram contains one of these AND neither token is a known
+    // given name, treat it as a phrase, not a name. Mirror of COMMON_TITLE_WORDS
+    // in functions/moderation.js — this guard was server-only until T-1.
+    let commonTitleWords: Set<String> = [
+        "the", "a", "an", "of", "and", "to", "in", "on", "at", "for",
+        "last", "first", "next", "final", "every",
+        "night", "day", "days", "morning", "evening", "afternoon", "today", "tomorrow", "yesterday",
+        "central", "grand", "royal", "golden", "old", "new", "big", "little", "great",
+        "park", "city", "town", "river", "lake", "mountain", "mountains", "ocean", "sea", "beach",
+        "street", "avenue", "road", "drive", "lane", "garden", "gardens", "square", "bridge",
+        "tower", "valley", "hill", "hills", "falls", "bay", "island", "forest", "woods", "creek",
+        "heights", "view", "point", "north", "south", "east", "west", "upper", "lower", "middle",
+        "house", "home", "world", "war", "story", "stories", "love", "heart", "hearts",
+        "summer", "winter", "spring", "autumn", "fall", "sunset", "sunrise",
+        "moon", "sun", "star", "stars", "light", "lights", "dark", "darkness",
+        "dream", "dreams", "time", "times", "life", "death", "end", "ending", "beginning",
+        "dead", "alive", "real", "true", "lost", "found", "broken", "empty", "promise", "promises",
+        "gold", "silver", "blue", "red", "green", "white", "black", "gray", "grey",
+        "fire", "water", "earth", "wind", "rain", "snow", "storm", "cloud", "clouds", "sky",
+        "song", "songs", "music", "dance", "band", "club", "bar", "cafe", "coffee",
+        "book", "books", "movie", "film", "show", "game", "games", "play", "party",
+        "school", "college", "work", "office", "store", "shop", "mall", "market",
+        "food", "dinner", "lunch", "breakfast", "pearl", "jam", "canyon", "notebook",
+        "station", "airport", "university", "library", "museum", "hotel", "plaza",
+        "center", "centre", "hall", "theater", "theatre", "stadium", "arena",
+        "church", "temple", "castle", "palace", "diamond", "crystal", "rose", "stone",
+    ]
     for match in text.matches(of: /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/) {
         let w1 = String(match.1).lowercased()
         let w2 = String(match.2).lowercased()
@@ -2244,6 +2301,11 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         if safeCapitalizedWords.contains(w1) || safeCapitalizedWords.contains(w2) { continue }
         if ambiguousWords.contains(w1) && ambiguousWords.contains(w2) { continue }
         if safeProperNounBigrams.contains("\(w1) \(w2)") { continue }
+        // M-2: a bigram with a common English title/phrase word is a phrase, not
+        // a name — UNLESS the other token is a known given name (keeps "Sarah
+        // Park" / "Grace Lake" flagged while clearing "Central Park" / "Last Night").
+        if (commonTitleWords.contains(w1) || commonTitleWords.contains(w2))
+            && !commonNames.contains(w1) && !commonNames.contains(w2) { continue }
         return true
     }
     let crisisNumbers = [
@@ -2257,6 +2319,17 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     for number in crisisNumbers {
         digitStripped = digitStripped.replacingOccurrences(of: number, with: "")
     }
+    // T-1 / M-2 (2026-06-11): remove breakup-timeline number lists BEFORE the
+    // separator-collapse below, so they don't merge into one long run that
+    // survives the year/small-number strips and trips the >=10-digit phone
+    // threshold. Targeted so real phone groupings (which mix 2–4 digit groups)
+    // are untouched: (a) 2+ consecutive 4-digit year tokens ("we dated 2019 2020
+    // 2021 2022 2023"); (b) 4+ consecutive 1–3 digit tokens ("scores 100 95 88
+    // 76 65"). A real international phone matches neither. Mirror of the JS fix
+    // in functions/moderation.js — this strip was server-only until T-1.
+    digitStripped = digitStripped
+            .replacingOccurrences(of: "\\b(?:19|20)\\d\\d(?:\\s+(?:19|20)\\d\\d)+\\b", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\b\\d{1,3}(?:\\s+\\d{1,3}){3,}\\b", with: " ", options: .regularExpression)
     // Collapse phone-format separators between digits so a formatted phone
     // like `(555) 123-4567` survives the date/year/small-number strips
     // below. Without this, `\b\d{1,3}\b` peels `555`/`123` and

@@ -24,6 +24,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     var authStateListener: AuthStateDidChangeListenerHandle?
 
+    // T-7 (2026-06-11): window-level privacy cover for the app-switcher snapshot.
+    // The SwiftUI overlay in ContentView only covers ContentView's own layer —
+    // .sheet / .fullScreenCover presentations (the composer with in-progress
+    // grief text, an open thread, the share card) render ABOVE it and were
+    // captured in the iOS multitasking snapshot. A cover added directly to the
+    // key window sits above every presentation, so nothing sensitive leaks into
+    // the switcher. Added on willResignActive (before the snapshot is taken),
+    // removed on didBecomeActive.
+    private var privacyCover: UIView?
+
     // AppDelegate normally lives for the app's lifetime, so a manual deinit
     // isn't strictly required — the OS reclaims everything on terminate. But
     // if a future refactor ever swaps the delegate (test rig, scene
@@ -33,6 +43,34 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         if let handle = authStateListener {
             Auth.auth().removeStateDidChangeListener(handle)
         }
+    }
+
+    func applicationWillResignActive(_ application: UIApplication) {
+        guard privacyCover == nil else { return }
+        let keyWindow = application.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
+        guard let window = keyWindow else { return }
+        let cover = UIView(frame: window.bounds)
+        cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // toskaBlue (#9198a8) — matches the ContentView SwiftUI cover.
+        cover.backgroundColor = UIColor(red: 0x91 / 255.0, green: 0x98 / 255.0, blue: 0xa8 / 255.0, alpha: 1.0)
+        let label = UILabel()
+        label.text = "t"
+        label.textColor = .white
+        label.font = UIFont.systemFont(ofSize: 42)
+        label.sizeToFit()
+        label.center = CGPoint(x: cover.bounds.midX, y: cover.bounds.midY)
+        label.autoresizingMask = [.flexibleTopMargin, .flexibleBottomMargin, .flexibleLeftMargin, .flexibleRightMargin]
+        cover.addSubview(label)
+        window.addSubview(cover)
+        privacyCover = cover
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        privacyCover?.removeFromSuperview()
+        privacyCover = nil
     }
 
     func application(_ application: UIApplication,

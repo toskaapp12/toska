@@ -453,7 +453,12 @@ struct NotificationsView: View {
                         print("⚠️ markAllRemainingAsRead batch failed: \(error)")
                         return
                     }
-                    if docs.count >= 400 { self.markAllRemainingAsRead() }
+                    // T-9 (2026-06-11): markAllRemainingAsRead is @MainActor-
+                    // isolated, but this commit completion runs on a nonisolated
+                    // callback queue. Hop back to the main actor for the recursive
+                    // sweep (matches the scheduled call site) — fixes the cross-
+                    // actor call warning and the Swift 6 hard-error.
+                    if docs.count >= 400 { Task { @MainActor in self.markAllRemainingAsRead() } }
                 }
             }
     }

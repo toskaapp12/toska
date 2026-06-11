@@ -811,8 +811,13 @@ struct ShareCardView: View {
                 "com.instagram.sharedSticker.backgroundBottomColor": bgColor
             ]
 
+            // C-1 (2026-06-11): mirror the copy-text path — .localOnly keeps the
+            // rendered grief-text image off Universal Clipboard (no cross-device
+            // sync). Instagram reads the pasteboard locally on this device, so the
+            // handoff is unaffected.
             let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
-                .expirationDate: Date().addingTimeInterval(300)
+                .expirationDate: Date().addingTimeInterval(300),
+                .localOnly: true
             ]
 
             UIPasteboard.general.setItems([pasteboardItems], options: pasteboardOptions)

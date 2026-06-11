@@ -351,6 +351,45 @@
                     return;
                 }
                 container.replaceChildren();
+
+                // Bulk approve. The queue is dominated by recoverable PII/name
+                // false positives (e.g. "I miss John"); let the admin tick the
+                // obvious ones and approve them together instead of one-by-one.
+                // Each is still human-selected — nothing is auto-approved.
+                const toolbar = el("div", "bulk-toolbar");
+                toolbar.style.cssText = "display:flex;align-items:center;gap:14px;margin-bottom:12px;flex-wrap:wrap;";
+                const selectAll = el("input");
+                selectAll.type = "checkbox";
+                const selectAllLabel = el("label");
+                selectAllLabel.style.cssText = "display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;";
+                selectAllLabel.append(selectAll, document.createTextNode("select all"));
+                const approveSelBtn = el("button", "btn-dismiss");
+                approveSelBtn.textContent = "approve selected";
+                approveSelBtn.disabled = true;
+                const countSpan = el("span");
+                countSpan.style.cssText = "font-size:12px;opacity:0.7;";
+                function updateBulkCount() {
+                    const n = container.querySelectorAll(".pending-check:checked").length;
+                    countSpan.textContent = n ? `${n} selected` : "";
+                    approveSelBtn.textContent = n ? `approve selected (${n})` : "approve selected";
+                    approveSelBtn.disabled = n === 0;
+                }
+                selectAll.addEventListener("change", () => {
+                    container.querySelectorAll(".pending-check").forEach(cb => { cb.checked = selectAll.checked; });
+                    updateBulkCount();
+                });
+                approveSelBtn.addEventListener("click", async () => {
+                    const ids = [...container.querySelectorAll(".pending-check:checked")].map(cb => cb.dataset.id);
+                    if (!ids.length) return;
+                    if (!confirm(`approve and publish ${ids.length} post(s)?`)) return;
+                    approveSelBtn.disabled = true;
+                    for (const id of ids) { await approvePending(id); }
+                    selectAll.checked = false;
+                    updateBulkCount();
+                });
+                toolbar.append(selectAllLabel, approveSelBtn, countSpan);
+                container.appendChild(toolbar);
+
                 snap.docs.forEach(d => {
                     const p = d.data();
                     const detectedAt = p.pendingDetectedAt?.toDate?.()
@@ -364,7 +403,13 @@
                     card.id = `pending-${d.id}`;
 
                     const header = el("div", "card-header");
+                    const check = el("input", "pending-check");
+                    check.type = "checkbox";
+                    check.dataset.id = d.id;
+                    check.style.cssText = "margin-right:8px;";
+                    check.addEventListener("change", updateBulkCount);
                     header.append(
+                        check,
                         span("flagged-label", reasonText),
                         span("card-time", time)
                     );

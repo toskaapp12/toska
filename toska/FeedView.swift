@@ -283,7 +283,7 @@ struct FeedView: View {
                                                     .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
                                                     .padding(.horizontal, 13)
                                                     .padding(.vertical, 5)
-                                                    .background(allSelected ? ToskaColor.handle : Color.clear)
+                                                    .background(allSelected ? ToskaColor.accent : Color.clear)
                                                     .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
                                                     .clipShape(Capsule())
                                             }
@@ -1524,13 +1524,23 @@ struct FeedHeaderCard: View {
                                         }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    // Plum-washed prompt card (2026 brand pass): the
+                                    // editorial daily prompt is the app's hook, so it
+                                    // now reads as a soft accent-tinted card rather
+                                    // than plain text on the page — a faint plum fill +
+                                    // hairline carrying the signature color.
+                                    .padding(16)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                            .fill(ToskaColor.accent.opacity(LateNightTheme.isLateNight ? 0.16 : 0.07))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                            .stroke(ToskaColor.accent.opacity(0.18), lineWidth: 0.75)
+                                    )
                                     .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    // Bumped 8→16 so the prompt card has
-                                    // breathing room below the for-you /
-                                    // following divider line — the line was
-                                    // hugging the top of the blue card.
-                                    .padding(.top, 16)
+                                    .padding(.top, 14)
+                                    .padding(.bottom, 4)
                                 }
                                 .buttonStyle(.plain)
 

@@ -1872,10 +1872,31 @@ enum CrisisLevel {
     case soft
 }
 
-func crisisLevel(for text: String) -> CrisisLevel? {
+// Mirror of the server matchesCrisisPhrase (index.js): match against the plain
+// lowercased text AND the de-leet/de-confusable/de-spaced normalization, plus a
+// space/punct-insensitive fallback (length-guarded so short tokens don't FP).
+// IMPROVE #1 (2026-06-11): previously this did a bare `lowered.contains`, so an
+// obfuscated disclosure ("k1ll myself", "s u i c i d e") was held by the server
+// but NEVER surfaced the compose-time gentle check-in — failing exactly the
+// vulnerable user the feature exists for. Now normalized identically to the
+// server so the hold and the check-in fire on the same input.
+private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
     let lowered = text.lowercased()
-    if explicitCrisisPhrases.contains(where: { lowered.contains($0) }) { return .explicit }
-    if softConcernPhrases.contains(where: { lowered.contains($0) }) { return .soft }
+    let normalized = aggressiveNormalizeForNameMatch(text)
+    let noSpace = String(normalized.unicodeScalars.filter {
+        CharacterSet.alphanumerics.contains($0)
+    }).lowercased()
+    for phrase in list {
+        if lowered.contains(phrase) || normalized.contains(phrase) { return true }
+        let pNoSpace = phrase.filter { $0.isLetter || $0.isNumber }
+        if pNoSpace.count >= 6 && noSpace.contains(pNoSpace) { return true }
+    }
+    return false
+}
+
+func crisisLevel(for text: String) -> CrisisLevel? {
+    if crisisPhraseMatch(text, explicitCrisisPhrases) { return .explicit }
+    if crisisPhraseMatch(text, softConcernPhrases) { return .soft }
     return nil
 }
 

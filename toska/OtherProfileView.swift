@@ -137,6 +137,7 @@ struct OtherProfileView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                             }
+                            .accessibilityLabel("posts")
                             Button { selectedTab = 1 } label: {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 1 ? "bubble.left.fill" : "bubble.left")
@@ -146,6 +147,7 @@ struct OtherProfileView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                             }
+                            .accessibilityLabel("replies")
                         }
                         .padding(.horizontal, 40)
                         

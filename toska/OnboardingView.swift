@@ -163,11 +163,17 @@ struct OnboardingView: View {
                 // before reaching content surfaces. Until the read resolves
                 // we render a small spinner in place of the buttons.
                 VStack(spacing: 8) {
-                    if !acceptanceChecked {
-                        ProgressView()
-                            .tint(Color.toskaBlue)
-                            .padding(.vertical, 18)
-                    } else if currentStep < 2 {
+                    // The welcome step (0) only advances to the identity step;
+                    // it never reaches a content surface or completes
+                    // onboarding, so it doesn't need to wait on the
+                    // acceptanceChecked age/policy read. Gating it behind the
+                    // spinner just made the very first "next" feel laggy on
+                    // cold launch. The acceptanceChecked spinner still blocks
+                    // every step ≥ 1 (where a fast tapper could otherwise race
+                    // to "skip"/completion before the age-gate cover appears),
+                    // and the showAgeGate / showPolicyAcceptance covers still
+                    // fire independently once the async read resolves.
+                    if currentStep == 0 {
                         Button {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 currentStep += 1
@@ -175,10 +181,28 @@ struct OnboardingView: View {
                         } label: {
                             Text("next")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(currentStep == 0 ? Color(hex: "0a0908") : .white)
+                                .foregroundColor(Color(hex: "0a0908"))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
-                                .background(currentStep == 0 ? Color.white : Color.toskaBlue)
+                                .background(Color.white)
+                                .cornerRadius(12)
+                        }
+                    } else if !acceptanceChecked {
+                        ProgressView()
+                            .tint(Color.toskaBlue)
+                            .padding(.vertical, 18)
+                    } else if currentStep == 1 {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                currentStep += 1
+                            }
+                        } label: {
+                            Text("next")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 13)
+                                .background(Color.toskaBlue)
                                 .cornerRadius(12)
                         }
                     } else if currentStep == 2 {

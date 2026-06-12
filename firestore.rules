@@ -80,6 +80,38 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('confirmedAdult', false) == true;
     }
 
+    // The caller (request.auth.uid) is not blocked by targetUid — i.e. there
+    // is no /users/{targetUid}/blocked/{caller} doc. targetUid is sometimes a
+    // literal uid var (userId) and sometimes a get()-derived author id (the
+    // post/reply author); pass whichever expression the call site targets.
+    // Only factors sites whose INNER (blocked-doc) uid is request.auth.uid.
+    function notBlockedBy(targetUid) {
+      return !exists(/databases/$(database)/documents/users/$(targetUid)/blocked/$(request.auth.uid));
+    }
+
+    // The post/reply-visibility trio shared by the post read rule, the reply
+    // read rule, and the reply-likes read rule: a doc is visible to the caller
+    // when it is live, or it's the caller's own doc, or the caller is an admin.
+    // `data` is whichever doc snapshot the call site reads — resource.data for
+    // a direct read, or a get(...).data for an inherited (sibling) doc.
+    // `.get('moderationStatus', 'live')` defaults legacy docs to live.
+    function moderationVisible(data) {
+      return data.get('moderationStatus', 'live') == 'live'
+        || data.authorId == request.auth.uid
+        || isAdmin();
+    }
+
+    // Handle validation shared by the user create + update rules: a handle is
+    // a string, at most 30 chars, restricted to the alphanumeric + underscore
+    // + hyphen charset (so a tampered client can't write an XSS handle that the
+    // moderation dashboard would render). See the create-rule comment for the
+    // full rationale.
+    function validHandle(h) {
+      return h is string
+        && h.size() <= 30
+        && h.matches('^[a-zA-Z0-9_-]+$');
+    }
+
     // Legacy PII fields that lived on the main user doc before the migration
     // to users/{uid}/private/data (firestore.rules:43-61 documents the move).
     // Post-migration, no client write path touches these on the main doc
@@ -202,18 +234,16 @@ service cloud.firestore {
       allow read: if isOwner(userId)
         || isAdmin()
         || (isAuth()
-            && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+            && notBlockedBy(userId)
             && noLegacyPIIVisible());
       allow create: if isOwner(userId)
-        && request.resource.data.handle is string
-        && request.resource.data.handle.size() <= 30
         // Restrict handles to alphanumeric + underscore + hyphen so a tampered
         // client can't write a handle like `<svg onload=alert(1)>` that would
         // execute as JavaScript when an admin views it in the moderation
         // dashboard (docs/admin.html). The legitimate handle generator
         // (generateUniqueHandle) only produces strings in this character class
         // so existing accounts are unaffected.
-        && request.resource.data.handle.matches('^[a-zA-Z0-9_-]+$')
+        && validHandle(request.resource.data.handle)
         // Prevent storing email on documents belonging to anonymous users.
         // Apple/Google/email auth all have a non-empty email; anonymous sign-in does not.
         && (request.resource.data.keys().hasAll(['email'])
@@ -237,9 +267,7 @@ service cloud.firestore {
       //     repeat-offender threshold.
       allow update: if (isOwner(userId)
             && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['handle'])
-                || (request.resource.data.handle is string
-                    && request.resource.data.handle.size() <= 30
-                    && request.resource.data.handle.matches('^[a-zA-Z0-9_-]+$')))
+                || validHandle(request.resource.data.handle))
             && !request.resource.data.diff(resource.data).affectedKeys()
                 .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil',
                          'confirmedAdult', 'confirmedAdultAt',
@@ -316,7 +344,7 @@ service cloud.firestore {
         allow create: if isAuth() && request.auth.uid == followerId
           && request.auth.uid != userId
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
-          && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid));
+          && notBlockedBy(userId);
         // The client only ever re-writes a follower doc via setData (same
         // { handle, createdAt } shape); there is no field-level update path.
         // Lock the allow-list so the previously unconstrained update can't be
@@ -412,7 +440,7 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
-              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+              && notBlockedBy(userId)
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId)/likes/$(request.auth.uid)))
             // save: actor has a save doc AND the post author is the recipient.
             // The /users/{uid}/saved/{postId} create rule is owner-only (no
@@ -429,7 +457,7 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
-              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+              && notBlockedBy(userId)
               && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved/$(request.resource.data.postId)))
             // follow: actor is in the recipient's followers subcollection.
             // /users/{uid}/followers/{followerId} create already enforces the
@@ -455,7 +483,7 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
-              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+              && notBlockedBy(userId)
               && notifId == 'reply_' + request.resource.data.postId + '_' + request.auth.uid)
             // repost: post exists, recipient is author, actor isn't blocked,
             // notifId matches the deterministic client shape, AND a real
@@ -467,7 +495,7 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
-              && !exists(/databases/$(database)/documents/users/$(userId)/blocked/$(request.auth.uid))
+              && notBlockedBy(userId)
               && exists(/databases/$(database)/documents/posts/$(request.auth.uid + '_repost_' + request.resource.data.postId))
               && notifId == 'repost_' + request.resource.data.postId + '_' + request.auth.uid)
           );
@@ -595,9 +623,7 @@ service cloud.firestore {
       // to "live" — safe because the backfill migration set every
       // existing prod post to "live" before this rule deployed.
       allow read: if isAuth()
-        && (resource.data.get('moderationStatus', 'live') == 'live'
-            || resource.data.authorId == request.auth.uid
-            || isAdmin());
+        && moderationVisible(resource.data);
       allow create: if isAuth()
         && notRestricted()
         && hasConfirmedAdult()
@@ -734,7 +760,7 @@ service cloud.firestore {
                 // held reply's text to satisfy the text-match above anyway, but
                 // this closes it explicitly.
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.get('moderationStatus', 'live') == 'live'
-                && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+                && notBlockedBy(request.resource.data.originalAuthorId)
                 && (
                      !('originalHandle' in request.resource.data.keys())
                   || request.resource.data.originalHandle ==
@@ -747,7 +773,7 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.authorId == request.resource.data.originalAuthorId
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.text == request.resource.data.text
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isRepost', false) != true
-            && !exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)/blocked/$(request.auth.uid))
+            && notBlockedBy(request.resource.data.originalAuthorId)
             && (
                  !('originalHandle' in request.resource.data.keys())
               || request.resource.data.originalHandle ==
@@ -828,9 +854,7 @@ service cloud.firestore {
         // the author still sees their own held reply (with an "under review"
         // banner). Each query satisfies exactly one disjunct below.
         allow read: if postVisibleToCaller(postId)
-          && (resource.data.get('moderationStatus', 'live') == 'live'
-              || resource.data.authorId == request.auth.uid
-              || isAdmin());
+          && moderationVisible(resource.data);
         // Block enforcement: the post author can't be replied to by a user
         // they've blocked. Without this check, blocked users could keep
         // engaging server-side; the client filter (BlockedUsersCache) only
@@ -878,7 +902,7 @@ service cloud.firestore {
           && (!('authorHandle' in request.resource.data.keys())
               || request.resource.data.authorHandle ==
                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle)
-          && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
+          && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         // Text-size cap mirrored from create. Without it, an author could
         // edit a 500-char reply into multi-KB content and bypass both the
         // length cap and (combined with onReplyUpdated re-running moderation
@@ -937,11 +961,9 @@ service cloud.firestore {
           // are visible only to the reply author and admins. Legacy/clean
           // replies default to 'live'.
           allow read: if postVisibleToCaller(postId)
-            && (get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.get('moderationStatus', 'live') == 'live'
-                || get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId == request.auth.uid
-                || isAdmin());
+            && moderationVisible(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data);
           allow create: if isAuth() && request.auth.uid == likeUserId
-            && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)/blocked/$(request.auth.uid))
+            && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)
             && request.resource.data.keys().hasOnly(['createdAt'])
             && request.resource.data.createdAt == request.time;
           allow delete: if isAuth()
@@ -964,7 +986,7 @@ service cloud.firestore {
         allow create: if isAuth() && request.auth.uid == likeUserId
           && request.resource.data.keys().hasOnly(['createdAt'])
           && request.resource.data.createdAt == request.time
-          && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
+          && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         allow delete: if isAuth()
           && (request.auth.uid == likeUserId
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid);
@@ -1010,7 +1032,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['authorId', 'text', 'createdAt'])
           && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
           && request.resource.data.createdAt == request.time
-          && !exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)/blocked/$(request.auth.uid));
+          && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         // Schema lock (2026-06-11 security re-review): mirror the R-1/N-1
         // post/reply-update hardening. The client re-saves { authorId, text,
         // createdAt } (AnniversaryCardView setData; doc id == uid). hasOnly +

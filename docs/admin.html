@@ -30,6 +30,11 @@
         .tabs { display: flex; gap: 4px; padding: 12px 24px; border-bottom: 1px solid #1c1e1f; }
         .tabs button { background: none; border: none; color: #85898f; font-size: 12px; padding: 6px 14px; border-radius: 16px; cursor: pointer; }
         .tabs button.active { background: #1c1e1f; color: #e0e2e6; font-weight: 600; }
+        .tab-count { display: inline-block; margin-left: 6px; min-width: 16px; padding: 1px 6px; border-radius: 9px; background: #2a2c32; color: #c0c3c8; font-size: 10px; font-weight: 600; line-height: 1.4; }
+        .tabs button.active .tab-count { background: #4a6fa5; color: #fff; }
+        .tab-count[hidden] { display: none; }
+        .queue-heading { font-family: Georgia, serif; font-style: italic; font-size: 13px; color: #85898f; margin-bottom: 12px; }
+        .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
         .content { max-width: 800px; margin: 0 auto; padding: 16px 24px; }
         .card { background: #121314; border: 1px solid #1c1e1f; border-radius: 10px; padding: 16px; margin-bottom: 12px; }
         .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
@@ -89,15 +94,15 @@
                 <button id="signOutBtn">sign out</button>
             </div>
         </div>
-        <div class="tabs">
-            <button class="active" data-tab="reports">reports</button>
-            <button data-tab="pending">pending posts</button>
-            <button data-tab="pendingReplies">pending replies</button>
-            <button data-tab="flagged">flagged posts</button>
-            <button data-tab="crisis">crisis</button>
-            <button data-tab="restricted">restricted users</button>
+        <div class="tabs" role="tablist" aria-label="moderation queues">
+            <button class="active" role="tab" aria-selected="true" data-tab="reports">reports<span class="tab-count" data-count="reports" hidden></span></button>
+            <button role="tab" aria-selected="false" data-tab="pending">pending posts<span class="tab-count" data-count="pending" hidden></span></button>
+            <button role="tab" aria-selected="false" data-tab="pendingReplies">pending replies<span class="tab-count" data-count="pendingReplies" hidden></span></button>
+            <button role="tab" aria-selected="false" data-tab="flagged">flagged posts<span class="tab-count" data-count="flagged" hidden></span></button>
+            <button role="tab" aria-selected="false" data-tab="crisis">crisis<span class="tab-count" data-count="crisis" hidden></span></button>
+            <button role="tab" aria-selected="false" data-tab="restricted">restricted users<span class="tab-count" data-count="restricted" hidden></span></button>
         </div>
-        <div class="content" id="content">
+        <div class="content" id="content" role="tabpanel" aria-live="polite">
             <div class="loading">loading...</div>
         </div>
     </div>
@@ -140,7 +145,7 @@
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
         // Web app config (NOT iOS). App Check is registered per-app, so
         // the dashboard needs its own Web appId — using the iOS appId
@@ -182,15 +187,9 @@
         // attached to the Web app's App Check config 2026-05-31. Public
         // identifier; safe to commit.
         //
-        // N-9 (2026-06-09 re-review): an earlier comment here claimed Firestore
-        // App Check is ENFORCED in prod. It is NOT — checkAppCheck.js confirmed
-        // enforcementMode=(unset) on firestore/identitytoolkit (see AC-1 in
-        // AUDIT.md). The App Check init below is therefore best-effort and NOT
-        // a security layer today: firestore.rules is the SOLE perimeter for
-        // every privileged read/write. Do not weaken any isAdmin() rule on the
-        // assumption App Check provides a second gate — it doesn't until the
-        // owner flips enforcement on in both consoles. Once enforcement is on,
-        // this site key must be valid for the dashboard to reach Firestore.
+        // Prod App Check is ENFORCED on both Firestore and Auth (verified
+        // 2026-06-11), so this site key must stay valid for the dashboard to
+        // reach Firestore; firestore.rules remain the authoritative perimeter.
         const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
         if (RECAPTCHA_SITE_KEY) {
             const { initializeAppCheck, ReCaptchaEnterpriseProvider } =
@@ -252,6 +251,107 @@
             return s;
         }
 
+        // metaRow — builds a `.card-meta` row from a list of label strings
+        // (or pre-built nodes). Strings route through span()/textContent so
+        // user-controlled values (handles, ids) can never inject markup.
+        // Falsy entries are skipped so callers can conditionally include rows.
+        function metaRow(entries) {
+            const meta = el("div", "card-meta");
+            entries.forEach(entry => {
+                if (entry == null || entry === false) return;
+                meta.appendChild(typeof entry === "string" ? span(null, entry) : entry);
+            });
+            return meta;
+        }
+
+        // restrictAuthorButton — the "restrict author" block was pasted
+        // verbatim in the pending / pending-reply / crisis / flagged loaders.
+        // One factory: same .btn-restrict styling, same confirm()/restrict
+        // path (restrictUserDirect). Returns null when there's no author id
+        // so callers can spread it into an actions array and have it drop out.
+        // The handle is only ever shown via confirm()/showToast (plain text).
+        function restrictAuthorButton(authorId, handle) {
+            if (!authorId) return null;
+            const btn = el("button", "btn-restrict");
+            btn.textContent = "restrict author";
+            btn.setAttribute("aria-label", `restrict author ${handle || authorId}`);
+            btn.addEventListener("click", () => restrictUserDirect(authorId, handle || ""));
+            return btn;
+        }
+
+        // renderCard — single card-skeleton builder shared by every queue
+        // loader. Preserves the exact DOM structure the loaders built by
+        // hand: optional leading checkbox, a header (left-side badge group +
+        // right-side time), optional reason line, optional text body, a meta
+        // row, and an actions row. EVERY text value flows through
+        // span()/textContent/metaRow — no innerHTML — so the XSS-safe
+        // invariant holds no matter what user content a field carries.
+        //
+        // opts:
+        //   id          → card element id (used by action handlers to remove it)
+        //   extraClass  → extra class on .card (e.g. "overdue" / "aging")
+        //   leading     → node placed first inside the header (e.g. checkbox)
+        //   headerLeft  → array of badge nodes for the header's left side,
+        //                 appended directly (matching the original loaders).
+        //   groupHeaderLeft → wrap headerLeft in a flex container so the time
+        //                 sits opposite the whole group (the reports layout).
+        //   time        → right-aligned card-time text
+        //   reason      → card-reason text (skipped when falsy)
+        //   text        → card-text body (skipped when falsy/empty)
+        //   meta        → array passed to metaRow()
+        //   actions     → array of button nodes (nulls skipped)
+        function renderCard(opts) {
+            const card = el("div", "card" + (opts.extraClass ? " " + opts.extraClass : ""));
+            if (opts.id) card.id = opts.id;
+
+            const header = el("div", "card-header");
+            if (opts.leading) header.appendChild(opts.leading);
+
+            const leftNodes = (opts.headerLeft || []).filter(Boolean);
+            if (opts.groupHeaderLeft) {
+                // reports layout: badges share a flex container so the time
+                // span sits opposite the whole group (justify-content:
+                // space-between). Other queues append badges directly.
+                const headerLeft = el("div");
+                headerLeft.style.display = "flex";
+                headerLeft.style.alignItems = "center";
+                leftNodes.forEach(n => headerLeft.appendChild(n));
+                header.appendChild(headerLeft);
+            } else {
+                leftNodes.forEach(n => header.appendChild(n));
+            }
+            header.appendChild(span("card-time", opts.time ?? ""));
+            card.appendChild(header);
+
+            if (opts.reason) {
+                const reasonDiv = el("div", "card-reason");
+                reasonDiv.textContent = opts.reason;
+                card.appendChild(reasonDiv);
+            }
+
+            if (opts.text) {
+                const textDiv = el("div", "card-text");
+                textDiv.textContent = opts.text;
+                card.appendChild(textDiv);
+            }
+
+            if (opts.meta) card.appendChild(metaRow(opts.meta));
+
+            const actions = el("div", "card-actions");
+            (opts.actions || []).filter(Boolean).forEach(b => actions.appendChild(b));
+            card.appendChild(actions);
+
+            return card;
+        }
+
+        // queueHeading — visible italic heading for the active queue region so
+        // the tabpanel has a labelled heading (a11y) instead of just cards.
+        function queueHeading(text) {
+            const h = el("h2", "queue-heading");
+            h.textContent = text;
+            return h;
+        }
+
         // --- Auth wiring ---
 
         document.getElementById("signInBtn").addEventListener("click", signIn);
@@ -274,9 +374,62 @@
 
         function switchTab(tab, btn) {
             currentTab = tab;
-            document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
+            document.querySelectorAll(".tabs button").forEach(b => {
+                b.classList.remove("active");
+                b.setAttribute("aria-selected", "false");
+            });
             btn.classList.add("active");
+            btn.setAttribute("aria-selected", "true");
             loadTab();
+        }
+
+        // --- Header count badges ---
+        //
+        // One getCountFromServer (aggregation) read per queue so a moderator
+        // sitting on the default tab can SEE that e.g. flagged has 12 waiting
+        // without opening it. Aggregation queries bill ~1 read each and don't
+        // stream the docs, so this is cheap. Refreshed on login, on tab load,
+        // and after any action that resolves an item. The crisis count is the
+        // raw concerningContent total (the loader additionally filters out
+        // already-reviewed posts client-side), so it's an upper bound — still
+        // useful as a "needs attention" signal.
+        function countQueries() {
+            return {
+                reports: query(collection(db, "reports"), where("status", "==", "pending")),
+                pending: query(collection(db, "posts"), where("moderationStatus", "==", "pending_review")),
+                pendingReplies: query(collectionGroup(db, "replies"), where("moderationStatus", "==", "pending_review")),
+                flagged: query(collection(db, "posts"), where("flagged", "==", true)),
+                crisis: query(collection(db, "posts"), where("concerningContent", "==", true)),
+                restricted: query(collection(db, "users"), where("restricted", "==", true)),
+            };
+        }
+
+        function setTabCount(tab, n) {
+            const badge = document.querySelector(`.tab-count[data-count="${tab}"]`);
+            if (!badge) return;
+            if (typeof n === "number" && n > 0) {
+                badge.textContent = String(n);
+                badge.hidden = false;
+                const btn = badge.closest("button");
+                if (btn) btn.setAttribute("aria-label", `${btn.dataset.tab} (${n} waiting)`);
+            } else {
+                badge.textContent = "";
+                badge.hidden = true;
+            }
+        }
+
+        async function refreshCounts() {
+            const queries = countQueries();
+            await Promise.all(Object.entries(queries).map(async ([tab, q]) => {
+                try {
+                    const snap = await getCountFromServer(q);
+                    setTabCount(tab, snap.data().count);
+                } catch (e) {
+                    // A failed aggregation read (e.g. missing index) must never
+                    // break the dashboard — just leave that badge hidden.
+                    setTabCount(tab, 0);
+                }
+            }));
         }
 
         onAuthStateChanged(auth, async (user) => {
@@ -288,6 +441,7 @@
                         document.getElementById("loginView").style.display = "none";
                         document.getElementById("appView").style.display = "block";
                         loadTab();
+                        refreshCounts();
                     } else {
                         errEl.textContent = "not an admin account";
                         await fbSignOut(auth);
@@ -311,6 +465,7 @@
             else if (currentTab === "flagged") await loadFlagged(content);
             else if (currentTab === "crisis") await loadCrisis(content);
             else if (currentTab === "restricted") await loadRestricted(content);
+            refreshCounts();
         }
 
         // --- Pending review ---
@@ -359,6 +514,7 @@
                     return;
                 }
                 container.replaceChildren();
+                container.appendChild(queueHeading("posts held for review"));
 
                 // Bulk approve. The queue is dominated by recoverable PII/name
                 // false positives (e.g. "I miss John"); let the admin tick the
@@ -407,58 +563,34 @@
                     const reasonKey = typeof p.pendingReason === "string" ? p.pendingReason : "";
                     const reasonText = PENDING_REASON_LABELS[reasonKey] || reasonKey || "held for review";
 
-                    const card = el("div", "card");
-                    card.id = `pending-${d.id}`;
-
-                    const header = el("div", "card-header");
                     const check = el("input", "pending-check");
                     check.type = "checkbox";
                     check.dataset.id = d.id;
                     check.style.cssText = "margin-right:8px;";
+                    check.setAttribute("aria-label", "select post for bulk approve");
                     check.addEventListener("change", updateBulkCount);
-                    header.append(
-                        check,
-                        span("flagged-label", reasonText),
-                        span("card-time", time)
-                    );
-                    card.appendChild(header);
-
-                    const textDiv = el("div", "card-text");
-                    textDiv.textContent = p.text || "";
-                    card.appendChild(textDiv);
-
-                    const meta = el("div", "card-meta");
-                    const bySpan = el("span");
-                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
-                    const reportsSpan = el("span");
-                    if (typeof p.autoHiddenReportCount === "number") {
-                        reportsSpan.textContent = `reports: ${p.autoHiddenReportCount}`;
-                        meta.append(bySpan, reportsSpan);
-                    } else {
-                        meta.append(bySpan);
-                    }
-                    card.appendChild(meta);
-
-                    const actions = el("div", "card-actions");
 
                     const approveBtn = el("button", "btn-dismiss");
                     approveBtn.textContent = "approve (publish)";
                     approveBtn.addEventListener("click", () => approvePending(d.id));
-                    actions.appendChild(approveBtn);
 
                     const deleteBtn = el("button", "btn-remove");
                     deleteBtn.textContent = "remove post";
                     deleteBtn.addEventListener("click", () => deletePost(d.id));
-                    actions.appendChild(deleteBtn);
 
-                    if (p.authorId) {
-                        const restrictBtn = el("button", "btn-restrict");
-                        restrictBtn.textContent = "restrict author";
-                        restrictBtn.addEventListener("click", () => restrictUserDirect(p.authorId, p.authorHandle || ""));
-                        actions.appendChild(restrictBtn);
-                    }
-
-                    card.appendChild(actions);
+                    const card = renderCard({
+                        id: `pending-${d.id}`,
+                        leading: check,
+                        headerLeft: [span("flagged-label", reasonText)],
+                        time,
+                        text: p.text || "",
+                        meta: [
+                            `by: ${p.authorHandle || "unknown"}`,
+                            typeof p.autoHiddenReportCount === "number"
+                                ? `reports: ${p.autoHiddenReportCount}` : null,
+                        ],
+                        actions: [approveBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                    });
                     container.appendChild(card);
                 });
             } catch (e) {
@@ -483,6 +615,7 @@
                 });
                 const card = document.getElementById(`pending-${postId}`);
                 if (card) card.remove();
+                refreshCounts();
             } catch (e) {
                 alert(`couldn't approve: ${e.message}`);
             }
@@ -512,6 +645,7 @@
                     return;
                 }
                 container.replaceChildren();
+                container.appendChild(queueHeading("replies held for review"));
                 snap.docs.forEach(d => {
                     const r = d.data();
                     const detectedAt = r.pendingDetectedAt?.toDate?.() ?? r.createdAt?.toDate?.();
@@ -519,49 +653,28 @@
                     const reasonKey = typeof r.pendingReason === "string" ? r.pendingReason : "";
                     const reasonText = PENDING_REASON_LABELS[reasonKey] || reasonKey || "held for review";
 
-                    const card = el("div", "card");
-                    card.id = `pendingreply-${d.id}`;
-
-                    const header = el("div", "card-header");
-                    header.append(
-                        span("card-type type-reply", "reply"),
-                        span("flagged-label", reasonText),
-                        span("card-time", time)
-                    );
-                    card.appendChild(header);
-
-                    const textDiv = el("div", "card-text");
-                    textDiv.textContent = r.text || "";
-                    card.appendChild(textDiv);
-
-                    const meta = el("div", "card-meta");
-                    const bySpan = el("span");
-                    bySpan.textContent = `by: ${r.authorHandle || "unknown"}`;
-                    const onSpan = el("span");
-                    onSpan.textContent = `on post by: ${r.parentPostHandle || "unknown"}`;
-                    meta.append(bySpan, onSpan);
-                    card.appendChild(meta);
-
-                    const actions = el("div", "card-actions");
-
                     const approveBtn = el("button", "btn-dismiss");
                     approveBtn.textContent = "approve (publish)";
                     approveBtn.addEventListener("click", () => approvePendingReply(d.ref, d.id));
-                    actions.appendChild(approveBtn);
 
                     const deleteBtn = el("button", "btn-remove");
                     deleteBtn.textContent = "remove reply";
                     deleteBtn.addEventListener("click", () => removeReply(d.ref, d.id));
-                    actions.appendChild(deleteBtn);
 
-                    if (r.authorId) {
-                        const restrictBtn = el("button", "btn-restrict");
-                        restrictBtn.textContent = "restrict author";
-                        restrictBtn.addEventListener("click", () => restrictUserDirect(r.authorId, r.authorHandle || ""));
-                        actions.appendChild(restrictBtn);
-                    }
-
-                    card.appendChild(actions);
+                    const card = renderCard({
+                        id: `pendingreply-${d.id}`,
+                        headerLeft: [
+                            span("card-type type-reply", "reply"),
+                            span("flagged-label", reasonText),
+                        ],
+                        time,
+                        text: r.text || "",
+                        meta: [
+                            `by: ${r.authorHandle || "unknown"}`,
+                            `on post by: ${r.parentPostHandle || "unknown"}`,
+                        ],
+                        actions: [approveBtn, deleteBtn, restrictAuthorButton(r.authorId, r.authorHandle)],
+                    });
                     container.appendChild(card);
                 });
             } catch (e) {
@@ -581,6 +694,7 @@
                     pendingApprovedBy: uid,
                 });
                 document.getElementById(`pendingreply-${cardKey}`)?.remove();
+                refreshCounts();
             } catch (e) {
                 alert(`couldn't approve: ${e.message}`);
             }
@@ -591,6 +705,7 @@
             try {
                 await deleteDoc(replyRef);
                 document.getElementById(`pendingreply-${cardKey}`)?.remove();
+                refreshCounts();
                 showToast("reply deleted");
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -624,50 +739,31 @@
                     return;
                 }
                 container.replaceChildren();
+                container.appendChild(queueHeading("posts with concerning content"));
                 docs.forEach(d => {
                     const p = d.data();
                     const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
-                    const card = el("div", "card");
-                    card.id = `crisis-${d.id}`;
-
-                    const header = el("div", "card-header");
-                    header.append(span("flagged-label", "concerning content"), span("card-time", time));
-                    card.appendChild(header);
-
-                    const textDiv = el("div", "card-text");
-                    textDiv.textContent = p.text || "";
-                    card.appendChild(textDiv);
-
-                    const meta = el("div", "card-meta");
-                    const bySpan = el("span");
-                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
-                    const likesSpan = el("span");
-                    likesSpan.textContent = `likes: ${p.likeCount || 0}`;
-                    const repliesSpan = el("span");
-                    repliesSpan.textContent = `replies: ${p.replyCount || 0}`;
-                    meta.append(bySpan, likesSpan, repliesSpan);
-                    card.appendChild(meta);
-
-                    const actions = el("div", "card-actions");
 
                     const reviewedBtn = el("button", "btn-dismiss");
                     reviewedBtn.textContent = "mark reviewed";
                     reviewedBtn.addEventListener("click", () => markCrisisReviewed(d.id));
-                    actions.appendChild(reviewedBtn);
 
                     const deleteBtn = el("button", "btn-remove");
                     deleteBtn.textContent = "delete post";
                     deleteBtn.addEventListener("click", () => deletePost(d.id));
-                    actions.appendChild(deleteBtn);
 
-                    if (p.authorId) {
-                        const restrictBtn = el("button", "btn-restrict");
-                        restrictBtn.textContent = "restrict author";
-                        restrictBtn.addEventListener("click", () => restrictUserDirect(p.authorId, p.authorHandle || ""));
-                        actions.appendChild(restrictBtn);
-                    }
-
-                    card.appendChild(actions);
+                    const card = renderCard({
+                        id: `crisis-${d.id}`,
+                        headerLeft: [span("flagged-label", "concerning content")],
+                        time,
+                        text: p.text || "",
+                        meta: [
+                            `by: ${p.authorHandle || "unknown"}`,
+                            `likes: ${p.likeCount || 0}`,
+                            `replies: ${p.replyCount || 0}`,
+                        ],
+                        actions: [reviewedBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                    });
                     container.appendChild(card);
                 });
             } catch (e) {
@@ -687,6 +783,7 @@
                 });
                 const card = document.getElementById(`crisis-${postId}`);
                 if (card) card.remove();
+                refreshCounts();
             } catch (e) {
                 alert(`couldn't mark reviewed: ${e.message}`);
             }
@@ -707,6 +804,7 @@
                 }
 
                 container.replaceChildren();
+                container.appendChild(queueHeading("pending reports"));
                 let overdueCount = 0;
                 const now = Date.now();
                 const TWELVE_HOURS_MS = 12 * 3600 * 1000;
@@ -732,65 +830,44 @@
                         slaBadge = span("sla-badge sla-aging", "aging");
                     }
 
-                    const card = el("div", `card${slaClass ? " " + slaClass : ""}`);
-                    card.id = `report-${d.id}`;
-
-                    const header = el("div", "card-header");
-                    const headerLeft = el("div");
-                    headerLeft.style.display = "flex";
-                    headerLeft.style.alignItems = "center";
-                    headerLeft.appendChild(typeBadge(r.type));
-                    if (slaBadge) headerLeft.appendChild(slaBadge);
-                    header.append(headerLeft, span("card-time", time));
-                    card.appendChild(header);
-
                     const reasonText = r.reasonLabel || r.reason || "";
-                    const reasonDiv = el("div", "card-reason");
-                    reasonDiv.textContent = `reason: ${reasonText}`;
-                    card.appendChild(reasonDiv);
-
-                    if (r.text) {
-                        const textDiv = el("div", "card-text");
-                        textDiv.textContent = r.text;
-                        card.appendChild(textDiv);
-                    }
-
-                    const meta = el("div", "card-meta");
-                    const reportedSpan = el("span");
-                    reportedSpan.textContent = `reported: ${r.reportedHandle || "unknown"}`;
-                    meta.appendChild(reportedSpan);
-                    if (r.postId) {
-                        const postSpan = el("span");
-                        // .slice(0,8) is a display nicety; the full id stays in
-                        // the click closure below so the action handler hits the
-                        // correct doc. Both go through textContent.
-                        postSpan.textContent = `post: ${String(r.postId).slice(0, 8)}...`;
-                        meta.appendChild(postSpan);
-                    }
-                    card.appendChild(meta);
-
-                    const actions = el("div", "card-actions");
 
                     const dismissBtn = el("button", "btn-dismiss");
                     dismissBtn.textContent = "dismiss";
                     dismissBtn.addEventListener("click", () => dismissReport(d.id));
-                    actions.appendChild(dismissBtn);
 
+                    let removeBtn = null;
                     if (r.postId) {
-                        const removeBtn = el("button", "btn-remove");
+                        removeBtn = el("button", "btn-remove");
                         removeBtn.textContent = "remove post";
                         removeBtn.addEventListener("click", () => removePost(d.id, r.postId));
-                        actions.appendChild(removeBtn);
                     }
 
+                    let restrictBtn = null;
                     if (r.reportedUserId) {
-                        const restrictBtn = el("button", "btn-restrict");
+                        restrictBtn = el("button", "btn-restrict");
                         restrictBtn.textContent = "restrict user";
+                        restrictBtn.setAttribute("aria-label", `restrict user ${r.reportedHandle || r.reportedUserId}`);
                         restrictBtn.addEventListener("click", () => restrictUser(d.id, r.reportedUserId, r.reportedHandle));
-                        actions.appendChild(restrictBtn);
                     }
 
-                    card.appendChild(actions);
+                    // .slice(0,8) on the post id is a display nicety; the full
+                    // id stays in the removeBtn closure above so the action
+                    // hits the correct doc. Both flow through textContent.
+                    const card = renderCard({
+                        id: `report-${d.id}`,
+                        extraClass: slaClass,
+                        groupHeaderLeft: true,
+                        headerLeft: [typeBadge(r.type), slaBadge],
+                        time,
+                        reason: `reason: ${reasonText}`,
+                        text: r.text || "",
+                        meta: [
+                            `reported: ${r.reportedHandle || "unknown"}`,
+                            r.postId ? `post: ${String(r.postId).slice(0, 8)}...` : null,
+                        ],
+                        actions: [dismissBtn, removeBtn, restrictBtn],
+                    });
                     container.appendChild(card);
                 });
                 document.getElementById("overdueCount").textContent = overdueCount;
@@ -813,51 +890,31 @@
                 }
 
                 container.replaceChildren();
+                container.appendChild(queueHeading("flagged posts"));
                 snap.forEach(d => {
                     const p = d.data();
                     const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
 
-                    const card = el("div", "card");
-                    card.id = `flagged-${d.id}`;
-
-                    const header = el("div", "card-header");
-                    header.append(span("flagged-label", p.flagReason || "flagged"), span("card-time", time));
-                    card.appendChild(header);
-
-                    const textDiv = el("div", "card-text");
-                    textDiv.textContent = p.text || "";
-                    card.appendChild(textDiv);
-
-                    const meta = el("div", "card-meta");
-                    const bySpan = el("span");
-                    bySpan.textContent = `by: ${p.authorHandle || "unknown"}`;
-                    const likesSpan = el("span");
-                    likesSpan.textContent = `likes: ${p.likeCount || 0}`;
-                    const repliesSpan = el("span");
-                    repliesSpan.textContent = `replies: ${p.replyCount || 0}`;
-                    meta.append(bySpan, likesSpan, repliesSpan);
-                    card.appendChild(meta);
-
-                    const actions = el("div", "card-actions");
-
                     const unflagBtn = el("button", "btn-dismiss");
                     unflagBtn.textContent = "unflag (false positive)";
                     unflagBtn.addEventListener("click", () => unflagPost(d.id));
-                    actions.appendChild(unflagBtn);
 
                     const deleteBtn = el("button", "btn-remove");
                     deleteBtn.textContent = "delete post";
                     deleteBtn.addEventListener("click", () => deletePost(d.id));
-                    actions.appendChild(deleteBtn);
 
-                    if (p.authorId) {
-                        const restrictBtn = el("button", "btn-restrict");
-                        restrictBtn.textContent = "restrict author";
-                        restrictBtn.addEventListener("click", () => restrictUserDirect(p.authorId, p.authorHandle || ""));
-                        actions.appendChild(restrictBtn);
-                    }
-
-                    card.appendChild(actions);
+                    const card = renderCard({
+                        id: `flagged-${d.id}`,
+                        headerLeft: [span("flagged-label", p.flagReason || "flagged")],
+                        time,
+                        text: p.text || "",
+                        meta: [
+                            `by: ${p.authorHandle || "unknown"}`,
+                            `likes: ${p.likeCount || 0}`,
+                            `replies: ${p.replyCount || 0}`,
+                        ],
+                        actions: [unflagBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                    });
                     container.appendChild(card);
                 });
             } catch (e) {
@@ -878,33 +935,25 @@
                 }
 
                 container.replaceChildren();
+                container.appendChild(queueHeading("restricted users"));
                 snap.forEach(d => {
                     const u = d.data();
                     const restrictedAtStr = u.restrictedAt?.toDate?.() ? timeAgo(u.restrictedAt.toDate()) : "";
 
-                    const card = el("div", "card");
-                    card.id = `user-${d.id}`;
-
-                    const header = el("div", "card-header");
-                    const handleSpan = span("card-type type-user", u.handle || "unknown");
-                    header.append(handleSpan, span("card-time", restrictedAtStr));
-                    card.appendChild(header);
-
-                    const meta = el("div", "card-meta");
-                    const postsSpan = el("span");
-                    postsSpan.textContent = `posts: ${u.postCount || 0}`;
-                    const followersSpan = el("span");
-                    followersSpan.textContent = `followers: ${u.followerCount || 0}`;
-                    meta.append(postsSpan, followersSpan);
-                    card.appendChild(meta);
-
-                    const actions = el("div", "card-actions");
                     const unrestrictBtn = el("button", "btn-dismiss");
                     unrestrictBtn.textContent = "unrestrict";
                     unrestrictBtn.addEventListener("click", () => unrestrictUser(d.id));
-                    actions.appendChild(unrestrictBtn);
-                    card.appendChild(actions);
 
+                    const card = renderCard({
+                        id: `user-${d.id}`,
+                        headerLeft: [span("card-type type-user", u.handle || "unknown")],
+                        time: restrictedAtStr,
+                        meta: [
+                            `posts: ${u.postCount || 0}`,
+                            `followers: ${u.followerCount || 0}`,
+                        ],
+                        actions: [unrestrictBtn],
+                    });
                     container.appendChild(card);
                 });
             } catch (e) {
@@ -921,6 +970,7 @@
             try {
                 await updateDoc(doc(db, "reports", reportId), { status: "dismissed", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "dismissed" });
                 document.getElementById(`report-${reportId}`)?.remove();
+                refreshCounts();
                 showToast("report dismissed");
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -936,6 +986,7 @@
                 await deleteDoc(doc(db, "posts", postId));
                 await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "post_deleted" });
                 document.getElementById(`report-${reportId}`)?.remove();
+                refreshCounts();
                 showToast("post deleted, report resolved");
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -949,6 +1000,7 @@
                 await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
                 await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "user_restricted" });
                 document.getElementById(`report-${reportId}`)?.remove();
+                refreshCounts();
                 showToast(`${handle || "user"} restricted`);
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -958,6 +1010,7 @@
             const uid = auth.currentUser.uid;
             try {
                 await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
+                refreshCounts();
                 showToast(`${handle || "user"} restricted`);
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -984,6 +1037,7 @@
                     unflaggedAt: serverTimestamp()
                 });
                 document.getElementById(`flagged-${postId}`)?.remove();
+                refreshCounts();
                 showToast("post unflagged — now visible in feeds");
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -997,6 +1051,7 @@
                 await updateDoc(doc(db, "posts", postId), { deletedBy: auth.currentUser.uid, deletedAt: serverTimestamp() });
                 await deleteDoc(doc(db, "posts", postId));
                 document.getElementById(`flagged-${postId}`)?.remove();
+                refreshCounts();
                 showToast("post deleted");
             } catch (e) { showToast("error: " + e.message); }
         }
@@ -1006,6 +1061,7 @@
             try {
                 await updateDoc(doc(db, "users", userId), { restricted: false, restrictedAt: serverTimestamp(), restrictedBy: auth.currentUser.uid });
                 document.getElementById(`user-${userId}`)?.remove();
+                refreshCounts();
                 showToast("user unrestricted");
             } catch (e) { showToast("error: " + e.message); }
         }

@@ -257,7 +257,7 @@ struct CreateAccountView: View {
     func attemptCreateAccount() {
         guard !isLoading else { return }
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard trimmedEmail.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {
+        guard trimmedEmail.isValidEmail else {
             errorMessage = "please enter a valid email"
             return
         }

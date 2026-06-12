@@ -9,6 +9,8 @@ import FirebaseAppCheck
 @MainActor
 struct ProfileView: View {
     @State private var selectedTab = 0
+    // Tabs whose data has been fetched (lazy-load — see onAppear / loadTabIfNeeded).
+    @State private var loadedTabs: Set<Int> = []
     @State private var showSettings = false
     @State private var userHandle = "anonymous"
     @State private var followerCount = 0
@@ -334,12 +336,15 @@ struct ProfileView: View {
         .onAppear {
                     if !hasFetchedInitial {
                         hasFetchedInitial = true
-                                                loadMyPosts()
-                                                loadLikedPosts()
-                                                loadLikedReplies()
-                                                loadSavedPosts()
-                                                loadSavedReplies()
-                                                loadMyReplies()
+                        // IMPROVE (2026-06-11): lazy-load tabs. Previously all six
+                        // datasets (posts + liked posts/replies + saved posts/replies
+                        // + my replies) were fetched on every profile open — most
+                        // users only look at their posts. Now only the default
+                        // (posts) tab loads up front; the others load on first
+                        // switch via loadTabIfNeeded, cutting profile-open reads
+                        // substantially for the common case.
+                        loadMyPosts()
+                        loadedTabs = [0]
                         ensurePresenceThenLoadStreak()
                         Task {
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -348,12 +353,8 @@ struct ProfileView: View {
                     }
                     loadProfile()
                 }
-        // Refresh the replies tab each time it's selected so a reply the user
-        // just posted (from a post detail elsewhere) shows up without needing a
-        // manual pull-to-refresh. onAppear only fetches once (hasFetchedInitial),
-        // so without this a new reply wouldn't appear until the next launch.
         .onChange(of: selectedTab) { _, newValue in
-            if newValue == 3 { loadMyReplies() }
+            loadTabIfNeeded(newValue)
         }
         // Reset on sign-out so any in-flight ProfileView state from the
         // previous account doesn't blend into the next user's UI when
@@ -362,6 +363,7 @@ struct ProfileView: View {
         // the previous account's posts before the fresh fetches land.
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
             hasFetchedInitial = false
+            loadedTabs = []
             myPosts = []
             likedPosts = []
             likedReplies = []
@@ -743,6 +745,21 @@ struct ProfileView: View {
             }
     }
     
+    // Lazy tab loader: fetch a tab's data the first time it's shown. The replies
+    // tab (3) always re-fetches so a reply the user just posted elsewhere appears
+    // without a manual pull-to-refresh (it was already special-cased this way).
+    func loadTabIfNeeded(_ tab: Int) {
+        if tab == 3 { loadMyReplies(); loadedTabs.insert(3); return }
+        guard !loadedTabs.contains(tab) else { return }
+        loadedTabs.insert(tab)
+        switch tab {
+        case 0: loadMyPosts()
+        case 1: loadLikedPosts(); loadLikedReplies()
+        case 2: loadSavedPosts(); loadSavedReplies()
+        default: break
+        }
+    }
+
     func loadMyPosts() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()

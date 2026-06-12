@@ -83,34 +83,35 @@ struct TopView: View {
 
     // MARK: - Period selector (segmented control)
 
+    // Underline tab style — matches the main feed's "for you / following" tabs
+    // (feedTabs in FeedView) so the period selector reads as the same control
+    // vocabulary across the app instead of a separate boxed segmented control.
     private var periodSelector: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 0) {
             ForEach(Period.allCases) { p in
                 let isSel = period == p
                 Button {
-                    if period != p { period = p }
+                    if period != p {
+                        withAnimation(.easeInOut(duration: 0.18)) { period = p }
+                    }
                 } label: {
-                    Text(p.rawValue)
-                        .font(.system(size: 14, weight: isSel ? .semibold : .medium))
-                        .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 38)
-                        .background(
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .fill(isSel ? ToskaColor.card : Color.clear)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                        .stroke(isSel ? ToskaColor.accent.opacity(0.5) : Color.clear, lineWidth: 1)
-                                )
-                                .shadow(color: isSel ? Color.black.opacity(0.06) : Color.clear, radius: 3, x: 0, y: 1)
-                        )
+                    VStack(spacing: 7) {
+                        Text(p.rawValue)
+                            .font(.system(size: 14, weight: isSel ? .semibold : .regular))
+                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
+                        Capsule()
+                            .fill(isSel ? ToskaColor.accent : Color.clear)
+                            .frame(width: 22, height: 2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ToskaColor.input))
         .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
     }
 
     // MARK: - Content

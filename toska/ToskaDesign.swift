@@ -42,7 +42,7 @@ enum ToskaFont {
     // Serif — content only (the locked ramp)
     static var screenTitle: Font    { serifMedium(24) }   // 24 / 500, tracking -0.5, lowercase
     static var greeting: Font       { serifItalic(18) }   // italic 18 / 400
-    static var postBody: Font       { serif(14) }         // 14 / 400 — small & clean
+    static var postBody: Font       { serif(15.5) }       // 15.5 / 400 — bumped from 14 (2026 de-plain: more reading presence)
     static var postDetailBody: Font { serif(22) }         // 22 / 400, line-height 1.45
     static var replyBody: Font      { serif(15.5) }       // 15.5 / 400, line-height 1.5
 
@@ -182,18 +182,52 @@ extension View {
     func toskaCardShadow() -> some View { modifier(ToskaCardShadow()) }
     func toskaFloatingShadow() -> some View { modifier(ToskaFloatingShadow()) }
 
-    /// Post-card container: card bg, radius 18, 1px hairline divider border,
-    /// + card shadow. The crisp border + subtle lift is the spec's "not a soft
-    /// float" look.
+    /// Post-card container. MODERNIZED (2026 / iOS 26 pass): the editorial card
+    /// surface now reads as a soft "float" — a continuous-radius card lifted by a
+    /// layered ambient shadow (a tight contact shadow + a wide soft one) instead
+    /// of the old crisp 1px hairline border, which was the most 2020-flat element
+    /// of the design. Dark/late-night keeps a 0.5px hairline for definition since
+    /// shadows read poorly on near-black; there, depth comes from the lighter
+    /// card surface against the darker ground.
     func toskaCard(cornerRadius: CGFloat = ToskaSpacing.cardCorner) -> some View {
-        self
-            .background(ToskaColor.card)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return self
+            // A LITTLE glassmorphism (2026 pass): a frosted material base picks up
+            // a hint of the page/paper-grain behind the card, with a translucent
+            // card-color veil in front so it still reads as the clean editorial
+            // surface and post text stays crisp. A faint top rim-light gives the
+            // glass edge; the layered shadow floats it.
+            .background(ToskaColor.card.opacity(LateNightTheme.isLateNight ? 0.78 : 0.60), in: shape)
+            .background(.ultraThinMaterial, in: shape)
+            .clipShape(shape)
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(ToskaColor.divider, lineWidth: 1)
+                shape.stroke(.white.opacity(LateNightTheme.isLateNight ? 0.07 : 0.55), lineWidth: 0.5)
             )
-            .toskaCardShadow()
+            .shadow(color: .black.opacity(LateNightTheme.isLateNight ? 0.0 : 0.05), radius: 2, x: 0, y: 1)
+            .shadow(color: .black.opacity(LateNightTheme.isLateNight ? 0.0 : 0.07), radius: 18, x: 0, y: 9)
+    }
+
+    /// Liquid Glass surface (iOS 26+) — Apple's 2026 material: translucent and
+    /// refractive, it picks up the content scrolling beneath it (the iconic
+    /// floating-glass look). Falls back to a system material on earlier iOS so
+    /// the design degrades gracefully rather than failing to compile/render.
+    ///
+    /// `frosted: true` layers a visible system material UNDER the glass so the
+    /// frosted blur reads even over light, low-contrast content (pure `.regular`
+    /// glass is near-invisible over an all-white feed). Used for the floating
+    /// bars/pills that sit over the bright reading surface.
+    @ViewBuilder
+    func toskaGlass<S: Shape>(in shape: S, frosted: Bool = false) -> some View {
+        if #available(iOS 26.0, *) {
+            if frosted {
+                self.background(.thinMaterial, in: shape)
+                    .glassEffect(.regular, in: shape)
+            } else {
+                self.glassEffect(.regular, in: shape)
+            }
+        } else {
+            self.background(frosted ? .thinMaterial : .ultraThinMaterial, in: shape)
+        }
     }
 }
 

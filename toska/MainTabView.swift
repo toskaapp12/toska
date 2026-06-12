@@ -192,13 +192,17 @@ struct MainTabView: View {
                 // above the home indicator, an elevated white (card) surface with
                 // a bold two-layer drop shadow — instead of a flat edge-to-edge
                 // panel. The page shows behind/below it so it reads as floating.
-                .background(ToskaColor.card)
-                .clipShape(Capsule())
+                // MODERNIZED (2026 / iOS 26): the floating home bar is now a
+                // Liquid Glass capsule — translucent and refractive, so the feed
+                // scrolls visibly beneath it (the iconic iOS 26 look) instead of
+                // the old opaque white pill. A thin rim-light overlay defines the
+                // glass edge; the layered drop shadow keeps it floating.
+                .toskaGlass(in: Capsule(), frosted: true)
                 .overlay(
-                    Capsule().stroke(ToskaColor.divider, lineWidth: 1)
+                    Capsule().stroke(Color.white.opacity(LateNightTheme.isLateNight ? 0.10 : 0.35), lineWidth: 0.5)
                 )
-                .shadow(color: .black.opacity(0.10), radius: 6, x: 0, y: 3)
-                .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 13)
+                .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
+                .shadow(color: .black.opacity(0.16), radius: 28, x: 0, y: 14)
                 // Outer margins detach the pill from the screen edges and lift it
                 // above the home indicator (the enclosing ZStack ignores the
                 // bottom safe area, so this padding is the manual home-indicator

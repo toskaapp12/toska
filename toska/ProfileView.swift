@@ -66,9 +66,9 @@ struct ProfileView: View {
     
     var avatarColor: Color {
         let colors: [Color] = [
-            Color.toskaBlue, Color(hex: "8b7ec8"), Color(hex: "6ba58e"),
-            Color(hex: "c47a8a"), Color(hex: "c49a6c"), Color(hex: "7a97b5"),
-            Color(hex: "5a9e8f"), Color(hex: "c45c5c")
+            Color.toskaBlue, Color.toskaMidnightPurple, Color.toskaFollowGreen,
+            Color.toskaWhisperPink, Color.toskaAccentTan, Color.toskaUnsentBlue,
+            Color.toskaMovingOnGreen, Color.toskaErrorRed
         ]
         var hash: UInt64 = 5381
         for char in userHandle.utf8 {
@@ -175,7 +175,7 @@ struct ProfileView: View {
                                                                                                 Text("you reposted")
                                                                                                     .font(.system(size: 10, weight: .medium))
                                                                                             }
-                                                                                            .foregroundColor(Color(hex: "5a9e8f"))
+                                                                                            .foregroundColor(Color.toskaMovingOnGreen)
                                                                                             .padding(.horizontal, 16)
                                                                                             .padding(.top, 8)
                                                                                         }
@@ -189,7 +189,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if myPosts.count >= 50 {
                                                                                 Text("showing your 50 most recent posts")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -216,7 +216,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if likedItems.count >= 100 {
                                                                                 Text("showing your most recent likes")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -243,7 +243,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if items.count >= 100 {
                                                                                 Text("showing your most recent saves")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -258,7 +258,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if myReplies.count >= 30 {
                                                                                 Text("showing your most recent replies")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -471,7 +471,7 @@ struct ProfileView: View {
                     Image(systemName: "arrowshape.turn.up.left").font(.system(size: 8))
                     Text("replying to \(reply.parentHandle)").font(.system(size: 10, weight: .medium))
                     Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
-                    Text(reply.replyTime).font(.system(size: 10, weight: .light)).foregroundColor(Color(hex: "c8c8c8"))
+                    Text(reply.replyTime).font(.system(size: 10, weight: .light)).foregroundColor(Color.toskaInactiveGray)
                 }.foregroundColor(Color.toskaTextLight)
                 
                 Text(reply.parentText)
@@ -585,7 +585,7 @@ struct ProfileView: View {
         let streakLabel = presenceStreak > 1 ? "\(presenceStreak) nights in a row" : ""
 
         let cardView = ZStack {
-            Color(hex: "0a0908")
+            Color.toskaNearBlack
             
             VStack(spacing: 0) {
                 Spacer()
@@ -612,7 +612,7 @@ struct ProfileView: View {
                         Text(streakLabel)
                             .font(.system(size: 12, weight: .medium))
                     }
-                    .foregroundColor(Color(hex: "c49a6c"))
+                    .foregroundColor(Color.toskaAccentTan)
                     .padding(.bottom, 8)
                 }
                 
@@ -1166,7 +1166,7 @@ struct ReplyEngagementRow: View {
                     Spacer()
                     Text(ToskaFormatters.timeAgo(from: time))
                         .font(.system(size: 9, weight: .light))
-                        .foregroundColor(Color(hex: "c8c8c8"))
+                        .foregroundColor(Color.toskaInactiveGray)
                 }
                 Text(text)
                     .font(ToskaFont.serif(13))
@@ -1185,7 +1185,7 @@ struct ReplyEngagementRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
-            Rectangle().fill(Color(hex: "e4e6ea").opacity(0.5)).frame(height: 0.5)
+            Rectangle().fill(Color.toskaBorderLight.opacity(0.5)).frame(height: 0.5)
         }
     }
 }
@@ -1237,7 +1237,7 @@ struct FollowListView: View {
                                  ? "tap a handle on a post to follow someone"
                                  : "keep posting — people you reach will follow")
                                 .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "cccccc"))
+                                .foregroundColor(Color.toskaPlaceholderGray)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
                         }
@@ -1253,12 +1253,12 @@ struct FollowListView: View {
                                         onUnfollow: { pendingUnfollow = (id: user.id, handle: user.handle) }
                                     )
                                     if index < users.count - 1 {
-                                        Rectangle().fill(Color(hex: "dfe1e5").opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
+                                        Rectangle().fill(Color.toskaDividerHairline.opacity(0.5)).frame(height: 0.5).padding(.leading, 16)
                                     }
                                 }
                                 if users.count >= 50 {
                                     Text("showing your first 50 \(title)")
-                                        .font(.system(size: 9)).foregroundColor(Color(hex: "cccccc"))
+                                        .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
                                         .frame(maxWidth: .infinity).padding(.vertical, 12)
                                 }
                             }
@@ -1448,7 +1448,7 @@ private struct FollowRow: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
                         .background(
-                            Capsule().stroke(Color(hex: "dfe1e5"), lineWidth: 0.5)
+                            Capsule().stroke(Color.toskaDividerHairline, lineWidth: 0.5)
                         )
                 }
                 .buttonStyle(.plain)
@@ -1496,7 +1496,7 @@ struct EditReplyView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
                     Text("edit reply").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -1511,12 +1511,12 @@ struct EditReplyView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
 
                 if let saveError {
                     Text(saveError)
                         .font(.system(size: 11))
-                        .foregroundColor(Color(hex: "c45c5c"))
+                        .foregroundColor(Color.toskaErrorRed)
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
                 }
@@ -1672,10 +1672,10 @@ struct PendingReviewBanner: View {
         .foregroundColor(Color(hex: "9a7843"))
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(hex: "c49a6c").opacity(0.12))
+        .background(Color.toskaAccentTan.opacity(0.12))
         .overlay(
             Rectangle()
-                .fill(Color(hex: "c49a6c"))
+                .fill(Color.toskaAccentTan)
                 .frame(width: 3)
                 .frame(maxHeight: .infinity),
             alignment: .leading

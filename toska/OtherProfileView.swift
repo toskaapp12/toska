@@ -113,7 +113,7 @@ struct OtherProfileView: View {
                                         .foregroundColor(isFollowing ? Color(hex: "888888") : .white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 11)
-                                        .background(isFollowing ? Color(hex: "e4e6ea") : Color.toskaBlue)
+                                        .background(isFollowing ? Color.toskaBorderLight : Color.toskaBlue)
                                         .cornerRadius(22)
                                 }
                             } else {
@@ -132,7 +132,7 @@ struct OtherProfileView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 0 ? "square.grid.2x2.fill" : "square.grid.2x2")
                                         .font(.system(size: 14, weight: selectedTab == 0 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color(hex: "c8c8c8"))
+                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color.toskaInactiveGray)
                                     Capsule().fill(selectedTab == 0 ? Color.toskaBlue : Color.clear).frame(height: 2)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -142,7 +142,7 @@ struct OtherProfileView: View {
                                 VStack(spacing: 6) {
                                     Image(systemName: selectedTab == 1 ? "bubble.left.fill" : "bubble.left")
                                         .font(.system(size: 14, weight: selectedTab == 1 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color(hex: "c8c8c8"))
+                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color.toskaInactiveGray)
                                     Capsule().fill(selectedTab == 1 ? Color.toskaBlue : Color.clear).frame(height: 2)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -151,7 +151,7 @@ struct OtherProfileView: View {
                         }
                         .padding(.horizontal, 40)
                         
-                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                        Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         
                         if selectedTab == 0 {
                             if posts.isEmpty {
@@ -217,7 +217,7 @@ struct OtherProfileView: View {
                                                     
                                                     Text(reply.replyTime)
                                                         .font(.system(size: 9, weight: .light))
-                                                        .foregroundColor(Color(hex: "c8c8c8"))
+                                                        .foregroundColor(Color.toskaInactiveGray)
                                                 }
                                             }
                                             .padding(.top, 2)
@@ -227,7 +227,7 @@ struct OtherProfileView: View {
                                         .background(Color.white)
                                         .overlay(
                                             Rectangle()
-                                                .fill(Color(hex: "e4e6ea"))
+                                                .fill(Color.toskaBorderLight)
                                                 .frame(height: 0.5),
                                             alignment: .bottom
                                         )

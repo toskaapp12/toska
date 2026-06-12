@@ -126,7 +126,7 @@ struct OnboardingView: View {
             if currentStep == 1 {
                 Color(hex: "faf8f5").ignoresSafeArea()
             } else {
-                Color(hex: "0a0908").ignoresSafeArea()
+                Color.toskaNearBlack.ignoresSafeArea()
             }
 
             VStack(spacing: 0) {
@@ -181,7 +181,7 @@ struct OnboardingView: View {
                         } label: {
                             Text("next")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "0a0908"))
+                                .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                                 .background(Color.white)
@@ -211,7 +211,7 @@ struct OnboardingView: View {
                         } label: {
                             Text("next")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "0a0908"))
+                                .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                                 .background(Color.white)
@@ -237,7 +237,7 @@ struct OnboardingView: View {
                         } label: {
                             Text("next")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "0a0908"))
+                                .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                                 .background(Color.white)
@@ -258,7 +258,7 @@ struct OnboardingView: View {
                         } label: {
                             Text("say it")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "0a0908"))
+                                .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
                                 .background(Color.white)
@@ -598,7 +598,7 @@ struct OnboardingView: View {
                         
                         Text("no names. no faces. just what you feel.")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "999999"))
+                            .foregroundColor(Color.toskaMidGray)
                             .padding(.bottom, 12)
             
             HStack {
@@ -608,7 +608,7 @@ struct OnboardingView: View {
                 Spacer()
                 Text("your handle")
                     .font(.system(size: 9))
-                    .foregroundColor(Color(hex: "cccccc"))
+                    .foregroundColor(Color.toskaPlaceholderGray)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
@@ -622,7 +622,7 @@ struct OnboardingView: View {
             
             Text("nobody knows who you are here.\nthats the whole point.")
                 .font(.system(size: 10))
-                .foregroundColor(Color(hex: "cccccc"))
+                .foregroundColor(Color.toskaPlaceholderGray)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
                 .padding(.top, 4)

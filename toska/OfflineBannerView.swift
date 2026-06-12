@@ -14,7 +14,7 @@ struct OfflineBannerView: View {
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-            .background(network.isConnected ? Color(hex: "6ba58e") : Color(hex: "c45c5c"))
+            .background(network.isConnected ? Color.toskaFollowGreen : Color.toskaErrorRed)
             .transition(.move(edge: .top).combined(with: .opacity))
             .animation(.easeInOut(duration: 0.3), value: network.showOfflineBanner)
             .animation(.easeInOut(duration: 0.3), value: network.isConnected)

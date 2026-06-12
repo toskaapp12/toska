@@ -117,7 +117,7 @@ struct LateNightTheme {
     static var inputBackground: Color { isLateNight ? Color(hex: "1B1D1F") : Color(hex: "E9EBEE") }
 
     // Text
-    static var primaryText: Color   { isLateNight ? Color(hex: "E6E7EA") : Color(hex: "14130F") }
+    static var primaryText: Color   { isLateNight ? Color(hex: "E6E7EA") : Color.toskaInkBlack }
     static var secondaryText: Color { isLateNight ? Color(hex: "82868D") : Color(hex: "8A8D96") }
     static var tertiaryText: Color  { isLateNight ? Color(hex: "5C5F66") : Color(hex: "A9ACB4") }
     static var handleText: Color    { isLateNight ? Color(hex: "B6B9BE") : Color(hex: "2A2C32") }
@@ -130,11 +130,11 @@ struct LateNightTheme {
 
     // Timestamp / meta tertiary, badge, and scrim
     static var timeText: Color { isLateNight ? Color(hex: "4E5157") : Color(hex: "B7BAC1") }
-    static var badge: Color    { Color(hex: "C47A8A") }
-    static var scrim: Color    { isLateNight ? Color.black.opacity(0.66) : Color(hex: "14130F").opacity(0.38) }
+    static var badge: Color    { Color.toskaWhisperPink }
+    static var scrim: Color    { isLateNight ? Color.black.opacity(0.66) : Color.toskaInkBlack.opacity(0.38) }
 
     // Tab bar
-    static var selectedPill: Color { isLateNight ? Color(hex: "1c1e1f") : Color(hex: "dfe1e5").opacity(0.6) }
+    static var selectedPill: Color { isLateNight ? Color(hex: "1c1e1f") : Color.toskaDividerHairline.opacity(0.6) }
 
     // Post font size bumps slightly at night
     static var postFontSize: CGFloat { isLateNight ? 16 : 15 }

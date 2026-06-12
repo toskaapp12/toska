@@ -46,7 +46,7 @@ struct ShareCardView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "0a0908").ignoresSafeArea()
+            Color.toskaNearBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 HStack {
@@ -239,16 +239,16 @@ struct ShareCardView: View {
 
                         // MARK: - Share Buttons
                         HStack(spacing: 0) {
-                            platformButton(name: "Save", icon: "arrow.down.to.line", color: Color(hex: "c9a97a").opacity(0.8)) {
+                            platformButton(name: "Save", icon: "arrow.down.to.line", color: Color.toskaAccentGold.opacity(0.8)) {
                                 saveToPhotos()
                             }
-                            platformButton(name: "Stories", icon: "camera.fill", color: Color(hex: "c45c5c").opacity(0.8)) {
+                            platformButton(name: "Stories", icon: "camera.fill", color: Color.toskaErrorRed.opacity(0.8)) {
                                 shareToInstagramStories()
                             }
                             platformButton(name: "X", icon: "arrow.up.right", color: .white.opacity(0.5)) {
                                 shareToTwitter()
                             }
-                            platformButton(name: "iMessage", icon: "message.fill", color: Color(hex: "6ba58e").opacity(0.7)) {
+                            platformButton(name: "iMessage", icon: "message.fill", color: Color.toskaFollowGreen.opacity(0.7)) {
                                 sharedPlatform = "iMessage"
                                 shareImage()
                             }
@@ -293,7 +293,7 @@ struct ShareCardView: View {
                                 Text(showCopied ? "copied" : "copy text")
                                     .font(.system(size: 10, weight: .medium))
                             }
-                            .foregroundColor(showCopied ? Color(hex: "6ba58e").opacity(0.7) : .white.opacity(0.2))
+                            .foregroundColor(showCopied ? Color.toskaFollowGreen.opacity(0.7) : .white.opacity(0.2))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(Color.white.opacity(0.03))
@@ -406,16 +406,16 @@ struct ShareCardView: View {
         switch index {
         case 0: return Color.toskaBlue
         case 1: return Color(hex: "808080")
-        case 2: return Color(hex: "8b7ec8")
-        case 3: return Color(hex: "c45c5c")
-        case 4: return Color(hex: "7a97b5")
-        case 5: return Color(hex: "c49a6c")
+        case 2: return Color.toskaMidnightPurple
+        case 3: return Color.toskaErrorRed
+        case 4: return Color.toskaUnsentBlue
+        case 5: return Color.toskaAccentTan
         case 6: return Color(hex: "5a6a5a")
-        case 7: return Color(hex: "c9a97a")
-        case 8: return Color(hex: "999999")
-        case 9: return Color(hex: "c47a8a")
-        case 10: return Color(hex: "6ba58e")
-        case 11: return Color(hex: "7a97b5")
+        case 7: return Color.toskaAccentGold
+        case 8: return Color.toskaMidGray
+        case 9: return Color.toskaWhisperPink
+        case 10: return Color.toskaFollowGreen
+        case 11: return Color.toskaUnsentBlue
         default: return Color.toskaBlue
         }
     }
@@ -589,7 +589,7 @@ struct ShareCardView: View {
             case 2:
                 VStack {
                     Ellipse()
-                        .fill(RadialGradient(colors: [Color(hex: "8b7ec8").opacity(0.04), Color.clear], center: .center, startRadius: 0, endRadius: 160))
+                        .fill(RadialGradient(colors: [Color.toskaMidnightPurple.opacity(0.04), Color.clear], center: .center, startRadius: 0, endRadius: 160))
                         .frame(width: 300, height: 200)
                         .offset(y: -30)
                     Spacer()
@@ -598,18 +598,18 @@ struct ShareCardView: View {
                 VStack {
                     Spacer()
                     Ellipse()
-                        .fill(RadialGradient(colors: [Color(hex: "c45c5c").opacity(0.03), Color.clear], center: .center, startRadius: 0, endRadius: 140))
+                        .fill(RadialGradient(colors: [Color.toskaErrorRed.opacity(0.03), Color.clear], center: .center, startRadius: 0, endRadius: 140))
                         .frame(width: 280, height: 180)
                         .offset(y: 40)
                 }
             case 4:
                 Ellipse()
-                    .fill(RadialGradient(colors: [Color(hex: "7a97b5").opacity(0.03), Color.clear], center: .center, startRadius: 0, endRadius: 150))
+                    .fill(RadialGradient(colors: [Color.toskaUnsentBlue.opacity(0.03), Color.clear], center: .center, startRadius: 0, endRadius: 150))
                     .frame(width: 300, height: 300)
             case 5:
                 VStack {
                     Ellipse()
-                        .fill(RadialGradient(colors: [Color(hex: "c49a6c").opacity(0.04), Color.clear], center: .center, startRadius: 0, endRadius: 120))
+                        .fill(RadialGradient(colors: [Color.toskaAccentTan.opacity(0.04), Color.clear], center: .center, startRadius: 0, endRadius: 120))
                         .frame(width: 240, height: 240)
                         .offset(y: 30)
                     Spacer()
@@ -617,27 +617,27 @@ struct ShareCardView: View {
             case 7:
                 VStack {
                     Ellipse()
-                        .fill(RadialGradient(colors: [Color(hex: "c9a97a").opacity(0.08), Color.clear], center: .center, startRadius: 0, endRadius: 160))
+                        .fill(RadialGradient(colors: [Color.toskaAccentGold.opacity(0.08), Color.clear], center: .center, startRadius: 0, endRadius: 160))
                         .frame(width: 300, height: 250)
                         .offset(y: -20)
                     Spacer()
                 }
             case 9:
                 Ellipse()
-                    .fill(RadialGradient(colors: [Color(hex: "c47a8a").opacity(0.06), Color.clear], center: .center, startRadius: 0, endRadius: 140))
+                    .fill(RadialGradient(colors: [Color.toskaWhisperPink.opacity(0.06), Color.clear], center: .center, startRadius: 0, endRadius: 140))
                     .frame(width: 280, height: 280)
             case 10:
                 VStack {
                     Spacer()
                     Ellipse()
-                        .fill(RadialGradient(colors: [Color(hex: "6ba58e").opacity(0.06), Color.clear], center: .center, startRadius: 0, endRadius: 150))
+                        .fill(RadialGradient(colors: [Color.toskaFollowGreen.opacity(0.06), Color.clear], center: .center, startRadius: 0, endRadius: 150))
                         .frame(width: 300, height: 200)
                         .offset(y: 50)
                 }
             case 11:
                 VStack {
                     Ellipse()
-                        .fill(RadialGradient(colors: [Color(hex: "7a97b5").opacity(0.06), Color.clear], center: .center, startRadius: 0, endRadius: 150))
+                        .fill(RadialGradient(colors: [Color.toskaUnsentBlue.opacity(0.06), Color.clear], center: .center, startRadius: 0, endRadius: 150))
                         .frame(width: 280, height: 220)
                         .offset(y: -30)
                     Spacer()

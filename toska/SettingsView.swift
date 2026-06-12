@@ -70,11 +70,11 @@ struct SettingsView: View {
                             .font(.system(size: 11))
                         Spacer()
                     }
-                    .foregroundColor(Color(hex: "c45c5c"))
+                    .foregroundColor(Color.toskaErrorRed)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity)
-                    .background(Color(hex: "c45c5c").opacity(0.06))
+                    .background(Color.toskaErrorRed.opacity(0.06))
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
@@ -297,7 +297,7 @@ struct SettingsView: View {
                         } label: {
                             Text("sign out")
                                 .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color(hex: "999999"))
+                                .foregroundColor(Color.toskaMidGray)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
@@ -308,14 +308,14 @@ struct SettingsView: View {
                         } label: {
                             Text(isDeleting ? "deleting..." : "delete account")
                                 .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "c45c5c").opacity(0.7))
+                                .foregroundColor(Color.toskaErrorRed.opacity(0.7))
                         }
                         .disabled(isDeleting)
                         
                         if !deleteError.isEmpty {
                             Text(deleteError)
                                 .font(.system(size: 10))
-                                .foregroundColor(Color(hex: "c45c5c"))
+                                .foregroundColor(Color.toskaErrorRed)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
                         }
@@ -323,7 +323,7 @@ struct SettingsView: View {
                         // MARK: - Why toska exists
                                                 VStack(spacing: 12) {
                                                     Rectangle()
-                                                        .fill(Color(hex: "dfe1e5"))
+                                                        .fill(Color.toskaDividerHairline)
                                                         .frame(width: 32, height: 0.5)
                                                     
                                                     Text("why this exists")
@@ -332,7 +332,7 @@ struct SettingsView: View {
                                                     
                                                     Text("i went through a breakup. talked to everyone. they ran out of things to say and i ran out of people to say it to. everyone had moved on but i was still sad. i was on reddit at 2am, downloading random apps, watching sad tiktoks. none of it was it. i just wanted somewhere anonymous where people are going through the same thing and nobody's pretending they're not. so i built it.")
                                                         .font(ToskaFont.serif(12))
-                                                        .foregroundColor(Color(hex: "999999"))
+                                                        .foregroundColor(Color.toskaMidGray)
                                                         .lineSpacing(4)
                                                         .multilineTextAlignment(.center)
                                                         .padding(.horizontal, 24)
@@ -931,7 +931,7 @@ struct ChangeEmailView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
                     Text("change email").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -947,7 +947,7 @@ struct ChangeEmailView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("current email")
@@ -959,7 +959,7 @@ struct ChangeEmailView: View {
                         .foregroundColor(Color.toskaTextDark)
                         .padding(11)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(hex: "e4e6ea").opacity(0.5))
+                        .background(Color.toskaBorderLight.opacity(0.5))
                         .cornerRadius(10)
                     
                     Text("new email")
@@ -974,17 +974,17 @@ struct ChangeEmailView: View {
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.toskaBorderLight, lineWidth: 0.5))
                     
                     if !message.isEmpty {
                         Text(message)
                             .font(.system(size: 11))
-                            .foregroundColor(isError ? Color(hex: "c45c5c") : Color(hex: "6ba58e"))
+                            .foregroundColor(isError ? Color.toskaErrorRed : Color.toskaFollowGreen)
                     }
                     
                     Text("you may need to sign out and back in before changing your email.")
                         .font(.system(size: 9))
-                        .foregroundColor(Color(hex: "cccccc"))
+                        .foregroundColor(Color.toskaPlaceholderGray)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
@@ -1060,7 +1060,7 @@ struct ChangePasswordView: View {
                         dismissTask?.cancel()
                         dismiss()
                     } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color(hex: "999999"))
+                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
                     Text("change password").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
@@ -1076,7 +1076,7 @@ struct ChangePasswordView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 
-                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("new password")
@@ -1088,7 +1088,7 @@ struct ChangePasswordView: View {
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.toskaBorderLight, lineWidth: 0.5))
                         // `.newPassword` enables Keychain strong-password suggestions and
                         // routes 3rd-party password managers through the correct autofill
                         // surface. Omitting textContentType (previous state) left iOS
@@ -1104,18 +1104,18 @@ struct ChangePasswordView: View {
                         .padding(11)
                         .background(Color.white)
                         .cornerRadius(10)
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(hex: "e4e6ea"), lineWidth: 0.5))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.toskaBorderLight, lineWidth: 0.5))
                         .textContentType(.newPassword)
                     
                     if !message.isEmpty {
                         Text(message)
                             .font(.system(size: 11))
-                            .foregroundColor(isError ? Color(hex: "c45c5c") : Color(hex: "6ba58e"))
+                            .foregroundColor(isError ? Color.toskaErrorRed : Color.toskaFollowGreen)
                     }
                     
                     Text("you may need to sign out and back in before changing your password.")
                         .font(.system(size: 9))
-                        .foregroundColor(Color(hex: "cccccc"))
+                        .foregroundColor(Color.toskaPlaceholderGray)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 20)
@@ -1220,7 +1220,7 @@ struct BlockedUsersListView: View {
                             .foregroundColor(Color.toskaTextLight)
                         Text("people you block will show up here. you can unblock them any time.")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "cccccc"))
+                            .foregroundColor(Color.toskaPlaceholderGray)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                     }
@@ -1419,13 +1419,13 @@ struct LinkBackupAuthView: View {
                     if !errorMessage.isEmpty {
                         Text(errorMessage)
                             .font(.system(size: 11))
-                            .foregroundColor(Color(hex: "c45c5c"))
+                            .foregroundColor(Color.toskaErrorRed)
                     }
 
                     if didLink {
                         Text("done. you can now sign in with this email + password too.")
                             .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "5a9e8f"))
+                            .foregroundColor(Color.toskaMovingOnGreen)
                     } else {
                         Button { linkBackup() } label: {
                             ZStack {

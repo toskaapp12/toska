@@ -21,7 +21,7 @@ struct DailyMomentView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "0a0908")
+            Color.toskaNearBlack
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -349,7 +349,7 @@ struct DailyMomentView: View {
     @MainActor
     func shareAsImage() {
         let cardView = ZStack {
-            Color(hex: "0a0908")
+            Color.toskaNearBlack
 
             VStack(spacing: 0) {
                 Spacer()

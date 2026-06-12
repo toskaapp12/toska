@@ -24,27 +24,71 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
     private static let authCodeKey = "toska_apple_auth_code"
     private static let keychainService = "com.toskaapp.toska.appleAuth"
 
-    // MARK: - Start Sign In
+    // MARK: - Request preparation (SignInWithAppleButton onRequest hook)
+    //
+    // Generates the nonce, stores it in currentNonce, and configures the
+    // request. Pulled out of startSignIn so the official SwiftUI
+    // SignInWithAppleButton can drive the request while reusing the exact
+    // same nonce + scope setup. If nonce generation fails we leave
+    // currentNonce nil and the request unsigned — handleAuthorization will
+    // then reject the credential (currentNonce guard) rather than crashing.
+    func prepareRequest(_ request: ASAuthorizationAppleIDRequest) {
+        do {
+            let nonce = try randomNonceString()
+            currentNonce = nonce
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = sha256(nonce)
+        } catch {
+            currentNonce = nil
+            Telemetry.recordError(error, context: "AppleSignIn.prepareRequest.nonce")
+        }
+    }
+
+    // MARK: - Authorization handling (SignInWithAppleButton onCompletion hook)
+    //
+    // On success, runs the exact same credential-exchange + Firebase sign-in +
+    // rollback logic as the delegate path (shared via authorizationControllerMain).
+    // On failure, throws the underlying error so the caller surfaces it.
+    func handleAuthorization(_ result: Result<ASAuthorization, Error>) async throws {
+        switch result {
+        case .success(let authorization):
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                self.continuation = continuation
+                Task { @MainActor in
+                    await authorizationControllerMain(authorization: authorization)
+                }
+            }
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    // MARK: - Start Sign In (legacy programmatic path)
+    //
+    // Retained for any non-SwiftUI caller. The SplashView SignInWithAppleButton
+    // now routes through prepareRequest/handleAuthorization instead. Reuses the
+    // same nonce setup via prepareRequest.
 
     func startSignIn() async throws {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            do {
-                let nonce = try randomNonceString()
-                currentNonce = nonce
-                let request = ASAuthorizationAppleIDProvider().createRequest()
-                request.requestedScopes = [.email]
-                request.nonce = sha256(nonce)
-                let controller = ASAuthorizationController(authorizationRequests: [request])
-                controller.delegate = self
-                controller.presentationContextProvider = self
-                controller.performRequests()
-            } catch {
-                // If nonce generation fails, resume immediately so the
-                // continuation is never left hanging.
-                self.continuation?.resume(throwing: error)
+            let request = ASAuthorizationAppleIDProvider().createRequest()
+            prepareRequest(request)
+            guard currentNonce != nil else {
+                // Nonce generation failed inside prepareRequest; resume
+                // immediately so the continuation is never left hanging.
+                self.continuation?.resume(throwing: NSError(
+                    domain: "AppleSignIn",
+                    code: -3,
+                    userInfo: [NSLocalizedDescriptionKey: "secure random number generation failed"]
+                ))
                 self.continuation = nil
+                return
             }
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
         }
     }
 

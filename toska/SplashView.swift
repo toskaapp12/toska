@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 import GoogleSignIn
 import FirebaseAuth
 import FirebaseFirestore
@@ -76,50 +77,59 @@ struct SplashView: View {
                             )
                     }
 
-                    HStack(spacing: 10) {
-                        Button {
-                            signInWithGoogle()
-                        } label: {
-                            Text(isSigningIn ? "..." : "Google")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                                .background(Color.white.opacity(0.12))
-                                .cornerRadius(10)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-                                )
-                        }
-                        .disabled(isSigningIn)
-
-                        Button {
-                            guard !isSigningIn else { return }
-                            isSigningIn = true
-                            Task {
-                                do {
-                                    try await appleHelper.startSignIn()
-                                } catch {
-                                    errorMessage = friendlyAuthErrorMessage(error)
-                                }
-                                isSigningIn = false
+                    // Official Sign in with Apple button (HIG-compliant).
+                    // Splash sits on toskaBlue (a dark/blue ground), so the
+                    // .white style reads best against it.
+                    SignInWithAppleButton(.signIn, onRequest: { request in
+                        appleHelper.prepareRequest(request)
+                    }, onCompletion: { result in
+                        isSigningIn = true
+                        Task {
+                            do {
+                                try await appleHelper.handleAuthorization(result)
+                            } catch {
+                                errorMessage = friendlyAuthErrorMessage(error)
                             }
-                        } label: {
-                            Text(isSigningIn ? "..." : "Apple")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                                .background(Color.white.opacity(0.12))
-                                .cornerRadius(10)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-                                )
+                            isSigningIn = false
                         }
-                        .disabled(isSigningIn)
+                    })
+                    .signInWithAppleButtonStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .cornerRadius(10)
+                    .disabled(isSigningIn)
+
+                    // Google-branding-compliant button: white surface, dark-gray
+                    // label, subtle border. The official multicolor "G" asset is
+                    // not bundled, so we render a blue "G" placeholder glyph.
+                    // TODO: add official Google "G" asset from the Google branding kit for full guideline compliance
+                    Button {
+                        signInWithGoogle()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSigningIn {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(Color(hex: "3C4043"))
+                            } else {
+                                Text("G")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(Color(hex: "4285F4"))
+                                Text("Sign in with Google")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(Color(hex: "3C4043"))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Color.white)
+                        .cornerRadius(10)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color(hex: "DADCE0"), lineWidth: 1)
+                        )
                     }
+                    .disabled(isSigningIn)
 
                     if !errorMessage.isEmpty {
                         Text(errorMessage)

@@ -485,6 +485,10 @@ struct SettingsView: View {
             Toggle("", isOn: isOn)
                 .labelsHidden()
                 .tint(ToskaColor.accent)
+                // labelsHidden() drops the (empty) Toggle label, and the
+                // visible Text isn't associated with the control, so VoiceOver
+                // would announce a bare "switch". Restore the row's purpose.
+                .accessibilityLabel(title)
         }
         .padding(.vertical, 13)
         .padding(.horizontal, 14)
@@ -500,6 +504,7 @@ struct SettingsView: View {
                 .labelsHidden()
                 .tint(ToskaColor.accent)
                 .scaleEffect(0.85)
+                .accessibilityLabel(title)
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 14)
@@ -916,7 +921,7 @@ struct ChangeEmailView: View {
     @State private var showReauthAlert = false
     
     var isValidEmail: Bool {
-        newEmail.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil
+        newEmail.isValidEmail
     }
     
     var body: some View {
@@ -1002,7 +1007,7 @@ struct ChangeEmailView: View {
 
     func updateEmail() {
         let trimmed = newEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard trimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$"#, options: .regularExpression) != nil else {
+        guard trimmed.isValidEmail else {
             message = "please enter a valid email"
             isError = true
             return

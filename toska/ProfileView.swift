@@ -54,6 +54,9 @@ struct ProfileView: View {
         ("bookmark", "bookmark.fill"),
         ("bubble.left", "bubble.left.fill"),
     ]
+    // VoiceOver labels for the icon-only profile tabs, index-aligned with
+    // tabIcons (posts / liked / saved / replies).
+    let tabAccessibilityLabels = ["posts", "liked", "saved", "replies"]
     var avatarInitial: String {
         let cleaned = userHandle.replacingOccurrences(of: "anonymous_", with: "")
         return String(cleaned.prefix(1)).uppercased()
@@ -142,6 +145,7 @@ struct ProfileView: View {
                                                     .frame(maxWidth: .infinity)
                                                     .padding(.top, 13)
                                                 }
+                                                .accessibilityLabel(tabAccessibilityLabels[index])
                                             }
                                         }
                                         .padding(.horizontal, 8)
@@ -744,22 +748,11 @@ struct ProfileView: View {
         let db = Firestore.firestore()
         let postsQuery = db.collection("posts").whereField("authorId", isEqualTo: uid)
 
-        postsQuery.count.getAggregation(source: .server) { snapshot, error in
-            Task { @MainActor in
-                // Auth recheck — see loadProfile for rationale. Without this,
-                // the previous user's count can land in the new user's UI
-                // during a fast sign-out/sign-in transition.
-                guard Auth.auth().currentUser?.uid == uid else { return }
-                if let error = error {
-                    print("⚠️ loadMyPosts count aggregation failed: \(error)")
-                    return
-                }
-                if let count = snapshot?.count {
-                    postCount = Int(truncating: count)
-                }
-            }
-        }
-
+        // postCount is owned by loadProfile(), which runs the same
+        // authorId==uid count() aggregation. loadMyPosts() is always paired
+        // with loadProfile() (onAppear + tab-0 refresh), so we drop the
+        // duplicate server count() here and just fetch the post list — saving
+        // one aggregation round-trip on every profile load.
         postsQuery.order(by: "createdAt", descending: true).limit(to: 50)
             .getDocuments { snapshot, error in
                 Task { @MainActor in

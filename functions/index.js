@@ -3,11 +3,19 @@ const { containsNameOrIdentifyingInfo, aggressiveNormalizeForNameMatch, contains
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const { getAppCheck } = require("firebase-admin/app-check");
 const { getMessaging } = require("firebase-admin/messaging");
+
+// IMPROVE (2026-06-11): project-wide function defaults. region pins every
+// function to us-central1 (matching the deployed set); maxInstances caps the
+// fan-out so a like/reply burst on a viral post can't spawn unbounded counter-
+// trigger instances and run up cost. Per-function options still override these
+// (e.g. the deletion cascade can raise memory/timeout at its own declaration).
+setGlobalOptions({ region: "us-central1", maxInstances: 40 });
 
 initializeApp();
 const db = getFirestore();
@@ -455,36 +463,6 @@ async function cleanupSubmittedReportsForUid(uid, maxIterations) {
     if (snap.size < 500) break;
   }
   return { totalDeleted, capHit: batchCount >= maxIterations };
-}
-
-// Structured-log a single-write counter trigger that failed AFTER its
-// dedup claim was set. Single-write triggers (reply, repost, tag, stage,
-// message) claim the eventId BEFORE writing the counter; if the write
-// then fails (rule denial, invariant violation, transient unavailable),
-// Eventarc redelivery will see the claim already set and skip the
-// retry — the counter silently drifts off by one and there's no
-// recovery path.
-//
-// The fix here is an alert hook, not a re-architecture: emit a JSON log
-// entry with a recognizable `tag` so a Cloud Monitoring policy can fire
-// on `jsonPayload.tag = "counter_drift"` and surface the drift to the
-// on-call instead of letting it accumulate silently. The previous
-// console.warn shape was indistinguishable from benign warnings.
-//
-// The structural fix (move single-write counters to claimedTransaction
-// + retry: true so a failed write retries cleanly) is deferred — it
-// requires unwinding the per-counter dedup-key shape and is bigger than
-// a security-audit pass. This logging closes the silence gap until
-// then.
-function logCounterDrift(triggerName, eventId, err, extras = {}) {
-  console.error(JSON.stringify({
-    severity: "ERROR",
-    tag: "counter_drift",
-    trigger: triggerName,
-    eventId,
-    errorMessage: err?.message || String(err),
-    ...extras,
-  }));
 }
 
 // Randomized delay before a moderation-driven delete, sized to overlap with
@@ -2689,8 +2667,11 @@ function computePostFlagReason(rawText) {
   // bypass auto-detection entirely. Ordered AFTER threat so a post
   // containing both ("im gonna kill you, kys") routes to the more
   // severe "targeted_threat" reason instead of "harassment".
-  if (MOD_THREAT.some((phrase) => text.includes(phrase))) return "targeted_threat";
-  if (MOD_HARASSMENT.some((phrase) => text.includes(phrase))) return "harassment";
+  // IMPROVE (2026-06-11): route threat/harassment through matchesCrisisPhrase
+  // (the same normalize + de-leet + de-space matcher crisis uses) so obfuscated
+  // abuse ("ky5", "k i l l yourself") is caught, not just literal substrings.
+  if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
+  if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
   if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";
@@ -3048,8 +3029,8 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (ev
 function computeReplyFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
   if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
-  if (MOD_HARASSMENT.some((p) => text.includes(p))) return "harassment";
-  if (MOD_THREAT.some((p) => text.includes(p))) return "targeted_threat";
+  if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
+  if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
   if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";

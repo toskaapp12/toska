@@ -14,7 +14,8 @@ struct ExplorePost {
     let replies: Int
     let time: String
     let authorId: String
-    
+    let createdAt: Date
+
     init(doc: QueryDocumentSnapshot, blockedUserIds: Set<String>) throws {
             let data = doc.data()
             let authorId = data["authorId"] as? String ?? ""
@@ -31,6 +32,7 @@ struct ExplorePost {
         self.replies = data["replyCount"] as? Int ?? 0
         self.time = FeedView.timeAgoString(from: createdAt)
         self.authorId = authorId
+        self.createdAt = createdAt
     }
     
     enum ExplorePostError: Error {
@@ -591,7 +593,7 @@ struct ExploreView: View {
                 .whereField("isRepost", isEqualTo: false)
                 .order(by: "createdAt", descending: true)
                 .order(by: "likeCount", descending: true)
-                .limit(to: 10)
+                .limit(to: 30)
                 .getDocuments { snapshot, _ in
                     Task { @MainActor in
                         guard let documents = snapshot?.documents else { isLoadingTrending = false; return }
@@ -599,7 +601,22 @@ struct ExploreView: View {
                             if let expiresAt = doc.data()["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return false }
                             return true
                         }
-                        trendingPosts = Array(parsePosts(from: filtered).prefix(5))
+                        // The server query only orders by recency (then likeCount as a
+                        // weak tiebreaker), so "trending" was effectively just the newest
+                        // posts. Re-rank the fetched window client-side with a
+                        // Hacker-News-style recency-decayed engagement score so genuinely
+                        // engaged posts surface. No new index required — we keep the same
+                        // query and only re-sort what we already fetched.
+                        let now = Date()
+                        let ranked = parsePosts(from: filtered).sorted { a, b in
+                            func score(_ p: ExplorePost) -> Double {
+                                let engagement = Double(p.likes + p.replies * 2 + p.reposts * 3)
+                                let hours = max(0, now.timeIntervalSince(p.createdAt) / 3600)
+                                return engagement / pow(hours + 2, 1.5)
+                            }
+                            return score(a) > score(b)
+                        }
+                        trendingPosts = Array(ranked.prefix(5))
                         isLoadingTrending = false
                     }
                 }

@@ -523,7 +523,8 @@ struct FeedView: View {
                                                                                                                                                 isWhisperPost: vm.whisperPostIds.contains(post.id),
                                                                                                                                                 isLetterExpanded: vm.expandedLetterIds.contains(post.id),
                                                                                                                                                 onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
-                                                                                                                                                reposterHandle: post.originalHandle != nil ? post.handle : nil
+                                                                                                                                                reposterHandle: post.originalHandle != nil ? post.handle : nil,
+                                                                                                                                                promptText: FeedView.promptText(for: post.promptDate)
                                                                                                                                                                                                                                                                                             )
                                                                                                                                                                                                                                                                                             .id(post.id)
                                                                                                                                                                                                                                                                                             .onAppear {
@@ -822,15 +823,31 @@ struct FeedView: View {
                 time: Self.timeAgoString(from: createdAt),
                 authorId: data["authorId"] as? String ?? "",
                 isShareable: data["isShareable"] as? Bool ?? true,
-                originalHandle: data["originalHandle"] as? String
+                originalHandle: data["originalHandle"] as? String,
+                promptDate: data["promptDate"] as? String
             )
         }
-    
+
     // MARK: - Helpers
-    
+
     static func timeAgoString(from date: Date) -> String {
             ToskaFormatters.timeAgo(from: date)
         }
+
+    /// The daily-prompt TEXT a post was answering, derived from its promptDate
+    /// (yyyy-MM-dd). Prompts are deterministic by day-of-year, so the date alone
+    /// recovers the exact prompt — no need to store the text on every post.
+    /// Returns nil for non-prompt posts.
+    static func promptText(for promptDate: String?) -> String? {
+        guard let promptDate = promptDate else { return nil }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = fmt.date(from: promptDate),
+              !FeedViewModel.dailyPrompts.isEmpty else { return nil }
+        let day = Calendar.current.ordinality(of: .day, in: .year, for: date) ?? 1
+        return FeedViewModel.dailyPrompts[day % FeedViewModel.dailyPrompts.count].0
+    }
 }
 
 // MARK: - Feed Post Row
@@ -861,6 +878,11 @@ struct FeedPostRow: View {
         // FeedView when post.originalHandle is set. Drives the
         // "@handle reposted" provenance row at the top of the cell.
         var reposterHandle: String? = nil
+        // The daily prompt this post answered (FeedView passes
+        // FeedView.promptText(for: post.promptDate)). When set, the card shows
+        // the prompt in plum above the reply, so prompt answers read as
+        // "prompt → reply" across the feed.
+        var promptText: String? = nil
         // Optional leaderboard rank (felt-most page). When set, a subtle
         // serif-italic "01" badge renders at the trailing edge of the handle
         // row. nil everywhere else, so the feed is unaffected.
@@ -929,6 +951,21 @@ struct FeedPostRow: View {
                     .navigationBarHidden(true)
                 } label: {
                   VStack(alignment: .leading, spacing: 0) {
+                // Daily-prompt header — when this post is a response to the day's
+                // prompt, show the prompt itself in plum above the reply so the
+                // card reads "prompt → reply" (the answer in context).
+                if let prompt = promptText, !prompt.isEmpty {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(prompt)
+                            .font(ToskaFont.serifItalic(13))
+                            .lineSpacing(1)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .foregroundColor(ToskaColor.accent)
+                    .padding(.bottom, 8)
+                }
                 // Repost provenance — small "@reposter reposted" line above
                 // the handle row when this post is a repost. Without this,
                 // reposts looked identical to original posts and readers had

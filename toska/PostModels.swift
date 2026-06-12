@@ -21,6 +21,10 @@ struct FeedPost: Identifiable, Equatable {
     // reader can tell at a glance that the visible handle is the
     // reposter, not the original author. nil for non-repost posts.
     var originalHandle: String? = nil
+    // Set (yyyy-MM-dd) when this post was written as a response to that day's
+    // daily prompt. The feed renders such posts with the prompt shown in plum
+    // above the person's reply, so prompt answers read as "prompt → reply".
+    var promptDate: String? = nil
 }
 
 /// Used in ProfileView for selectedPostData, NotificationsView, TopView

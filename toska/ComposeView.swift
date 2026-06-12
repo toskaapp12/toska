@@ -187,7 +187,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: showTagPicker ? "tag.fill" : "tag")
                             .font(.system(size: 16, weight: .light))
-                            .foregroundColor(showTagPicker ? ToskaColor.accent : ToskaColor.text2)
+                            .foregroundColor(showTagPicker ? .white : .white.opacity(0.75))
                     }
                     .accessibilityLabel("Tag")
 
@@ -205,7 +205,7 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .medium))
                             }
                         }
-                        .foregroundColor(isWhisper ? Color.toskaWhisperPink : LateNightTheme.secondaryText)
+                        .foregroundColor(isWhisper ? .white : .white.opacity(0.75))
                     }
                     .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
 
@@ -223,7 +223,7 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .medium))
                             }
                         }
-                        .foregroundColor(expiresAtMidnight ? Color.toskaMidnightPurple : LateNightTheme.secondaryText)
+                        .foregroundColor(expiresAtMidnight ? .white : .white.opacity(0.75))
                     }
                     .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
 
@@ -232,19 +232,19 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(isLetter ? Color.toskaAccentGold : LateNightTheme.secondaryText)
+                            .foregroundColor(isLetter ? .white : .white.opacity(0.75))
                     }
                     .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
 
                     Button { showGifPicker = true } label: {
                         Text("GIF")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(selectedGifUrl != nil ? ToskaColor.accent : ToskaColor.text2)
+                            .foregroundColor(selectedGifUrl != nil ? .white : .white.opacity(0.7))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4)
-                                    .stroke(selectedGifUrl != nil ? ToskaColor.accent : ToskaColor.divider, lineWidth: 1)
+                                    .stroke(selectedGifUrl != nil ? .white : .white.opacity(0.45), lineWidth: 1)
                             )
                     }
                     .accessibilityLabel("Add GIF")
@@ -255,12 +255,12 @@ struct ComposeView: View {
                         HStack(spacing: 6) {
                             ZStack {
                                 Circle()
-                                    .stroke(LateNightTheme.divider, lineWidth: 2)
+                                    .stroke(Color.white.opacity(0.25), lineWidth: 2)
                                     .frame(width: 24, height: 24)
                                 Circle()
                                     .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
                                     .stroke(
-                                        isNearLimit ? Color.toskaErrorRed : ToskaColor.accent,
+                                        isNearLimit ? Color.toskaErrorRed : Color.white,
                                         style: StrokeStyle(lineWidth: 2, lineCap: .round)
                                     )
                                     .frame(width: 24, height: 24)
@@ -269,14 +269,17 @@ struct ComposeView: View {
                             if isNearLimit {
                                 Text("\(charRemaining)")
                                     .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundColor(charRemaining < 0 ? Color.toskaErrorRed : LateNightTheme.secondaryText)
+                                    .foregroundColor(charRemaining < 0 ? Color(hex: "ffd1d1") : .white.opacity(0.85))
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(LateNightTheme.cardBackground)
+                // Plum compose toolbar with white icons (active = full white,
+                // inactive = dimmed) — a branded accent bar between the header and
+                // the editor.
+                .background(ToskaColor.accent)
 
                 // Tag picker expansion now drops DOWN from the toolbar above
                 // (was originally pinned to the bottom toolbar with a

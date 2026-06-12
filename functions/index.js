@@ -174,6 +174,39 @@ async function cleanupMirrorFollowsForUid(uid, maxIterations) {
   return { totalDeleted, capHit: batchCount >= maxIterations };
 }
 
+// Generic paginated batch-delete loop shared by the byte-identical cleanup
+// helpers (notifications, circle messages, reflections, replies, submitted
+// reports). Each of those used to inline the same shape: run a bounded query,
+// batch-delete the page, loop until the page comes back short or we hit the
+// iteration cap. The ONLY thing that differed between them was the query, so
+// the caller passes a `queryFn(pageSize)` that returns the fully-formed
+// Firestore Query INCLUDING its own `.limit(pageSize)`. Letting the caller
+// build the whole query is deliberate: cleanupRepliesForUid MUST attach an
+// `.orderBy("createdAt","desc")` so its collectionGroup query uses the existing
+// composite (authorId+createdAt) index instead of throwing FAILED_PRECONDITION
+// (see that helper's call site for the full rationale) — a generic "where + limit"
+// factory couldn't express that, but a "caller hands back a Query" factory can.
+//
+// Contract preserved exactly: returns { totalDeleted, capHit } where capHit is
+// true iff we exhausted maxIterations (bounded-progress case), so the caller can
+// queue a resume continuation. Default page size 500 matches the helpers folded
+// in here (a Firestore batch caps at 500 writes, one delete per doc).
+async function paginatedBatchDelete(queryFn, maxIterations, pageSize = 500) {
+  let batchCount = 0;
+  let totalDeleted = 0;
+  while (batchCount < maxIterations) {
+    const snap = await queryFn(pageSize).get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    batchCount++;
+    totalDeleted += snap.size;
+    if (snap.size < pageSize) break;
+  }
+  return { totalDeleted, capHit: batchCount >= maxIterations };
+}
+
 // Paginated deletion of reposts of a deleted user's content. Reposts live in
 // the top-level `posts` collection with `originalAuthorId == <deleted uid>`
 // and remain visible on third-party profiles (ProfileView renders them with
@@ -214,22 +247,9 @@ async function cleanupRepostsForUid(uid, maxIterations) {
 // stale handle. Pulled into a helper so resumeUserCleanup can drain the
 // remainder across subsequent runs (same shape as cleanupPostsForUid).
 async function cleanupNotificationsForUid(uid, maxIterations) {
-  let batchCount = 0;
-  let totalDeleted = 0;
-  while (batchCount < maxIterations) {
-    const snap = await db.collectionGroup("notifications")
-      .where("fromUserId", "==", uid)
-      .limit(500)
-      .get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    batchCount++;
-    totalDeleted += snap.size;
-    if (snap.size < 500) break;
-  }
-  return { totalDeleted, capHit: batchCount >= maxIterations };
+  return paginatedBatchDelete((pageSize) => db.collectionGroup("notifications")
+    .where("fromUserId", "==", uid)
+    .limit(pageSize), maxIterations);
 }
 
 // Paginated deletion of feeling-circle messages authored by a deleted
@@ -243,22 +263,9 @@ async function cleanupNotificationsForUid(uid, maxIterations) {
 // conversation doc + messages subcollection deleted when uid is a
 // participant).
 async function cleanupCircleMessagesForUid(uid, maxIterations) {
-  let batchCount = 0;
-  let totalDeleted = 0;
-  while (batchCount < maxIterations) {
-    const snap = await db.collectionGroup("messages")
-      .where("authorId", "==", uid)
-      .limit(500)
-      .get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    batchCount++;
-    totalDeleted += snap.size;
-    if (snap.size < 500) break;
-  }
-  return { totalDeleted, capHit: batchCount >= maxIterations };
+  return paginatedBatchDelete((pageSize) => db.collectionGroup("messages")
+    .where("authorId", "==", uid)
+    .limit(pageSize), maxIterations);
 }
 
 // Paginated deletion of reflections authored by a deleted user on OTHER
@@ -271,22 +278,9 @@ async function cleanupCircleMessagesForUid(uid, maxIterations) {
 // collectionGroup query on `authorId`, paginate, return capHit so
 // resumeUserCleanup can drain across hourly sweeps.
 async function cleanupReflectionsForUid(uid, maxIterations) {
-  let batchCount = 0;
-  let totalDeleted = 0;
-  while (batchCount < maxIterations) {
-    const snap = await db.collectionGroup("reflections")
-      .where("authorId", "==", uid)
-      .limit(500)
-      .get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    batchCount++;
-    totalDeleted += snap.size;
-    if (snap.size < 500) break;
-  }
-  return { totalDeleted, capHit: batchCount >= maxIterations };
+  return paginatedBatchDelete((pageSize) => db.collectionGroup("reflections")
+    .where("authorId", "==", uid)
+    .limit(pageSize), maxIterations);
 }
 
 // Paginated deletion of replies authored by a deleted user under OTHER
@@ -305,32 +299,20 @@ async function cleanupReflectionsForUid(uid, maxIterations) {
 // onReplyDeletedUpdateCount which legitimately decrements the parent
 // post's replyCount — correct: the reply genuinely no longer exists.
 async function cleanupRepliesForUid(uid, maxIterations) {
-  let batchCount = 0;
-  let totalDeleted = 0;
-  while (batchCount < maxIterations) {
-    // #4 (2026-06-11 security re-review): a bare `where(authorId==)` on the
-    // replies collection group needs a SINGLE-FIELD collection-group index on
-    // authorId, which doesn't exist — only the composite (authorId+createdAt)
-    // is defined/deployed. Without the orderBy the query threw FAILED_PRECONDITION
-    // and the cascade stranded a deleted user's replies on OTHER users' posts
-    // forever (GDPR Art. 17 residue + byline-impersonation gap). Adding the
-    // createdAt order makes it use the EXISTING composite index — no new index
-    // to build. Every reply carries createdAt (rules pin it), so none are
-    // excluded by the order.
-    const snap = await db.collectionGroup("replies")
-      .where("authorId", "==", uid)
-      .orderBy("createdAt", "desc")
-      .limit(500)
-      .get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    batchCount++;
-    totalDeleted += snap.size;
-    if (snap.size < 500) break;
-  }
-  return { totalDeleted, capHit: batchCount >= maxIterations };
+  // #4 (2026-06-11 security re-review): a bare `where(authorId==)` on the
+  // replies collection group needs a SINGLE-FIELD collection-group index on
+  // authorId, which doesn't exist — only the composite (authorId+createdAt)
+  // is defined/deployed. Without the orderBy the query threw FAILED_PRECONDITION
+  // and the cascade stranded a deleted user's replies on OTHER users' posts
+  // forever (GDPR Art. 17 residue + byline-impersonation gap). Adding the
+  // createdAt order makes it use the EXISTING composite index — no new index
+  // to build. Every reply carries createdAt (rules pin it), so none are
+  // excluded by the order. The orderBy is part of the query this caller hands
+  // to paginatedBatchDelete, so it MUST stay here and survive any DRY pass.
+  return paginatedBatchDelete((pageSize) => db.collectionGroup("replies")
+    .where("authorId", "==", uid)
+    .orderBy("createdAt", "desc")
+    .limit(pageSize), maxIterations);
 }
 
 // F-2 (2026-06-08 audit): a deleted user's LIKE docs on OTHER users' posts and
@@ -446,23 +428,10 @@ async function cleanupUserConversationsForUid(uid, maxIterations) {
 // deletion); reports they themselves filed are cleaned up so the queue
 // doesn't attribute pending items to a tombstoned uid.
 async function cleanupSubmittedReportsForUid(uid, maxIterations) {
-  let batchCount = 0;
-  let totalDeleted = 0;
-  while (batchCount < maxIterations) {
-    const snap = await db.collection("reports")
-      .where("reportedBy", "==", uid)
-      .where("status", "==", "pending")
-      .limit(500)
-      .get();
-    if (snap.empty) break;
-    const batch = db.batch();
-    snap.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    batchCount++;
-    totalDeleted += snap.size;
-    if (snap.size < 500) break;
-  }
-  return { totalDeleted, capHit: batchCount >= maxIterations };
+  return paginatedBatchDelete((pageSize) => db.collection("reports")
+    .where("reportedBy", "==", uid)
+    .where("status", "==", "pending")
+    .limit(pageSize), maxIterations);
 }
 
 // Randomized delay before a moderation-driven delete, sized to overlap with
@@ -3597,35 +3566,80 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
 // mid-cascade and strand data at an unknown point.
 // ============================================================
 
-exports.resumePostDeletion = onSchedule("every 60 minutes", async () => {
-  const queueSnap = await db.collection("postDeletionQueue").limit(10).get();
+// Generic queue-drainer shared by resumePostDeletion and resumeRepostCleanup —
+// the two schedulers that walk a doc-id-keyed cleanup queue and run a worker
+// returning { capHit, totalDeleted }. Both had the identical drain shape:
+//   - read up to `limit` queue docs,
+//   - per doc, call `worker(docId, cap)`,
+//   - on capHit (bounded-progress): bump lastResumedAt + cumulativeDeleted and
+//     LEAVE the entry in the queue for the next sweep,
+//   - else: log completion and delete the marker,
+//   - on throw: log and leave in queue so the next invocation retries.
+//
+// The only things that varied were the queue collection, the worker + its
+// per-pass cap, the log strings, and whether an empty queue / per-doc start
+// got logged — all of which are now config. Behavior is preserved exactly,
+// including the hourly cadence drain-until-empty semantics and the capHit
+// re-queue contract that prevents stranding GDPR Art. 17 residue.
+//
+// resumePostSubtreeCleanup and resumeUserCleanup are deliberately NOT routed
+// through this: the subtree drainer's worker returns a bare boolean capHit
+// (no totalDeleted, and its update writes only lastResumedAt), and the user
+// drainer reads {uid,type} from doc data, dispatches through a table, and has
+// a separate sub_* continuation branch — materially different shapes.
+async function drainQueue({
+  collectionName,
+  limit,
+  worker,
+  workerCap,
+  schedulerName,
+  emptyLog,
+  startLog,
+  partialLog,
+  completedLog,
+}) {
+  const queueSnap = await db.collection(collectionName).limit(limit).get();
   if (queueSnap.empty) {
-    console.log("postDeletionQueue is empty.");
+    if (emptyLog) console.log(emptyLog);
     return;
   }
 
   for (const queueDoc of queueSnap.docs) {
-    const uid = queueDoc.id;
-    console.log(`Resuming post deletion for user ${uid}`);
+    const id = queueDoc.id;
+    if (startLog) console.log(startLog(id));
     try {
-      const result = await cleanupPostsForUid(uid, 500);
+      const result = await worker(id, workerCap);
       if (result.capHit) {
-        // Still more posts remain. Update marker with incremental progress
-        // and leave the entry in the queue for the next sweep.
+        // Still more remains. Update marker with incremental progress and
+        // leave the entry in the queue for the next sweep.
         await queueDoc.ref.update({
           lastResumedAt: FieldValue.serverTimestamp(),
           cumulativeDeleted: FieldValue.increment(result.totalDeleted),
         });
-        console.log(`Partial cleanup for ${uid}: +${result.totalDeleted} posts, staying in queue.`);
+        console.log(partialLog(id, result.totalDeleted));
       } else {
-        console.log(`Completed post deletion for ${uid}: +${result.totalDeleted} posts this pass.`);
+        console.log(completedLog(id, result.totalDeleted));
         await queueDoc.ref.delete();
       }
     } catch (err) {
-      console.error(`resumePostDeletion failed for ${uid}:`, err.message);
+      console.error(`${schedulerName} failed for ${id}:`, err.message);
       // Leave in queue; next invocation will retry.
     }
   }
+}
+
+exports.resumePostDeletion = onSchedule("every 60 minutes", async () => {
+  await drainQueue({
+    collectionName: "postDeletionQueue",
+    limit: 10,
+    worker: cleanupPostsForUid,
+    workerCap: 500,
+    schedulerName: "resumePostDeletion",
+    emptyLog: "postDeletionQueue is empty.",
+    startLog: (uid) => `Resuming post deletion for user ${uid}`,
+    partialLog: (uid, n) => `Partial cleanup for ${uid}: +${n} posts, staying in queue.`,
+    completedLog: (uid, n) => `Completed post deletion for ${uid}: +${n} posts this pass.`,
+  });
 });
 
 // F-6 (2026-06-08 audit): drains repostCleanupQueue markers written by
@@ -3633,27 +3647,17 @@ exports.resumePostDeletion = onSchedule("every 60 minutes", async () => {
 // trigger invocation could clear. Each pass clears up to 5000 more and only
 // removes the marker once the originalPostId has no remaining reposts.
 exports.resumeRepostCleanup = onSchedule("every 60 minutes", async () => {
-  const queueSnap = await db.collection("repostCleanupQueue").limit(10).get();
-  if (queueSnap.empty) return;
-
-  for (const queueDoc of queueSnap.docs) {
-    const postId = queueDoc.id;
-    try {
-      const result = await clearRepostsOfPost(postId, 50);
-      if (result.capHit) {
-        await queueDoc.ref.update({
-          lastResumedAt: FieldValue.serverTimestamp(),
-          cumulativeDeleted: FieldValue.increment(result.totalDeleted),
-        });
-        console.log(`Partial repost cleanup for ${postId}: +${result.totalDeleted}, staying in queue.`);
-      } else {
-        console.log(`Completed repost cleanup for ${postId}: +${result.totalDeleted} this pass.`);
-        await queueDoc.ref.delete();
-      }
-    } catch (err) {
-      console.error(`resumeRepostCleanup failed for ${postId}:`, err.message);
-    }
-  }
+  await drainQueue({
+    collectionName: "repostCleanupQueue",
+    limit: 10,
+    worker: clearRepostsOfPost,
+    workerCap: 50,
+    schedulerName: "resumeRepostCleanup",
+    emptyLog: null,
+    startLog: null,
+    partialLog: (postId, n) => `Partial repost cleanup for ${postId}: +${n}, staying in queue.`,
+    completedLog: (postId, n) => `Completed repost cleanup for ${postId}: +${n} this pass.`,
+  });
 });
 
 // N-2 (2026-06-09 re-review): drains postSubtreeCleanupQueue markers written by

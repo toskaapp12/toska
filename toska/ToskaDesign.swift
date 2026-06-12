@@ -152,8 +152,8 @@ struct ToskaCardShadow: ViewModifier {
                 .shadow(color: Color.black.opacity(0.6),  radius: 9, x: 0, y: 8)
         } else {
             content
-                .shadow(color: Color(hex: "14130F").opacity(0.035), radius: 1.2, x: 0, y: 1)
-                .shadow(color: Color(hex: "14130F").opacity(0.16),  radius: 8,   x: 0, y: 7)
+                .shadow(color: Color.toskaInkBlack.opacity(0.035), radius: 1.2, x: 0, y: 1)
+                .shadow(color: Color.toskaInkBlack.opacity(0.16),  radius: 8,   x: 0, y: 7)
         }
     }
 }
@@ -166,8 +166,8 @@ struct ToskaFloatingShadow: ViewModifier {
                 .shadow(color: Color.black.opacity(0.55), radius: 18, x: 0, y: 16)
         } else {
             content
-                .shadow(color: Color(hex: "14130F").opacity(0.06), radius: 3,  x: 0, y: 2)
-                .shadow(color: Color(hex: "14130F").opacity(0.28), radius: 18, x: 0, y: 16)
+                .shadow(color: Color.toskaInkBlack.opacity(0.06), radius: 3,  x: 0, y: 2)
+                .shadow(color: Color.toskaInkBlack.opacity(0.28), radius: 18, x: 0, y: 16)
         }
     }
 }

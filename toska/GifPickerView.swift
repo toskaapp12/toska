@@ -86,7 +86,7 @@ struct GifPickerView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
             
-            Rectangle().fill(Color(hex: "dfe1e5")).frame(height: 0.5)
+            Rectangle().fill(Color.toskaDividerHairline).frame(height: 0.5)
             
             // GIF grid
             if isLoading && gifs.isEmpty {
@@ -138,7 +138,7 @@ struct GifPickerView: View {
                                             .clipped()
                                             .transition(.opacity)
                                     case .failure:
-                                        Color(hex: "e4e6ea")
+                                        Color.toskaBorderLight
                                             .frame(height: 120)
                                             .overlay(
                                                 Image(systemName: "photo.badge.exclamationmark")
@@ -166,7 +166,7 @@ struct GifPickerView: View {
                 Spacer()
                 Text("Powered by GIPHY")
                     .font(.system(size: 9))
-                    .foregroundColor(Color(hex: "cccccc"))
+                    .foregroundColor(Color.toskaPlaceholderGray)
                 Spacer()
             }
             .padding(.bottom, 8)

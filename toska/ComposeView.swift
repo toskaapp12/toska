@@ -205,7 +205,7 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .medium))
                             }
                         }
-                        .foregroundColor(isWhisper ? Color(hex: "c47a8a") : LateNightTheme.secondaryText)
+                        .foregroundColor(isWhisper ? Color.toskaWhisperPink : LateNightTheme.secondaryText)
                     }
                     .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
 
@@ -223,7 +223,7 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .medium))
                             }
                         }
-                        .foregroundColor(expiresAtMidnight ? Color(hex: "8b7ec8") : LateNightTheme.secondaryText)
+                        .foregroundColor(expiresAtMidnight ? Color.toskaMidnightPurple : LateNightTheme.secondaryText)
                     }
                     .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
 
@@ -232,7 +232,7 @@ struct ComposeView: View {
                     } label: {
                         Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(isLetter ? Color(hex: "c9a97a") : LateNightTheme.secondaryText)
+                            .foregroundColor(isLetter ? Color.toskaAccentGold : LateNightTheme.secondaryText)
                     }
                     .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
 
@@ -260,7 +260,7 @@ struct ComposeView: View {
                                 Circle()
                                     .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
                                     .stroke(
-                                        isNearLimit ? Color(hex: "c45c5c") : ToskaColor.accent,
+                                        isNearLimit ? Color.toskaErrorRed : ToskaColor.accent,
                                         style: StrokeStyle(lineWidth: 2, lineCap: .round)
                                     )
                                     .frame(width: 24, height: 24)
@@ -269,7 +269,7 @@ struct ComposeView: View {
                             if isNearLimit {
                                 Text("\(charRemaining)")
                                     .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundColor(charRemaining < 0 ? Color(hex: "c45c5c") : LateNightTheme.secondaryText)
+                                    .foregroundColor(charRemaining < 0 ? Color.toskaErrorRed : LateNightTheme.secondaryText)
                             }
                         }
                     }
@@ -430,9 +430,9 @@ struct ComposeView: View {
                                     .font(.system(size: 10, weight: .light, design: .monospaced))
                                     .foregroundColor(
                                         text.utf16.count >= activeCharLimit
-                                            ? Color(hex: "c45c5c")
+                                            ? Color.toskaErrorRed
                                             : (activeCharLimit - text.utf16.count < 100
-                                                ? Color(hex: "c47a8a")
+                                                ? Color.toskaWhisperPink
                                                 : Color.toskaDivider)
                                     )
                                     .monospacedDigit()
@@ -505,13 +505,13 @@ struct ComposeView: View {
                         Button { isLetter = false } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color(hex: "c9a97a").opacity(0.5))
+                                .foregroundColor(Color.toskaAccentGold.opacity(0.5))
                         }
                     }
-                    .foregroundColor(Color(hex: "c9a97a"))
+                    .foregroundColor(Color.toskaAccentGold)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "c9a97a").opacity(0.06))
+                    .background(Color.toskaAccentGold.opacity(0.06))
                 }
 
                 // Whisper mode banner
@@ -525,13 +525,13 @@ struct ComposeView: View {
                         Button { isWhisper = false } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
+                                .foregroundColor(Color.toskaWhisperPink.opacity(0.5))
                         }
                     }
-                    .foregroundColor(Color(hex: "c47a8a"))
+                    .foregroundColor(Color.toskaWhisperPink)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "c47a8a").opacity(0.06))
+                    .background(Color.toskaWhisperPink.opacity(0.06))
                 }
 
                 // Midnight mode banner
@@ -545,13 +545,13 @@ struct ComposeView: View {
                         Button { expiresAtMidnight = false } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
+                                .foregroundColor(Color.toskaMidnightPurple.opacity(0.5))
                         }
                     }
-                    .foregroundColor(Color(hex: "8b7ec8"))
+                    .foregroundColor(Color.toskaMidnightPurple)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "8b7ec8").opacity(0.06))
+                    .background(Color.toskaMidnightPurple.opacity(0.06))
                 }
 
             }
@@ -574,7 +574,7 @@ struct ComposeView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.system(size: 32))
-                        .foregroundColor(Color(hex: "c45c5c"))
+                        .foregroundColor(Color.toskaErrorRed)
 
                     Text("hold on")
                         .font(ToskaFont.serifItalic(18))
@@ -614,7 +614,7 @@ struct ComposeView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "theatermasks")
                         .font(.system(size: 32))
-                        .foregroundColor(Color(hex: "c9a97a"))
+                        .foregroundColor(Color.toskaAccentGold)
 
                     Text("keep it anonymous")
                         .font(ToskaFont.serifItalic(18))

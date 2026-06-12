@@ -214,7 +214,7 @@ struct ExploreView: View {
                                     .padding(.bottom, 8)
                                 }
                                 
-                                Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                                Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
 
                 if hasSearched {
                     // MARK: - Search Results
@@ -239,7 +239,7 @@ struct ExploreView: View {
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         
-                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                        Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         
                         if isSearching {
                             Spacer()
@@ -250,7 +250,7 @@ struct ExploreView: View {
                             VStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .light)).foregroundColor(Color.toskaDivider)
                                 Text("nothing found").font(.system(size: 13)).foregroundColor(Color.toskaTextLight)
-                                                                                                Text("nobody said it here yet. maybe you should.").font(.system(size: 11)).foregroundColor(Color(hex: "cccccc"))
+                                                                                                Text("nobody said it here yet. maybe you should.").font(.system(size: 11)).foregroundColor(Color.toskaPlaceholderGray)
                             }
                             Spacer()
                         } else {
@@ -293,7 +293,7 @@ struct ExploreView: View {
                         }
                         .padding(.horizontal, 16).padding(.vertical, 10)
                         
-                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                        Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         
                         if isLoadingTag {
                             Spacer()
@@ -326,7 +326,7 @@ struct ExploreView: View {
                                         .padding(.vertical, 14)
                                         .background(Color.white)
                                         
-                                        Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                                        Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                                                                             }
                                                                             
                                                                             

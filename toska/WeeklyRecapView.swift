@@ -16,7 +16,7 @@ struct WeeklyRecapView: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "0a0908").ignoresSafeArea()
+            Color.toskaNearBlack.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {
@@ -84,7 +84,7 @@ struct WeeklyRecapView: View {
                                 
                                 Text("\(formatCount(topPostLikes)) felt this")
                                     .font(.system(size: 11))
-                                    .foregroundColor(Color(hex: "c47a8a").opacity(0.7))
+                                    .foregroundColor(Color.toskaWhisperPink.opacity(0.7))
                             }
                             .opacity(isVisible ? 1 : 0)
                             .offset(y: isVisible ? 0 : 15)
@@ -286,7 +286,7 @@ struct WeeklyRecapView: View {
     @MainActor
     func shareRecap() {
         let cardView = ZStack {
-            Color(hex: "0a0908")
+            Color.toskaNearBlack
             VStack(spacing: 16) {
                 Spacer()
                 Text("my week")

@@ -101,7 +101,7 @@ struct ReplyDetailView: View {
                                 Spacer()
                                 Text(replyTime)
                                     .font(.system(size: 10, weight: .light))
-                                    .foregroundColor(Color(hex: "c8c8c8"))
+                                    .foregroundColor(Color.toskaInactiveGray)
                             }
                             .padding(.bottom, 10)
 
@@ -143,7 +143,7 @@ struct ReplyDetailView: View {
                                 Button { toggleLike() } label: {
                                     Image(systemName: isLiked ? "heart.fill" : "heart")
                                         .font(.system(size: 15, weight: isLiked ? .medium : .light))
-                                        .foregroundColor(isLiked ? Color(hex: "c47a8a") : Color.toskaTextLight)
+                                        .foregroundColor(isLiked ? Color.toskaWhisperPink : Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
                                 Button { toggleSave() } label: {
@@ -160,7 +160,7 @@ struct ReplyDetailView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .padding(.vertical, 8)
-                            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+                            Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         }
                         .padding(.horizontal, 18)
                         .padding(.top, 14)
@@ -172,7 +172,7 @@ struct ReplyDetailView: View {
                             LazyVStack(spacing: 0) {
                                 ForEach(0..<3, id: \.self) { _ in
                                     SkeletonReplyRow()
-                                    Rectangle().fill(Color(hex: "e4e6ea").opacity(0.5))
+                                    Rectangle().fill(Color.toskaBorderLight.opacity(0.5))
                                         .frame(height: 0.5).padding(.leading, 18)
                                 }
                             }
@@ -201,7 +201,7 @@ struct ReplyDetailView: View {
                                         onComment: { composerFocused = true }
                                     )
                                     if index < children.count - 1 {
-                                        Rectangle().fill(Color(hex: "e4e6ea").opacity(0.5))
+                                        Rectangle().fill(Color.toskaBorderLight.opacity(0.5))
                                             .frame(height: 0.5).padding(.leading, 18)
                                     }
                                 }
@@ -274,10 +274,10 @@ struct ReplyDetailView: View {
     private var composerBar: some View {
         VStack(spacing: 0) {
             if let err = postError, !err.isEmpty {
-                Text(err).font(.system(size: 11)).foregroundColor(Color(hex: "c45c5c"))
+                Text(err).font(.system(size: 11)).foregroundColor(Color.toskaErrorRed)
                     .padding(.horizontal, 14).padding(.vertical, 6)
             }
-            Rectangle().fill(Color(hex: "e4e6ea")).frame(height: 0.5)
+            Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
             HStack(spacing: 10) {
                 TextField("say what you can't say anywhere else", text: $composerText, axis: .vertical)
                     .font(.system(size: 14))

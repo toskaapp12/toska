@@ -130,7 +130,7 @@ struct NotificationsView: View {
                                 if notifications.count >= 50 {
                                     Text("showing your 50 most recent notifications")
                                         .font(.system(size: 9))
-                                        .foregroundColor(Color(hex: "cccccc"))
+                                        .foregroundColor(Color.toskaPlaceholderGray)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
                                 }
@@ -408,13 +408,13 @@ struct NotificationsView: View {
 
     func iconColor(for type: String) -> Color {
         switch type {
-        case "like": return Color(hex: "c47a8a")
+        case "like": return Color.toskaWhisperPink
         case "reply": return Color.toskaBlue
-        case "follow": return Color(hex: "6ba58e")
-        case "repost": return Color(hex: "5a9e8f")
-        case "save": return Color(hex: "c49a6c")
-        case "milestone": return Color(hex: "c9a97a")
-        default: return Color(hex: "cccccc")
+        case "follow": return Color.toskaFollowGreen
+        case "repost": return Color.toskaMovingOnGreen
+        case "save": return Color.toskaAccentTan
+        case "milestone": return Color.toskaAccentGold
+        default: return Color.toskaPlaceholderGray
         }
     }
 

@@ -758,6 +758,30 @@ extension Color {
     static let toskaTextDark   = Color(hex: "2a2a2a")  // primary dark text
     static let toskaDivider    = Color(hex: "d0d0d0")  // light dividers
     static let toskaTimestamp  = Color(hex: "c0c0c0")  // timestamp gray
+
+    // MARK: Consolidated semantic tokens (color-preserving)
+    //
+    // These promote the most-repeated raw `Color(hex:)` literals to named,
+    // semantic tokens. Each value is byte-identical to the hex it replaces —
+    // these names exist to centralize the palette, NOT to change any color.
+    // Names are inferred from how each hex is used at its call sites.
+    // Lint: scripts/check-raw-colors.sh fails the build if a raw `Color(hex:)`
+    // re-introduces any of these hexes outside this block.
+    static let toskaBorderLight     = Color(hex: "e4e6ea")  // card/field border + stroke fills
+    static let toskaErrorRed        = Color(hex: "c45c5c")  // error / destructive / over-limit
+    static let toskaAccentGold      = Color(hex: "c9a97a")  // warm gold foreground accent
+    static let toskaNearBlack       = Color(hex: "0a0908")  // near-black bg + on-light text
+    static let toskaWhisperPink     = Color(hex: "c47a8a")  // whisper-mode mauve/pink tint
+    static let toskaPlaceholderGray = Color(hex: "cccccc")  // light placeholder / empty-state text
+    static let toskaFollowGreen     = Color(hex: "6ba58e")  // follow action / soft green accent
+    static let toskaAccentTan       = Color(hex: "c49a6c")  // warm tan accent
+    static let toskaMidGray         = Color(hex: "999999")  // mid-gray secondary text
+    static let toskaMidnightPurple  = Color(hex: "8b7ec8")  // midnight / expires-at-midnight purple
+    static let toskaInactiveGray    = Color(hex: "c8c8c8")  // unselected tab / inactive icon
+    static let toskaMovingOnGreen   = Color(hex: "5a9e8f")  // moving-on / repost teal-green
+    static let toskaUnsentBlue      = Color(hex: "7a97b5")  // unsent / steel-blue tag tint
+    static let toskaInkBlack        = Color(hex: "14130f")  // ink black for shadows / light text
+    static let toskaDividerHairline = Color(hex: "dfe1e5")  // hairline divider rule (0.5pt)
 }
 
 // MARK: - Crisis Check-In
@@ -1029,7 +1053,7 @@ struct AgeGateView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "0a0908").ignoresSafeArea()
+            Color.toskaNearBlack.ignoresSafeArea()
 
             if showUnderageMessage {
                 underageOffRamp
@@ -1066,7 +1090,7 @@ struct AgeGateView: View {
                 } label: {
                     Text("i am 17 or older")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color(hex: "0a0908"))
+                        .foregroundColor(Color.toskaNearBlack)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(Color.white)
@@ -1163,7 +1187,7 @@ struct PolicyAcceptanceView: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "0a0908").ignoresSafeArea()
+            Color.toskaNearBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
@@ -1207,7 +1231,7 @@ struct PolicyAcceptanceView: View {
                         } label: {
                             Text("done")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(Color(hex: "0a0908"))
+                                .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(Color.white)
@@ -1236,7 +1260,7 @@ struct PolicyAcceptanceView: View {
                         } label: {
                             Text("i agree and continue")
                                 .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(agreed ? Color(hex: "0a0908") : .white.opacity(0.3))
+                                .foregroundColor(agreed ? Color.toskaNearBlack : .white.opacity(0.3))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(agreed ? Color.white : Color.white.opacity(0.08))
@@ -1412,7 +1436,7 @@ struct ReportSheet: View {
 
     var body: some View {
         ZStack {
-            Color(hex: "0a0908").ignoresSafeArea()
+            Color.toskaNearBlack.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Header
@@ -1496,7 +1520,7 @@ struct ReportSheet: View {
                     } else {
                         Text("submit report")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(selectedReason != nil ? Color(hex: "0a0908") : .white.opacity(0.3))
+                            .foregroundColor(selectedReason != nil ? Color.toskaNearBlack : .white.opacity(0.3))
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -1551,7 +1575,7 @@ struct ReportSheet: View {
             } label: {
                 Text("done")
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(Color(hex: "0a0908"))
+                    .foregroundColor(Color.toskaNearBlack)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
                     .background(Color.white)

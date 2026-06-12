@@ -105,7 +105,7 @@ struct FeedView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "leaf")
                             .font(.system(size: 12, weight: .light))
-                            .foregroundColor(Color(hex: "6ba58e"))
+                            .foregroundColor(Color.toskaFollowGreen)
                         Text("you've been here a while. take a breath if you need.")
                             .font(.system(size: 12, weight: .regular))
                             .foregroundColor(Color.toskaTextDark)
@@ -118,7 +118,7 @@ struct FeedView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(Color(hex: "6ba58e").opacity(0.08))
+                    .background(Color.toskaFollowGreen.opacity(0.08))
                     .cornerRadius(10)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 4)
@@ -369,11 +369,11 @@ struct FeedView: View {
                                                             .font(.system(size: 11, weight: .semibold))
                                                     }
                                                 }
-                                                .foregroundColor(Color(hex: "c45c5c"))
+                                                .foregroundColor(Color.toskaErrorRed)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 8)
                                                 .frame(maxWidth: .infinity)
-                                                .background(Color(hex: "c45c5c").opacity(0.06))
+                                                .background(Color.toskaErrorRed.opacity(0.06))
                                             }
                                 // MARK: - Collapsed feed header
                                 // Hidden while searching (focused or query present)
@@ -408,11 +408,11 @@ struct FeedView: View {
                                                 Text("some posts may be missing — pull to refresh")
                                                     .font(.system(size: 11))
                                             }
-                                            .foregroundColor(Color(hex: "c49a6c"))
+                                            .foregroundColor(Color.toskaAccentTan)
                                             .padding(.horizontal, 16)
                                             .padding(.vertical, 8)
                                             .frame(maxWidth: .infinity)
-                                            .background(Color(hex: "c49a6c").opacity(0.06))
+                                            .background(Color.toskaAccentTan.opacity(0.06))
                                         }
                     
                     
@@ -965,13 +965,13 @@ struct FeedPostRow: View {
                                             if isMidnightPost {
                                                 Image(systemName: "moon.fill")
                                                     .font(.system(size: 9))
-                                                    .foregroundColor(Color(hex: "8b7ec8").opacity(0.5))
+                                                    .foregroundColor(Color.toskaMidnightPurple.opacity(0.5))
                                             }
 
                                             if isWhisperPost {
                                                 Image(systemName: "eye.slash")
                                                     .font(.system(size: 9))
-                                                    .foregroundColor(Color(hex: "c47a8a").opacity(0.5))
+                                                    .foregroundColor(Color.toskaWhisperPink.opacity(0.5))
                                             }
 
                                             // Report/block menu. Hidden on the user's
@@ -1012,7 +1012,7 @@ struct FeedPostRow: View {
                                 Text("letter")
                                     .font(.system(size: 10, weight: .semibold))
                             }
-                            .foregroundColor(Color(hex: "c9a97a"))
+                            .foregroundColor(Color.toskaAccentGold)
                             
                             Text(text)
                                                             .font(ToskaFont.postBody)
@@ -1041,7 +1041,7 @@ struct FeedPostRow: View {
                                     Text("letter")
                                         .font(.system(size: 10, weight: .semibold))
                                 }
-                                .foregroundColor(Color(hex: "c9a97a"))
+                                .foregroundColor(Color.toskaAccentGold)
                             }
                             
                             Text(text)
@@ -1617,7 +1617,7 @@ struct FeedHeaderCard: View {
                                 HStack(spacing: 8) {
                                     Image(systemName: "sparkles")
                                         .font(.system(size: 12))
-                                        .foregroundColor(Color(hex: "c49a6c"))
+                                        .foregroundColor(Color.toskaAccentTan)
                                     Text(vm.dailyMomentLabel)
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(LateNightTheme.handleText)
@@ -1792,12 +1792,12 @@ func tagColor(for tag: String) -> Color {
     switch tag {
     case "longing": return Color(hex: "8B92A6")
     case "anger": return Color(hex: "C0635E")
-    case "regret": return Color(hex: "8B7EC8")
+    case "regret": return Color.toskaMidnightPurple
     case "acceptance": return Color(hex: "5F9E89")
     case "confusion": return Color(hex: "C09A6A")
-    case "unsent": return Color(hex: "7A97B5")
-    case "moving on": return Color(hex: "5A9E8F")
-    case "still love you": return Color(hex: "C47A8A")
+    case "unsent": return Color.toskaUnsentBlue
+    case "moving on": return Color.toskaMovingOnGreen
+    case "still love you": return Color.toskaWhisperPink
     default: return Color(hex: "8B92A6")
     }
 }

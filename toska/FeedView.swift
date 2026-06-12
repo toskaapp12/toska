@@ -67,17 +67,16 @@ struct FeedView: View {
             || (post.tag?.lowercased().contains(q) ?? false)
     }
 
-    var body: some View {
-            VStack(spacing: 0) {
-                    // MARK: - Header
-                    //
-                    // Just the wordmark. The search affordance lives below the
-                    // prompt card now (see InlineSearchBar after FeedHeaderCard
-                    // in the scroll content), so there's no need for a header
-                    // search button. ExploreView is still reachable from the
-                    // empty-feed state ("explore" button) for the rare case
-                    // where someone has no posts in the window AND wants the
-                    // tag chips / trending / "feeling people" experience.
+    // MARK: - Header
+    //
+    // Just the wordmark. The search affordance lives below the
+    // prompt card now (see InlineSearchBar after FeedHeaderCard
+    // in the scroll content), so there's no need for a header
+    // search button. ExploreView is still reachable from the
+    // empty-feed state ("explore" button) for the rare case
+    // where someone has no posts in the window AND wants the
+    // tag chips / trending / "feeling people" experience.
+    @ViewBuilder private var headerSection: some View {
             HStack {
                             Text("toska")
                                 .toskaScreenTitle()
@@ -86,14 +85,16 @@ struct FeedView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                         .padding(.bottom, 8)
+    }
 
-            // MARK: - Take-a-break banner
-            //
-            // Soft, non-modal. Shows after 15 minutes of continuous time on
-            // the feed; tap dismisses. Specific to the mental-health-
-            // adjacent brand: heartbreak doomscrolling is real and the
-            // wedge is that we don't pretend engagement is universally
-            // good. The banner doesn't gate anything — just a gentle ask.
+    // MARK: - Take-a-break banner
+    //
+    // Soft, non-modal. Shows after 15 minutes of continuous time on
+    // the feed; tap dismisses. Specific to the mental-health-
+    // adjacent brand: heartbreak doomscrolling is real and the
+    // wedge is that we don't pretend engagement is universally
+    // good. The banner doesn't gate anything — just a gentle ask.
+    @ViewBuilder private var takeBreakBanner: some View {
             if takeBreakBannerShown {
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -125,12 +126,14 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+    }
 
-            // MARK: - New posts available banner
-            //
-            // Twitter-style affordance — when the snapshot listener delivers
-            // new posts while the user is on the feed, surface a small pill
-            // that scrolls to top + clears on tap. Hidden when count is 0.
+    // MARK: - New posts available banner
+    //
+    // Twitter-style affordance — when the snapshot listener delivers
+    // new posts while the user is on the feed, surface a small pill
+    // that scrolls to top + clears on tap. Hidden when count is 0.
+    @ViewBuilder private var newPostsBanner: some View {
             if newPostsBadgeCount > 0 {
                 Button {
                     NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
@@ -157,11 +160,13 @@ struct FeedView: View {
                 .buttonStyle(.plain)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+    }
 
-            // MARK: - Feed tabs (clean underline style)
-            // Replaced the heavy full-width segmented pill track with light
-            // text tabs + a short underline indicator under the selected one —
-            // quieter and more modern, doesn't compete with the cards below.
+    // MARK: - Feed tabs (clean underline style)
+    // Replaced the heavy full-width segmented pill track with light
+    // text tabs + a short underline indicator under the selected one —
+    // quieter and more modern, doesn't compete with the cards below.
+    @ViewBuilder private var feedTabs: some View {
             HStack(spacing: 0) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
                     let isSel = vm.selectedTab == index
@@ -187,11 +192,145 @@ struct FeedView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 2)
-            
+    }
+
+    // MARK: - Inline search
+    //
+    // Sits directly under the prompt card. Real
+    // TextField; filters vm.currentPosts in-memory
+    // by handle / text / tag. No sheet, no
+    // navigation — results display in place of
+    // the unfiltered feed below. ExploreView
+    // (tag chips, trending, "feeling people")
+    // remains accessible from the empty-feed
+    // state's "explore" button below for the
+    // separate browse-by-tag flow.
+    @ViewBuilder private var inlineSearchBar: some View {
+                                HStack(spacing: 10) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "magnifyingglass")
+                                            .font(.system(size: 15, weight: .regular))
+                                            .foregroundColor(ToskaColor.text3)
+                                        TextField("search", text: $searchText)
+                                            .font(.system(size: 15))
+                                            .foregroundColor(ToskaColor.handle)
+                                            .autocorrectionDisabled()
+                                            .textInputAutocapitalization(.never)
+                                            .focused($searchFocused)
+                                            .submitLabel(.search)
+                                            .accessibilityLabel("Search")
+                                        if !searchText.isEmpty {
+                                            Button {
+                                                searchText = ""
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 15))
+                                                    .foregroundColor(ToskaColor.text3)
+                                            }
+                                            .accessibilityLabel("Clear search")
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    // Clean, minimal search field: a quiet gray
+                                    // fill that recedes into the page — no heavy
+                                    // shadow or border competing with the floating
+                                    // tab bar. Borderless capsule.
+                                    .background(ToskaColor.input)
+                                    .clipShape(Capsule())
+
+                                    // Cancel — appears while searching; clears the
+                                    // query and drops focus, returning to the feed.
+                                    if searchFocused || !searchText.isEmpty {
+                                        Button {
+                                            searchText = ""
+                                            searchFocused = false
+                                        } label: {
+                                            Text("cancel")
+                                                .font(.system(size: 15))
+                                                .foregroundColor(ToskaColor.accent)
+                                        }
+                                        .transition(.opacity)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 12)
+                                .padding(.bottom, 8)
+    }
+
+    // Category pills — appear only while the
+    // search bar is focused. Tapping a pill
+    // fills searchText with the tag name (which
+    // triggers matchesSearch to filter posts on
+    // post.tag), dismisses the keyboard, and
+    // returns the user to the filtered feed.
+    // Hidden as soon as focus leaves the search
+    // bar so the chrome doesn't compete with the
+    // feed in the resting state.
+    @ViewBuilder private var categoryPills: some View {
+                                if searchFocused || !searchText.isEmpty {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 8) {
+                                            // "all" — clears the tag filter. Selected
+                                            // (dark pill) when no tag query is active.
+                                            let allSelected = searchText.isEmpty
+                                            Button {
+                                                searchText = ""
+                                            } label: {
+                                                Text("all")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
+                                                    .padding(.horizontal, 13)
+                                                    .padding(.vertical, 5)
+                                                    .background(allSelected ? ToskaColor.handle : Color.clear)
+                                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
+                                                    .clipShape(Capsule())
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            ForEach(sharedTags, id: \.name) { tag in
+                                                let isSel = searchText == tag.name
+                                                Button {
+                                                    searchText = tag.name
+                                                    searchFocused = false
+                                                } label: {
+                                                    HStack(spacing: 5) {
+                                                        Image(systemName: tag.icon)
+                                                            .font(.system(size: 11))
+                                                        Text(tag.name)
+                                                            .font(.system(size: 13, weight: .medium))
+                                                    }
+                                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 7)
+                                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
+                                                    .clipShape(Capsule())
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                    }
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 12)
+                                    .transition(.opacity)
+                                }
+    }
+
+    var body: some View {
+            VStack(spacing: 0) {
+                    headerSection
+
+                    takeBreakBanner
+
+                    newPostsBanner
+
+                    feedTabs
+
             Rectangle()
                 .fill(LateNightTheme.divider)
                 .frame(height: 0.5)
-            
+
                 GeometryReader { geo in
                             ScrollViewReader { proxy in
                                 ScrollView(showsIndicators: false) {
@@ -243,124 +382,9 @@ struct FeedView: View {
                                                         FeedHeaderCard(vm: vm)
                                                     }
 
-                                // MARK: - Inline search
-                                //
-                                // Sits directly under the prompt card. Real
-                                // TextField; filters vm.currentPosts in-memory
-                                // by handle / text / tag. No sheet, no
-                                // navigation — results display in place of
-                                // the unfiltered feed below. ExploreView
-                                // (tag chips, trending, "feeling people")
-                                // remains accessible from the empty-feed
-                                // state's "explore" button below for the
-                                // separate browse-by-tag flow.
-                                HStack(spacing: 10) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 15, weight: .regular))
-                                            .foregroundColor(ToskaColor.text3)
-                                        TextField("search", text: $searchText)
-                                            .font(.system(size: 15))
-                                            .foregroundColor(ToskaColor.handle)
-                                            .autocorrectionDisabled()
-                                            .textInputAutocapitalization(.never)
-                                            .focused($searchFocused)
-                                            .submitLabel(.search)
-                                            .accessibilityLabel("Search")
-                                        if !searchText.isEmpty {
-                                            Button {
-                                                searchText = ""
-                                            } label: {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .font(.system(size: 15))
-                                                    .foregroundColor(ToskaColor.text3)
-                                            }
-                                            .accessibilityLabel("Clear search")
-                                        }
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 11)
-                                    // Clean, minimal search field: a quiet gray
-                                    // fill that recedes into the page — no heavy
-                                    // shadow or border competing with the floating
-                                    // tab bar. Borderless capsule.
-                                    .background(ToskaColor.input)
-                                    .clipShape(Capsule())
+                                inlineSearchBar
 
-                                    // Cancel — appears while searching; clears the
-                                    // query and drops focus, returning to the feed.
-                                    if searchFocused || !searchText.isEmpty {
-                                        Button {
-                                            searchText = ""
-                                            searchFocused = false
-                                        } label: {
-                                            Text("cancel")
-                                                .font(.system(size: 15))
-                                                .foregroundColor(ToskaColor.accent)
-                                        }
-                                        .transition(.opacity)
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 12)
-                                .padding(.bottom, 8)
-
-                                // Category pills — appear only while the
-                                // search bar is focused. Tapping a pill
-                                // fills searchText with the tag name (which
-                                // triggers matchesSearch to filter posts on
-                                // post.tag), dismisses the keyboard, and
-                                // returns the user to the filtered feed.
-                                // Hidden as soon as focus leaves the search
-                                // bar so the chrome doesn't compete with the
-                                // feed in the resting state.
-                                if searchFocused || !searchText.isEmpty {
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 8) {
-                                            // "all" — clears the tag filter. Selected
-                                            // (dark pill) when no tag query is active.
-                                            let allSelected = searchText.isEmpty
-                                            Button {
-                                                searchText = ""
-                                            } label: {
-                                                Text("all")
-                                                    .font(.system(size: 12, weight: .semibold))
-                                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
-                                                    .padding(.horizontal, 13)
-                                                    .padding(.vertical, 5)
-                                                    .background(allSelected ? ToskaColor.handle : Color.clear)
-                                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
-                                                    .clipShape(Capsule())
-                                            }
-                                            .buttonStyle(.plain)
-
-                                            ForEach(sharedTags, id: \.name) { tag in
-                                                let isSel = searchText == tag.name
-                                                Button {
-                                                    searchText = tag.name
-                                                    searchFocused = false
-                                                } label: {
-                                                    HStack(spacing: 5) {
-                                                        Image(systemName: tag.icon)
-                                                            .font(.system(size: 11))
-                                                        Text(tag.name)
-                                                            .font(.system(size: 13, weight: .medium))
-                                                    }
-                                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 7)
-                                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
-                                                    .clipShape(Capsule())
-                                                }
-                                                .buttonStyle(.plain)
-                                            }
-                                        }
-                                        .padding(.horizontal, 16)
-                                    }
-                                    .padding(.top, 10)
-                                    .padding(.bottom, 12)
-                                    .transition(.opacity)
-                                }
+                                categoryPills
 
                                 if vm.selectedTab == 1 && vm.followingPosts.isEmpty {
                                                         VStack(spacing: 12) {

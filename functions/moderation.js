@@ -153,8 +153,15 @@ const COMMON_TITLE_WORDS = new Set([
 // shape; "Tess salinaro" (lowercase surname) and bare single names still slip
 // — reliably catching those needs NER/ML.
 function looksLikeFullName(text) {
+  // Run the two-capitalized-words shape over the CANONICALIZED text, not the
+  // raw text (F-1, 2026-06-12 security re-review). canonicalize folds math-
+  // alphanumeric / fullwidth letterforms to case-preserved ASCII (𝐒𝐚𝐫𝐚𝐡
+  // 𝐒𝐦𝐢𝐭𝐡 → "Sarah Smith", Ｓａｒａｈ → "Sarah"), which render as legible
+  // Latin names to every reader but never matched the ASCII [A-Z][a-z]+ regex —
+  // a full real name could be published, de-anonymizing the named person.
+  const canon = foldLetterformsKeepCase(text);
   const re = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g;
-  for (const m of text.matchAll(re)) {
+  for (const m of canon.matchAll(re)) {
     const w1 = m[1].toLowerCase();
     const w2 = m[2].toLowerCase();
     if (w1.length < 2 || w2.length < 2) continue;
@@ -207,7 +214,13 @@ const IDENTIFYING_PATTERNS = [
 // IDENTIFYING_PATTERNS above; this catches the very common shortcut
 // syntax `ig: sarahreal` that the keyword list misses because "ig"
 // alone is too generic to substring-match.
-const SOCIAL_SHORTHAND_RE = /\b(ig|sc|fb)\b\s*[:.\-]/i;
+// Social-handle shorthand: "ig:" / "sc." / "fb-" (separator form) OR the
+// natural-language handoff "my ig is sarahreal" / "on ig sarahreal" / "add me on
+// sc x" (F-2, 2026-06-12 — the separator-only form missed "my ig is <handle>",
+// a common Instagram-handle handoff that de-anonymizes). The second alternative
+// requires a following handle-shaped token so plain "follow my ig" with no
+// handle still passes.
+const SOCIAL_SHORTHAND_RE = /\b(ig|sc|fb)\b\s*[:.\-]|\b(?:my|on|add\s+me\s+on|find\s+me\s+on)\s+(ig|sc|fb)\b\s+(?:is\s+)?[a-z0-9._]{3,}/i;
 
 const RELATIONSHIP_PREFIXES = [
   "my ex ", "my friend ", "my bf ", "my gf ",
@@ -356,6 +369,27 @@ function foldMathAlpha(cp) {
     if (cp >= start && cp <= start + 25) return String.fromCharCode(0x61 + (cp - start));
   }
   return null;
+}
+
+// Case-PRESERVING fold of the two letterform-evasion classes that defeat the
+// ASCII [A-Z][a-z] full-name regex: Mathematical Alphanumeric Symbols
+// (U+1D400+) and fullwidth Latin (U+FF21..FF5A). Unlike canonicalize (which
+// lowercases for dictionary lookup), this keeps case so the two-capitalized-
+// words shape still matches "𝐉𝐨𝐡𝐧 𝐒𝐚𝐥𝐢𝐧𝐚𝐫𝐨" → "John Salinaro". F-1.
+function foldLetterformsKeepCase(text) {
+  if (!text) return "";
+  let result = "";
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp >= 0xFF21 && cp <= 0xFF3A) { result += String.fromCodePoint(cp - 0xFEE0); continue; }
+    if (cp >= 0xFF41 && cp <= 0xFF5A) { result += String.fromCodePoint(cp - 0xFEE0); continue; }
+    if (cp >= 0x1D400 && cp <= 0x1D7FF) {
+      const folded = foldMathAlpha(cp);
+      if (folded) { result += folded; continue; }
+    }
+    result += ch;
+  }
+  return result;
 }
 
 function canonicalize(text) {
@@ -670,14 +704,22 @@ function containsNameOrIdentifyingInfo(text) {
     const isFirst = COMMON_NAMES.has(canonWord);
     const isLast = COMMON_LAST_NAMES.has(canonWord) && canonWord.length >= 3;
     if (!isFirst && !isLast) continue;
-    if (!isUpperFirst(word)) continue;
+    // Whether the raw token differs from its canonical form (= obfuscation:
+    // confusables / leet / fullwidth / math-alpha / combining marks).
+    const isEvasion = word.toLowerCase() !== canonWord;
+    // Require an uppercase-first token to count as a name — UNLESS it's an
+    // evasion token (F-1, 2026-06-12). Math-alphanumeric letters carry NO
+    // Unicode case mapping, so isUpperFirst("𝐒𝐦𝐢𝐭𝐡") is false and the token
+    // was skipped here before its evasion was ever evaluated. Evasion tokens
+    // bypass the raw-case gate (their canonical form is the real signal).
+    if (!isUpperFirst(word) && !isEvasion) continue;
     // Sentence-starter exemption applies only to legit-prose tokens.
     // If canonicalize had to fold confusables / fullwidth / accents to
     // reach the name (i.e. the original lowercased token differs from the
     // canonical token), that's evasion and the starter exemption no
     // longer applies — "Mіchael" at the start of a sentence is an attack,
     // not a casual capitalization. Mirror of the Swift Layer 4 fix.
-    const isEvasion = word.toLowerCase() !== canonWord;
+    // (isEvasion computed above, before the raw-case gate.)
     // N-17 (2026-06-11): a PLAIN lone FIRST name is allowed (the dominant FP —
     // "I miss John" is the modal breakup post and identifies no one). An
     // OBFUSCATED first name (confusables / leet / fullwidth / combining-mark =

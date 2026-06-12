@@ -62,6 +62,12 @@ const CORPUS = [
   // …and must NOT over-hold ordinary prose with "at"/"dot"
   ["I was never good at math", "allow"],
   ["look at this dot to dot puzzle", "allow"],
+  // F-1 (2026-06-12): math-alphanumeric "fancy text" names must HOLD on both
+  // layers (they fold to legible Latin names but bypassed the ASCII gates).
+  ["my ex \u{1D412}\u{1D426}\u{1D422}\u{1D42D}\u{1D421}", "hold"], // math-bold "Smith" lone surname
+  // F-2: "ig" handle handoff without a separator must HOLD
+  ["my ig is sarahreal", "hold"],
+  ["follow my dreams", "allow"], // …but a bare "my X" with no handle stays allowed
 ];
 
 // ── Extract the Swift detector + its helpers from FeedView.swift ──

@@ -1129,6 +1129,15 @@ service cloud.firestore {
         && (!('text' in request.resource.data.keys())
             || (request.resource.data.text is string
                 && request.resource.data.text.size() <= 4000))
+        // F-2 (2026-06-12): cap the attacker-controlled reportedHandle/reasonLabel
+        // so an oversized blob can't be pushed into the admin queue (the other
+        // report free-text fields are already size-bounded above).
+        && (!('reportedHandle' in request.resource.data.keys())
+            || (request.resource.data.reportedHandle is string
+                && request.resource.data.reportedHandle.size() <= 40))
+        && (!('reasonLabel' in request.resource.data.keys())
+            || (request.resource.data.reasonLabel is string
+                && request.resource.data.reasonLabel.size() <= 60))
         && request.resource.data.keys().hasOnly([
              'reportedBy', 'reason', 'reasonLabel', 'type', 'status', 'createdAt',
              'postId', 'replyId', 'conversationId',

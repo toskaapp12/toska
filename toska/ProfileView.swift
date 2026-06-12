@@ -55,10 +55,11 @@ struct ProfileView: View {
         ("heart", "heart.fill"),
         ("bookmark", "bookmark.fill"),
         ("bubble.left", "bubble.left.fill"),
+        ("arrow.2.squarepath", "arrow.2.squarepath"),
     ]
     // VoiceOver labels for the icon-only profile tabs, index-aligned with
-    // tabIcons (posts / liked / saved / replies).
-    let tabAccessibilityLabels = ["posts", "liked", "saved", "replies"]
+    // tabIcons (posts / liked / saved / replies / reposts).
+    let tabAccessibilityLabels = ["posts", "liked", "saved", "replies", "reposts"]
     var avatarInitial: String {
         let cleaned = userHandle.replacingOccurrences(of: "anonymous_", with: "")
         return String(cleaned.prefix(1)).uppercased()
@@ -109,7 +110,7 @@ struct ProfileView: View {
                                         // editorial; no follower/stat chrome (the
                                         // anonymity is the point).
                                         VStack(alignment: .leading, spacing: 8) {
-                                            Text("anonymous · here since \(joinedDate)")
+                                            Text("anonymous")
                                                 .font(ToskaFont.eyebrow)
                                                 .textCase(.uppercase)
                                                 .tracking(1.4)
@@ -125,6 +126,43 @@ struct ProfileView: View {
                                                 .foregroundColor(ToskaColor.text2)
                                                 .lineSpacing(3)
                                                 .fixedSize(horizontal: false, vertical: true)
+
+                                            // Joined date (Twitter-style) — calendar + month/year.
+                                            HStack(spacing: 5) {
+                                                Image(systemName: "calendar")
+                                                    .font(.system(size: 11, weight: .medium))
+                                                Text("joined \(joinedDate.lowercased())")
+                                                    .font(.system(size: 12.5, weight: .regular))
+                                            }
+                                            .foregroundColor(ToskaColor.text3)
+                                            .padding(.top, 2)
+
+                                            // Following / followers stats — both tappable to
+                                            // their lists (the user asked for the Twitter-style
+                                            // row). Count bold in the text color, label muted.
+                                            HStack(spacing: 18) {
+                                                NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
+                                                    HStack(spacing: 4) {
+                                                        Text("\(followingCount)")
+                                                            .font(.system(size: 13.5, weight: .bold))
+                                                            .foregroundColor(ToskaColor.text)
+                                                        Text("following")
+                                                            .font(.system(size: 13.5, weight: .regular))
+                                                            .foregroundColor(ToskaColor.text2)
+                                                    }
+                                                }
+                                                NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
+                                                    HStack(spacing: 4) {
+                                                        Text("\(followerCount)")
+                                                            .font(.system(size: 13.5, weight: .bold))
+                                                            .foregroundColor(ToskaColor.text)
+                                                        Text("followers")
+                                                            .font(.system(size: 13.5, weight: .regular))
+                                                            .foregroundColor(ToskaColor.text2)
+                                                    }
+                                                }
+                                            }
+                                            .padding(.top, 4)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, 16)
@@ -161,24 +199,14 @@ struct ProfileView: View {
 
                                         switch selectedTab {
                                                                 case 0:
-                                                                    if myPosts.isEmpty {
+                                                                    let authoredPosts = myPosts.filter { !$0.isRepost }
+                                                                    if authoredPosts.isEmpty {
                                                                         emptyState(icon: "square.and.pencil", title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
                                                                     } else {
                                                                         LazyVStack(spacing: 0) {
-                                                                            ForEach(myPosts) { post in
+                                                                            ForEach(authoredPosts) { post in
                                                                                 Button { openMyPost(post) } label: {
                                                                                     VStack(alignment: .leading, spacing: 0) {
-                                                                                        if post.isRepost {
-                                                                                            HStack(spacing: 4) {
-                                                                                                Image(systemName: "arrow.2.squarepath")
-                                                                                                    .font(.system(size: 9))
-                                                                                                Text("you reposted")
-                                                                                                    .font(.system(size: 10, weight: .medium))
-                                                                                            }
-                                                                                            .foregroundColor(Color.toskaMovingOnGreen)
-                                                                                            .padding(.horizontal, 16)
-                                                                                            .padding(.top, 8)
-                                                                                        }
                                                                                         if post.pendingReview {
                                                                                             PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
                                                                                         }
@@ -187,10 +215,39 @@ struct ProfileView: View {
                                                                                 }
                                                                                 .buttonStyle(.plain)
                                                                             }
+                                                                            // The fetch caps at 50 posts COMBINED (authored +
+                                                                            // reposts), so key the truncation note on the full
+                                                                            // myPosts count, not the filtered authored subset —
+                                                                            // otherwise it never shows for users who repost.
                                                                             if myPosts.count >= 50 {
                                                                                 Text("showing your 50 most recent posts")
                                                                                     .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                case 4:
+                                                                    let repostItems = myPosts.filter { $0.isRepost }
+                                                                    if repostItems.isEmpty {
+                                                                        emptyState(icon: "arrow.2.squarepath", title: "no reposts yet.", subtitle: "when something says it better than you could, repost it.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(repostItems) { post in
+                                                                                Button { openMyPost(post) } label: {
+                                                                                    VStack(alignment: .leading, spacing: 0) {
+                                                                                        HStack(spacing: 4) {
+                                                                                            Image(systemName: "arrow.2.squarepath")
+                                                                                                .font(.system(size: 9))
+                                                                                            Text("you reposted")
+                                                                                                .font(.system(size: 10, weight: .medium))
+                                                                                        }
+                                                                                        .foregroundColor(Color.toskaMovingOnGreen)
+                                                                                        .padding(.horizontal, 16)
+                                                                                        .padding(.top, 8)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
+                                                                                    }
+                                                                                }
+                                                                                .buttonStyle(.plain)
                                                                             }
                                                                         }
                                                                     }

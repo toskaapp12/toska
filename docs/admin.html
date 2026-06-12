@@ -145,7 +145,7 @@
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
         // Web app config (NOT iOS). App Check is registered per-app, so
         // the dashboard needs its own Web appId — using the iOS appId
@@ -721,25 +721,56 @@
 
         async function loadCrisis(container) {
             try {
-                const q = query(
-                    collection(db, "posts"),
-                    where("concerningContent", "==", true),
-                    orderBy("createdAt", "desc"),
-                    limit(50)
-                );
-                const snap = await getDocs(q);
-                // Filter to un-reviewed client-side. A composite index for
-                // (concerningContent ASC, crisisReviewedAt ==null, createdAt
-                // DESC) would let us push this to Firestore, but the
-                // volume here is small enough that filtering 50 docs in
-                // JS is fine.
-                const docs = snap.docs.filter(d => !d.data().crisisReviewedAt);
+                // Unreviewed crisis posts must NEVER hide behind reviewed ones.
+                // crisisReviewedAt is set on review but is ABSENT (not null) on
+                // unreviewed posts, so Firestore can't filter it server-side
+                // without backfilling the field. Previously we fetched a single
+                // limit(50) page newest-first and filtered un-reviewed in JS —
+                // so once >50 concerning posts existed and the 50 newest were
+                // all reviewed, an OLDER unreviewed crisis post (the exact case
+                // that matters most) silently never surfaced.
+                //
+                // Fix: paginate newest-first with startAfter, accumulating
+                // unreviewed posts across pages until we have a full screen
+                // (TARGET) or run out / hit a scan cap. Each page is one
+                // getDocs; the scan cap bounds worst-case reads.
+                const TARGET = 50;          // unreviewed posts to surface
+                const PAGE = 50;            // docs per page
+                const MAX_PAGES = 12;       // scan ceiling (≤600 docs) — bounds reads
+                const docs = [];
+                let cursor = null;
+                let pagesScanned = 0;
+                let moreRemain = false;
+                while (docs.length < TARGET && pagesScanned < MAX_PAGES) {
+                    const parts = [
+                        collection(db, "posts"),
+                        where("concerningContent", "==", true),
+                        orderBy("createdAt", "desc"),
+                    ];
+                    if (cursor) parts.push(startAfter(cursor));
+                    parts.push(limit(PAGE));
+                    const snap = await getDocs(query(...parts));
+                    pagesScanned++;
+                    if (snap.empty) break;
+                    for (const d of snap.docs) {
+                        if (!d.data().crisisReviewedAt) docs.push(d);
+                    }
+                    cursor = snap.docs[snap.docs.length - 1];
+                    if (snap.docs.length < PAGE) break;          // last page
+                    if (pagesScanned >= MAX_PAGES) moreRemain = true; // cap, not exhaustion
+                }
                 if (docs.length === 0) {
                     emptyState(container, "no unreviewed crisis posts", "everything flagged has been reviewed");
                     return;
                 }
                 container.replaceChildren();
                 container.appendChild(queueHeading("posts with concerning content"));
+                if (moreRemain) {
+                    const note = el("div", "card");
+                    note.style.borderColor = "#c45c5c";
+                    note.textContent = `showing ${docs.length} oldest-reachable unreviewed posts (scan cap hit — clear some and reload to reveal more).`;
+                    container.appendChild(note);
+                }
                 docs.forEach(d => {
                     const p = d.data();
                     const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";

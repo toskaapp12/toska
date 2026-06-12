@@ -300,8 +300,18 @@ async function cleanupRepliesForUid(uid, maxIterations) {
   let batchCount = 0;
   let totalDeleted = 0;
   while (batchCount < maxIterations) {
+    // #4 (2026-06-11 security re-review): a bare `where(authorId==)` on the
+    // replies collection group needs a SINGLE-FIELD collection-group index on
+    // authorId, which doesn't exist — only the composite (authorId+createdAt)
+    // is defined/deployed. Without the orderBy the query threw FAILED_PRECONDITION
+    // and the cascade stranded a deleted user's replies on OTHER users' posts
+    // forever (GDPR Art. 17 residue + byline-impersonation gap). Adding the
+    // createdAt order makes it use the EXISTING composite index — no new index
+    // to build. Every reply carries createdAt (rules pin it), so none are
+    // excluded by the order.
     const snap = await db.collectionGroup("replies")
       .where("authorId", "==", uid)
+      .orderBy("createdAt", "desc")
       .limit(500)
       .get();
     if (snap.empty) break;
@@ -2605,6 +2615,12 @@ const MOD_CRISIS_SOFT = [
   // shame/laughter); "voy a matarme" → also "matarme a trabajar" (work myself
   // to death); "mejor muerto/muerta" → can describe a 3rd party/character.
   "envie de mourir", "voy a matarme", "mejor muerto", "mejor muerta",
+  // #5 (2026-06-11 crisis red-team): real soft-tier disclosures that slipped
+  // through entirely (no hold, no check-in). Added to the soft tier — held +
+  // gentle check-in, never paged (over-hold is the safe direction here).
+  "point of living", "better off if i was gone", "better off if i wasn't",
+  "everyone would be better off if i", "not waking up", "wish i wouldn't wake up",
+  "thinking about not waking", "what's the point anymore", "whats the point anymore",
 ];
 
 // Derived so MOD_EXPLICIT_CRISIS is, by construction, a subset of

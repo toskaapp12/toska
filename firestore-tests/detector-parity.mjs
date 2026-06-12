@@ -65,7 +65,7 @@ const CORPUS = [
 ];
 
 // ── Extract the Swift detector + its helpers from FeedView.swift ──
-const swiftSrc = readFileSync(join(import.meta.dirname, "../toska/FeedView.swift"), "utf8").split("\n");
+const swiftSrc = readFileSync(join(import.meta.dirname, "../toska/ContentModeration.swift"), "utf8").split("\n");
 const startIdx = swiftSrc.findIndex((l) => l.startsWith("private let nameConfusableMap"));
 const fnIdx = swiftSrc.findIndex((l) => l.startsWith("func containsNameOrIdentifyingInfo"));
 if (startIdx < 0 || fnIdx < 0) { console.error("could not locate Swift detector"); process.exit(2); }
@@ -115,6 +115,6 @@ if (mismatches === 0) {
   console.log(`✓ detector parity: ${CORPUS.length}/${CORPUS.length} cases — client and server agree and match expected`);
   process.exit(0);
 } else {
-  console.error(`\n${mismatches} parity mismatch(es) — the Swift and JS detectors have drifted. Re-sync FeedView.swift and moderation.js.`);
+  console.error(`\n${mismatches} parity mismatch(es) — the Swift and JS detectors have drifted. Re-sync ContentModeration.swift and moderation.js.`);
   process.exit(1);
 }

@@ -206,6 +206,21 @@ private func foldMathAlpha(_ value: UInt32) -> Unicode.Scalar? {
     return nil
 }
 
+// Case-PRESERVING fold of math-alphanumeric + fullwidth letterforms (F-1).
+// Mirror of foldLetterformsKeepCase in functions/moderation.js — keeps case so
+// the two-capitalized-words full-name shape still matches a folded name.
+private func foldLetterformsKeepCase(_ text: String) -> String {
+    var result = ""
+    for scalar in text.unicodeScalars {
+        let v = scalar.value
+        if v >= 0xFF21 && v <= 0xFF3A, let s = Unicode.Scalar(v - 0xFEE0) { result.unicodeScalars.append(s); continue }
+        if v >= 0xFF41 && v <= 0xFF5A, let s = Unicode.Scalar(v - 0xFEE0) { result.unicodeScalars.append(s); continue }
+        if v >= 0x1D400 && v <= 0x1D7FF, let s = foldMathAlpha(v) { result.unicodeScalars.append(s); continue }
+        result.unicodeScalars.append(scalar)
+    }
+    return result
+}
+
 /// Strip-set: invisible separators + bidi controls that fragment tokens or
 /// reverse visual order without changing the codepoint sequence the
 /// detector sees. Removed BEFORE NFD decompose so e.g. "Sa​rah" (with a
@@ -431,7 +446,7 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     // Two-letter social-platform shorthand (ig:/sc:/fb: with optional space).
     // Word-boundary anchored so "dig: deeper", "fab.", "abs-" don't flag.
     // Mirror of SOCIAL_SHORTHAND_RE in functions/moderation.js.
-    if text.range(of: "\\b(ig|sc|fb)\\b\\s*[:.\\-]", options: [.regularExpression, .caseInsensitive]) != nil {
+    if text.range(of: "\\b(ig|sc|fb)\\b\\s*[:.\\-]|\\b(?:my|on|add\\s+me\\s+on|find\\s+me\\s+on)\\s+(ig|sc|fb)\\b\\s+(?:is\\s+)?[a-z0-9._]{3,}", options: [.regularExpression, .caseInsensitive]) != nil {
         return true
     }
 
@@ -558,7 +573,13 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "center", "centre", "hall", "theater", "theatre", "stadium", "arena",
         "church", "temple", "castle", "palace", "diamond", "crystal", "rose", "stone",
     ]
-    for match in text.matches(of: /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/) {
+    // F-1 (2026-06-12): match the two-cap-words shape over the CANONICALIZED
+    // text, not the raw text — canonicalize folds math-alphanumeric / fullwidth
+    // letterforms to case-preserved ASCII ("𝐒𝐚𝐫𝐚𝐡 𝐒𝐦𝐢𝐭𝐡" → "Sarah Smith"),
+    // which read as legible names but never matched the ASCII regex. Mirror of
+    // moderation.js.
+    let fullNameSource = foldLetterformsKeepCase(text)
+    for match in fullNameSource.matches(of: /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/) {
         let w1 = String(match.1).lowercased()
         let w2 = String(match.2).lowercased()
         if w1.count < 2 || w2.count < 2 { continue }
@@ -706,14 +727,23 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         let isFirstName = commonNames.contains(canonWord)
         let isLastName = commonLastNames.contains(canonWord) && canonWord.count >= 3
         if !isFirstName && !isLastName { continue }
-        guard let firstChar = word.first, firstChar.isUppercase else { continue }
+        // F-1 (2026-06-12): obfuscation = the raw token differs from its canonical
+        // form. Computed BEFORE the uppercase gate because math-alphanumeric
+        // letters ("𝐒𝐦𝐢𝐭𝐡") carry no Unicode case, so firstChar.isUppercase is
+        // false and the token was skipped before its evasion was evaluated.
+        let isEvasion = word.lowercased() != canonWord
+        // Require an uppercase-first token to count as a name — UNLESS it's an
+        // evasion token (its canonical form is the real signal). Mirror of
+        // moderation.js.
+        if let firstChar = word.first {
+            if !firstChar.isUppercase && !isEvasion { continue }
+        } else { continue }
         // Sentence-starter exemption applies only to legit-prose tokens.
         // If canonicalize had to fold confusables / fullwidth / accents to
         // reach the name (i.e. the original lowercased token differs from
         // the canonical token), that's evidence of deliberate evasion and
         // the sentence-start exemption no longer applies — "Mіchael" at the
         // start of a sentence is an attack, not a casual capitalization.
-        let isEvasion = word.lowercased() != canonWord
         // N-17 (2026-06-11): a PLAIN lone FIRST name is allowed (the dominant FP
         // — "I miss John"); an OBFUSCATED first name (confusables/leet/fullwidth
         // = isEvasion) or any LAST name is still flagged. Mirror of moderation.js.

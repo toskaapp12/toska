@@ -3672,7 +3672,12 @@ exports.reconcileMyCounts = onRequest(
     // but UserDefaults is wipeable by reinstall and the value is not
     // server-trusted. 6 reconciles per day per uid is generous for legitimate
     // multi-device use while still bounding a tampered build's blast radius.
-    const allowed = await checkRateLimit(uid, "reconcileMyCounts", 6, 86400);
+    // failClosed=true (2026-06-12 security re-review): this runs an Admin-SDK
+    // aggregation transaction (2 count() reads + a write) per call. A fail-OPEN
+    // limiter let a tampered client storm those during a Firestore-degradation
+    // window (cost/DoS amplifier). Deny rather than amplify if the limiter
+    // itself can't be checked.
+    const allowed = await checkRateLimit(uid, "reconcileMyCounts", 6, 86400, true);
     if (!allowed) {
       res.status(429).json({ error: "rate limit exceeded" });
       return;

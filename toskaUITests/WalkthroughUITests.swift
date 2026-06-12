@@ -89,6 +89,31 @@ final class WalkthroughUITests: XCTestCase {
         try XCTSkipUnless(waitFor(feedView, 20), "Feed not visible — not logged in?", file: file, line: line)
     }
 
+    // MARK: settings snap — navigate to settings and screenshot (no assertions)
+    func test09b_settingsSnap() throws {
+        try requireFeed()
+        app.buttons["Profile"].tap()
+        sleep(2)
+        let gear = app.buttons["settings"]
+        guard waitFor(gear, 8) else { snap("settings-no-gear"); return }
+        forceTap(gear)
+        sleep(2)
+        snap("settings-modern-top")
+        app.swipeUp(); sleep(1)
+        snap("settings-modern-mid")
+    }
+
+    // MARK: glass demo — scroll so content sits behind the frosted bars
+    func test04b_glassScrollShot() throws {
+        try requireFeed()
+        // scroll the feed up so posts pass behind the floating glass tab bar + search
+        app.swipeUp()
+        sleep(1)
+        app.swipeUp()
+        sleep(1)
+        snap("glass-scrolled")
+    }
+
     // MARK: 00 — diagnostic probe: what does XCUITest actually see at launch?
 
     func test00_probe() throws {

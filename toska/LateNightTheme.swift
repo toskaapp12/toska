@@ -109,12 +109,15 @@ struct LateNightTheme {
         LateNightThemeManager.shared.isLateNight
     }
 
-    // Backgrounds
-    static var background: Color      { isLateNight ? Color(hex: "0A0B0D") : Color(hex: "EEEFF1") }
-    static var bg2: Color             { isLateNight ? Color(hex: "08090A") : Color(hex: "E7E8EB") }
-    static var cardBackground: Color  { isLateNight ? Color(hex: "141517") : Color(hex: "FFFFFF") }
-    static var card2: Color           { isLateNight ? Color(hex: "1C1E21") : Color(hex: "F6F7F8") }
-    static var inputBackground: Color { isLateNight ? Color(hex: "1B1D1F") : Color(hex: "E9EBEE") }
+    // Backgrounds. Late-night carries a faint VIOLET cast (2026 brand pass):
+    // after dark the whole app drifts toward dusk-purple, reinforcing the
+    // "midnight / toska" identity. Daytime stays clean neutral so reading is
+    // crisp; the purple lives in the accent + the night theme.
+    static var background: Color      { isLateNight ? Color(hex: "0B0A10") : Color(hex: "EEEFF1") }
+    static var bg2: Color             { isLateNight ? Color(hex: "08070C") : Color(hex: "E7E8EB") }
+    static var cardBackground: Color  { isLateNight ? Color(hex: "16141C") : Color(hex: "FFFFFF") }
+    static var card2: Color           { isLateNight ? Color(hex: "1E1B27") : Color(hex: "F6F7F8") }
+    static var inputBackground: Color { isLateNight ? Color(hex: "1D1A25") : Color(hex: "E9EBEE") }
 
     // Text
     static var primaryText: Color   { isLateNight ? Color(hex: "E6E7EA") : Color.toskaInkBlack }
@@ -125,8 +128,13 @@ struct LateNightTheme {
     // Dividers
     static var divider: Color { isLateNight ? Color(hex: "222427") : Color(hex: "E2E4E8") }
 
-    // Accent — theme-aware muted blue (handles, primary buttons, active states)
-    static var accent: Color { isLateNight ? Color(hex: "9AA1B2") : Color(hex: "828AA0") }
+    // Accent — the app's signature interactive color. 2026 brand pass: shifted
+    // from a cool blue-gray to a DUSKY PLUM. "toska" is melancholic, nocturnal
+    // longing — purple (twilight/bruise/midnight) is truer to that than the old
+    // neutral blue, and more distinctive. Kept muted/grown-up, not pastel. This
+    // single token drives the compose +, the active tab underline, selected
+    // states, toggles, and links, so the whole app wears the plum from here.
+    static var accent: Color { isLateNight ? Color(hex: "9387C0") : Color(hex: "7E6FA6") }
 
     // Timestamp / meta tertiary, badge, and scrim
     static var timeText: Color { isLateNight ? Color(hex: "4E5157") : Color(hex: "B7BAC1") }

@@ -180,7 +180,7 @@ struct FeedView: View {
                                 .font(.system(size: 14, weight: isSel ? .semibold : .regular))
                                 .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
                             Capsule()
-                                .fill(isSel ? ToskaColor.text : Color.clear)
+                                .fill(isSel ? ToskaColor.accent : Color.clear)
                                 .frame(width: 22, height: 2)
                         }
                         .frame(maxWidth: .infinity)
@@ -235,9 +235,10 @@ struct FeedView: View {
                                     // Clean, minimal search field: a quiet gray
                                     // fill that recedes into the page — no heavy
                                     // shadow or border competing with the floating
-                                    // tab bar. Borderless capsule.
-                                    .background(ToskaColor.input)
-                                    .clipShape(Capsule())
+                                    // tab bar. MODERNIZED (2026 / iOS 26): a
+                                    // translucent glass capsule instead of a flat
+                                    // fill, matching the floating tab bar's material.
+                                    .toskaGlass(in: Capsule(), frosted: true)
 
                                     // Cancel — appears while searching; clears the
                                     // query and drops focus, returning to the feed.
@@ -348,12 +349,12 @@ struct FeedView: View {
                             // wasted prefetch.
                                     VStack(spacing: 0) {
                                                                                 Color.clear.frame(height: 0).id("feedTop")
-                                ToskaRefreshHeader(
-                                                                                                    isRefreshing: vm.isRefreshing,
-                                                                                                    triggerProgress: CGFloat(min(Double(vm.dragOffset) / 80.0, 1.0))
-                                                                                                )
-                                                                                                .frame(height: vm.isRefreshing ? 60 : max(0, CGFloat(vm.dragOffset) - 10))
-                                                                                                .clipped()
+                                // Pull-to-refresh is handled entirely by the native
+                                // .refreshable below. The old custom ToskaRefreshHeader
+                                // was driven by vm.dragOffset/isRefreshing — both now
+                                // dead (always 0/false since the custom drag gesture
+                                // was removed), so it rendered a second, out-of-sync
+                                // spinner box on refresh. Removed (2026 polish).
                                             if let error = vm.fetchError {
                                                 HStack(spacing: 6) {
                                                     Image(systemName: "exclamationmark.circle")
@@ -620,8 +621,21 @@ struct FeedView: View {
                                                         // posts + header content, matching the old behavior.
                                                         .refreshable {
                                                             HapticManager.play(.tabSwitch)
+                                                            let start = Date()
                                                             vm.refreshAll()
-                                                            try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                                            // Hold the native spinner until the posts query actually
+                                                            // finishes (tracked by isFetchingPosts) instead of a blind
+                                                            // 1.2s timer — that timer left the spinner out of sync with
+                                                            // the content reflow, which is what felt glitchy. Bounded by
+                                                            // a 0.5s floor (no flash on a cached refresh) and a 5s
+                                                            // ceiling (can't hang if a fetch stalls).
+                                                            while vm.isFetchingPosts && Date().timeIntervalSince(start) < 5 {
+                                                                try? await Task.sleep(nanoseconds: 80_000_000)
+                                                            }
+                                                            let elapsed = Date().timeIntervalSince(start)
+                                                            if elapsed < 0.5 {
+                                                                try? await Task.sleep(nanoseconds: UInt64((0.5 - elapsed) * 1_000_000_000))
+                                                            }
                                                         }
                                                 .frame(width: geo.size.width, height: geo.size.height)
                                                 }
@@ -1076,7 +1090,10 @@ struct FeedPostRow: View {
                                             .padding(.vertical, 5)
                                             .padding(.leading, 9)
                                             .padding(.trailing, 11)
-                                            .background(tagColor(for: tag).opacity(0.16))
+                                            .background(tagColor(for: tag).opacity(0.14))
+                                            .overlay(
+                                                Capsule().stroke(tagColor(for: tag).opacity(0.30), lineWidth: 0.75)
+                                            )
                                             .clipShape(Capsule())
                                             .padding(.bottom, 10)
                                         }
@@ -1749,14 +1766,15 @@ struct TagItem {
 }
 
 let sharedTags: [TagItem] = [
-    TagItem(name: "longing", colorHex: "8B92A6", icon: "moon.stars"),
-    TagItem(name: "anger", colorHex: "C0635E", icon: "flame"),
-    TagItem(name: "regret", colorHex: "8B7EC8", icon: "arrow.uturn.backward"),
-    TagItem(name: "acceptance", colorHex: "5F9E89", icon: "leaf"),
-    TagItem(name: "confusion", colorHex: "C09A6A", icon: "questionmark.circle"),
-    TagItem(name: "unsent", colorHex: "7a97b5", icon: "envelope"),
-    TagItem(name: "moving on", colorHex: "5a9e8f", icon: "arrow.right.circle"),
-    TagItem(name: "still love you", colorHex: "c47a8a", icon: "heart"),
+    TagItem(name: "longing", colorHex: "6E7BA0", icon: "moon.stars"),
+    TagItem(name: "numb", colorHex: "7C8A93", icon: "circle.dotted"),
+    TagItem(name: "anger", colorHex: "BC554F", icon: "flame"),
+    TagItem(name: "regret", colorHex: "7E6FC0", icon: "arrow.uturn.backward"),
+    TagItem(name: "acceptance", colorHex: "4E9B82", icon: "leaf"),
+    TagItem(name: "confusion", colorHex: "BE8E50", icon: "questionmark.circle"),
+    TagItem(name: "unsent", colorHex: "6B8AAE", icon: "envelope"),
+    TagItem(name: "moving on", colorHex: "4E9B88", icon: "arrow.right.circle"),
+    TagItem(name: "still love you", colorHex: "C56F82", icon: "heart"),
 ]
 
 // MARK: - Shared Helpers
@@ -1789,16 +1807,23 @@ func timeOfDayLabel() -> String {
 // MARK: - Tag Color
 
 func tagColor(for tag: String) -> Color {
+    // 2026 de-plain pass: the emotion colors were so desaturated (and rendered
+    // at 16% opacity) that every tag washed out to the same gray — the feed read
+    // as colorless. These are modestly deepened so each emotion reads as a real,
+    // distinct hue while staying dusty/editorial, not neon. "numb" was missing
+    // from the palette entirely (fell back to gray); it now has its own cool
+    // slate. Kept in sync with sharedTags below.
     switch tag {
-    case "longing": return Color(hex: "8B92A6")
-    case "anger": return Color(hex: "C0635E")
-    case "regret": return Color.toskaMidnightPurple
-    case "acceptance": return Color(hex: "5F9E89")
-    case "confusion": return Color(hex: "C09A6A")
-    case "unsent": return Color.toskaUnsentBlue
-    case "moving on": return Color.toskaMovingOnGreen
-    case "still love you": return Color.toskaWhisperPink
-    default: return Color(hex: "8B92A6")
+    case "longing": return Color(hex: "6E7BA0")
+    case "numb": return Color(hex: "7C8A93")
+    case "anger": return Color(hex: "BC554F")
+    case "regret": return Color(hex: "7E6FC0")
+    case "acceptance": return Color(hex: "4E9B82")
+    case "confusion": return Color(hex: "BE8E50")
+    case "unsent": return Color(hex: "6B8AAE")
+    case "moving on": return Color(hex: "4E9B88")
+    case "still love you": return Color(hex: "C56F82")
+    default: return Color(hex: "7C8A93")
     }
 }
 

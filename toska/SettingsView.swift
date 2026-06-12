@@ -85,21 +85,21 @@ struct SettingsView: View {
                         settingsGroup {
                             groupHeader("privacy")
                             VStack(spacing: 0) {
-                                toggleRow("allow sharing", subtitle: "let people share your words", isOn: $settings.allowSharing)
-                                Divider().padding(.leading, 14)
-                                toggleRow("show follower count", subtitle: "let others see how many people follow you", isOn: $settings.showFollowerCount)
-                                Divider().padding(.leading, 14)
-                                toggleRow("share anonymous usage data", subtitle: "helps us fix bugs and improve the app. never includes what you wrote.", isOn: $shareAnonymousUsage)
-                                Divider().padding(.leading, 14)
-                                actionRow("view content policy") { showContentPolicy = true }
-                                Divider().padding(.leading, 14)
-                                actionRow("privacy policy") {
+                                toggleRow("allow sharing", subtitle: "let people share your words", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
+                                Divider().padding(.leading, 52)
+                                toggleRow("show follower count", subtitle: "let others see how many people follow you", icon: "person.2.fill", iconColor: Color.toskaBlue, isOn: $settings.showFollowerCount)
+                                Divider().padding(.leading, 52)
+                                toggleRow("share anonymous usage data", subtitle: "helps us fix bugs and improve the app. never includes what you wrote.", icon: "chart.bar.fill", iconColor: Color.toskaMidGray, isOn: $shareAnonymousUsage)
+                                Divider().padding(.leading, 52)
+                                actionRow("view content policy", icon: "doc.text.fill", iconColor: Color.toskaMidGray) { showContentPolicy = true }
+                                Divider().padding(.leading, 52)
+                                actionRow("privacy policy", icon: "hand.raised.fill", iconColor: Color.toskaBlue) {
                                     if let url = URL(string: "https://www.toskaapp.com/privacy") {
                                         UIApplication.shared.open(url)
                                     }
                                 }
-                                Divider().padding(.leading, 14)
-                                actionRow("terms of service") {
+                                Divider().padding(.leading, 52)
+                                actionRow("terms of service", icon: "doc.plaintext.fill", iconColor: Color.toskaMidGray) {
                                     if let url = URL(string: "https://www.toskaapp.com/terms") {
                                         UIApplication.shared.open(url)
                                     }
@@ -113,19 +113,19 @@ struct SettingsView: View {
                         settingsGroup {
                             groupHeader("notifications")
                             VStack(spacing: 0) {
-                                toggleRow("push notifications", subtitle: "know when someone feels what you said", isOn: $settings.pushEnabled)
+                                toggleRow("push notifications", subtitle: "know when someone feels what you said", icon: "bell.badge.fill", iconColor: Color.toskaErrorRed, isOn: $settings.pushEnabled)
                                 if settings.pushEnabled {
-                                    Divider().padding(.leading, 14)
+                                    Divider().padding(.leading, 52)
                                     miniToggle("likes", isOn: $settings.notifyLikes)
-                                    Divider().padding(.leading, 28)
+                                    Divider().padding(.leading, 52)
                                     miniToggle("replies", isOn: $settings.notifyReplies)
-                                    Divider().padding(.leading, 28)
+                                    Divider().padding(.leading, 52)
                                     miniToggle("reposts", isOn: $settings.notifyReposts)
-                                    Divider().padding(.leading, 28)
+                                    Divider().padding(.leading, 52)
                                     miniToggle("saves", isOn: $settings.notifySaves)
-                                    Divider().padding(.leading, 28)
+                                    Divider().padding(.leading, 52)
                                     miniToggle("new followers", isOn: $settings.notifyFollows)
-                                    Divider().padding(.leading, 28)
+                                    Divider().padding(.leading, 52)
                                     miniToggle("milestones", isOn: $settings.notifyMilestones)
                                 }
                             }
@@ -137,10 +137,11 @@ struct SettingsView: View {
                         settingsGroup {
                             groupHeader("content")
                             VStack(spacing: 0) {
-                                toggleRow("gentle check-in", subtitle: "we'll check in on softer signals. crisis language always shows resources.", isOn: $settings.gentleCheckIn)
-                                Divider().padding(.leading, 14)
+                                toggleRow("gentle check-in", subtitle: "we'll check in on softer signals. crisis language always shows resources.", icon: "heart.text.square.fill", iconColor: Color.toskaWhisperPink, isOn: $settings.gentleCheckIn)
+                                Divider().padding(.leading, 52)
                                 NavigationLink(destination: DraftsView()) {
-                                    HStack(alignment: .top) {
+                                    HStack(alignment: .top, spacing: 11) {
+                                        settingsIcon("square.and.pencil", Color.toskaAccentGold)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text("drafts")
                                                 .font(.system(size: 15, weight: .medium))
@@ -157,9 +158,10 @@ struct SettingsView: View {
                                     .padding(.vertical, 14)
                                     .padding(.horizontal, 14)
                                 }
-                                Divider().padding(.leading, 14)
+                                Divider().padding(.leading, 52)
                                 NavigationLink(destination: WeeklyRecapView().navigationBarHidden(true)) {
-                                    HStack(alignment: .top) {
+                                    HStack(alignment: .top, spacing: 11) {
+                                        settingsIcon("calendar", Color.toskaAccentTan)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text("your week")
                                                 .font(.system(size: 15, weight: .medium))
@@ -176,9 +178,10 @@ struct SettingsView: View {
                                     .padding(.vertical, 14)
                                     .padding(.horizontal, 14)
                                 }
-                                Divider().padding(.leading, 14)
+                                Divider().padding(.leading, 52)
                                 NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
-                                    HStack {
+                                    HStack(spacing: 11) {
+                                        settingsIcon("person.2.fill", Color.toskaBlue)
                                         Text("followers")
                                             .font(.system(size: 15, weight: .medium))
                                             .foregroundColor(ToskaColor.text)
@@ -190,9 +193,10 @@ struct SettingsView: View {
                                     .padding(.vertical, 14)
                                     .padding(.horizontal, 14)
                                 }
-                                Divider().padding(.leading, 14)
+                                Divider().padding(.leading, 52)
                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
-                                    HStack {
+                                    HStack(spacing: 11) {
+                                        settingsIcon("person.fill.checkmark", Color.toskaFollowGreen)
                                         Text("following")
                                             .font(.system(size: 15, weight: .medium))
                                             .foregroundColor(ToskaColor.text)
@@ -204,9 +208,10 @@ struct SettingsView: View {
                                     .padding(.vertical, 14)
                                     .padding(.horizontal, 14)
                                 }
-                                Divider().padding(.leading, 14)
+                                Divider().padding(.leading, 52)
                                 NavigationLink(destination: BlockedUsersListView()) {
-                                    HStack {
+                                    HStack(spacing: 11) {
+                                        settingsIcon("hand.raised.slash.fill", Color.toskaMidGray)
                                         Text("blocked users")
                                             .font(.system(size: 15, weight: .medium))
                                             .foregroundColor(Color.toskaTextDark)
@@ -227,13 +232,13 @@ struct SettingsView: View {
                                                 settingsGroup {
                                                     groupHeader("account")
                                                     VStack(spacing: 0) {
-                                                        actionRow("change email") { showChangeEmail = true }
+                                                        actionRow("change email", icon: "envelope.fill", iconColor: Color.toskaBlue) { showChangeEmail = true }
                                                         if Auth.auth().currentUser?.providerData.contains(where: { $0.providerID == "password" }) == true {
-                                                            Divider().padding(.leading, 14)
-                                                            actionRow("change password") { showChangePassword = true }
+                                                            Divider().padding(.leading, 52)
+                                                            actionRow("change password", icon: "key.fill", iconColor: Color.toskaMidGray) { showChangePassword = true }
                                                         }
-                                                        Divider().padding(.leading, 14)
-                                                        actionRow(isExporting ? "preparing export..." : "export my data") {
+                                                        Divider().padding(.leading, 52)
+                                                        actionRow(isExporting ? "preparing export..." : "export my data", icon: "square.and.arrow.down.fill", iconColor: Color.toskaBlue) {
                                                             exportData()
                                                         }
                                                     }
@@ -275,8 +280,8 @@ struct SettingsView: View {
                                                             }
                                                         }
                                                         if providers.count == 1 && !providers.contains(where: { $0.providerID == "password" }) {
-                                                            Divider().padding(.leading, 14)
-                                                            actionRow("add a backup sign-in") { showLinkBackup = true }
+                                                            Divider().padding(.leading, 52)
+                                                            actionRow("add a backup sign-in", icon: "key.fill", iconColor: Color.toskaBlue) { showLinkBackup = true }
                                                         }
                                                     }
                                                     .background(Color.white)
@@ -292,25 +297,41 @@ struct SettingsView: View {
                                                 }
                         
                         // MARK: - Sign Out
-                        Button {
-                            showSignOutAlert = true
-                        } label: {
-                            Text("sign out")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(Color.toskaMidGray)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                        settingsGroup {
+                            VStack(spacing: 0) {
+                                Button {
+                                    showSignOutAlert = true
+                                } label: {
+                                    HStack(spacing: 11) {
+                                        settingsIcon("rectangle.portrait.and.arrow.right", Color.toskaMidGray)
+                                        Text("sign out")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(Color.toskaTextDark)
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 14)
+                                }
+                                Divider().padding(.leading, 52)
+                                // MARK: - Delete Account
+                                Button {
+                                    showDeleteAlert = true
+                                } label: {
+                                    HStack(spacing: 11) {
+                                        settingsIcon("trash.fill", Color.toskaErrorRed)
+                                        Text(isDeleting ? "deleting..." : "delete account")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundColor(Color.toskaErrorRed)
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 14)
+                                    .padding(.horizontal, 14)
+                                }
+                                .disabled(isDeleting)
+                            }
+                            .background(LateNightTheme.cardBackground)
+                            .cornerRadius(12)
                         }
-                        
-                        // MARK: - Delete Account
-                        Button {
-                            showDeleteAlert = true
-                        } label: {
-                            Text(isDeleting ? "deleting..." : "delete account")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color.toskaErrorRed.opacity(0.7))
-                        }
-                        .disabled(isDeleting)
                         
                         if !deleteError.isEmpty {
                             Text(deleteError)
@@ -461,15 +482,30 @@ struct SettingsView: View {
     }
 
     func groupHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 12, weight: .semibold))
+        Text(title.uppercased())
+            .font(.system(size: 13, weight: .regular))
             .foregroundColor(ToskaColor.text2)
-            .tracking(0.3)
-            .padding(.leading, 4)
+            .tracking(0.1)
+            .padding(.leading, 16)
     }
 
-    func toggleRow(_ title: String, subtitle: String? = nil, isOn: Binding<Bool>) -> some View {
-        HStack(alignment: .top) {
+    /// iOS-Settings-style leading icon square: a white SF Symbol centered in a
+    /// 29×29 rounded square filled with the row's tint. Shared by toggleRow,
+    /// actionRow, and the inline NavigationLink rows so every row lines up.
+    func settingsIcon(_ icon: String, _ iconColor: Color) -> some View {
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(iconColor)
+            .frame(width: 29, height: 29)
+            .overlay(
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+            )
+    }
+
+    func toggleRow(_ title: String, subtitle: String? = nil, icon: String, iconColor: Color, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            settingsIcon(icon, iconColor)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
@@ -507,13 +543,16 @@ struct SettingsView: View {
                 .accessibilityLabel(title)
         }
         .padding(.vertical, 8)
-        .padding(.horizontal, 14)
-        .padding(.leading, 14)
+        .padding(.trailing, 14)
+        // Iconless sub-rows align their text to where the parent row's title
+        // begins (icon square 29 + 11 spacing + 14 row inset = ~52 leading).
+        .padding(.leading, 52)
     }
 
-    func actionRow(_ title: String, action: @escaping () -> Void) -> some View {
+    func actionRow(_ title: String, icon: String, iconColor: Color, action: @escaping () -> Void) -> some View {
         Button { action() } label: {
-            HStack {
+            HStack(spacing: 11) {
+                settingsIcon(icon, iconColor)
                 Text(title)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(Color.toskaTextDark)

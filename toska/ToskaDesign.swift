@@ -29,9 +29,15 @@ enum ToskaFont {
     // Serif family — reference by PostScript name so the exact static instance
     // is selected (variable-font weight selection via Font.custom is flaky on
     // iOS; static instances are predictable).
-    static func serif(_ size: CGFloat) -> Font       { .custom("Newsreader-Regular", size: size) }
-    static func serifMedium(_ size: CGFloat) -> Font { .custom("Newsreader-Medium",  size: size) }
-    static func serifItalic(_ size: CGFloat) -> Font { .custom("Newsreader-Italic",  size: size) }
+    //
+    // IMPROVE #3 (2026-06-11): Dynamic Type. `relativeTo: .body` makes the serif
+    // reading text scale with the user's text-size setting — table-stakes
+    // accessibility for a reading product. At the DEFAULT content size the
+    // rendered size is exactly `size` (no visual change); larger accessibility
+    // sizes scale proportionally so a low-vision user can actually read posts.
+    static func serif(_ size: CGFloat) -> Font       { .custom("Newsreader-Regular", size: size, relativeTo: .body) }
+    static func serifMedium(_ size: CGFloat) -> Font { .custom("Newsreader-Medium",  size: size, relativeTo: .body) }
+    static func serifItalic(_ size: CGFloat) -> Font { .custom("Newsreader-Italic",  size: size, relativeTo: .body) }
 
     // Serif — content only (the locked ramp)
     static var screenTitle: Font    { serifMedium(24) }   // 24 / 500, tracking -0.5, lowercase

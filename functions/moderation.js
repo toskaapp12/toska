@@ -527,6 +527,13 @@ function containsNameOrIdentifyingInfo(text) {
   // @handle
   if (/@[a-zA-Z]/.test(text)) return true;
 
+  // Spelled-out email (#2 fuzz, 2026-06-11): a literal email ("x@gmail.com") is
+  // already caught by the URL layer (the "gmail.com" host trips containsURL),
+  // but the obfuscated "name at provider dot com" form has no literal dot/@ and
+  // slipped through. Requires a known TLD word after "dot" so ordinary prose
+  // ("good at math, full stop") doesn't trip. Mirror in FeedView.swift.
+  if (/\b[a-z0-9._%+-]+\s+at\s+[a-z0-9][a-z0-9.\s-]*\s+dot\s+(com|net|org|io|co|edu|gov|me|gg|us|uk|ca)\b/i.test(text)) return true;
+
   // Possessive name. N-17 launch tuning (2026-06-11): a LONE FIRST-name
   // possessive ("Jessica's laugh") is allowed — a bare first name identifies
   // no one and naming a feeling/memory is the modal breakup post. A LAST-name

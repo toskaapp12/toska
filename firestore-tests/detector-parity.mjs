@@ -56,6 +56,12 @@ const CORPUS = [
   ["she lives at 123 Main Street", "hold"],        // address
   ["I miss J0hn", "hold"],                         // obfuscated first name
   ["thinking of Mіchael", "hold"],                 // Cyrillic confusable
+  // #2 fuzz (2026-06-11): spelled-out email must hold on BOTH layers
+  ["email me sarah at gmail dot com", "hold"],
+  ["reach me john dot smith at gmail dot com", "hold"],
+  // …and must NOT over-hold ordinary prose with "at"/"dot"
+  ["I was never good at math", "allow"],
+  ["look at this dot to dot puzzle", "allow"],
 ];
 
 // ── Extract the Swift detector + its helpers from FeedView.swift ──

@@ -1854,6 +1854,11 @@ let softConcernPhrases = [
     // (they false-positive on hyperbole / 3rd-party speech). Still held for
     // review, just not paging. Mirror of index.js MOD_CRISIS_SOFT.
     "envie de mourir", "voy a matarme", "mejor muerto", "mejor muerta",
+    // #5 (2026-06-11 crisis red-team): soft-tier disclosures that slipped
+    // through. Mirror of index.js MOD_CRISIS_SOFT.
+    "point of living", "better off if i was gone", "better off if i wasn't",
+    "everyone would be better off if i", "not waking up", "wish i wouldn't wake up",
+    "thinking about not waking", "what's the point anymore", "whats the point anymore",
 ]
 
 // Back-compat alias so existing call sites that only care about "is it
@@ -2177,6 +2182,11 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     }
 
     if text.range(of: "@[a-zA-Z]", options: .regularExpression) != nil { return true }
+
+    // Spelled-out email (#2 fuzz, 2026-06-11): "name at provider dot com" — the
+    // literal-email form is caught by the URL layer (the host trips the URL
+    // regex), but the obfuscated form has no dot/@. Mirror of moderation.js.
+    if text.range(of: "\\b[a-z0-9._%+-]+\\s+at\\s+[a-z0-9][a-z0-9.\\s-]*\\s+dot\\s+(com|net|org|io|co|edu|gov|me|gg|us|uk|ca)\\b", options: [.regularExpression, .caseInsensitive]) != nil { return true }
 
     // Possessive name. N-17 (2026-06-11): a lone FIRST-name possessive
     // ("Jessica's") is allowed; a LAST-name possessive ("Johnson's") still

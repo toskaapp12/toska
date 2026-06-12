@@ -3,6 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Content-Security-Policy (#1 security re-review, 2026-06-11): the dashboard
+         renders all user content via textContent (verified XSS-safe), so this is
+         defense-in-depth — it neutralizes any FUTURE regression that introduced an
+         injected <script>/<img onerror>. object-src/base-uri 'none' kill plugin +
+         <base> hijack; script-src is pinned to self + the gstatic Firebase CDN
+         ('unsafe-inline' is required because the app logic is an inline module and
+         GitHub Pages can't serve a nonce). connect-src allows Firebase backends. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://firestore.googleapis.com wss://*.firebaseio.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
     <title>toska admin</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }

@@ -44,3 +44,6 @@ firebase-debug.*.log
 # checkouts environment-agnostic). Wildcard covers prod + staging +
 # any future per-environment variant.
 **/GoogleService-Info*.plist
+
+# Build artifacts / scratch archives (never commit — may bundle plists)
+*.zip

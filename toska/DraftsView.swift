@@ -26,12 +26,23 @@ struct DraftsView: View {
     @State private var drafts: [DraftItem] = []
     @State private var listener: ListenerRegistration? = nil
     @State private var selectedDraft: DraftItem? = nil
+    // H2: surface a load failure instead of showing the "nothing saved" empty
+    // state when the drafts read actually errored.
+    @State private var draftsLoadFailed = false
 
     var body: some View {
             ZStack {
                 LateNightTheme.background.ignoresSafeArea()
 
-                if drafts.isEmpty {
+                if draftsLoadFailed && drafts.isEmpty {
+                    VStack {
+                        ToskaErrorBanner("couldn't load drafts — check your connection") {
+                            draftsLoadFailed = false
+                            startListening()
+                        }
+                        Spacer()
+                    }
+                } else if drafts.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 28, weight: .light))
@@ -114,8 +125,10 @@ struct DraftsView: View {
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
                         print("⚠️ DraftsView listener error: \(error)")
+                        draftsLoadFailed = true
                         return
                     }
+                    draftsLoadFailed = false
                     drafts = snapshot?.documents.compactMap { doc in
                         let data = doc.data()
                         guard let text = data["text"] as? String else { return nil }

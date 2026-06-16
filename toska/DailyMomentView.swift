@@ -15,8 +15,25 @@ struct DailyMomentView: View {
     // of blank/zero content while the fetch is in flight.
     @State private var isLoading = true
 
+    // B1 (App Store 1.2): the daily moment is a prominent, share-encouraged
+    // surface of another user's post, so it MUST carry the same report/block
+    // affordances as every other UGC surface. We retain the real postId +
+    // authorId of the fetched post (curated or trending) so Report/Block can
+    // act on it. Fallback posts (setFallbackPost) leave these empty, which
+    // hides the moderation menu — there's no real author to act against.
+    @State private var postId = ""
+    @State private var authorId = ""
+    @State private var showReportSheet = false
+    @State private var showBlockConfirm = false
+
     var timeLabel: String {
         "\(timeOfDayLabel())'s moment"
+    }
+
+    /// Show the report/block menu only for real fetched posts that aren't the
+    /// viewer's own. Mirrors the gating in FeedView.FeedPostRow.
+    private var canModerate: Bool {
+        !postId.isEmpty && !authorId.isEmpty && authorId != Auth.auth().currentUser?.uid
     }
 
     var body: some View {
@@ -25,8 +42,29 @@ struct DailyMomentView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 4) {
                     Spacer()
+                    if canModerate {
+                        Menu {
+                            Button {
+                                showReportSheet = true
+                            } label: {
+                                Label("report", systemImage: "flag")
+                            }
+                            Button(role: .destructive) {
+                                showBlockConfirm = true
+                            } label: {
+                                Label("block \(postHandle)", systemImage: "person.slash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 14, weight: .light))
+                                .foregroundColor(.white.opacity(0.3))
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel("More options for this moment")
+                    }
                     Button {
                         dismiss()
                     } label: {
@@ -146,6 +184,34 @@ struct DailyMomentView: View {
             }
             fetchDailyPost()
         }
+        .fullScreenCover(isPresented: $showReportSheet) {
+            EdgeSwipeDismissWrapper {
+                NavigationStack {
+                    ReportSheet(target: .post(
+                        postId: postId,
+                        authorId: authorId,
+                        authorHandle: postHandle,
+                        text: postText
+                    ))
+                    .navigationBarHidden(true)
+                }
+            }
+        }
+        .confirmationDialog(
+            "block \(postHandle)?",
+            isPresented: $showBlockConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("block", role: .destructive) {
+                BlockedUsersCache.shared.block(authorId, handle: postHandle)
+                // The moment is this author's content — once blocked there's
+                // nothing left to show here, so dismiss back to the feed.
+                dismiss()
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("you wont see their posts or replies. they wont be notified.")
+        }
     }
 
     // MARK: - Fetch
@@ -199,10 +265,15 @@ struct DailyMomentView: View {
                         if isFlagged || isConcerning || isExpired || blockedAuthor {
                             setFallbackPost()
                         } else {
-                            postText    = postData["text"]         as? String ?? ""
-                            postHandle  = postData["authorHandle"] as? String ?? "anonymous"
-                            postTag     = postData["tag"]          as? String
-                            feltCount   = postData["likeCount"]    as? Int    ?? 0
+                            postText      = postData["text"]         as? String ?? ""
+                            postHandle    = postData["authorHandle"] as? String ?? "anonymous"
+                            postTag       = postData["tag"]          as? String
+                            feltCount     = postData["likeCount"]    as? Int    ?? 0
+                            // `postId` (the @State) is shadowed here by the local
+                            // `let postId` from the dailyMoment doc — same value
+                            // (this post's id), so qualify with self to assign it.
+                            self.postId   = postSnap.documentID
+                            self.authorId = postData["authorId"]     as? String ?? ""
                         }
                     } else {
                         // The curated post ID exists but the post was deleted.
@@ -264,6 +335,8 @@ struct DailyMomentView: View {
                     postHandle = data["authorHandle"] as? String ?? "anonymous"
                     postTag    = data["tag"]          as? String
                     feltCount  = data["likeCount"]    as? Int    ?? 0
+                    postId     = topDoc.documentID
+                    authorId   = data["authorId"]     as? String ?? ""
                 }
             } catch {
                 // Any Firestore error (network down, permission denied, etc.)
@@ -315,6 +388,10 @@ struct DailyMomentView: View {
         postHandle = pick.handle
         postTag    = pick.tag
         feltCount  = pick.likes
+        // Fallback posts are static editorial copy, not real UGC — no author
+        // to report or block, so clear the ids to hide the moderation menu.
+        postId     = ""
+        authorId   = ""
     }
 
     // MARK: - Helpers

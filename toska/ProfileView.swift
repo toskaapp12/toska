@@ -37,6 +37,9 @@ struct ProfileView: View {
     // Surfaced when deleteReply fails. Was previously a silent no-op — the
     // row stayed on screen with no indication the delete failed.
     @State private var deleteReplyError: String? = nil
+    // H2: surface a profile-load failure (only when nothing has loaded yet).
+    @State private var profileLoadFailed = false
+    @State private var hasLoadedProfileOnce = false
     @State private var hasFetchedInitial = false
     @State private var presenceStreak = 0
     @State private var totalNights = 0
@@ -104,6 +107,12 @@ struct ProfileView: View {
                                     // (MainTabView posts scrollProfileToTop
                                     // when the user re-taps the profile tab).
                                     Color.clear.frame(height: 0).id("top")
+                                    if profileLoadFailed {
+                                        ToskaErrorBanner("couldn't load your profile — check your connection") {
+                                            profileLoadFailed = false
+                                            loadProfile()
+                                        }
+                                    }
                                     VStack(alignment: .leading, spacing: 0) {
                                         // Identity — eyebrow + large serif handle
                                         // + the anonymity bio line. Reads quiet and
@@ -718,6 +727,8 @@ struct ProfileView: View {
                    // listener-callback pattern applied across the app.
                    guard Auth.auth().currentUser?.uid == uid else { return }
                    guard let data = snapshot.data() else { return }
+                   profileLoadFailed = false
+                   hasLoadedProfileOnce = true
                    userHandle = data["handle"] as? String ?? "anonymous"
                    followerCount = data["followerCount"] as? Int ?? 0
                    followingCount = data["followingCount"] as? Int ?? 0
@@ -732,6 +743,11 @@ struct ProfileView: View {
                    postCount = Int(truncating: postSnap?.count ?? 0)
                } catch {
                    print("⚠️ loadProfile failed: \(error)")
+                   // H2: only surface the banner if we still have nothing to
+                   // show — a transient failure after a prior good load
+                   // shouldn't overwrite a populated header.
+                   guard Auth.auth().currentUser?.uid == uid else { return }
+                   if !hasLoadedProfileOnce { profileLoadFailed = true }
                }
            }
        }

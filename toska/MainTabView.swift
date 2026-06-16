@@ -198,6 +198,15 @@ struct MainTabView: View {
                 // the old opaque white pill. A thin rim-light overlay defines the
                 // glass edge; the layered drop shadow keeps it floating.
                 .toskaGlass(in: Capsule(), frosted: true)
+                // H3: the glass material (.thinMaterial/.glassEffect) is the one
+                // surface in the app that reacts to the SYSTEM appearance. With
+                // the device in Dark Mode during the day (isLateNight == false)
+                // the glass would render dark while the tab icons stay dark
+                // (their daytime LateNightTheme values) → dark-on-dark. Pin the
+                // pill's color scheme to the app's OWN day/night intent so the
+                // glass tracks the icons, not the device. (The rim stroke below
+                // already branches on isLateNight for the same reason.)
+                .environment(\.colorScheme, LateNightTheme.isLateNight ? .dark : .light)
                 .overlay(
                     Capsule().stroke(Color.white.opacity(LateNightTheme.isLateNight ? 0.10 : 0.35), lineWidth: 0.5)
                 )

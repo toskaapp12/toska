@@ -22,6 +22,10 @@ struct OtherProfileView: View {
     @State private var lastFollowTime: Date? = nil
     @State private var hasFetchedInitial = false
     @State private var showFollowerCount = false
+    // H2: surface a profile-load failure instead of showing a blank/default
+    // header forever. Set when the user-doc read errors with no data; the
+    // banner's retry re-runs the full initial load.
+    @State private var profileLoadFailed = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -69,6 +73,14 @@ struct OtherProfileView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
+                        if profileLoadFailed {
+                            ToskaErrorBanner("couldn't load this profile — check your connection") {
+                                profileLoadFailed = false
+                                loadProfile()
+                                loadPosts()
+                                loadReplies()
+                            }
+                        }
                         // Profile info — Threads-y treatment: handle was
                         // already shown big in the ToskaHeader above; this
                         // section is the secondary info (join date, stats,
@@ -305,9 +317,15 @@ struct OtherProfileView: View {
     // MARK: - Load Profile
     
     func loadProfile() {
-        Firestore.firestore().collection("users").document(userId).getDocument { snapshot, _ in
+        Firestore.firestore().collection("users").document(userId).getDocument { snapshot, error in
             Task { @MainActor in
-                guard let data = snapshot?.data() else { return }
+                guard let data = snapshot?.data() else {
+                    // Distinguish a real read failure (show retry) from a
+                    // genuinely missing/deleted user doc (leave the banner off).
+                    if error != nil { profileLoadFailed = true }
+                    return
+                }
+                profileLoadFailed = false
                 followerCount = data["followerCount"] as? Int ?? 0
                 followingCount = data["followingCount"] as? Int ?? 0
                 totalLikes = data["totalLikes"] as? Int ?? 0

@@ -57,6 +57,10 @@ struct ExploreView: View {
     @State private var allPosts: [ExplorePost] = []
     @State private var isLoadingTag = false
     @State private var isLoadingTrending = true
+    // H2: surface a load failure on the discovery surfaces instead of showing
+    // the "nobody's said it yet" empty state when the read actually errored.
+    @State private var tagLoadFailed = false
+    @State private var trendingLoadFailed = false
     @State private var isSearching = false
     @State private var hasSearched = false
     @State private var tagCounts: [String: Int] = [:]
@@ -331,7 +335,11 @@ struct ExploreView: View {
                                                                             
                                                                             
                                                                             
-                                                                            if tagPosts.isEmpty {
+                                                                            if tagLoadFailed && tagPosts.isEmpty {
+                                        ToskaErrorBanner("couldn't load posts — check your connection") {
+                                            if let tag = selectedTag { fetchPostsForTag(tag) }
+                                        }
+                                    } else if tagPosts.isEmpty {
                                         VStack(spacing: 14) {
                                             Image(systemName: "pencil.line")
                                                 .font(.system(size: 28, weight: .ultraLight))
@@ -365,7 +373,13 @@ struct ExploreView: View {
                                     ForEach(Array(trendingPosts.enumerated()), id: \.element.id) { index, post in
                                         FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
                                     }
-                                    if trendingPosts.isEmpty {
+                                    if trendingLoadFailed && trendingPosts.isEmpty {
+                                                                            ToskaErrorBanner("couldn't load trending — check your connection") {
+                                                                                isLoadingTrending = true
+                                                                                fetchTrendingPosts()
+                                                                            }
+                                                                            .padding(.vertical, 40)
+                                                                        } else if trendingPosts.isEmpty {
                                                                             VStack(spacing: 10) {
                                                                                 Text("\"everyone's being\nquiet right now.\"")
                                                                                     .font(ToskaFont.serifItalic(18))
@@ -568,9 +582,14 @@ struct ExploreView: View {
                 .whereField("isRepost", isEqualTo: false)
                 .order(by: "createdAt", descending: true)
                 .limit(to: 30)
-                .getDocuments { snapshot, _ in
+                .getDocuments { snapshot, error in
                     Task { @MainActor in
-                        guard let documents = snapshot?.documents else { isLoadingTag = false; return }
+                        guard let documents = snapshot?.documents else {
+                            isLoadingTag = false
+                            if error != nil { tagLoadFailed = true }
+                            return
+                        }
+                        tagLoadFailed = false
                         let nonExpired = documents.filter { doc in
                             if let expiresAt = doc.data()["expiresAt"] as? Timestamp {
                                 return expiresAt.dateValue() >= Date()
@@ -594,9 +613,14 @@ struct ExploreView: View {
                 .order(by: "createdAt", descending: true)
                 .order(by: "likeCount", descending: true)
                 .limit(to: 30)
-                .getDocuments { snapshot, _ in
+                .getDocuments { snapshot, error in
                     Task { @MainActor in
-                        guard let documents = snapshot?.documents else { isLoadingTrending = false; return }
+                        guard let documents = snapshot?.documents else {
+                            isLoadingTrending = false
+                            if error != nil { trendingLoadFailed = true }
+                            return
+                        }
+                        trendingLoadFailed = false
                         let filtered = documents.filter { doc in
                             if let expiresAt = doc.data()["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return false }
                             return true

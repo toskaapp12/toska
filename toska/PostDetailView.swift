@@ -391,6 +391,14 @@ struct PostDetailView: View {
                             .padding(.horizontal, 18)
                             .padding(.top, 14)
 
+                        if replyLoadFailed {
+                            ToskaErrorBanner("couldn't load replies — check your connection") {
+                                replyLoadFailed = false
+                                fetchReplies()
+                            }
+                            .padding(.top, 8)
+                        }
+
                         if replyList.isEmpty && !hasLoadedReplies && replies > 0 {
                             // Loading state. The post is known to have replies
                             // (count arrived with the post), but the snapshot
@@ -1102,6 +1110,10 @@ struct PostDetailView: View {
     @State private var replyListenerHeld: ListenerRegistration? = nil
     @State private var rawLiveReplies: [ThreadedReply] = []
     @State private var rawHeldReplies: [ThreadedReply] = []
+    // H2: surface a reply-load failure instead of silently showing an empty
+    // thread. Set in the listener error branches, cleared on the next good
+    // snapshot; the banner's retry re-attaches the listeners via fetchReplies().
+    @State private var replyLoadFailed = false
 
     private func teardownReplyListeners() {
         replyListenerLive?.remove(); replyListenerLive = nil
@@ -1167,11 +1179,16 @@ struct PostDetailView: View {
                 if let error = error {
                     print("⚠️ fetchReplies(live) listener error for post \(postId): \(error)")
                     Telemetry.recordError(error, context: "PostDetailView.fetchReplies.live")
+                    Task { @MainActor in
+                        guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                        replyLoadFailed = true
+                    }
                     return
                 }
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     guard let documents = snapshot?.documents else { return }
+                    replyLoadFailed = false
                     rawLiveReplies = documents.compactMap { Self.threadedReply(from: $0) }
                     await recombineReplies()
                 }
@@ -1193,6 +1210,10 @@ struct PostDetailView: View {
                     if let error = error {
                         print("⚠️ fetchReplies(mine) listener error for post \(postId): \(error)")
                         Telemetry.recordError(error, context: "PostDetailView.fetchReplies.mine")
+                        Task { @MainActor in
+                            guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                            replyLoadFailed = true
+                        }
                         return
                     }
                     Task { @MainActor in

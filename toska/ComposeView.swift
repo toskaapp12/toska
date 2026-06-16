@@ -466,6 +466,7 @@ struct ComposeView: View {
                                         .foregroundColor(LateNightTheme.secondaryText)
                                         .background(Circle().fill(LateNightTheme.cardBackground))
                                 }
+                                .accessibilityLabel("Remove GIF")
                                 .offset(x: -6, y: 6)
                             }
                             .padding(.horizontal, 16)

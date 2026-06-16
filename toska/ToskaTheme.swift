@@ -981,7 +981,12 @@ let toskaSupportEmail = "salte@saltedevelopments.com"
 ///  - 24h moderation commitment
 ///  - blocking + reporting mechanisms
 ///  - right to remove content and accounts
-/// This is a first draft. A lawyer should review before App Store submission.
+///  - standard protective clauses (as-is / liability cap / indemnity /
+///    governing law / severability) in section 10, plus incorporation of the
+///    full hosted Terms and Apple's Standard EULA by reference.
+/// Self-contained for submission. App Review reads this + the hosted Terms; for
+/// the license/liability boilerplate we rely on Apple's Standard EULA (leave the
+/// EULA field blank in App Store Connect so it applies automatically).
 let toskaPolicyBody = """
 toska is a space for the things you can't say out loud. anonymity is the point. to keep that space safe, we ask everyone to agree to a few ground rules before using the app.
 
@@ -1021,7 +1026,10 @@ you can delete your account at any time from settings. we may suspend or termina
 9. changes to these rules
 we'll update these rules as toska evolves. when we make material changes, we'll ask you to re-accept before you can keep using the app.
 
-10. contact
+10. the legal bits
+toska is provided "as is," with no warranties of any kind. to the fullest extent allowed by law, SALTE DEVELOPMENT LLC is not liable for any indirect, incidental, or consequential damages arising from your use of the app, and our total liability is limited to the amount you paid us (for most people, that's nothing). you are responsible for what you post, and you agree to indemnify and hold SALTE DEVELOPMENT LLC harmless from any claim arising out of content you post in violation of these rules. these rules are governed by the laws of the state in which SALTE DEVELOPMENT LLC is organized, without regard to conflict-of-laws principles. if any part of these rules is found unenforceable, the rest still applies, and our failure to enforce a rule isn't a waiver of it. our full terms of service at toskaapp.com/terms and apple's standard licensed application end user license agreement also apply to your use of toska; apple is a third-party beneficiary of these rules and may enforce them against you.
+
+11. contact
 questions, appeals, or anything else: \(toskaSupportEmail). we read every message.
 
 toska is published by SALTE DEVELOPMENT LLC.

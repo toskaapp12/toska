@@ -327,6 +327,24 @@ async function cleanupRepliesForUid(uid, maxIterations) {
     .limit(pageSize), maxIterations);
 }
 
+// S-2 (2026-06-16): a deleted user's OWN blocked subcollection is removed by
+// the `subs` loop in onUserDocDeleted. What survives is the REVERSE direction —
+// every OTHER user's `users/{blocker}/blocked/{deletedUid}` entry, keyed by the
+// deleted user's uid. Nothing else cleans these, so they persisted as uid-keyed
+// residue (GDPR Art. 17 gap) in every blocker's tree. The client writes a
+// queryable `blockedUid` field (== the doc id) precisely so this collectionGroup
+// sweep can find them. Same shape as cleanupRepliesForUid: equality filter +
+// orderBy on the always-present blockedAt so it uses the composite
+// collection-group index (blockedUid ASC, blockedAt DESC) in firestore.indexes.json.
+// NOTE: block docs created before this field shipped lack `blockedUid` and are
+// not matched here (legacy residue); a one-time backfill can address those.
+async function cleanupBlockedByForUid(uid, maxIterations) {
+  return paginatedBatchDelete((pageSize) => db.collectionGroup("blocked")
+    .where("blockedUid", "==", uid)
+    .orderBy("blockedAt", "desc")
+    .limit(pageSize), maxIterations);
+}
+
 // F-2 (2026-06-08 audit): a deleted user's LIKE docs on OTHER users' posts and
 // replies are keyed by the liker's uid (posts/{p}/likes/{uid},
 // posts/{p}/replies/{r}/likes/{uid}) and carry no authorId field, so a
@@ -912,6 +930,7 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     await runWithResume(uid, "reflections", cleanupReflectionsForUid, "cross-user reflections");
     await runWithResume(uid, "circleMessages", cleanupCircleMessagesForUid, "feeling-circle messages");
     await runWithResume(uid, "reports", cleanupSubmittedReportsForUid, "pending reports filed");
+    await runWithResume(uid, "blockedBy", cleanupBlockedByForUid, "others' block entries");
 
     console.log("Cleanup complete for user:", uid);
   } catch (error) {
@@ -2613,16 +2632,27 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (ev
 
   const postId = event.params.postId;
 
-  // Idempotency (2026-06-01 audit): Eventarc is at-least-once, so a
-  // redelivery of this create event would page admins twice. Claim before
-  // sending. NOTE: the dedup key is namespaced per-post (`crisisAlert_<id>`)
-  // rather than `event.id` on purpose — four other triggers share this
-  // `posts/{postId}` create path and onPostCreatedUpdateTagCounts already
-  // claims `event.id`. If Eventarc hands co-path triggers the same event id,
-  // claiming event.id here could let the tag-count claim starve the crisis
-  // page (or vice versa). One post = one page, so the post id is the correct,
-  // collision-free dedup unit.
-  if (!await claimTriggerEvent(`crisisAlert_${postId}`)) return;
+  // Idempotency (2026-06-01 audit; P-1 fix 2026-06-16): Eventarc is
+  // at-least-once, so a redelivery of this create event could page admins
+  // twice. The dedup unit is the POST id (`crisisAlert_<id>`), not `event.id`:
+  // four other triggers share this `posts/{postId}` create path and
+  // onPostCreatedUpdateTagCounts already claims `event.id`, so reusing it here
+  // could let the tag-count claim starve the crisis page. One post = one page.
+  //
+  // P-1: this is PAGE-then-CLAIM, not claim-then-page. The old claim-first
+  // guard had a partial-failure trap — if the claim was written but the FCM
+  // send then failed, every redelivery saw the claim and returned, DROPPING the
+  // crisis page forever. Now we only skip if we've already SUCCESSFULLY paged;
+  // a failed send leaves no claim so Eventarc retries until it lands. A dropped
+  // crisis page is far worse than a rare duplicate, so this errs toward
+  // delivering. The read below fails OPEN (proceed to send) on a Firestore
+  // hiccup — worst case one duplicate page.
+  const crisisClaimRef = db.collection("processedTriggerEvents").doc(`crisisAlert_${postId}`);
+  try {
+    if ((await crisisClaimRef.get()).exists) return; // already paged for this post
+  } catch (err) {
+    console.warn(`crisis-alert: claim read failed for post ${postId}, proceeding to send:`, err.message);
+  }
 
   // Fallback admin uid baked in so the function alerts you even before
   // `system/crisisAlertRecipients` is seeded in Firestore. To add or
@@ -2676,6 +2706,18 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (ev
     const messaging = getMessaging();
     const resp = await messaging.sendEachForMulticast(message);
     console.log(`crisis-alert: post ${postId} sent to ${resp.successCount}/${tokens.length} admin devices`);
+
+    // P-1 (2026-06-16): claim ONLY after a successful page. If every device
+    // failed (successCount === 0) we leave no claim so Eventarc redelivers and
+    // we try again — better a retried/duplicate page than a silently dropped
+    // one. The claim write itself fails open (a duplicate page on the next
+    // redelivery is acceptable).
+    if (resp.successCount > 0) {
+      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+      await crisisClaimRef
+        .set({ processedAt: FieldValue.serverTimestamp(), expiresAt })
+        .catch((err) => console.warn(`crisis-alert: claim write failed for post ${postId}:`, err.message));
+    }
   } catch (err) {
     console.warn(`crisis-alert: failed to alert admins for post ${postId}: ${err.message}`);
   }
@@ -3407,6 +3449,7 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     replies: cleanupRepliesForUid,
     convos: cleanupUserConversationsForUid,
     likesOnOthers: cleanupLikesForUid,
+    blockedBy: cleanupBlockedByForUid,
   };
 
   // sub_* types resume the owner-only subcollection cleanup that the main

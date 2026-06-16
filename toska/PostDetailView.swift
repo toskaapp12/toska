@@ -1426,10 +1426,19 @@ struct PostDetailView: View {
 
         var resolved = Set<String>()
         var order: [String] = []
+        // E-1 (2026-06-16): a `visiting` (in-progress / "gray") set breaks cycles
+        // in the parentReplyId graph. `resolved` alone is inserted only AFTER the
+        // child loop, so a cyclic tree (A.parent=B, B.parent=A — only reachable
+        // via a tampered client writing arbitrary parentReplyId) would recurse
+        // forever → stack-overflow crash. Bailing when a node is already on the
+        // current DFS stack guarantees termination on any graph.
+        var visiting = Set<String>()
 
         func visit(_ id: String) {
-            guard !resolved.contains(id) else { return }
+            guard !resolved.contains(id), !visiting.contains(id) else { return }
+            visiting.insert(id)
             for childId in childIdsMap[id] ?? [] { visit(childId) }
+            visiting.remove(id)
             resolved.insert(id)
             order.append(id)
         }

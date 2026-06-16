@@ -284,7 +284,11 @@ struct OnboardingView: View {
             checkAcceptanceStatus()
         }
         .fullScreenCover(isPresented: $showAgeGate) {
-            EdgeSwipeDismissWrapper {
+            // A-3 (2026-06-16): the age/EULA gates must NOT be swipe-dismissable.
+            // EdgeSwipeDismissWrapper let an Apple/Google user (whose account
+            // already exists) left-edge-swipe past the gate into the app without
+            // confirming age / accepting the EULA. No wrapper → the only exits
+            // are the explicit Confirm and Decline actions.
             AgeGateView(
                 onConfirmAdult: {
                     // Mark the user adult-confirmed via the confirmAdult
@@ -309,10 +313,9 @@ struct OnboardingView: View {
                     declineAndSignOut()
                 }
             )
-            }
         }
         .fullScreenCover(isPresented: $showPolicyAcceptance) {
-            EdgeSwipeDismissWrapper {
+            // A-3 (2026-06-16): EULA gate is not swipe-dismissable (see age gate).
             PolicyAcceptanceView(
                 onAccept: {
                     Task { @MainActor in
@@ -338,7 +341,6 @@ struct OnboardingView: View {
                     declineAndSignOut()
                 }
             )
-            }
         }
         .fullScreenCover(isPresented: $showFirstPostCompose) {
             EdgeSwipeDismissWrapper {

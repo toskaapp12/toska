@@ -727,7 +727,13 @@ function containsNameOrIdentifyingInfo(text) {
     // intent to identify-and-hide. LAST names are always held; FULL names are
     // caught by looksLikeFullName + the last-name component.
     if (isFirst && !isLast && !isEvasion) continue;
-    if (!isEvasion && canonStarters.has(canonWord)) continue;
+    // B-1 (2026-06-16): the sentence-starter exemption must NOT spare a known
+    // LAST name. It was added to protect legit first-name sentence subjects
+    // ("Sarah left me"), but without the isFirst/!isLast gate it also exempted
+    // surnames as sentence subjects ("Garcia broke my heart") — a real-name
+    // leak straight through the de-anon perimeter. (For pure first names this
+    // is now redundant with the line above; kept explicit to mirror Swift.)
+    if (!isEvasion && isFirst && !isLast && canonStarters.has(canonWord)) continue;
     return true;
   }
 

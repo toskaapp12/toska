@@ -224,31 +224,29 @@ struct CreateAccountView: View {
                 loadUniqueHandle()
             }
         }
+        // A-3 (2026-06-16): the age/EULA gates must NOT be swipe-dismissable —
+        // no EdgeSwipeDismissWrapper. Exits are the explicit Confirm/Decline only.
         .fullScreenCover(isPresented: $showAgeGate) {
-            EdgeSwipeDismissWrapper {
-                AgeGateView(
-                    onConfirmAdult: {
-                        showAgeGate = false
-                        showPolicyAcceptance = true
-                    },
-                    onDecline: {
-                        showAgeGate = false
-                    }
-                )
-            }
+            AgeGateView(
+                onConfirmAdult: {
+                    showAgeGate = false
+                    showPolicyAcceptance = true
+                },
+                onDecline: {
+                    showAgeGate = false
+                }
+            )
         }
         .fullScreenCover(isPresented: $showPolicyAcceptance) {
-            EdgeSwipeDismissWrapper {
-                PolicyAcceptanceView(
-                    onAccept: {
-                        showPolicyAcceptance = false
-                        createAccount()
-                    },
-                    onDecline: {
-                        showPolicyAcceptance = false
-                    }
-                )
-            }
+            PolicyAcceptanceView(
+                onAccept: {
+                    showPolicyAcceptance = false
+                    createAccount()
+                },
+                onDecline: {
+                    showPolicyAcceptance = false
+                }
+            )
         }
     }
 

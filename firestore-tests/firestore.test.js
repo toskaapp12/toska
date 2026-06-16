@@ -138,6 +138,37 @@ describe("baseline sanity", () => {
     );
   });
 
+  // S-1 (2026-06-16): the create path must reject a forged non-zero counter.
+  // The update rule already forbids changing counters; without this lock a
+  // tampered client could SEED followerCount=999999 at signup to forge
+  // follower-count social proof (OtherProfileView reads these directly).
+  it("rejects user doc create with a forged non-zero followerCount", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").set({
+        handle: "alice123",
+        followerCount: 999999,
+        followingCount: 0,
+        totalLikes: 0,
+        createdAt: new Date(),
+      })
+    );
+  });
+
+  it("rejects user doc create that pre-seeds a restriction field", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").set({
+        handle: "alice123",
+        followerCount: 0,
+        followingCount: 0,
+        totalLikes: 0,
+        restricted: false,
+        createdAt: new Date(),
+      })
+    );
+  });
+
   it("rejects post create with text size > 2000", async () => {
     await setUserDoc("alice");
     const a = env.authenticatedContext("alice").firestore();

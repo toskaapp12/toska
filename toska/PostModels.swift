@@ -157,12 +157,4 @@ struct LikedReply: Identifiable {
     let replyHandle: String
     let likedAt: Date
 }
-/// Used in FeelingCircleView for temporary group chat messages
-struct CircleMessage: Identifiable {
-    let id: String
-    let handle: String
-    let text: String
-    let time: String
-    let isMe: Bool
-}
 

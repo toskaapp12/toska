@@ -100,9 +100,12 @@ struct SplashView: View {
                     .disabled(isSigningIn)
 
                     // Google-branding-compliant button: white surface, dark-gray
-                    // label, subtle border. The official multicolor "G" asset is
-                    // not bundled, so we render a blue "G" placeholder glyph.
-                    // TODO: add official Google "G" asset from the Google branding kit for full guideline compliance
+                    // label, subtle border. Uses the official multicolor "G"
+                    // asset ("GoogleG" in Assets.xcassets) when present; falls
+                    // back to the blue placeholder glyph if the asset hasn't been
+                    // added yet, so the build is never broken. A-2: drop
+                    // google_g.png (@1x/@2x/@3x) from Google's branding kit into
+                    // GoogleG.imageset and the official mark renders automatically.
                     Button {
                         signInWithGoogle()
                     } label: {
@@ -112,9 +115,16 @@ struct SplashView: View {
                                     .progressViewStyle(.circular)
                                     .tint(Color(hex: "3C4043"))
                             } else {
-                                Text("G")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(Color(hex: "4285F4"))
+                                if UIImage(named: "GoogleG") != nil {
+                                    Image("GoogleG")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 18, height: 18)
+                                } else {
+                                    Text("G")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundColor(Color(hex: "4285F4"))
+                                }
                                 Text("Sign in with Google")
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundColor(Color(hex: "3C4043"))

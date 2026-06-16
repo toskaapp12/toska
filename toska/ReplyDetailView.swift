@@ -80,6 +80,7 @@ struct ReplyDetailView: View {
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
+                        .accessibilityLabel("more options")
                     }
                 }
 
@@ -106,7 +107,11 @@ struct ReplyDetailView: View {
                             .padding(.bottom, 10)
 
                             Text(replyText)
-                                .font(.custom("Georgia", size: 16))
+                                // G-1 (2026-06-16): route through the design-system
+                                // serif token so the reply body scales with Dynamic
+                                // Type (relativeTo: .body) and matches feed/detail
+                                // reading surfaces, instead of a fixed-size Georgia.
+                                .font(ToskaFont.replyBody)
                                 .foregroundColor(Color(hex: "1a1a1a"))
                                 .lineSpacing(5)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -140,24 +145,28 @@ struct ReplyDetailView: View {
                                         .foregroundColor(Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
+                                .accessibilityLabel("reply")
                                 Button { toggleLike() } label: {
                                     Image(systemName: isLiked ? "heart.fill" : "heart")
                                         .font(.system(size: 15, weight: isLiked ? .medium : .light))
                                         .foregroundColor(isLiked ? Color.toskaWhisperPink : Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
+                                .accessibilityLabel(isLiked ? "unlike, felt this" : "felt this")
                                 Button { toggleSave() } label: {
                                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                                         .font(.system(size: 15, weight: .light))
                                         .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
+                                .accessibilityLabel(isSaved ? "remove from saved" : "save")
                                 Button { showShareCard = true } label: {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.system(size: 15, weight: .light))
                                         .foregroundColor(Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
+                                .accessibilityLabel("share")
                             }
                             .padding(.vertical, 8)
                             Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)

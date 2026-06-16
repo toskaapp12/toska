@@ -999,13 +999,13 @@ toska is for your own feelings, your own story. you can say anything about your 
   • use toska to buy, sell, or solicit illegal goods or services
 
 3. how we moderate
-we review every report we receive. we commit to reviewing reported content and taking action on violations within 24 hours. action may mean removing the post, warning the user, or suspending the account. we don't publicly discuss moderation decisions, but we respond to every report.
+toska has zero tolerance for objectionable content and abusive behavior. content that violates these rules and users who post it are not welcome here. we review every report we receive and we commit to reviewing reported content and acting on violations within 24 hours. action may mean removing the post, warning the user, or terminating the account. we don't publicly discuss moderation decisions, but we respond to every report.
 
 4. safety resources
 toska is not a substitute for professional help. if you are in crisis, please reach out to a local crisis line — the in-app safety check-in shows the right number for where you are. if you or someone else is in immediate danger, please call \(CrisisLines.emergencyNumber).
 
 5. blocking and reporting
-you can block any user at any time from their profile or from a post. blocked users will no longer see each other's content or be able to message you. you can report any post, reply, conversation, or user — reports go to our moderation team. the "report" action is the fastest way to flag something you've seen.
+you can block any user at any time from their profile or from a post. blocked users will no longer see each other's content. you can report any post, reply, or user — reports go to our moderation team. the "report" action is the fastest way to flag something you've seen.
 
 6. your content
 you keep ownership of anything you post. by posting, you grant toska a limited license to display your content within the app and in aggregated, anonymous forms (like the daily moment or weekly recap). we don't sell your content. we don't train third-party AI on it.
@@ -1433,6 +1433,10 @@ struct ReportSheet: View {
     @State private var isSubmitting = false
     @State private var didSubmit = false
     @State private var showBlockOption = false
+    // A-4 (2026-06-16): surface a write failure instead of silently staying on
+    // the form (which read as an unresponsive button). The user keeps their
+    // selected reason and can retry.
+    @State private var submitFailed = false
 
     var body: some View {
         ZStack {
@@ -1466,6 +1470,11 @@ struct ReportSheet: View {
                     reasonList
                 }
             }
+        }
+        .alert("couldn't send report", isPresented: $submitFailed) {
+            Button("ok", role: .cancel) { }
+        } message: {
+            Text("something went wrong sending your report. please check your connection and try again.")
         }
     }
 
@@ -1689,6 +1698,7 @@ struct ReportSheet: View {
                 if let error = error {
                     print("⚠️ submitReport failed: \(error)")
                     Telemetry.recordError(error, context: "ReportSheet.submit")
+                    submitFailed = true
                 } else {
                     Telemetry.reportSubmitted(target: telemetryTarget, reasonCode: reason.code)
                     didSubmit = true

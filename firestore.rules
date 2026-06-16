@@ -256,7 +256,22 @@ service cloud.firestore {
         // shortcut the iOS age gate by writing the field here at
         // signup. CreateAccountView no longer includes these fields
         // in the inline create; AppleSignInHelper never did.
-        && !request.resource.data.keys().hasAny(['confirmedAdult', 'confirmedAdultAt']);
+        && !request.resource.data.keys().hasAny(['confirmedAdult', 'confirmedAdultAt'])
+        // S-1 (2026-06-16): aggregate counters are server-owned. The update
+        // rule below already forbids changing them, but without this the CREATE
+        // path let a tampered client seed followerCount = 999999 at signup to
+        // forge follower-count social proof (OtherProfileView reads these
+        // directly). The legit signup writes them as 0 (SplashView /
+        // CreateAccountView / AppleSignInHelper), so require 0-or-absent here;
+        // only the Cloud Functions (Admin SDK) may set non-zero values.
+        && request.resource.data.get('followerCount', 0) == 0
+        && request.resource.data.get('followingCount', 0) == 0
+        && request.resource.data.get('totalLikes', 0) == 0
+        && request.resource.data.get('postCount', 0) == 0
+        // Restriction fields are server/admin-owned — a tampered client must not
+        // be able to pre-seed them on its own doc at create.
+        && !request.resource.data.keys()
+              .hasAny(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']);
       // Owners can update their user doc except for:
       //   - fcmToken (lives in the private subcollection; main-doc writes of
       //     it are blocked to keep the field surface narrow)
@@ -554,7 +569,15 @@ service cloud.firestore {
       }
 
       match /blocked/{blockedId} {
-        allow create, delete: if isOwner(userId);
+        // S-2 (2026-06-16): if the client writes the queryable `blockedUid`
+        // field (used by the deletion cascade's collectionGroup sweep), it MUST
+        // equal the doc id. Otherwise a tampered client could point blockedUid
+        // at a third party Y, so that when Y deletes their account the cascade
+        // would delete THIS block entry — a cross-user unblock-griefing vector.
+        // Absent is allowed for legacy/transition docs.
+        allow create, delete: if isOwner(userId)
+          && (!request.resource.data.keys().hasAny(['blockedUid'])
+              || request.resource.data.blockedUid == blockedId);
         allow read: if isOwner(userId) || (isAuth() && request.auth.uid == blockedId);
       }
 

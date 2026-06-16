@@ -137,7 +137,16 @@ class BlockedUsersCache {
         // 2. Persist to Firestore. Include the handle when the caller has it
         //    so the Settings "blocked users" list can show recognizable rows
         //    without a per-user lookup.
-        var data: [String: Any] = ["blockedAt": FieldValue.serverTimestamp()]
+        // `blockedUid` duplicates the doc id (which is the blocked user's uid)
+        // into a queryable field. S-2 (2026-06-16): the account-deletion cascade
+        // needs a collectionGroup("blocked").where("blockedUid"==deletedUid)
+        // query to clean up everyone ELSE's block entries pointing at a deleted
+        // user — a doc id alone isn't collectionGroup-queryable. firestore.rules
+        // pins blockedUid == the doc id so it can't point at a third party.
+        var data: [String: Any] = [
+            "blockedAt": FieldValue.serverTimestamp(),
+            "blockedUid": userId
+        ]
         if let handle = handle, !handle.isEmpty {
             data["handle"] = handle
         }

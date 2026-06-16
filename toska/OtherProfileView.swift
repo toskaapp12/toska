@@ -21,7 +21,7 @@ struct OtherProfileView: View {
     @State private var showReportFailedAlert = false
     @State private var lastFollowTime: Date? = nil
     @State private var hasFetchedInitial = false
-    @State private var showFollowerCount = true
+    @State private var showFollowerCount = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -311,7 +311,10 @@ struct OtherProfileView: View {
                 followerCount = data["followerCount"] as? Int ?? 0
                 followingCount = data["followingCount"] as? Int ?? 0
                 totalLikes = data["totalLikes"] as? Int ?? 0
-                showFollowerCount = data["showFollowerCount"] as? Bool ?? true
+                // F-1 (2026-06-16): default OFF to match every signup path and
+                // Settings (all write/read false). A user-doc missing this field
+                // (legacy/partial doc) must NOT expose follower counts.
+                showFollowerCount = data["showFollowerCount"] as? Bool ?? false
                 if let timestamp = data["createdAt"] as? Timestamp {
                     joinedDate = ToskaFormatters.monthYear.string(from: timestamp.dateValue())
                 }

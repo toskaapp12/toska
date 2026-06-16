@@ -517,6 +517,22 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     // Street address pattern: "123 Main St" / "456 Oak Avenue"
     let streetSuffixes = "street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy"
     if text.range(of: "\\d+\\s+[A-Za-z]+\\s+(\(streetSuffixes))\\b", options: .regularExpression) != nil { return true }
+
+    // B-2 (2026-06-16): doxxable location-context ("works at Chicago Mercy
+    // Hospital", "above the bodega on 5th and vine", "from brooklyn"). VERBATIM
+    // mirror of functions/moderation.js LOCATION_CONTEXT_PATTERNS, ported to the
+    // client so the compose-time warning fires on the SAME inputs the server
+    // holds on (previously these were server-only — the post silently vanished
+    // into pending-review with no warning). Per-pattern case sensitivity matches
+    // the server EXACTLY: the workplace/education anchors are case-sensitive
+    // (require a Capitalized institution); the rest carry /i (.caseInsensitive).
+    // Pinned by location-context cases in detector-parity.mjs.
+    if text.range(of: "\\b(works at|worked at|employed at)\\s+(the\\s+)?[A-Z][A-Za-z'-]+", options: .regularExpression) != nil { return true }
+    if text.range(of: "\\b(goes to|went to|attends|studies at|enrolled at|graduated from)\\s+(the\\s+)?[A-Z][A-Za-z'-]+", options: .regularExpression) != nil { return true }
+    if text.range(of: "\\b(at|near|behind|above|across from|next to|in front of)\\s+(the\\s+)?(hospital|school|university|college|library|station|airport|bodega|cafe|bar|diner|restaurant|coffee shop|gym|church|mosque|temple|synagogue|park|mall|stadium|theater|theatre|hotel|motel|hostel)\\b", options: [.regularExpression, .caseInsensitive]) != nil { return true }
+    if text.range(of: "\\b(on|at|near|by)\\s+[A-Za-z0-9]+\\s+(and|&)\\s+[A-Za-z0-9]+\\s+(street|st|ave|avenue|blvd|drive|dr)\\b", options: [.regularExpression, .caseInsensitive]) != nil { return true }
+    if text.range(of: "\\b(corner of|intersection of)\\s+[A-Za-z0-9]+\\s+(and|&)\\s+[A-Za-z0-9]+\\b", options: [.regularExpression, .caseInsensitive]) != nil { return true }
+    if text.range(of: "\\b(from|in|near|outside)\\s+(new york|brooklyn|manhattan|queens|los angeles|chicago|houston|phoenix|philadelphia|san diego|dallas|austin|seattle|denver|boston|portland|miami|atlanta|nashville|charlotte|detroit|memphis|baltimore|milwaukee|sacramento|kansas city|las vegas|long beach|fresno|oakland|minneapolis|cleveland|tampa|honolulu|new orleans|wichita|raleigh|omaha|tucson|albuquerque|st louis|saint louis|cincinnati|pittsburgh|anchorage|st paul|saint paul|toledo|newark|jersey city|orlando|tulsa|arlington|virginia beach|colorado springs|london|paris|tokyo|berlin|toronto|sydney|melbourne|dublin|madrid|rome|amsterdam|barcelona|mumbai|delhi|beijing|shanghai|mexico city)\\b", options: [.regularExpression, .caseInsensitive]) != nil { return true }
     // C-4 (2026-06-11): the N-17 change gutted the mid-sentence lone-first-name
     // loop here (a bare first name like "I miss John" is now allowed). The
     // `sentences` / `sentenceStarters` / `words` locals it used were left behind
@@ -748,7 +764,12 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         // — "I miss John"); an OBFUSCATED first name (confusables/leet/fullwidth
         // = isEvasion) or any LAST name is still flagged. Mirror of moderation.js.
         if isFirstName && !isLastName && !isEvasion { continue }
-        if !isEvasion && canonicalSentenceStarters.contains(canonWord) { continue }
+        // B-1 (2026-06-16): gate the sentence-starter exemption to first names
+        // only — a known LAST name as a sentence subject ("Garcia broke my
+        // heart") must stay HELD, not be exempted as legit prose. Mirror of
+        // moderation.js. (Redundant with the line above for pure first names;
+        // kept explicit so both detectors read identically.)
+        if !isEvasion && isFirstName && !isLastName && canonicalSentenceStarters.contains(canonWord) { continue }
         return true
     }
 

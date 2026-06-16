@@ -1,6 +1,20 @@
 {
   "indexes": [
     {
+      "collectionGroup": "blocked",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "blockedUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "blockedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "posts",
       "queryScope": "COLLECTION",
       "fields": [

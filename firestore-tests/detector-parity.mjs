@@ -68,6 +68,22 @@ const CORPUS = [
   // F-2: "ig" handle handoff without a separator must HOLD
   ["my ig is sarahreal", "hold"],
   ["follow my dreams", "allow"], // …but a bare "my X" with no handle stays allowed
+  // B-1 (2026-06-16): a known LAST name as a SENTENCE SUBJECT must HOLD on both
+  // layers — the sentence-starter exemption used to spare it, leaking a surname.
+  ["Garcia broke my heart", "hold"],               // surname as sentence subject
+  ["Johnson cheated on me", "hold"],               // surname as sentence subject
+  ["I'm devastated. Garcia left me.", "hold"],     // surname starting a later sentence
+  // …but a pure FIRST name as a sentence subject must STILL be allowed (the fix
+  // must not over-hold the modal "I miss <firstname>" prose).
+  ["Sarah broke my heart", "allow"],               // first name as sentence subject
+  // B-2 (2026-06-16): doxxable location-context now fires on BOTH layers (the
+  // client warning was previously server-only). Workplace/education anchors are
+  // case-sensitive; place/city patterns are case-insensitive.
+  ["he works at Chicago Mercy Hospital", "hold"],  // workplace + institution
+  ["she goes to UCLA", "hold"],                     // education + institution
+  ["from brooklyn", "hold"],                        // city context (lowercase)
+  ["meet me near the hospital", "hold"],            // locator + place noun
+  ["we worked at the same place", "allow"],         // generic venting, no anchor
 ];
 
 // ── Extract the Swift detector + its helpers from FeedView.swift ──

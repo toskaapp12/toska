@@ -419,6 +419,17 @@ struct SettingsView: View {
         } message: {
             Text("this is permanent. everything you said here goes with it.")
         }
+        // exportError was set on a failed data export but never surfaced — the
+        // spinner just stopped with no share sheet and no message. Bind it to an
+        // alert so the user knows to retry. (Optional-driven Bool binding.)
+        .alert("export failed", isPresented: Binding(
+            get: { exportError != nil },
+            set: { if !$0 { exportError = nil } }
+        )) {
+            Button("ok", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "couldn't build export — try again.")
+        }
         .alert("push is off in iOS settings", isPresented: $showOSPushDeniedAlert) {
             Button("open settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {

@@ -269,3 +269,42 @@ struct ToskaPaperGrain: View {
         return UIImage(cgImage: cg)
     }()
 }
+
+// MARK: - Shared error/retry banner
+//
+// A single inline error+retry affordance so a failed Firestore read surfaces
+// the same way everywhere instead of leaving a blank/stale screen with no
+// feedback. Extracted from the original FeedView banner (the one screen that
+// already did this) so PostDetailView, the profile screens, and any other
+// fetch can reuse the exact same treatment. Inline (full-width strip), not a
+// full-screen takeover, so it sits above whatever content did load.
+struct ToskaErrorBanner: View {
+    let message: String
+    let retry: () -> Void
+
+    init(_ message: String = "couldn't load — check your connection", retry: @escaping () -> Void) {
+        self.message = message
+        self.retry = retry
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 10))
+            Text(message)
+                .font(.system(size: 11))
+            Spacer()
+            Button(action: retry) {
+                Text("retry")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .accessibilityLabel("Retry loading")
+        }
+        .foregroundColor(Color.toskaErrorRed)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(Color.toskaErrorRed.opacity(0.06))
+        .accessibilityElement(children: .combine)
+    }
+}

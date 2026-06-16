@@ -30,6 +30,8 @@ struct NotificationsView: View {
     // follows, and messages land in the UI as the Cloud Function writes
     // them — no user action required.
     @State private var notificationsListener: ListenerRegistration? = nil
+    // H2: surface a load failure instead of showing the empty state on error.
+    @State private var notificationsLoadFailed = false
     // Tracks whether the mark-as-read sweep has already been scheduled for
     // this appear. The listener fires on every snapshot delta; we only want
     // to mark-read once per visit, not on every keystroke of someone else
@@ -78,6 +80,16 @@ struct NotificationsView: View {
                         if isLoading {
                             VStack {
                                 SkeletonFeed(kind: .notification, count: 5)
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                        } else if notificationsLoadFailed && notifications.isEmpty {
+                            VStack {
+                                ToskaErrorBanner("couldn't load notifications — check your connection") {
+                                    notificationsLoadFailed = false
+                                    isLoading = true
+                                    startListeningToNotifications()
+                                }
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height)
@@ -493,12 +505,14 @@ struct NotificationsView: View {
                     if let error = error {
                         print("⚠️ notifications listener error: \(error)")
                         isLoading = false
+                        notificationsLoadFailed = true
                         return
                     }
                     guard let documents = snapshot?.documents else {
                         isLoading = false
                         return
                     }
+                    notificationsLoadFailed = false
 
                     // Filter out notifications from blocked users at render time.
                     let visibleDocuments = documents.filter { doc in

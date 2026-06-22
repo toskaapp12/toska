@@ -7,7 +7,12 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<!-- Prod (toska-4ebf4) reversed client ID -->
 				<string>com.googleusercontent.apps.183467627187-vqp69cjd5f35hqnfmu06qlq1ep0pgs7r</string>
+				<!-- Staging (toskastaging) reversed client ID — lets Google Sign-In's
+				     callback resolve on Debug/staging builds too. Both can coexist;
+				     Google Sign-In picks the one matching the active GoogleService-Info. -->
+				<string>com.googleusercontent.apps.260913424323-vbr0bpknui50flc2rj1n084hqq2ou8l1</string>
 			</array>
 		</dict>
 	</array>

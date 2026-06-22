@@ -566,7 +566,20 @@ struct PostDetailView: View {
                     .background(ToskaColor.input)
                     .clipShape(Capsule())
                     .onChange(of: replyText) { _, newValue in
-                        if newValue.count > 500 { replyText = String(newValue.prefix(500)) }
+                        // Truncate on UTF-16 length to match the Firestore rule's
+                        // size() check (mirrors ComposeView) so heavy-emoji replies
+                        // don't silently fail the server-side write.
+                        if newValue.utf16.count > 500 {
+                            var utf16Count = 0
+                            var endIdx = newValue.startIndex
+                            for ch in newValue {
+                                let chUtf16 = String(ch).utf16.count
+                                if utf16Count + chUtf16 > 500 { break }
+                                utf16Count += chUtf16
+                                endIdx = newValue.index(after: endIdx)
+                            }
+                            replyText = String(newValue[..<endIdx])
+                        }
                         // Persist reply draft per post so a kill mid-typing
                         // doesn't lose words. Cleared on successful send.
                         // N-4: protected DraftStore instead of UserDefaults.
@@ -1679,7 +1692,20 @@ struct EditPostView: View {
                         .lineSpacing(4).scrollContentBackground(.hidden)
                         .padding(.horizontal, 14).padding(.top, 8)
                         .onChange(of: editText) { _, newValue in
-                            if newValue.count > charLimit { editText = String(newValue.prefix(charLimit)) }
+                            // Truncate on UTF-16 length (the metric the Firestore
+                            // rule's size() check uses) so heavy-emoji edits don't
+                            // silently fail the server-side write. Mirrors ComposeView.
+                            if newValue.utf16.count > charLimit {
+                                var utf16Count = 0
+                                var endIdx = newValue.startIndex
+                                for ch in newValue {
+                                    let chUtf16 = String(ch).utf16.count
+                                    if utf16Count + chUtf16 > charLimit { break }
+                                    utf16Count += chUtf16
+                                    endIdx = newValue.index(after: endIdx)
+                                }
+                                editText = String(newValue[..<endIdx])
+                            }
                             if !saveError.isEmpty { saveError = "" }
                         }
                 }
@@ -1697,14 +1723,14 @@ struct EditPostView: View {
                         ZStack {
                             Circle().stroke(Color.toskaBorderLight, lineWidth: 1.5).frame(width: 22, height: 22)
                             Circle()
-                                .trim(from: 0, to: CGFloat(editText.count) / CGFloat(charLimit))
-                                .stroke(editText.count > charLimit - 50 ? Color.toskaErrorRed : Color.toskaBlue,
+                                .trim(from: 0, to: CGFloat(editText.utf16.count) / CGFloat(charLimit))
+                                .stroke(editText.utf16.count > charLimit - 50 ? Color.toskaErrorRed : Color.toskaBlue,
                                         style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                                 .frame(width: 22, height: 22).rotationEffect(.degrees(-90))
                         }
-                        Text("\(charLimit - editText.count)")
+                        Text("\(charLimit - editText.utf16.count)")
                             .font(.system(size: 10, design: .monospaced))
-                            .foregroundColor(editText.count > charLimit - 50 ? Color.toskaErrorRed : Color.toskaTimestamp)
+                            .foregroundColor(editText.utf16.count > charLimit - 50 ? Color.toskaErrorRed : Color.toskaTimestamp)
                     }
                     .padding(.horizontal, 18).padding(.vertical, 10)
                 }

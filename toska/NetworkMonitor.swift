@@ -84,10 +84,22 @@ class RateLimiter {
     // race, and the UI flips state visibly. Tracking in-flight transactions
     // explicitly closes that gap. Caller marks at toggleLike entry, unmarks
     // in the completion handler regardless of success/failure.
-    private var inFlightLikes: Set<String> = []
-    func isLikeInFlight(_ postId: String) -> Bool { inFlightLikes.contains(postId) }
-    func markLikeInFlight(_ postId: String) { inFlightLikes.insert(postId) }
-    func markLikeComplete(_ postId: String) { inFlightLikes.remove(postId) }
+    // Tracked with the start timestamp (not a bare Set) so a stuck entry can
+    // self-heal: if a caller ever throws before reaching markLikeComplete, an
+    // entry older than this safety window is treated as cleared rather than
+    // locking that post's like for the rest of the session.
+    private var inFlightLikes: [String: Date] = [:]
+    private static let inFlightTimeout: TimeInterval = 10
+    func isLikeInFlight(_ postId: String) -> Bool {
+        guard let startedAt = inFlightLikes[postId] else { return false }
+        if Date().timeIntervalSince(startedAt) > Self.inFlightTimeout {
+            inFlightLikes[postId] = nil
+            return false
+        }
+        return true
+    }
+    func markLikeInFlight(_ postId: String) { inFlightLikes[postId] = Date() }
+    func markLikeComplete(_ postId: String) { inFlightLikes[postId] = nil }
 
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
     func recordSave(for postId: String) {

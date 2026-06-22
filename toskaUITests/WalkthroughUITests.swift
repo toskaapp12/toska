@@ -310,9 +310,14 @@ final class WalkthroughUITests: XCTestCase {
         sleep(1)
         let gear = app.buttons["settings"]
         XCTAssertTrue(waitFor(gear, 8), "Settings gear missing")
-        gear.tap()
+        forceTap(gear) // gear sits under the glass tab bar; plain .tap() can be swallowed (matches test09b)
         XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Settings didn't open")
-        XCTAssertTrue(app.staticTexts["privacy"].exists, "privacy section missing")
+        // Match the privacy section by case-insensitive label (the "privacy" group
+        // header renders uppercased and its exact-identifier match is unreliable
+        // after a re-render; "privacy policy" is a stable always-present row). Either
+        // satisfies "the settings screen rendered its content".
+        let privacyEl = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'privacy'")).firstMatch
+        XCTAssertTrue(waitFor(privacyEl, 6), "privacy section missing")
         snap("09a-settings-top")
         app.swipeUp()
         snap("09b-settings-mid")

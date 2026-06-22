@@ -7,12 +7,26 @@
 // new rules deploy.
 //
 // Usage:
-//   cd functions && node backfillModerationStatus.js [--dry-run]
+//   cd functions && GCLOUD_PROJECT=toskastaging node backfillModerationStatus.js [--dry-run]
+//   cd functions && GCLOUD_PROJECT=toska-4ebf4 node backfillModerationStatus.js --prod
 //
 // Safe to re-run: only touches docs missing the field.
 
 const admin = require("firebase-admin");
-admin.initializeApp({ projectId: "toska-4ebf4" });
+
+// Project must be chosen explicitly (no hardcoded prod default) so this
+// can't accidentally run against prod. Mirrors backfillReplyModerationStatus.js.
+const PROJECT = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
+if (!PROJECT) {
+  console.error("Set GCLOUD_PROJECT (e.g. toskastaging or toska-4ebf4).");
+  process.exit(1);
+}
+if (PROJECT === "toska-4ebf4" && !process.argv.includes("--prod")) {
+  console.error("Refusing to run against prod without --prod. (project=toska-4ebf4)");
+  process.exit(1);
+}
+admin.initializeApp({ projectId: PROJECT });
+console.log(`Backfilling post moderationStatus on project: ${PROJECT}`);
 
 const db = admin.firestore();
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -20,7 +34,7 @@ const BATCH_SIZE = 400; // Firestore batch limit is 500 writes
 
 (async () => {
   const snap = await db.collection("posts").get();
-  console.log(`Found ${snap.size} total posts in prod.`);
+  console.log(`Found ${snap.size} total posts on ${PROJECT}.`);
 
   const needsBackfill = snap.docs.filter((d) => !d.get("moderationStatus"));
   console.log(`${needsBackfill.length} posts missing moderationStatus.`);

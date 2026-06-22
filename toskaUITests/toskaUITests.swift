@@ -504,12 +504,14 @@ final class ToskaUITests: XCTestCase {
         sleep(1)
         clearEditor()
 
-        // Case 2: LONE first name → must NOT warn (N-17). The crisis/clean path
-        // would publish on tap, so do NOT tap post — instead assert the warning
-        // is absent after typing by tapping post and immediately checking;
-        // if no warning appears the confirm sheet/post fires, so use a benign
-        // sacrificial check: type, tap post, and accept either a clean publish
-        // (staging) or no-warning as the pass signal.
+        // Case 2: LONE first name → must NOT warn (N-17). Verifying this requires
+        // tapping post, and on the clean path that PUBLISHES a real post to
+        // staging (there's no pre-submit signal to assert against). To avoid
+        // mutating staging on every run, this destructive leg is opt-in via the
+        // RUN_DESTRUCTIVE_UITESTS=1 environment variable.
+        guard ProcessInfo.processInfo.environment["RUN_DESTRUCTIVE_UITESTS"] == "1" else {
+            throw XCTSkip("Case 2 publishes to staging; set RUN_DESTRUCTIVE_UITESTS=1 to run it")
+        }
         typeIntoEditor("I miss Jennifer so much")
         app.buttons["post"].tap()
         let warned = nameWarning.waitForExistence(timeout: 3)

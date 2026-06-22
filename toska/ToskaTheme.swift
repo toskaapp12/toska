@@ -287,6 +287,7 @@ struct ToskaHeader<Trailing: View>: View {
             }
             Text(title)
                 .toskaScreenTitle()
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             trailing()
         }

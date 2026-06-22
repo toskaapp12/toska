@@ -234,6 +234,9 @@ struct CreateAccountView: View {
                 },
                 onDecline: {
                     showAgeGate = false
+                    // Explain the dead-end so a declining user isn't dropped back
+                    // onto a filled form with no feedback (and looping the gate).
+                    errorMessage = "toska is for 17 and older."
                 }
             )
         }
@@ -245,6 +248,7 @@ struct CreateAccountView: View {
                 },
                 onDecline: {
                     showPolicyAcceptance = false
+                    errorMessage = "you'll need to accept the terms to create an account."
                 }
             )
         }

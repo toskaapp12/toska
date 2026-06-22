@@ -270,7 +270,7 @@ struct ProfileView: View {
                                                                                 switch item {
                                                                                 case .post(let post):
                                                                                     Button { openSavedPost(post) } label: {
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let liked):
@@ -297,7 +297,7 @@ struct ProfileView: View {
                                                                                 switch item {
                                                                                 case .post(let post):
                                                                                     Button { openSavedPost(post) } label: {
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let saved):
@@ -900,7 +900,7 @@ struct ProfileView: View {
                             let data = doc.data()
                             guard data["text"] != nil else { return nil }
                             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                            return SavedPost(id: doc.documentID, handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
+                            return SavedPost(id: doc.documentID, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
                         }
                         return (found: results, requested: chunk)
                     }
@@ -1126,7 +1126,7 @@ struct ProfileView: View {
                             let data = doc.data()
                             guard data["text"] != nil else { return nil }
                             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                            return SavedPost(id: doc.documentID, handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
+                            return SavedPost(id: doc.documentID, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
                         }
                         return (found: results, requested: chunk)
                     }
@@ -1605,7 +1605,20 @@ struct EditReplyView: View {
                         .lineSpacing(4).scrollContentBackground(.hidden)
                         .padding(.horizontal, 14).padding(.top, 8)
                         .onChange(of: replyText) { _, newValue in
-                            if newValue.count > 500 { replyText = String(newValue.prefix(500)) }
+                            // Truncate on UTF-16 length to match the Firestore rule's
+                            // size() check (mirrors ComposeView) so heavy-emoji edits
+                            // don't silently fail the server-side write.
+                            if newValue.utf16.count > 500 {
+                                var utf16Count = 0
+                                var endIdx = newValue.startIndex
+                                for ch in newValue {
+                                    let chUtf16 = String(ch).utf16.count
+                                    if utf16Count + chUtf16 > 500 { break }
+                                    utf16Count += chUtf16
+                                    endIdx = newValue.index(after: endIdx)
+                                }
+                                replyText = String(newValue[..<endIdx])
+                            }
                         }
                 }
                 .frame(maxHeight: .infinity)

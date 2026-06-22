@@ -462,11 +462,7 @@ struct ExploreView: View {
 
 
     // MARK: - Data fetching
-    
-    func preloadPosts() {
-            // Deferred to performSearch — no need to read 200 docs if user never searches
-        }
-    
+
     func performSearch() {
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
                 guard !query.isEmpty else { return }

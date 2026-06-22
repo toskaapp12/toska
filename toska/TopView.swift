@@ -15,7 +15,7 @@ struct TopView: View {
             switch self {
             case .today: return Date().addingTimeInterval(-24 * 60 * 60)
             case .week:  return Date().addingTimeInterval(-7 * 24 * 60 * 60)
-            case .all:   return Date().addingTimeInterval(-365 * 24 * 60 * 60)
+            case .all:   return Date(timeIntervalSince1970: 0)
             }
         }
 

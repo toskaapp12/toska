@@ -649,36 +649,15 @@ async function queueUserCleanupContinuation(uid, type, totalDeleted) {
 // unbounded; the scheduled `cleanupProcessedTriggerEvents` sweep below is
 // a fallback for projects where TTL isn't configured yet.
 // ============================================================
-async function claimTriggerEvent(eventId) {
-  // No event id available (test env, malformed event) → run without dedup.
-  // Better to over-count once than to silently drop the counter update.
-  if (!eventId || typeof eventId !== "string") return true;
-  const claimRef = db.collection("processedTriggerEvents").doc(eventId);
-  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-  try {
-    return await db.runTransaction(async (tx) => {
-      const snap = await tx.get(claimRef);
-      if (snap.exists) return false;
-      tx.set(claimRef, {
-        processedAt: FieldValue.serverTimestamp(),
-        expiresAt,
-      });
-      return true;
-    });
-  } catch (err) {
-    // Failing open here is the right call: a transient Firestore hiccup
-    // shouldn't permanently skip a real counter update. The cost is one
-    // potential double-count per Firestore-outage event — same shape as
-    // the pre-fix behavior. Log so persistent issues surface.
-    console.warn(`claimTriggerEvent ${eventId} errored, failing open:`, err.message);
-    return true;
-  }
-}
+// NOTE: the original `claimTriggerEvent` (claim-first dedup helper) was
+// removed — every live trigger now uses `claimedTransaction` below, which
+// closes the partial-failure trap described next. The `processedTriggerEvents`
+// collection + TTL documented above are still used by `claimedTransaction`.
 
 // ============================================================
 // Atomic claim+write for multi-write counter triggers.
 //
-// The plain `claimTriggerEvent` pattern (claim FIRST, then do writes)
+// The plain claim-first pattern (claim FIRST, then do writes)
 // has a partial-failure trap: if the claim is set but a subsequent write
 // fails, Eventarc redelivery sees the claim and skips the entire trigger
 // — leaving the failed counter update permanently un-applied. For
@@ -3849,12 +3828,19 @@ exports.confirmAdult = onCall(
 //   write: no one (server-side Admin SDK only)
 // ============================================================
 
-async function writeAuditEntry(entry) {
+async function writeAuditEntry(entry, dedupeId) {
   try {
-    await db.collection("adminAuditLog").add({
-      ...entry,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    const payload = { ...entry, createdAt: FieldValue.serverTimestamp() };
+    const col = db.collection("adminAuditLog");
+    if (dedupeId) {
+      // Deterministic id keyed on the trigger event so an at-least-once
+      // Eventarc redelivery of the same update overwrites the same row
+      // instead of appending a duplicate audit entry. Update triggers don't
+      // retry by default, so redelivery is rare — this just makes it harmless.
+      await col.doc(dedupeId).set(payload);
+    } else {
+      await col.add(payload);
+    }
   } catch (err) {
     console.error("adminAuditLog write failed:", err.message);
   }
@@ -3876,7 +3862,7 @@ exports.auditUserRestriction = onDocumentUpdated(
       targetHandle: after.handle || before.handle || null,
       before: { restricted: before.restricted ?? false },
       after:  { restricted: after.restricted ?? false },
-    });
+    }, event.id);
   }
 );
 
@@ -3895,7 +3881,7 @@ exports.auditReportResolution = onDocumentUpdated(
       reportType: after.type || before.type || null,
       before: { status: before.status || null },
       after:  { status: after.status  || null, action: after.action || null },
-    });
+    }, event.id);
   }
 );
 
@@ -3933,7 +3919,7 @@ exports.auditPostModeration = onDocumentUpdated(
         targetHandle: after.authorHandle || before.authorHandle || null,
         before: { moderationStatus: before.moderationStatus || null, flagged: before.flagged ?? null },
         after:  { moderationStatus: after.moderationStatus  || null, flagged: after.flagged ?? null },
-      });
+      }, `${event.id}_approve`);
     }
     if (newlyCrisisReviewed) {
       await writeAuditEntry({
@@ -3944,7 +3930,7 @@ exports.auditPostModeration = onDocumentUpdated(
         targetHandle: after.authorHandle || before.authorHandle || null,
         before: { concerningContent: before.concerningContent ?? null },
         after:  { concerningContent: after.concerningContent ?? null },
-      });
+      }, `${event.id}_crisis`);
     }
     if (newlyUnflagged) {
       await writeAuditEntry({
@@ -3963,7 +3949,7 @@ exports.auditPostModeration = onDocumentUpdated(
           concerningContent: after.concerningContent ?? null,
           flagReason: after.flagReason ?? null,
         },
-      });
+      }, `${event.id}_unflag`);
     }
   }
 );
@@ -3989,7 +3975,7 @@ exports.auditPostDeletion = onDocumentDeleted(
         flagged: data.flagged ?? null,
       },
       after: null,
-    });
+    }, event.id);
   }
 );
 
@@ -4058,7 +4044,6 @@ module.exports.__test = {
   clearRepostsOfPost,
   clearPostSubtree,
   claimedTransaction,
-  claimTriggerEvent,
   checkRateLimit,
   // Moderation classifiers (pure — no Firestore). #1 crisis/abuse coverage.
   isPostExplicitCrisis,

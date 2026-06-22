@@ -44,6 +44,7 @@ struct PostDetailData {
 /// Used in ProfileView for saved/liked posts (has Date for sorting, handle for display)
 struct SavedPost: Identifiable {
     let id: String          // doc ID
+    let authorId: String
     let handle: String
     let text: String
     let tag: String?

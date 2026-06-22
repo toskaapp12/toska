@@ -1740,65 +1740,6 @@ struct FeedHeaderCard: View {
                 }
     }
 }
-// MARK: - Custom Refresh Header
-
-struct ToskaRefreshHeader: View {
-    let isRefreshing: Bool
-    let triggerProgress: CGFloat
-
-    private let phrases = [
-            "loading what people typed at 2am...",
-            "finding the things nobody said out loud...",
-            "pulling up what someone almost deleted...",
-            "gathering the unsent texts...",
-            "loading what kept someone up tonight...",
-            "finding who else is going through it...",
-            "collecting the things we pretend we dont feel...",
-            "seeing what someone finally admitted...",
-            "loading the thoughts that wont stop...",
-            "finding the words that hurt to read because theyre yours too...",
-        ]
-
-    @State private var currentPhrase = ""
-    @State private var opacity: Double = 0
-
-    var body: some View {
-        VStack(spacing: 8) {
-            if isRefreshing {
-                ProgressView()
-                    .tint(Color.toskaBlue)
-                    .scaleEffect(0.8)
-                Text(currentPhrase)
-                    .font(.custom("Georgia-Italic", size: 12))
-                    .foregroundColor(Color.toskaBlue.opacity(0.7))
-                    .multilineTextAlignment(.center)
-                    .opacity(opacity)
-                    .animation(.easeIn(duration: 0.3), value: opacity)
-            } else {
-                if triggerProgress > 0.2 {
-                    Text(currentPhrase)
-                        .font(.custom("Georgia-Italic", size: 12))
-                        .foregroundColor(Color.toskaBlue.opacity(Double(triggerProgress) * 0.7))
-                        .multilineTextAlignment(.center)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .onAppear {
-            currentPhrase = phrases.randomElement() ?? phrases[0]
-        }
-        .onChange(of: isRefreshing) { _, newValue in
-            if newValue {
-                currentPhrase = phrases.randomElement() ?? phrases[0]
-                withAnimation { opacity = 1 }
-            } else {
-                opacity = 0
-            }
-        }
-    }
-}
-
 // SkeletonPostRow + Skeleton* family now live in ToskaTheme.swift so the
 // notification + conversation variants share the same shimmer engine. The
 // previous opacity-pulse implementation here was replaced; existing call

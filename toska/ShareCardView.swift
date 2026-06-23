@@ -15,6 +15,11 @@ struct ShareCardView: View {
     @State private var selectedStyle = 8
     @State private var selectedFont = 0
     @State private var selectedSize = 1
+    // Secondary controls (card shape + felt-count) start collapsed so the sheet
+    // is uncluttered by default; tap "more options" to reveal them.
+    @State private var showOptions = false
+    // Gentle card entrance (scale + fade) when the sheet opens.
+    @State private var cardAppeared = false
     @State private var selectedAlignment = 1
     @State private var selectedRatio = 0
     // User-toggleable: show or hide the "X felt this" line on the share card.
@@ -39,6 +44,12 @@ struct ShareCardView: View {
     // up by one, so the dark/light boundary is now an explicit set (see isDark)
     // rather than the old `< 7` cutoff.
     let styles = ["2am", "dusk", "numb", "bruise", "ashes", "unsent", "alone", "hollow", "dawn", "paper", "blush", "sage", "frost"]
+
+    // Order the swatch picker shows: lighter, warmer moods FIRST (dawn, paper,
+    // blush, sage, frost), then the darker night moods. Only the display order
+    // changes — every index→style mapping (backgroundFor / styleHighlightColor /
+    // isDark / brandTextColor …) is keyed to the original index and untouched.
+    let styleDisplayOrder = [8, 9, 10, 11, 12, 0, 1, 2, 3, 4, 5, 6, 7]
     let fonts = ["serif", "sans", "mono", "hand"]
     let ratios = ["story", "square", "wide"]
 
@@ -55,6 +66,14 @@ struct ShareCardView: View {
         case 2: return CGSize(width: 390, height: 260)
         default: return CGSize(width: 390, height: 690)
         }
+    }
+
+    // Uniform scale that fits the full-size card into the preview box
+    // (≤292 wide, ≤518 tall) WITHOUT clipping — the card lays out at cardSize
+    // and is scaled down, so the text wraps exactly as it will when shared.
+    var previewScale: CGFloat {
+        min(min(cardSize.width * 0.75, 292) / cardSize.width,
+            min(cardSize.height * 0.75, 518) / cardSize.height)
     }
 
     var body: some View {
@@ -87,22 +106,42 @@ struct ShareCardView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Rectangle().fill(Color.black.opacity(0.10)).frame(height: 0.5)
+                Rectangle().fill(Color.black.opacity(0.05)).frame(height: 0.5)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 18) {
                         cardPreview
-                            .frame(width: min(cardSize.width * 0.75, 292), height: min(cardSize.height * 0.75, 518))
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            // A clear hairline + layered shadow so the card always
-                            // separates from the sheet, whether it's a dark or a
-                            // light mood (was a near-invisible 2pt radius on black).
+                            // Scale the card DOWN to fit (don't frame-clip it — that
+                            // cut words off both sides). Frame to the scaled size so
+                            // layout stays tight around the visible card.
+                            .scaleEffect(previewScale)
+                            .frame(width: cardSize.width * previewScale, height: cardSize.height * previewScale)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            // Soft, layered "float": a tight contact shadow + a wide
+                            // ambient one + a faint mood-tinted glow — premium and airy
+                            // instead of the old single heavy 0.55-black drop. The white
+                            // rim edges dark moods; the faint black hairline defines
+                            // light moods against the light sheet.
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .stroke(.white.opacity(0.14), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(.white.opacity(0.18), lineWidth: 1)
                             )
-                            .shadow(color: .black.opacity(0.55), radius: 26, y: 14)
-                            .shadow(color: cardGlowColor.opacity(0.30), radius: 34, y: 6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(.black.opacity(0.04), lineWidth: 0.5)
+                            )
+                            .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
+                            .shadow(color: .black.opacity(0.09), radius: 30, y: 16)
+                            .shadow(color: cardGlowColor.opacity(0.18), radius: 46, y: 10)
+                            // Gentle entrance: the card settles in with a soft
+                            // scale + fade when the sheet opens.
+                            .scaleEffect(cardAppeared ? 1 : 0.95)
+                            .opacity(cardAppeared ? 1 : 0)
+                            .onAppear {
+                                withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
+                                    cardAppeared = true
+                                }
+                            }
                             .padding(.top, 18)
 
                         // MARK: - Mood Swatches
@@ -117,15 +156,33 @@ struct ShareCardView: View {
                         // collapsed into ONE compact bar with thin dividers.
                         typeToolbar
 
-                        // MARK: - Ratio + felt-count
-                        HStack(spacing: 10) {
-                            ratioControl
+                        // MARK: - Ratio + felt-count (behind "more options")
+                        VStack(spacing: 12) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) { showOptions.toggle() }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(showOptions ? "fewer options" : "more options")
+                                        .font(.system(size: 11, weight: .medium))
+                                    Image(systemName: showOptions ? "chevron.up" : "chevron.down")
+                                        .font(.system(size: 8, weight: .semibold))
+                                }
+                                .foregroundColor(Color(hex: "8a8790"))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(showOptions ? "Hide shape and felt-count options" : "Show shape and felt-count options")
 
-                            if feltCount > 0 {
-                                Spacer(minLength: 8)
-                                feltCountPill
-                            } else {
-                                Spacer(minLength: 0)
+                            if showOptions {
+                                HStack(spacing: 10) {
+                                    ratioControl
+
+                                    if feltCount > 0 {
+                                        Spacer(minLength: 8)
+                                        feltCountPill
+                                    } else {
+                                        Spacer(minLength: 0)
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 20)
@@ -136,41 +193,18 @@ struct ShareCardView: View {
                         // world, so the share row is the loudest thing here.
                         // Instagram Stories (the biggest driver) gets the real IG
                         // gradient; the rest use their platform colors.
-                        HStack(spacing: 0) {
-                            platformButton(name: "Save", icon: "arrow.down.to.line",
-                                           colors: [Color.toskaAccentGold, Color(hex: "b8893f")]) {
+                        // Just two destinations: Save to Photos, or Share via the
+                        // iOS system sheet — which already lists whatever the user
+                        // has installed (Instagram, TikTok, X, Messages, …). No
+                        // app-specific buttons or Facebook App ID; we hand the
+                        // image to the OS and let the user pick.
+                        HStack(spacing: 12) {
+                            sharePill(name: "Save", icon: "arrow.down.to.line",
+                                      colors: [Color.toskaAccentGold, Color(hex: "b8893f")]) {
                                 saveToPhotos()
                             }
-                            platformButton(name: "Instagram", icon: "camera.fill",
-                                           colors: [Color(hex: "FEDA75"), Color(hex: "FA7E1E"), Color(hex: "D62976"), Color(hex: "962FBF")]) {
-                                // Direct-to-Stories needs a Facebook App ID
-                                // (source_application); without one Instagram
-                                // ignores the share and nothing happens. Route
-                                // through the iOS share sheet so the user reliably
-                                // lands on Instagram, then picks Stories/Feed.
-                                sharedPlatform = "Instagram"
-                                shareImage()
-                            }
-                            // TikTok accepts images via the iOS system share sheet,
-                            // so route through the same path as "More" (shareImage)
-                            // with the platform tagged — tapping it presents the
-                            // share sheet where TikTok appears as a destination.
-                            platformButton(name: "TikTok", icon: "music.note",
-                                           colors: [Color(hex: "010101"), Color(hex: "161616")]) {
-                                sharedPlatform = "TikTok"
-                                shareImage()
-                            }
-                            platformButton(name: "X", icon: "arrow.up.right",
-                                           colors: [Color(hex: "2b2b2e"), Color(hex: "111113")]) {
-                                shareToTwitter()
-                            }
-                            platformButton(name: "iMessage", icon: "message.fill",
-                                           colors: [Color(hex: "37D14A"), Color(hex: "26A938")]) {
-                                sharedPlatform = "iMessage"
-                                shareImage()
-                            }
-                            platformButton(name: "More", icon: "square.and.arrow.up",
-                                           colors: [Color.toskaMidnightPurple, Color(hex: "6E5FB0")]) {
+                            sharePill(name: "Share", icon: "square.and.arrow.up",
+                                      colors: [Color.toskaMidnightPurple, Color(hex: "6E5FB0")]) {
                                 sharedPlatform = ""
                                 shareImage()
                             }
@@ -205,17 +239,17 @@ struct ShareCardView: View {
                                 showCopied = false
                             }
                         } label: {
-                            HStack(spacing: 5) {
+                            HStack(spacing: 6) {
                                 Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 10))
-                                Text(showCopied ? "copied" : "copy text")
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.system(size: 11))
+                                Text(showCopied ? "copied" : "copy text instead")
+                                    .font(.system(size: 11, weight: .medium))
                             }
-                            .foregroundColor(showCopied ? Color.toskaFollowGreen.opacity(0.85) : Color(hex: "8a8790"))
+                            // Quiet tertiary text link (no grey box) so the Save/Share
+                            // pills stay the clear primary actions.
+                            .foregroundColor(showCopied ? Color.toskaFollowGreen.opacity(0.9) : Color(hex: "8a8790"))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color.black.opacity(0.04))
-                            .cornerRadius(6)
+                            .padding(.vertical, 11)
                         }
                         .padding(.horizontal, 24)
 
@@ -287,18 +321,19 @@ struct ShareCardView: View {
     /// chip gets a 2px accent ring + a slight scale-up.
     private var moodSwatchRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(0..<styles.count, id: \.self) { index in
+            HStack(spacing: 13) {
+                ForEach(styleDisplayOrder, id: \.self) { index in
                     let isSelected = selectedStyle == index
                     Button {
+                        HapticManager.play(.tabSwitch)   // soft tactile tick on mood change
                         withAnimation(.easeInOut(duration: 0.3)) {
                             selectedStyle = index
                         }
                     } label: {
                         VStack(spacing: 6) {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(Color.clear)
-                                .frame(width: 46, height: 46)
+                                .frame(width: 54, height: 54)
                                 .background(
                                     backgroundFor(index)
                                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -322,7 +357,7 @@ struct ShareCardView: View {
                                 .scaleEffect(isSelected ? 1.08 : 1.0)
 
                             Text(styles[index])
-                                .font(.system(size: 8, weight: isSelected ? .semibold : .regular))
+                                .font(.system(size: 9.5, weight: isSelected ? .semibold : .regular))
                                 .foregroundColor(isSelected ? Color(hex: "1a1720") : Color(hex: "8a8790"))
                         }
                     }
@@ -402,19 +437,21 @@ struct ShareCardView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.black.opacity(0.04))
-        .cornerRadius(10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        // Lighter, airier than the old grey block — a barely-there wash + hairline
+        // so it recedes and the card stays the focus.
+        .background(Color.black.opacity(0.025))
+        .cornerRadius(13)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.black.opacity(0.10), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Color.black.opacity(0.05), lineWidth: 0.5)
         )
         .padding(.horizontal, 20)
     }
 
     private var toolbarDivider: some View {
-        Rectangle().fill(Color.black.opacity(0.10)).frame(width: 0.5, height: 18)
+        Rectangle().fill(Color.black.opacity(0.06)).frame(width: 0.5, height: 18)
     }
 
     /// Clean segmented control for the card ratio.
@@ -518,6 +555,30 @@ struct ShareCardView: View {
         .buttonStyle(SharePressStyle())
     }
 
+    // Labeled pill destination (Save / Share) — replaces the round icon buttons
+    // with a cleaner, more tappable capsule that reads as a clear call-to-action.
+    func sharePill(name: String, icon: String, colors: [Color], action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(name)
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(
+                Capsule().fill(
+                    LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+            )
+            .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 0.75))
+            .shadow(color: colors.first?.opacity(0.35) ?? .clear, radius: 9, y: 4)
+        }
+        .buttonStyle(SharePressStyle())
+    }
+
     // MARK: - Style Helpers
 
     func styleHighlightColor(_ index: Int) -> Color {
@@ -578,7 +639,10 @@ struct ShareCardView: View {
                     .foregroundColor(textColor)
                     .lineSpacing(lineSpacing)
                     .multilineTextAlignment(textAlignment)
+                    // Scale down to fit if the message is long — never clip.
+                    .minimumScaleFactor(0.35)
                     .padding(.horizontal, textPadding)
+                    .frame(maxHeight: quoteMaxHeight)
 
                 Spacer(minLength: 0).frame(maxHeight: .infinity)
 
@@ -640,11 +704,22 @@ struct ShareCardView: View {
         }
     }
 
+    // A post can be up to 500 chars. Cap the quote's height (leaving room for
+    // the quote mark / tag above and the toska footer below) so a long message
+    // scales DOWN to fit rather than overflowing the card. Combined with
+    // minimumScaleFactor on the Text, this GUARANTEES even a 500-char post
+    // always fits, in any ratio.
+    var quoteMaxHeight: CGFloat {
+        cardSize.height - (selectedRatio == 2 ? 120 : 215)
+    }
+
     var fontSize: CGFloat {
         let length = text.count
         let base: CGFloat
-        if selectedRatio == 2 {
-            base = length > 200 ? 11 : 13
+        if selectedRatio == 2 {                       // wide — least vertical room
+            base = length > 350 ? 9 : (length > 200 ? 11 : 13)
+        } else if length > 400 {
+            base = 13
         } else if length > 300 {
             base = 14
         } else if length > 150 {
@@ -860,7 +935,11 @@ struct ShareCardView: View {
                     .foregroundColor(textColor)
                     .lineSpacing(lineSpacing + 1)
                     .multilineTextAlignment(textAlignment)
+                    // Same scale-to-fit guarantee as the live preview so the
+                    // EXPORTED image never clips a long (up to 500-char) message.
+                    .minimumScaleFactor(0.35)
                     .padding(.horizontal, selectedRatio == 2 ? 26 : 38)
+                    .frame(maxHeight: quoteMaxHeight)
 
                 Spacer(minLength: 0).frame(maxHeight: .infinity)
 
@@ -906,8 +985,10 @@ struct ShareCardView: View {
     var renderFontSize: CGFloat {
         let length = text.count
         let base: CGFloat
-        if selectedRatio == 2 {
-            base = length > 200 ? 13 : 16
+        if selectedRatio == 2 {                       // wide — least vertical room
+            base = length > 350 ? 11 : (length > 200 ? 13 : 16)
+        } else if length > 400 {
+            base = 15
         } else if length > 300 {
             base = 16
         } else if length > 150 {

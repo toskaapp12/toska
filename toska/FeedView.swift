@@ -1237,8 +1237,11 @@ struct FeedPostRow: View {
 
                                             Spacer(minLength: 8)
 
-                                            // share (keep the slot balanced when hidden)
-                                            if isShareable {
+                                            // share — hidden for letters & whispers
+                                            // (those are private/ephemeral and not
+                                            // shareable) and when the author disabled
+                                            // sharing.
+                                            if isShareable && !isLetter && !isWhisperPost {
                                                 Button { showShareCard = true } label: {
                                                     Image(systemName: "square.and.arrow.up")
                                                         .font(.system(size: 15, weight: .regular))
@@ -1250,9 +1253,11 @@ struct FeedPostRow: View {
                                                 Color.clear.frame(width: 18, height: 1)
                                             }
                                         }
-                                        // Evenly-spaced row, left-aligned, capped width so the
-                                        // icons sit in a tidy band (not stretched edge-to-edge).
-                                        .frame(maxWidth: 278, alignment: .leading)
+                                        // Spread the action icons evenly across the full
+                                        // width — first at the leading edge, last at the
+                                        // trailing edge — like X/Instagram. The Spacers
+                                        // between them grow to distribute the row.
+                                        .frame(maxWidth: .infinity)
                                         .padding(.top, 4)
                                     }
                                 }
@@ -1303,7 +1308,7 @@ struct FeedPostRow: View {
                         .disabled(isReposted)
                     }
 
-                    if isShareable {
+                    if isShareable && !isLetter && !isWhisperPost {
                                             Button {
                                                 showShareCard = true
                                             } label: {
@@ -1648,31 +1653,26 @@ struct FeedHeaderCard: View {
                         // (soft one-per-day cap). The "your response" card
                         // above replaces it.
                         if vm.todaysPromptResponse == nil {
+                            // Clear action row: "respond to today's prompt" (write
+                            // your OWN response). Reads as an action, not the cryptic
+                            // emotion-tag chip it used to lead with. Pairs with the
+                            // "someone needs a reply" row below (reply to someone who
+                            // already shared) so both paths are obvious.
                             Button { vm.showPromptCompose = true } label: {
-                                HStack {
-                                    HStack(spacing: 5) {
-                                        Image(systemName: vm.todaysPrompt.2)
-                                            .font(.system(size: 10))
-                                            .foregroundColor(tagColor(for: vm.todaysPrompt.1))
-                                        Text(vm.todaysPrompt.1)
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundColor(tagColor(for: vm.todaysPrompt.1).opacity(0.6))
-                                    }
+                                HStack(spacing: 8) {
+                                    Image(systemName: "pencil.line")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(Color.toskaBlue)
+                                    Text("respond to today's prompt")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(Color.toskaBlue)
                                     Spacer()
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "pencil.line")
-                                            .font(.system(size: 10))
-                                        Text("respond")
-                                            .font(.system(size: 10, weight: .semibold))
-                                    }
-                                    .foregroundColor(Color.toskaBlue)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(Color.toskaBlue.opacity(0.1))
-                                    .cornerRadius(12)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 9, weight: .light))
+                                        .foregroundColor(LateNightTheme.tertiaryText)
                                 }
                                 .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 11)
                             }
                             .buttonStyle(.plain)
                         }

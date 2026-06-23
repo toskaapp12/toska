@@ -47,6 +47,7 @@ struct ReplyDetailView: View {
     @State private var showShareCard = false
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
+    @State private var showOtherProfile = false
 
     var isOwnReply: Bool { replyAuthorId == Auth.auth().currentUser?.uid }
 
@@ -91,9 +92,17 @@ struct ReplyDetailView: View {
                             HStack(spacing: 6) {
                                 // De-emphasized handle (quiet gray, not loud blue)
                                 // so the reply text leads — matches the feed.
-                                Text(replyHandle)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(ToskaColor.text2)
+                                // Tappable → the reply author's profile (mirrors the
+                                // post header in PostDetailView). Previously a plain
+                                // Text, so tapping a reply author's name did nothing.
+                                Button {
+                                    if !isOwnReply && !replyAuthorId.isEmpty { showOtherProfile = true }
+                                } label: {
+                                    Text(replyHandle)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(ToskaColor.text2)
+                                }
+                                .buttonStyle(.plain)
                                 if isOwnReply {
                                     Text("· you")
                                         .font(.system(size: 9, weight: .medium))
@@ -236,6 +245,9 @@ struct ReplyDetailView: View {
                 authorId: replyAuthorId, authorHandle: replyHandle, text: replyText
             ))
             .navigationBarHidden(true)
+        }
+        .navigationDestination(isPresented: $showOtherProfile) {
+            OtherProfileView(userId: replyAuthorId, handle: replyHandle)
         }
         .alert("delete this reply?", isPresented: $showDeleteAlert) {
             Button("delete", role: .destructive) { deleteReply() }

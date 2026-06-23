@@ -512,6 +512,10 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         "september", "october", "november", "december",
         "american", "english", "spanish", "french", "chinese", "japanese",
         "toska", "giphy", "apple", "google", "firebase",
+        // "MacBook" pairs with a capitalized model word ("MacBook Pro"/"Air")
+        // that the Mc/Mac-aware name regex would otherwise read as a surname.
+        // Mirror of moderation.js.
+        "macbook",
     ]
 
     // Street address pattern: "123 Main St" / "456 Oak Avenue"
@@ -595,7 +599,10 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     // which read as legible names but never matched the ASCII regex. Mirror of
     // moderation.js.
     let fullNameSource = foldLetterformsKeepCase(text)
-    for match in fullNameSource.matches(of: /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/) {
+    // Each token allows an optional "Mc"/"Mac" prefix so internal-capital
+    // surnames (McNiel, MacArthur) match — the plain [A-Z][a-z]+ shape stops at
+    // the second capital, so "Ally McNiel" slipped through. Mirror of moderation.js.
+    for match in fullNameSource.matches(of: /\b((?:Ma?c)?[A-Z][a-z]+)\s+((?:Ma?c)?[A-Z][a-z]+)\b/) {
         let w1 = String(match.1).lowercased()
         let w2 = String(match.2).lowercased()
         if w1.count < 2 || w2.count < 2 { continue }

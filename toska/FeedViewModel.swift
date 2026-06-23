@@ -829,14 +829,19 @@ class FeedViewModel: ObservableObject {
                         group.addTask {
                             // This closure is non-isolated — only pure Swift and
                             // non-actor-isolated calls are allowed here.
-                            let threeDaysAgo = Date().addingTimeInterval(-3 * 24 * 60 * 60)
                             guard let postSnapshot = try? await db.collection("posts")
                                 // moderationStatus filter required by firestore.rules
                                 // (see fetchPosts comment). Following-feed queries OTHER
                                 // users' posts, so the isOwner branch doesn't help here.
                                 .whereField("moderationStatus", isEqualTo: "live")
                                 .whereField("authorId", in: chunk)
-                                .whereField("createdAt", isGreaterThan: Timestamp(date: threeDaysAgo))
+                                // No recency window. A 3-day `createdAt` filter used to
+                                // live here, but it left the following feed EMPTY whenever
+                                // a followed user hadn't posted in the last 3 days — the
+                                // norm in a low-frequency app, so following someone who'd
+                                // posted earlier showed nothing. Now we show their most
+                                // recent posts regardless of age. Served by the existing
+                                // posts(moderationStatus, authorId, createdAt DESC) index.
                                 .order(by: "createdAt", descending: true)
                                 .limit(to: 30)
                                 .getDocumentsAsync() else { return nil }

@@ -87,6 +87,12 @@ const SAFE_CAPITALIZED_WORDS = new Set([
   "september", "october", "november", "december",
   "american", "english", "spanish", "french", "chinese", "japanese",
   "toska", "giphy", "apple", "google", "firebase",
+  // "MacBook" pairs with a capitalized model word ("MacBook Pro"/"Air") that
+  // the Mc/Mac-aware name regex would otherwise read as a surname. McDonald &
+  // co. are NOT excluded — they're also real surnames ("Sean McDonald") and
+  // the brand only false-positives in the rare "Old McDonald"-style phrase,
+  // which is held-for-review (the safe direction) rather than deleted.
+  "macbook",
 ]);
 
 // Common two-word proper nouns that are NOT a person's name — places, brands,
@@ -160,7 +166,11 @@ function looksLikeFullName(text) {
   // Latin names to every reader but never matched the ASCII [A-Z][a-z]+ regex —
   // a full real name could be published, de-anonymizing the named person.
   const canon = foldLetterformsKeepCase(text);
-  const re = /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g;
+  // Each name token allows an optional "Mc"/"Mac" prefix so internal-capital
+  // surnames (McNiel, MacArthur) match — the plain [A-Z][a-z]+ shape stops at
+  // the second capital, so "Ally McNiel" used to slip through entirely. Mc/Mac
+  // brand words (MacBook, McDonald) are kept out of the SAFE set below.
+  const re = /\b((?:Ma?c)?[A-Z][a-z]+)\s+((?:Ma?c)?[A-Z][a-z]+)\b/g;
   for (const m of canon.matchAll(re)) {
     const w1 = m[1].toLowerCase();
     const w2 = m[2].toLowerCase();

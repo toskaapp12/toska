@@ -48,8 +48,8 @@ enum ToskaFont {
 
     // Sans — all UI chrome
     static var eyebrow: Font     { .system(size: 10.5, weight: .semibold) } // UPPERCASE, tracking 1.4
-    static var handle: Font      { .system(size: 13,   weight: .semibold) }
-    static var meta: Font        { .system(size: 12.5, weight: .regular) }
+    static var handle: Font      { .system(size: 13,   weight: .medium) }   // understated username — content leads, not the chrome
+    static var meta: Font        { .system(size: 12,   weight: .regular) }  // timestamp: smaller + lower contrast
     static var actionCount: Font { .system(size: 11.5, weight: .medium) }
     static var chip: Font        { .system(size: 12,   weight: .semibold) }
     static func button(_ size: CGFloat = 15) -> Font { .system(size: size, weight: .semibold) }

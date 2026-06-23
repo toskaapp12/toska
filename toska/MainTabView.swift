@@ -100,7 +100,10 @@ struct MainTabView: View {
             // content up by this amount means a pushed view's bottom-anchored
             // UI — PostDetailView's reply composer, the conversation
             // composer, etc. — sits above the pill instead of behind it.
-            .padding(.bottom, 92)
+            // When a drill-in view hides the tab bar, drop the reservation so
+            // its bottom-anchored UI (the reply composer) sits flush at the
+            // bottom instead of floating above an empty 92pt gap.
+            .padding(.bottom, tabBarHidden ? 0 : 92)
 
             // MARK: - Tab bar
             // Always visible (the hide preference is intentionally ignored,
@@ -263,14 +266,13 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.all, edges: .bottom)
-        .onPreferenceChange(HidesAppTabBarKey.self) { _ in
-            // Tab bar is intentionally always visible — drill-in views can
-            // still declare `.hidesAppTabBar()`, the preference just isn't
-            // honored at the bar level anymore. Keeps navigation consistent
-            // so the user never loses their place. To restore per-screen
-            // hiding, set `tabBarHidden = hidden` here.
+        .onPreferenceChange(HidesAppTabBarKey.self) { hidden in
+            // Hide the app tab bar on drill-in views that declare
+            // `.hidesAppTabBar()` (PostDetailView, etc.) so the reply composer
+            // owns the bottom instead of stacking under a redundant tab bar.
+            // The preference auto-reverts to false when the view is popped.
             withAnimation(.easeInOut(duration: 0.22)) {
-                tabBarHidden = false
+                tabBarHidden = hidden
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in

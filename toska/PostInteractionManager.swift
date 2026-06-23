@@ -321,7 +321,17 @@ class PostInteractionManager {
                                 userInfo: ["postId": postId, "action": "repost", "value": true]
                             )
 
-                            let repostHandle = UserHandleCache.shared.handle
+                            // Resolve handle — fall back to Firestore if the cache
+                            // hasn't loaded yet. Otherwise a repost sends
+                            // authorHandle: "anonymous" and the rules' authorHandle
+                            // pin (firestore.rules) rejects the write, so reposts
+                            // silently fail while normal posts (ComposeView, which
+                            // already does this fallback) succeed.
+                            var repostHandle = UserHandleCache.shared.handle
+                            if repostHandle == "anonymous" {
+                                let handleSnap = try? await db.collection("users").document(uid).getDocumentAsync()
+                                repostHandle = handleSnap?.data()?["handle"] as? String ?? "anonymous"
+                            }
                             // Mirror the original post's isShareable flag so the repost
                             // inherits the author's sharing setting. If the original
                             // author chose "don't allow sharing", the repost carries
@@ -683,51 +693,60 @@ class PostInteractionManager {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let db = Firestore.firestore()
-        let repostHandle = UserHandleCache.shared.handle
-        let newRepostRef = db.collection("posts")
-            .document("\(uid)_replyrepost_\(replyId)")
-
-        let repostData: [String: Any] = [
-            "authorId": uid,
-            "authorHandle": repostHandle,
-            "text": replyText,
-            "likeCount": 0,
-            "repostCount": 0,
-            "replyCount": 0,
-            "isShareable": true,
-            "isRepost": true,
-            "originalPostId": postId,
-            "originalReplyId": replyId,
-            "originalHandle": replyAuthorHandle,
-            "originalAuthorId": replyAuthorId,
-            "createdAt": FieldValue.serverTimestamp()
-        ]
-
-        // Optimistic update
-        onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
-
-        db.runTransaction({ transaction, errorPointer in
-            let existing: DocumentSnapshot
-            do { existing = try transaction.getDocument(newRepostRef) }
-            catch let e as NSError { errorPointer?.pointee = e; return nil }
-
-            if existing.exists { return nil } // idempotent
-            transaction.setData(repostData, forDocument: newRepostRef)
-            return nil
-        }, completion: { _, error in
-            Task { @MainActor in
-                if let error = error {
-                    print("⚠️ repostReply transaction failed: \(error)")
-                    onUpdate(RepostResult(isReposted: false, newCount: currentCount))
-                    return
-                }
-                // Counter increment + reply-author notification handled by
-                // Cloud Function (onReplyRepostCreatedUpdateCount). The
-                // notification surface for "your reply was reposted" is
-                // out-of-scope for v1.0 — falls through to the in-app
-                // count update on the parent post detail view next visit.
-                NotificationCenter.default.post(name: .newPostCreated, object: nil)
+        Task { @MainActor in
+            // Resolve handle — fall back to Firestore if the cache hasn't loaded
+            // yet, else the repost sends authorHandle: "anonymous" and the rules'
+            // authorHandle pin rejects the write (mirrors ComposeView / repost).
+            var repostHandle = UserHandleCache.shared.handle
+            if repostHandle == "anonymous" {
+                let handleSnap = try? await db.collection("users").document(uid).getDocumentAsync()
+                repostHandle = handleSnap?.data()?["handle"] as? String ?? "anonymous"
             }
-        })
+            let newRepostRef = db.collection("posts")
+                .document("\(uid)_replyrepost_\(replyId)")
+
+            let repostData: [String: Any] = [
+                "authorId": uid,
+                "authorHandle": repostHandle,
+                "text": replyText,
+                "likeCount": 0,
+                "repostCount": 0,
+                "replyCount": 0,
+                "isShareable": true,
+                "isRepost": true,
+                "originalPostId": postId,
+                "originalReplyId": replyId,
+                "originalHandle": replyAuthorHandle,
+                "originalAuthorId": replyAuthorId,
+                "createdAt": FieldValue.serverTimestamp()
+            ]
+
+            // Optimistic update
+            onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
+
+            db.runTransaction({ transaction, errorPointer in
+                let existing: DocumentSnapshot
+                do { existing = try transaction.getDocument(newRepostRef) }
+                catch let e as NSError { errorPointer?.pointee = e; return nil }
+
+                if existing.exists { return nil } // idempotent
+                transaction.setData(repostData, forDocument: newRepostRef)
+                return nil
+            }, completion: { _, error in
+                Task { @MainActor in
+                    if let error = error {
+                        print("⚠️ repostReply transaction failed: \(error)")
+                        onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                        return
+                    }
+                    // Counter increment + reply-author notification handled by
+                    // Cloud Function (onReplyRepostCreatedUpdateCount). The
+                    // notification surface for "your reply was reposted" is
+                    // out-of-scope for v1.0 — falls through to the in-app
+                    // count update on the parent post detail view next visit.
+                    NotificationCenter.default.post(name: .newPostCreated, object: nil)
+                }
+            })
+        }
     }
 }

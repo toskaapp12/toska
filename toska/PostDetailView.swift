@@ -136,6 +136,7 @@ struct PostDetailView: View {
     @State private var showDeleteReplyAlert = false
     @State private var deleteReplyError: String? = nil
     @State private var isLetter = false
+    @State private var isWhisper = false
 
     var isOwnPost: Bool {
         authorUserId == Auth.auth().currentUser?.uid
@@ -164,6 +165,7 @@ struct PostDetailView: View {
                                             return
                                         }
                                         if snapshot?.data()?["isLetter"] as? Bool == true { isLetter = true }
+                                        if snapshot?.data()?["isWhisper"] as? Bool == true { isWhisper = true }
                                     }
                                 }
                                 // Restore any reply draft persisted from a
@@ -723,16 +725,18 @@ struct PostDetailView: View {
                            .frame(maxWidth: .infinity)
 
                            // Share — opens ShareCardView (the same path as the
-                           // feed row's share button). Previously absent from
-                           // the post detail action row; users had to back out
-                           // to the feed to share a post.
-                           Button { showShareCard = true } label: {
-                               Image(systemName: "square.and.arrow.up")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(Color.toskaTextLight)
+                           // feed row's share button). Hidden for letters &
+                           // whispers, which are private/ephemeral and not
+                           // shareable (mirrors the feed row's gating).
+                           if !isLetter && !isWhisper {
+                               Button { showShareCard = true } label: {
+                                   Image(systemName: "square.and.arrow.up")
+                                       .font(.system(size: 15, weight: .light))
+                                       .foregroundColor(Color.toskaTextLight)
+                               }
+                               .accessibilityLabel("Share post")
+                               .frame(maxWidth: .infinity)
                            }
-                           .accessibilityLabel("Share post")
-                           .frame(maxWidth: .infinity)
                        }
                        .padding(.vertical, 8)
             Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
@@ -837,6 +841,7 @@ struct PostDetailView: View {
                     }
                     guard let data = snapshot?.data() else { return }
                     if data["isLetter"] as? Bool == true { isLetter = true }
+                    if data["isWhisper"] as? Bool == true { isWhisper = true }
                     // Pull the attached GIF URL so postHeaderSection can render
                     // it. nil/empty string both clear the preview cleanly.
                     let snapGif = data["gifUrl"] as? String

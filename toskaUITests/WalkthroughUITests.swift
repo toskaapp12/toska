@@ -402,6 +402,35 @@ final class WalkthroughUITests: XCTestCase {
         sleep(1)
     }
 
+    // MARK: 13b — share card must fit a MAX-LENGTH (≈500 char) message
+
+    func test13b_longShareCardFits() throws {
+        try requireFeed()
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        let longText = "i keep thinking about how we used to stay up until 3am talking about nothing and everything, and now the apartment is so quiet i can hear the refrigerator hum. i don't miss the fighting. i miss the version of me that believed we would figure it out. people keep telling me it gets easier and i think they're right, because last week i went a whole day without checking your profile, and that itself was unimaginable in month one. i'm okay. i'm actually going to be okay now."
+        focusAndType(app.textViews.firstMatch, longText)
+        let post = app.buttons["post"]
+        XCTAssertTrue(post.isEnabled, "post button disabled")
+        post.tap()
+        sleep(5) // pending_validation → validatePost (staging) → live
+        // Share from the author's OWN profile, where the just-posted message is
+        // the newest row and is visible immediately (own posts bypass the
+        // moderation feed filter) — so we always hit the long post, not whatever
+        // happens to sit atop the for-you feed.
+        app.buttons["Profile"].tap()
+        sleep(2)
+        let share = app.buttons["Share post"].firstMatch
+        XCTAssertTrue(waitFor(share, 12), "Share button not found on profile")
+        forceTap(share)
+        _ = waitFor(app.staticTexts["share this"], 8)
+        sleep(1)
+        snap("13b-long-share-card")   // inspect: the full message must be visible, not clipped
+        app.swipeDown(velocity: .fast)
+        sleep(1)
+    }
+
     // MARK: 14 — report sheet
 
     func test14_reportSheet() throws {

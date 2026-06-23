@@ -341,24 +341,52 @@ class PostInteractionManager {
                             // intent in an anonymous/privacy-first app.
                             let originalIsShareable = data["isShareable"] as? Bool ?? true
 
+                            // Build the repost from the FRESHLY-FETCHED original post
+                            // (not the feed's cached params) so the create rule's repost
+                            // pins always match by construction:
+                            //   • text == original.text   (a stale/edited feed value would
+                            //     fail the pin and roll the optimistic "reposted" state back)
+                            //   • originalAuthorId == original.authorId
+                            // 2026-06 repost fix — this was the green-then-grey failure.
+                            let freshText = data["text"] as? String ?? postText
+                            let freshAuthorId = data["authorId"] as? String ?? authorId
+
+                            // originalHandle is byline-only and OPTIONAL in the rule
+                            // (firestore.rules): when present it MUST equal the original
+                            // AUTHOR's current user-doc handle. The post's stored
+                            // authorHandle / the feed's param can be stale (author changed
+                            // handle) or the author's user doc can be missing (e.g. seeded
+                            // posts whose user docs weren't created) — either fails the
+                            // get(users/…).handle pin and denies the whole write. Resolve
+                            // the author's LIVE handle; if unavailable, OMIT the field so
+                            // the repost still lands (just without an "originally by"
+                            // byline) instead of being rejected.
+                            var resolvedOriginalHandle: String? = nil
+                            if !freshAuthorId.isEmpty,
+                               let authorSnap = try? await db.collection("users").document(freshAuthorId).getDocumentAsync(),
+                               let liveHandle = authorSnap.data()?["handle"] as? String,
+                               !liveHandle.isEmpty {
+                                resolvedOriginalHandle = liveHandle
+                            }
+
                             var repostData: [String: Any] = [
                                 "authorId": uid,
                                 "authorHandle": repostHandle,
-                                "text": postText,
+                                "text": freshText,
                                 "likeCount": 0,
                                 "repostCount": 0,
                                 "replyCount": 0,
                                 "isShareable": originalIsShareable,
                                 "isRepost": true,
                                 "originalPostId": postId,
-                                "originalHandle": originalHandle,
-                                "originalAuthorId": authorId,
+                                "originalAuthorId": freshAuthorId,
                                 "createdAt": FieldValue.serverTimestamp(),
                                 // Start hidden until validatePost verifies the
                                 // repost and promotes it to "live" (2026-06-01
                                 // audit) — same as ComposeView.postNow.
                                 "moderationStatus": "pending_validation"
                             ]
+                            if let h = resolvedOriginalHandle { repostData["originalHandle"] = h }
                             if let tag = postTag { repostData["tag"] = tag }
 
                             // FIX #7 + #8: The original code used addDocument() followed
@@ -702,13 +730,32 @@ class PostInteractionManager {
                 let handleSnap = try? await db.collection("users").document(uid).getDocumentAsync()
                 repostHandle = handleSnap?.data()?["handle"] as? String ?? "anonymous"
             }
+            // Rebuild from the FRESH original reply so the rule's reply-repost
+            // pins (text == reply.text, originalAuthorId == reply.authorId) match
+            // by construction, and resolve the reply author's LIVE handle for the
+            // optional originalHandle byline pin — omit it if the author's user
+            // doc is missing/handle-less so the repost still lands instead of
+            // being denied. Same 2026-06 fix as post reposts.
+            let replyRef = db.collection("posts").document(postId)
+                .collection("replies").document(replyId)
+            let replySnap = try? await replyRef.getDocumentAsync()
+            let freshReplyText = replySnap?.data()?["text"] as? String ?? replyText
+            let freshReplyAuthorId = replySnap?.data()?["authorId"] as? String ?? replyAuthorId
+            var resolvedReplyHandle: String? = nil
+            if !freshReplyAuthorId.isEmpty,
+               let authorSnap = try? await db.collection("users").document(freshReplyAuthorId).getDocumentAsync(),
+               let liveHandle = authorSnap.data()?["handle"] as? String,
+               !liveHandle.isEmpty {
+                resolvedReplyHandle = liveHandle
+            }
+
             let newRepostRef = db.collection("posts")
                 .document("\(uid)_replyrepost_\(replyId)")
 
-            let repostData: [String: Any] = [
+            var repostData: [String: Any] = [
                 "authorId": uid,
                 "authorHandle": repostHandle,
-                "text": replyText,
+                "text": freshReplyText,
                 "likeCount": 0,
                 "repostCount": 0,
                 "replyCount": 0,
@@ -716,10 +763,10 @@ class PostInteractionManager {
                 "isRepost": true,
                 "originalPostId": postId,
                 "originalReplyId": replyId,
-                "originalHandle": replyAuthorHandle,
-                "originalAuthorId": replyAuthorId,
+                "originalAuthorId": freshReplyAuthorId,
                 "createdAt": FieldValue.serverTimestamp()
             ]
+            if let h = resolvedReplyHandle { repostData["originalHandle"] = h }
 
             // Optimistic update
             onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))

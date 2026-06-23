@@ -565,6 +565,10 @@ struct PostDetailView: View {
                     .padding(.vertical, 11)
                     .background(ToskaColor.input)
                     .clipShape(Capsule())
+                    // Subtle hairline so the field reads as a distinct input
+                    // against the near-same-gray bar background instead of
+                    // blending into it.
+                    .overlay(Capsule().stroke(ToskaColor.divider.opacity(0.6), lineWidth: 0.5))
                     .onChange(of: replyText) { _, newValue in
                         // Truncate on UTF-16 length to match the Firestore rule's
                         // size() check (mirrors ComposeView) so heavy-emoji replies

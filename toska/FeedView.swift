@@ -1098,7 +1098,9 @@ struct FeedPostRow: View {
                             Text(text)
                                                             .font(ToskaFont.postBody)
                                                             .foregroundColor(ToskaColor.text)
-                                                            .lineSpacing(4)
+                                                            // Comfortable journal-like line height — the post
+                                                            // text is the focus, so give it room to breathe.
+                                                            .lineSpacing(6)
                                                             .multilineTextAlignment(.leading)
                         }
                         .padding(.bottom, 8)
@@ -1263,18 +1265,22 @@ struct FeedPostRow: View {
                                             // tapping anywhere on the post opens it; the action
                                             // buttons still capture their own taps.
                                             .frame(maxWidth: .infinity, alignment: .leading)
-                                            // Card interior padding (16 × 17). The press
-                                            // highlight lives in FeedRowPressStyle on the
-                                            // content link; no manual press gesture here.
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 14)
+                                            // Content-first timeline (2026 redesign): posts
+                                            // sit DIRECTLY on the page background — no card
+                                            // surface, border, or shadow — separated only by
+                                            // air and an almost-invisible hairline, so the
+                                            // feed reads as one continuous stream of thoughts
+                                            // (X-style), not a stack of floating cards. The
+                                            // press highlight still lives in FeedRowPressStyle
+                                            // on the content link.
+                                            .padding(.horizontal, 20)
+                                            .padding(.vertical, 18)
                                             .contentShape(Rectangle())
-                                            // Editorial card: card bg, radius 18, 1px
-                                            // hairline border + subtle lift (replaces the
-                                            // old full-width row + bottom divider).
-                                            .toskaCard()
-                                            .padding(.horizontal, 16)
-                                            .padding(.bottom, 10)
+                                            .overlay(alignment: .bottom) {
+                                                Rectangle()
+                                                    .fill(ToskaColor.divider.opacity(0.5))
+                                                    .frame(height: 0.5)
+                                            }
                 .contextMenu {
                     Button {
                         toggleLike()
@@ -1561,23 +1567,20 @@ struct FeedHeaderCard: View {
                                         }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    // Plum-washed prompt card (2026 brand pass): the
-                                    // editorial daily prompt is the app's hook, so it
-                                    // now reads as a soft accent-tinted card rather
-                                    // than plain text on the page — a faint plum fill +
-                                    // hairline carrying the signature color.
-                                    .padding(16)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                            .fill(ToskaColor.accent.opacity(LateNightTheme.isLateNight ? 0.16 : 0.07))
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                            .stroke(ToskaColor.accent.opacity(0.18), lineWidth: 0.75)
-                                    )
-                                    .padding(.horizontal, 16)
-                                    .padding(.top, 14)
-                                    .padding(.bottom, 4)
+                                    // Flattened to match the content-first feed: the daily
+                                    // prompt sits directly on the page background (no plum
+                                    // card or border), set apart by TYPOGRAPHY — the
+                                    // uppercase eyebrow + serif-italic greeting + accent
+                                    // "todays moment" link — rather than a box. A hairline
+                                    // separates it from the posts below. Subtle purple
+                                    // identity stays in the accent link + eyebrow.
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 18)
+                                    .overlay(alignment: .bottom) {
+                                        Rectangle()
+                                            .fill(ToskaColor.divider.opacity(0.5))
+                                            .frame(height: 0.5)
+                                    }
                                 }
                                 .buttonStyle(.plain)
 

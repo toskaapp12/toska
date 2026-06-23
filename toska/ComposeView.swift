@@ -4,6 +4,27 @@ import FirebaseFirestore
 import ImageIO
 import UIKit
 
+/// One-time explainer shown the first time a user turns on a compose option
+/// that isn't self-evident from its icon (whisper / midnight / letter).
+enum ComposeHint: String, Identifiable {
+    case whisper, midnight, letter
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .whisper:  return "whisper"
+        case .midnight: return "midnight post"
+        case .letter:   return "letter"
+        }
+    }
+    var message: String {
+        switch self {
+        case .whisper:  return "your post quietly disappears in 1 hour — say it out loud, then let it go."
+        case .midnight: return "your post disappears tonight at midnight — just a thought for today."
+        case .letter:   return "letter mode gives you up to 2,000 characters — room to say more than a short post."
+        }
+    }
+}
+
 @MainActor
 struct ComposeView: View {
     @Environment(\.dismiss) var dismiss
@@ -39,6 +60,12 @@ struct ComposeView: View {
     @State private var gentleCheckLevel: CrisisLevel = .soft
     @State private var showNameWarning = false
     @State private var showContentWarning = false
+    // Set when the user posts past the name/PII warning ("post anyway"). Those
+    // posts are held for review server-side (pending_review), so after the write
+    // lands we tell the user instead of leaving them wondering why it isn't in
+    // the feed. (Crisis-only content is NOT held, so it doesn't set this.)
+    @State private var postWillBeHeld = false
+    @State private var showUnderReview = false
     @State private var contentWarningMessage = ""
     @State private var userHandle = "anonymous"
     @State private var showRateLimitWarning = false
@@ -50,6 +77,14 @@ struct ComposeView: View {
     @State private var isWhisper = false
     @State private var isLetter = false
     private let letterCharLimit = 2000
+
+    // First-time explainer for the compose options people don't recognize at a
+    // glance (whisper / midnight / letter). Shown once per option the first time
+    // it's turned on, then remembered so it never nags again.
+    @State private var activeHint: ComposeHint? = nil
+    @AppStorage("toska_hint_whisper") private var whisperHintSeen = false
+    @AppStorage("toska_hint_midnight") private var midnightHintSeen = false
+    @AppStorage("toska_hint_letter") private var letterHintSeen = false
     @State private var offlineMonitorTask: Task<Void, Never>? = nil
     @State private var focusTask: Task<Void, Never>? = nil
       @FocusState private var textFocused: Bool
@@ -196,6 +231,7 @@ struct ComposeView: View {
                             isWhisper.toggle()
                             if isWhisper { expiresAtMidnight = false }
                         }
+                        if isWhisper && !whisperHintSeen { whisperHintSeen = true; activeHint = .whisper }
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: isWhisper ? "eye.slash.fill" : "eye.slash")
@@ -214,6 +250,7 @@ struct ComposeView: View {
                             expiresAtMidnight.toggle()
                             if expiresAtMidnight { isWhisper = false }
                         }
+                        if expiresAtMidnight && !midnightHintSeen { midnightHintSeen = true; activeHint = .midnight }
                     } label: {
                         HStack(spacing: 3) {
                             Image(systemName: expiresAtMidnight ? "moon.fill" : "moon")
@@ -229,6 +266,7 @@ struct ComposeView: View {
 
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
+                        if isLetter && !letterHintSeen { letterHintSeen = true; activeHint = .letter }
                     } label: {
                         Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
                             .font(.system(size: 14, weight: .light))
@@ -645,6 +683,10 @@ struct ComposeView: View {
 
                         Button {
                             showNameWarning = false
+                            // Posting past the name/PII warning → server holds it
+                            // for review. Flag so we surface "under review" once
+                            // the write lands.
+                            postWillBeHeld = true
                             if let level = crisisCheckLevelRespectingSetting(for: text) {
                                 gentleCheckLevel = level
                                 showGentleCheck = true
@@ -750,6 +792,23 @@ struct ComposeView: View {
         // GIF picker stays visible behind the new tab.
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
             showGifPicker = false
+        }
+        // First-time explainer for whisper / midnight / letter (set in each
+        // toggle the first time it's turned on).
+        .alert(activeHint?.title ?? "", isPresented: Binding(
+            get: { activeHint != nil },
+            set: { if !$0 { activeHint = nil } }
+        )) {
+            Button("got it", role: .cancel) {}
+        } message: {
+            Text(activeHint?.message ?? "")
+        }
+        .alert("under review", isPresented: $showUnderReview) {
+            Button("ok", role: .cancel) {
+                if let onPostSuccess = onPostSuccess { onPostSuccess() } else { dismiss() }
+            }
+        } message: {
+            Text("your post mentions something that needs a quick check, so it'll appear once it's approved. you can still see it on your own profile in the meantime.")
         }
         } // close NavigationStack
     }
@@ -997,7 +1056,12 @@ struct ComposeView: View {
                             }
                         }
                         NotificationCenter.default.post(name: .newPostCreated, object: nil)
-                        if let onPostSuccess = self.onPostSuccess {
+                        if self.postWillBeHeld {
+                            // Held for review — tell the user before leaving the
+                            // composer. The alert's "ok" completes the dismiss.
+                            self.postWillBeHeld = false
+                            self.showUnderReview = true
+                        } else if let onPostSuccess = self.onPostSuccess {
                             onPostSuccess()
                         } else {
                             self.dismiss()

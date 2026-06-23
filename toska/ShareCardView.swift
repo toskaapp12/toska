@@ -9,7 +9,10 @@ struct ShareCardView: View {
     let tag: String?
 
     @Environment(\.dismiss) var dismiss
-    @State private var selectedStyle = 0
+    // Default to "dawn" (index 8) — the first LIGHT mood. Indices 0–7 are dark
+    // moods, 8–12 are light (dawn, paper, blush, sage, frost); the share card
+    // opens on the light editorial look by default.
+    @State private var selectedStyle = 8
     @State private var selectedFont = 0
     @State private var selectedSize = 1
     @State private var selectedAlignment = 1
@@ -138,9 +141,15 @@ struct ShareCardView: View {
                                            colors: [Color.toskaAccentGold, Color(hex: "b8893f")]) {
                                 saveToPhotos()
                             }
-                            platformButton(name: "Stories", icon: "camera.fill",
+                            platformButton(name: "Instagram", icon: "camera.fill",
                                            colors: [Color(hex: "FEDA75"), Color(hex: "FA7E1E"), Color(hex: "D62976"), Color(hex: "962FBF")]) {
-                                shareToInstagramStories()
+                                // Direct-to-Stories needs a Facebook App ID
+                                // (source_application); without one Instagram
+                                // ignores the share and nothing happens. Route
+                                // through the iOS share sheet so the user reliably
+                                // lands on Instagram, then picks Stories/Feed.
+                                sharedPlatform = "Instagram"
+                                shareImage()
                             }
                             // TikTok accepts images via the iOS system share sheet,
                             // so route through the same path as "More" (shareImage)
@@ -942,43 +951,6 @@ struct ShareCardView: View {
             guard let image = renderCardImage() else { return }
             presentShareSheet(with: [image])
             showPostShareConfirmation()
-        }
-    }
-
-    func shareToInstagramStories() {
-        withRenderIndicator {
-            guard let image = renderCardImage() else { return }
-            guard let imageData = image.pngData() else { return }
-
-            let bgColor = isDarkStyle ? "#0a0908" : "#f0f0ec"
-            let pasteboardItems: [String: Any] = [
-                "com.instagram.sharedSticker.backgroundImage": imageData,
-                "com.instagram.sharedSticker.backgroundTopColor": bgColor,
-                "com.instagram.sharedSticker.backgroundBottomColor": bgColor
-            ]
-
-            // C-1 (2026-06-11): mirror the copy-text path — .localOnly keeps the
-            // rendered grief-text image off Universal Clipboard (no cross-device
-            // sync). Instagram reads the pasteboard locally on this device, so the
-            // handoff is unaffected.
-            let pasteboardOptions: [UIPasteboard.OptionsKey: Any] = [
-                .expirationDate: Date().addingTimeInterval(300),
-                .localOnly: true
-            ]
-
-            UIPasteboard.general.setItems([pasteboardItems], options: pasteboardOptions)
-
-            if let url = URL(string: "instagram-stories://share"), UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url)
-                sharedPlatform = "Instagram"
-                showPostShareConfirmation()
-            } else {
-                // Nested withRenderIndicator is a no-op because isRendering is
-                // still true; inline the fallback so we actually present.
-                guard let fallbackImage = renderCardImage() else { return }
-                presentShareSheet(with: [fallbackImage])
-                showPostShareConfirmation()
-            }
         }
     }
 

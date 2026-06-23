@@ -22,6 +22,28 @@ private final class KeyboardDismissGesture: UITapGestureRecognizer {}
 private final class KeyboardDismissDelegate: NSObject, UIGestureRecognizerDelegate {
     static let shared = KeyboardDismissDelegate()
 
+    // Tracks whether a keyboard is currently up. shouldReceive is evaluated at
+    // touch-BEGIN, so on the FIRST tap into a field (no keyboard yet) this is
+    // false and the recognizer declines the touch entirely — it never calls
+    // endEditing, so it can't race/cancel the focus that tap is establishing.
+    // This was the "have to tap the field a few times to focus it" bug: with a
+    // SwiftUI TextField the first tap often lands on a host/overlay view (the
+    // backing UITextField is a sibling, not an ancestor), so the superview walk
+    // below missed it, the gesture fired endEditing, and focus was lost.
+    private var keyboardVisible = false
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardShown),
+            name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardHidden),
+            name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+    @objc private func keyboardShown() { keyboardVisible = true }
+    @objc private func keyboardHidden() { keyboardVisible = false }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         true
@@ -29,8 +51,11 @@ private final class KeyboardDismissDelegate: NSObject, UIGestureRecognizerDelega
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldReceive touch: UITouch) -> Bool {
-        // Let taps on a text field / text view fall through untouched so the
-        // field can take focus normally; only dismiss when tapping elsewhere.
+        // Nothing to dismiss if no keyboard is up — never interfere with a tap
+        // that's about to focus a field.
+        if !keyboardVisible { return false }
+        // While editing, let taps on a text field / text view fall through so
+        // tapping another field just moves focus instead of dismissing.
         var view = touch.view
         while let current = view {
             if current is UITextField || current is UITextView { return false }

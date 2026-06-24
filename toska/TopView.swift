@@ -29,9 +29,13 @@ struct TopView: View {
         }
     }
 
-    @State private var rankedPosts: [RankedPost] = []
-    @State private var isLoading = true
-    @State private var hasFetchedInitial = false
+    // Per-period caches so all three pages of the swipeable pager hold their own
+    // content simultaneously (a single shared rankedPosts would blank the
+    // adjacent pages mid-swipe). Each period fetches once on first appearance;
+    // pull-to-refresh refetches the active one.
+    @State private var cache: [Period: [RankedPost]] = [:]
+    @State private var loadingPeriods: Set<Period> = []
+    @State private var fetchedPeriods: Set<Period> = []
     @State private var period: Period = .today
 
     var body: some View {
@@ -43,27 +47,57 @@ struct TopView: View {
                 periodSelector
                     .padding(.bottom, 4)
 
-                if isLoading {
-                    Spacer()
-                    ProgressView().tint(ToskaColor.accent)
-                    Spacer()
-                } else if rankedPosts.isEmpty {
-                    emptyState
-                    Spacer()
-                } else {
-                    content
+                // Swipeable three-tab pager (today / this week / all time). The
+                // period selector above and this TabView both bind to `period`,
+                // so tapping a tab and swiping stay in sync — same pattern as the
+                // main feed's for-you/following pager.
+                TabView(selection: $period) {
+                    ForEach(Period.allCases) { p in
+                        periodPage(p)
+                            .tag(p)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .onAppear {
-            guard !hasFetchedInitial else { return }
-            hasFetchedInitial = true
-            fetchTopPosts()
+            ensureFetched(.today)
         }
-        .onChange(of: period) { _, _ in
-            isLoading = true
-            fetchTopPosts()
+        .onChange(of: period) { _, newPeriod in
+            ensureFetched(newPeriod)
         }
+    }
+
+    // One page of the pager for a given period.
+    @ViewBuilder
+    private func periodPage(_ p: Period) -> some View {
+        let posts = cache[p] ?? []
+        if loadingPeriods.contains(p) && posts.isEmpty {
+            VStack {
+                Spacer()
+                ProgressView().tint(ToskaColor.accent)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if posts.isEmpty {
+            VStack {
+                emptyState
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            TopPeriodColumn(posts: posts, period: p) {
+                await withCheckedContinuation { continuation in
+                    fetchTopPosts(for: p, force: true, onComplete: { continuation.resume() })
+                }
+            }
+        }
+    }
+
+    /// Fetch a period's data once (unless already fetched). force=true refetches.
+    private func ensureFetched(_ p: Period) {
+        guard !fetchedPeriods.contains(p) else { return }
+        fetchTopPosts(for: p)
     }
 
     // MARK: - Header
@@ -116,7 +150,119 @@ struct TopView: View {
 
     // MARK: - Content
 
-    private var content: some View {
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 24, weight: .light))
+                .foregroundColor(ToskaColor.text3)
+            Text("nothing yet")
+                .font(.system(size: 13))
+                .foregroundColor(ToskaColor.text2)
+            Text("everyones being quiet right now.")
+                .font(.system(size: 11))
+                .foregroundColor(ToskaColor.text3)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 80)
+    }
+
+    // MARK: - Aggregation
+
+    /// Two most-frequent tags among the ranked posts, most-felt first.
+
+    // MARK: - Fetch
+
+    func fetchTopPosts(for fetchPeriod: Period, force: Bool = false, onComplete: (() -> Void)? = nil) {
+        if !force && fetchedPeriods.contains(fetchPeriod) { onComplete?(); return }
+        loadingPeriods.insert(fetchPeriod)
+        let cutoff = fetchPeriod.cutoff
+        Firestore.firestore().collection("posts")
+            // moderationStatus filter required by firestore.rules
+            // 2026-05-31 (see FeedViewModel.fetchPosts comment).
+            .whereField("moderationStatus", isEqualTo: "live")
+            .whereField("createdAt", isGreaterThan: Timestamp(date: cutoff))
+            .order(by: "createdAt", descending: true)
+            .limit(to: 100)
+            .getDocuments { snapshot, error in
+                Task { @MainActor in
+                    if let error = error {
+                        print("❌ TopView query error: \(error)")
+                        loadingPeriods.remove(fetchPeriod)
+                        fetchedPeriods.insert(fetchPeriod)
+                        onComplete?()
+                        return
+                    }
+                    guard let documents = snapshot?.documents else {
+                        loadingPeriods.remove(fetchPeriod)
+                        fetchedPeriods.insert(fetchPeriod)
+                        onComplete?()
+                        return
+                    }
+                    print("📊 TopView got \(documents.count) docs")
+                    var engaged: [(handle: String, text: String, tag: String?, likes: Int, replies: Int, reposts: Int, time: String, id: String, authorId: String, score: Double)] = []
+
+                    for doc in documents {
+                        let data = doc.data()
+                        let authorId = data["authorId"] as? String ?? ""
+                        if BlockedUsersCache.shared.isBlocked(authorId) { continue }
+                        if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { continue }
+                        // Don't surface auto-flagged or admin-flagged posts on the
+                        // trending screen (mirrors FeedViewModel.filterBlocked).
+                        if data["flagged"] as? Bool == true { continue }
+                        if data["concerningContent"] as? Bool == true { continue }
+                        // Reposts shouldn't trend — original posts only.
+                        if data["isRepost"] as? Bool == true { continue }
+
+                        let likeCount = data["likeCount"] as? Int ?? 0
+                        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+
+                        // Rank by like count, createdAt as a tiebreaker so newer
+                        // posts bubble up among ties. "felt this" == likes.
+                        let score = Double(likeCount) + createdAt.timeIntervalSince1970 / 1_000_000_000_000
+                        let entry = (
+                            handle: data["authorHandle"] as? String ?? "anonymous",
+                            text: data["text"] as? String ?? "",
+                            tag: data["tag"] as? String,
+                            likes: likeCount,
+                            replies: data["replyCount"] as? Int ?? 0,
+                            reposts: data["repostCount"] as? Int ?? 0,
+                            time: FeedView.timeAgoString(from: createdAt),
+                            id: doc.documentID,
+                            authorId: authorId,
+                            score: score
+                        )
+                        engaged.append(entry)
+                    }
+
+                    let ranked = engaged
+                        .sorted { $0.score > $1.score }
+                        .prefix(10)
+                        .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId, replies: $0.replies, reposts: $0.reposts, time: $0.time) }
+                    print("📊 TopView showing \(ranked.count) ranked, engaged: \(engaged.count)")
+                    cache[fetchPeriod] = ranked
+                    loadingPeriods.remove(fetchPeriod)
+                    fetchedPeriods.insert(fetchPeriod)
+                    onComplete?()
+                }
+            }
+    }
+}
+
+// MARK: - TopPeriodColumn
+//
+// One page of the swipeable Top/"most felt" pager — renders a single period's
+// ranked posts (summary, distribution bar, hero, the rest). Extracted from
+// TopView so all three periods (today / this week / all time) can live in a
+// paging TabView at once, each holding its own data. `period` is passed in for
+// the period-specific copy; `onRefresh` re-fetches this page on pull-to-refresh.
+@MainActor
+struct TopPeriodColumn: View {
+    let posts: [RankedPost]
+    let period: TopView.Period
+    let onRefresh: () async -> Void
+
+    var body: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 Color.clear.frame(height: 0).id("top")
@@ -134,21 +280,21 @@ struct TopView: View {
                     .padding(.bottom, 18)
 
                 // Hero — the single most-felt post.
-                if let hero = rankedPosts.first {
+                if let hero = posts.first {
                     heroCard(hero)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 22)
                 }
 
                 // The rest — ranked 02…N.
-                if rankedPosts.count > 1 {
+                if posts.count > 1 {
                     Text("the rest")
                         .toskaEyebrow()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 4)
 
-                    ForEach(Array(rankedPosts.dropFirst().enumerated()), id: \.element.id) { idx, post in
+                    ForEach(Array(posts.dropFirst().enumerated()), id: \.element.id) { idx, post in
                         restRow(post, rank: idx + 2)
                         Rectangle()
                             .fill(ToskaColor.divider)
@@ -159,11 +305,7 @@ struct TopView: View {
 
                 Color.clear.frame(height: 100)
             }
-            .refreshable {
-                await withCheckedContinuation { continuation in
-                    fetchTopPosts(onComplete: { continuation.resume() })
-                }
-            }
+            .refreshable { await onRefresh() }
             .onReceive(NotificationCenter.default.publisher(for: .scrollTopTabToTop)) { _ in
                 withAnimation(.easeInOut(duration: 0.4)) {
                     proxy.scrollTo("top", anchor: .top)
@@ -213,7 +355,7 @@ struct TopView: View {
 
     private var distributionBar: some View {
         HStack(spacing: 2) {
-            ForEach(Array(rankedPosts.prefix(7).enumerated()), id: \.element.id) { _, post in
+            ForEach(Array(posts.prefix(7).enumerated()), id: \.element.id) { _, post in
                 Rectangle()
                     .fill(post.tag.map { tagColor(for: $0) } ?? ToskaColor.text3)
                     .frame(maxWidth: .infinity)
@@ -343,101 +485,11 @@ struct TopView: View {
         .navigationBarHidden(true)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 24, weight: .light))
-                .foregroundColor(ToskaColor.text3)
-            Text("nothing yet")
-                .font(.system(size: 13))
-                .foregroundColor(ToskaColor.text2)
-            Text("everyones being quiet right now.")
-                .font(.system(size: 11))
-                .foregroundColor(ToskaColor.text3)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
-    }
-
-    // MARK: - Aggregation
-
-    /// Two most-frequent tags among the ranked posts, most-felt first.
     private func topTags() -> [String] {
         var counts: [String: Int] = [:]
-        for post in rankedPosts {
+        for post in posts {
             if let tag = post.tag { counts[tag, default: 0] += 1 }
         }
         return counts.sorted { $0.value > $1.value }.prefix(2).map { $0.key }
-    }
-
-    // MARK: - Fetch
-
-    func fetchTopPosts(onComplete: (() -> Void)? = nil) {
-        let cutoff = period.cutoff
-        Firestore.firestore().collection("posts")
-            // moderationStatus filter required by firestore.rules
-            // 2026-05-31 (see FeedViewModel.fetchPosts comment).
-            .whereField("moderationStatus", isEqualTo: "live")
-            .whereField("createdAt", isGreaterThan: Timestamp(date: cutoff))
-            .order(by: "createdAt", descending: true)
-            .limit(to: 100)
-            .getDocuments { snapshot, error in
-                Task { @MainActor in
-                    if let error = error {
-                        print("❌ TopView query error: \(error)")
-                        isLoading = false
-                        onComplete?()
-                        return
-                    }
-                    guard let documents = snapshot?.documents else {
-                        isLoading = false
-                        onComplete?()
-                        return
-                    }
-                    print("📊 TopView got \(documents.count) docs")
-                    var engaged: [(handle: String, text: String, tag: String?, likes: Int, replies: Int, reposts: Int, time: String, id: String, authorId: String, score: Double)] = []
-
-                    for doc in documents {
-                        let data = doc.data()
-                        let authorId = data["authorId"] as? String ?? ""
-                        if BlockedUsersCache.shared.isBlocked(authorId) { continue }
-                        if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { continue }
-                        // Don't surface auto-flagged or admin-flagged posts on the
-                        // trending screen (mirrors FeedViewModel.filterBlocked).
-                        if data["flagged"] as? Bool == true { continue }
-                        if data["concerningContent"] as? Bool == true { continue }
-                        // Reposts shouldn't trend — original posts only.
-                        if data["isRepost"] as? Bool == true { continue }
-
-                        let likeCount = data["likeCount"] as? Int ?? 0
-                        let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-
-                        // Rank by like count, createdAt as a tiebreaker so newer
-                        // posts bubble up among ties. "felt this" == likes.
-                        let score = Double(likeCount) + createdAt.timeIntervalSince1970 / 1_000_000_000_000
-                        let entry = (
-                            handle: data["authorHandle"] as? String ?? "anonymous",
-                            text: data["text"] as? String ?? "",
-                            tag: data["tag"] as? String,
-                            likes: likeCount,
-                            replies: data["replyCount"] as? Int ?? 0,
-                            reposts: data["repostCount"] as? Int ?? 0,
-                            time: FeedView.timeAgoString(from: createdAt),
-                            id: doc.documentID,
-                            authorId: authorId,
-                            score: score
-                        )
-                        engaged.append(entry)
-                    }
-
-                    rankedPosts = engaged
-                        .sorted { $0.score > $1.score }
-                        .prefix(10)
-                        .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId, replies: $0.replies, reposts: $0.reposts, time: $0.time) }
-                    print("📊 TopView showing \(rankedPosts.count) ranked, engaged: \(engaged.count)")
-                    isLoading = false
-                    onComplete?()
-                }
-            }
     }
 }

@@ -270,8 +270,18 @@ final class WalkthroughUITests: XCTestCase {
         let trendingHeader = app.staticTexts.matching(
             NSPredicate(format: "label BEGINSWITH 'most felt' OR label == 'top'")).firstMatch
         XCTAssertTrue(waitFor(trendingHeader, 8), "Trending didn't open")
-        sleep(1)
+        sleep(2)
         snap("06-trending")
+        // Three-tab pager: tap each period; each page must render its own content.
+        if app.buttons["this week"].exists {
+            app.buttons["this week"].tap(); sleep(2); snap("06b-trending-week")
+        }
+        if app.buttons["all time"].exists {
+            app.buttons["all time"].tap(); sleep(2); snap("06c-trending-all")
+        }
+        if app.buttons["today"].exists {
+            app.buttons["today"].tap(); sleep(1)
+        }
         app.buttons["Home"].tap()
     }
 

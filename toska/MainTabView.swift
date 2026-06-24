@@ -104,6 +104,13 @@ struct MainTabView: View {
             // its bottom-anchored UI (the reply composer) sits flush at the
             // bottom instead of floating above an empty 92pt gap.
             .padding(.bottom, tabBarHidden ? 0 : 92)
+            // Snap this bottom-clearance change INSTANTLY (opt out of the
+            // tabBarHidden withAnimation below). Animating the 92→0 reflow over
+            // 0.22s competed with the navigation push, so the feed + the
+            // incoming detail visibly "bounced" mid-transition. The tab bar
+            // overlay itself still hides smoothly (its own animation); only this
+            // layout reservation snaps, which is hidden by the push.
+            .animation(nil, value: tabBarHidden)
 
             // MARK: - Tab bar
             // Always visible (the hide preference is intentionally ignored,

@@ -59,13 +59,6 @@ struct FeedView: View {
 
     /// True when post matches the current search query (or no query is set).
     /// Case-insensitive substring on handle, text, and tag.
-    private func matchesSearch(_ post: FeedPost) -> Bool {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !q.isEmpty else { return true }
-        return post.handle.lowercased().contains(q)
-            || post.text.lowercased().contains(q)
-            || (post.tag?.lowercased().contains(q) ?? false)
-    }
 
     // MARK: - Header
     //
@@ -205,59 +198,6 @@ struct FeedView: View {
     // remains accessible from the empty-feed
     // state's "explore" button below for the
     // separate browse-by-tag flow.
-    @ViewBuilder private var inlineSearchBar: some View {
-                                HStack(spacing: 10) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 15, weight: .regular))
-                                            .foregroundColor(ToskaColor.text3)
-                                        TextField("search", text: $searchText)
-                                            .font(.system(size: 15))
-                                            .foregroundColor(ToskaColor.handle)
-                                            .autocorrectionDisabled()
-                                            .textInputAutocapitalization(.never)
-                                            .focused($searchFocused)
-                                            .submitLabel(.search)
-                                            .accessibilityLabel("Search")
-                                        if !searchText.isEmpty {
-                                            Button {
-                                                searchText = ""
-                                            } label: {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .font(.system(size: 15))
-                                                    .foregroundColor(ToskaColor.text3)
-                                            }
-                                            .accessibilityLabel("Clear search")
-                                        }
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 11)
-                                    // Clean, minimal search field: a quiet gray
-                                    // fill that recedes into the page — no heavy
-                                    // shadow or border competing with the floating
-                                    // tab bar. MODERNIZED (2026 / iOS 26): a
-                                    // translucent glass capsule instead of a flat
-                                    // fill, matching the floating tab bar's material.
-                                    .toskaGlass(in: Capsule(), frosted: true)
-
-                                    // Cancel — appears while searching; clears the
-                                    // query and drops focus, returning to the feed.
-                                    if searchFocused || !searchText.isEmpty {
-                                        Button {
-                                            searchText = ""
-                                            searchFocused = false
-                                        } label: {
-                                            Text("cancel")
-                                                .font(.system(size: 15))
-                                                .foregroundColor(ToskaColor.accent)
-                                        }
-                                        .transition(.opacity)
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.top, 12)
-                                .padding(.bottom, 8)
-    }
 
     // Category pills — appear only while the
     // search bar is focused. Tapping a pill
@@ -268,55 +208,6 @@ struct FeedView: View {
     // Hidden as soon as focus leaves the search
     // bar so the chrome doesn't compete with the
     // feed in the resting state.
-    @ViewBuilder private var categoryPills: some View {
-                                if searchFocused || !searchText.isEmpty {
-                                    ScrollView(.horizontal, showsIndicators: false) {
-                                        HStack(spacing: 8) {
-                                            // "all" — clears the tag filter. Selected
-                                            // (dark pill) when no tag query is active.
-                                            let allSelected = searchText.isEmpty
-                                            Button {
-                                                searchText = ""
-                                            } label: {
-                                                Text("all")
-                                                    .font(.system(size: 12, weight: .semibold))
-                                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
-                                                    .padding(.horizontal, 13)
-                                                    .padding(.vertical, 5)
-                                                    .background(allSelected ? ToskaColor.accent : Color.clear)
-                                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
-                                                    .clipShape(Capsule())
-                                            }
-                                            .buttonStyle(.plain)
-
-                                            ForEach(sharedTags, id: \.name) { tag in
-                                                let isSel = searchText == tag.name
-                                                Button {
-                                                    searchText = tag.name
-                                                    searchFocused = false
-                                                } label: {
-                                                    HStack(spacing: 5) {
-                                                        Image(systemName: tag.icon)
-                                                            .font(.system(size: 11))
-                                                        Text(tag.name)
-                                                            .font(.system(size: 13, weight: .medium))
-                                                    }
-                                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
-                                                    .padding(.horizontal, 12)
-                                                    .padding(.vertical, 7)
-                                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
-                                                    .clipShape(Capsule())
-                                                }
-                                                .buttonStyle(.plain)
-                                            }
-                                        }
-                                        .padding(.horizontal, 16)
-                                    }
-                                    .padding(.top, 10)
-                                    .padding(.bottom, 12)
-                                    .transition(.opacity)
-                                }
-    }
 
     var body: some View {
             VStack(spacing: 0) {
@@ -332,314 +223,11 @@ struct FeedView: View {
                 .fill(LateNightTheme.divider)
                 .frame(height: 0.5)
 
-                GeometryReader { geo in
-                            ScrollViewReader { proxy in
-                                ScrollView(showsIndicators: false) {
-                            // VStack, not LazyVStack. LazyVStack inside this
-                            // ScrollView produces a blank feed on cold launch:
-                            // posts arrive in vm.posts and the body recomputes
-                            // into the loaded ForEach branch, but the LazyVStack
-                            // reports near-zero measured height and never
-                            // materialises the rows until pull-to-refresh
-                            // re-triggers layout. The earlier perf concern
-                            // (eager render of 60+ posts firing the 5-from-end
-                            // prefetch immediately) is acceptable in exchange
-                            // for the feed actually appearing on launch — the
-                            // user-visible bug here is far worse than the
-                            // wasted prefetch.
-                                    VStack(spacing: 0) {
-                                                                                Color.clear.frame(height: 0).id("feedTop")
-                                // Pull-to-refresh is handled entirely by the native
-                                // .refreshable below. The old custom ToskaRefreshHeader
-                                // was driven by vm.dragOffset/isRefreshing — both now
-                                // dead (always 0/false since the custom drag gesture
-                                // was removed), so it rendered a second, out-of-sync
-                                // spinner box on refresh. Removed (2026 polish).
-                                            if let error = vm.fetchError {
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: "exclamationmark.circle")
-                                                        .font(.system(size: 10))
-                                                    Text(error)
-                                                        .font(.system(size: 11))
-                                                    Spacer()
-                                                    Button {
-                                                        vm.fetchError = nil
-                                                        vm.fetchPosts()
-                                                    } label: {
-                                                        Text("retry")
-                                                            .font(.system(size: 11, weight: .semibold))
-                                                    }
-                                                }
-                                                .foregroundColor(Color.toskaErrorRed)
-                                                .padding(.horizontal, 16)
-                                                .padding(.vertical, 8)
-                                                .frame(maxWidth: .infinity)
-                                                .background(Color.toskaErrorRed.opacity(0.06))
-                                            }
-                                // MARK: - Collapsed feed header
-                                // Hidden while searching (focused or query present)
-                                // so the search + filter chips take over the top.
-                                                    if vm.selectedTab == 0 && !(searchFocused || !searchText.isEmpty) {
-                                                        FeedHeaderCard(vm: vm)
-                                                    }
-
-                                inlineSearchBar
-
-                                categoryPills
-
-                                if vm.selectedTab == 1 && vm.followingPosts.isEmpty {
-                                                        VStack(spacing: 12) {
-                                                            Text("\"the things we don't\nsay out loud still\nneed somewhere to go.\"")
-                                                                .font(ToskaFont.serifItalic(20))
-                                                                .foregroundColor(LateNightTheme.tertiaryText)
-                                                                .multilineTextAlignment(.center)
-                                                                .lineSpacing(4)
-                                                            Text("follow someone to see their words here")
-                                                                .font(.system(size: 11))
-                                                                .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
-                                                        }
-                                                        .frame(maxWidth: .infinity)
-                                                        .padding(.vertical, 60)
-                                                    }
-                                        
-                                        if vm.selectedTab == 1 && vm.followingFetchIncomplete {
-                                            HStack(spacing: 6) {
-                                                Image(systemName: "exclamationmark.circle")
-                                                    .font(.system(size: 10))
-                                                Text("some posts may be missing — pull to refresh")
-                                                    .font(.system(size: 11))
-                                            }
-                                            .foregroundColor(Color.toskaAccentTan)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
-                                            .frame(maxWidth: .infinity)
-                                            .background(Color.toskaAccentTan.opacity(0.06))
-                                        }
-                    
-                    
-                                if vm.currentPosts.isEmpty && !vm.hasLoadedOnce {
-                                                                    #if DEBUG
-                                                                    let _ = print("🎨 BODY — branch: SKELETONS (posts.isEmpty, !hasLoadedOnce)")
-                                                                    #endif
-                                                                    ForEach(0..<6, id: \.self) { _ in
-                                                                        SkeletonPostRow()
-                                                                            .background(LateNightTheme.background)
-                                                                    }
-                                                                } else if vm.currentPosts.isEmpty && vm.hasLoadedOnce && vm.selectedTab == 0 {
-                                                                    #if DEBUG
-                                                                    let _ = print("🎨 BODY — branch: EMPTY STATE (posts.isEmpty, hasLoadedOnce, tab 0)")
-                                                                    #endif
-                                    // First-run empty state. The fetch finished
-                                    // and there's genuinely nothing to show
-                                    // (no posts in window, none from people
-                                    // they follow). Coach concrete actions
-                                    // instead of leaving a blank screen.
-                                    VStack(spacing: 14) {
-                                        Image(systemName: "moon.stars")
-                                            .font(.system(size: 28, weight: .light))
-                                            .foregroundColor(LateNightTheme.tertiaryText)
-                                        Text("\"its quiet right now.\"")
-                                            .font(.custom("Georgia-Italic", size: 18))
-                                            .foregroundColor(LateNightTheme.secondaryText)
-                                            .multilineTextAlignment(.center)
-                                        Text("be the first one to say what you couldnt say to them.\nor go find someone who already did.")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(LateNightTheme.tertiaryText)
-                                            .multilineTextAlignment(.center)
-                                            .lineSpacing(3)
-                                            .padding(.horizontal, 24)
-                                        HStack(spacing: 10) {
-                                            Button {
-                                                NotificationCenter.default.post(name: .openComposeFromEmptyFeed, object: nil)
-                                            } label: {
-                                                HStack(spacing: 5) {
-                                                    Image(systemName: "plus.circle")
-                                                        .font(.system(size: 11))
-                                                    Text("say something")
-                                                        .font(.system(size: 12, weight: .medium))
-                                                }
-                                                .foregroundColor(.white)
-                                                .padding(.horizontal, 14)
-                                                .padding(.vertical, 10)
-                                                .background(Color.toskaBlue)
-                                                .cornerRadius(10)
-                                            }
-                                            Button {
-                                                vm.showExplore = true
-                                            } label: {
-                                                HStack(spacing: 5) {
-                                                    Image(systemName: "magnifyingglass")
-                                                        .font(.system(size: 11))
-                                                    Text("explore")
-                                                        .font(.system(size: 12, weight: .medium))
-                                                }
-                                                .foregroundColor(Color.toskaBlue)
-                                                .padding(.horizontal, 14)
-                                                .padding(.vertical, 10)
-                                                .background(Color.toskaBlue.opacity(0.1))
-                                                .cornerRadius(10)
-                                            }
-                                        }
-                                        .padding(.top, 4)
-                                        Text("pull down to refresh")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
-                                            .padding(.top, 8)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 60)
-                                    .padding(.bottom, 40)
-                                                                } else {
-                                                                                                                                    ForEach(vm.currentPosts.filter(matchesSearch)) { post in
-                                                                                                                                        if post.id.hasPrefix("sample_") {
-                                                                                                                                            FeedPostRow(
-                                                                                                                                                handle: post.handle,
-                                                                                                                                                text: post.text,
-                                                                                                                                                tag: post.tag,
-                                                                                                                                                likes: post.likes,
-                                                                                                                                                reposts: post.reposts,
-                                                                                                                                                replies: post.replies,
-                                                                                                                                                time: post.time
-                                                                                                                                            )
-                                                                                                                                        } else {
-                                                                                                                                            FeedPostRow(
-                                                                                                                                                handle: post.originalHandle ?? post.handle,
-                                                                                                                                                text: post.text,
-                                                                                                                                                tag: post.tag,
-                                                                                                                                                likes: post.likes,
-                                                                                                                                                reposts: post.reposts,
-                                                                                                                                                replies: post.replies,
-                                                                                                                                                time: post.time,
-                                                                                                                                                postId: post.id,
-                                                                                                                                                authorId: post.authorId,
-                                                                                                                                                isAlreadyReposted: vm.repostedPostIds.contains(post.id),
-                                                                                                                                                isAlreadyLiked: vm.likedPostIds.contains(post.id),
-                                                                                                                                                isAlreadySaved: vm.savedPostIds.contains(post.id),
-                                                                                                                                                isShareable: post.isShareable,
-                                                                                                                                                gifUrl: vm.postGifUrls[post.id],
-                                                                                                                                                isMidnightPost: vm.midnightPostIds.contains(post.id),
-                                                                                                                                                isLetter: vm.letterPostIds.contains(post.id),
-                                                                                                                                                isRepostPost: vm.repostPostIds.contains(post.id),
-                                                                                                                                                isWhisperPost: vm.whisperPostIds.contains(post.id),
-                                                                                                                                                isLetterExpanded: vm.expandedLetterIds.contains(post.id),
-                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
-                                                                                                                                                reposterHandle: post.originalHandle != nil ? post.handle : nil,
-                                                                                                                                                promptText: FeedView.promptText(for: post.promptDate)
-                                                                                                                                                                                                                                                                                            )
-                                                                                                                                                                                                                                                                                            .id(post.id)
-                                                                                                                                                                                                                                                                                            .onAppear {
-                                                                                                                                                                                                                                                                                                // Prefetch the next page when this row is
-                                                                                                                                                                                                                                                                                                // ~5 posts from the end. By the time the
-                                                                                                                                                                                                                                                                                                // user reaches the bottom, the next page
-                                                                                                                                                                                                                                                                                                // is usually already loaded — no visible
-                                                                                                                                                                                                                                                                                                // spinner, smoother feed.
-                                                                                                                                                                                                                                                                                                guard vm.selectedTab == 0,
-                                                                                                                                                                                                                                                                                                      vm.hasMorePosts,
-                                                                                                                                                                                                                                                                                                      !vm.isLoadingMore,
-                                                                                                                                                                                                                                                                                                      vm.posts.count >= 5,
-                                                                                                                                                                                                                                                                                                      post.id == vm.posts[vm.posts.count - 5].id else { return }
-                                                                                                                                                                                                                                                                                                vm.loadMorePosts()
-                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                        }
-                                                                                                                                                                                                                                                                                    }
-                                                                                                                                                                                                                                                        } // end else hasLoadedOnce
-
-                                                                                                                                                                                                            if vm.selectedTab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
-                                            // Visible loading spinner remains as the fallback for
-                                            // slow networks where the prefetch (attached to each
-                                            // post row 5-from-end via .onAppear) hasn't finished
-                                            // by the time the user reaches the bottom.
-                                            ProgressView()
-                                                .tint(Color.toskaBlue)
-                                                .padding(.vertical, 20)
-                                                .onAppear {
-                                                    if !vm.isLoadingMore {
-                                                        vm.loadMorePosts()
-                                                    }
-                                                }
-                                        }
-                    
-                    if vm.selectedTab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
-                                                                VStack(spacing: 4) {
-                                                                    Text("no more posts to show")
-                                                                        .font(.system(size: 10))
-                                                                        .foregroundColor(LateNightTheme.tertiaryText)
-                                                                    // Only annotate when posts are hidden by blocking.
-                                                                    // The neutral end-line stands on its own otherwise —
-                                                                    // the old poetic sublines ("close the app. or dont.")
-                                                                    // read as awkward at the bottom of a real feed.
-                                                                    if vm.endedDueToBlocking {
-                                                                        Text("some posts are hidden")
-                                                                            .font(.custom("Georgia-Italic", size: 10))
-                                                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
-                                                                    }
-                                                                }
-                                                                .padding(.vertical, 20)
-                                                            }
-                    
-                                Color.clear.frame(height: 80)
-                                                                                }
-                                                                                // No outer .id() on the LazyVStack. A previous version keyed
-                                                                                // it on hasLoadedOnce to force a clean rebuild on the
-                                                                                // skeleton-to-loaded transition, but inside a ScrollView a
-                                                                                // LazyVStack rebuild can leave the view reporting zero
-                                                                                // measured height — the posts are in vm.posts and the body
-                                                                                // returns the right ForEach branch, but nothing renders
-                                                                                // until pull-to-refresh re-triggers layout. Letting
-                                                                                // SwiftUI's natural diffing swap the skeleton ForEach for
-                                                                                // the posts ForEach keeps the LazyVStack identity stable
-                                                                                // and avoids the blank-feed-on-launch regression.
-                                                                            }
-                                                                            // Pin to the exact viewport width — NOT maxHeight.
-                                                                            // maxHeight: .infinity would clamp the content to the
-                                                                            // viewport height and kill vertical scrolling (that
-                                                                            // bug surfaced once the seeded feed filled past one
-                                                                            // screen). Fixing the WIDTH to geo.size.width (rather
-                                                                            // than maxWidth: .infinity, which grows to fit an
-                                                                            // oversized child) guarantees the content can never be
-                                                                            // wider than the screen, so the vertical feed can't be
-                                                                            // panned sideways even if a row's media overflows.
-                                                                            .frame(width: geo.size.width)
-                                                                                .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
-                                                        proxy.scrollTo("feedTop", anchor: .top)
-                                                    }
-                                                }
-                // Removed .restoreFeedScroll observer — it was never posted
-                // anywhere in the project (orphaned wiring). MainTabView's
-                // tab-keep-alive (.opacity trick on each NavigationStack)
-                // already preserves scroll position when switching tabs, so
-                // an explicit save/restore round-trip isn't needed here.
-            } // end ScrollViewReader
-                                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                        // Native pull-to-refresh. This replaces a custom
-                                                        // simultaneousGesture(DragGesture()) that fired on EVERY
-                                                        // downward drag — even mid-feed, not just at the top —
-                                                        // setting dragOffset and expanding the refresh header,
-                                                        // which shoved content around while scrolling and made
-                                                        // the feed feel wonky. .refreshable engages only at the
-                                                        // top and lets the scroll view own touch arbitration, so
-                                                        // normal scrolling stays seamless. refreshAll() refreshes
-                                                        // posts + header content, matching the old behavior.
-                                                        .refreshable {
-                                                            HapticManager.play(.tabSwitch)
-                                                            let start = Date()
-                                                            vm.refreshAll()
-                                                            // Hold the native spinner until the posts query actually
-                                                            // finishes (tracked by isFetchingPosts) instead of a blind
-                                                            // 1.2s timer — that timer left the spinner out of sync with
-                                                            // the content reflow, which is what felt glitchy. Bounded by
-                                                            // a 0.5s floor (no flash on a cached refresh) and a 5s
-                                                            // ceiling (can't hang if a fetch stalls).
-                                                            while vm.isFetchingPosts && Date().timeIntervalSince(start) < 5 {
-                                                                try? await Task.sleep(nanoseconds: 80_000_000)
-                                                            }
-                                                            let elapsed = Date().timeIntervalSince(start)
-                                                            if elapsed < 0.5 {
-                                                                try? await Task.sleep(nanoseconds: UInt64((0.5 - elapsed) * 1_000_000_000))
-                                                            }
-                                                        }
-                                                .frame(width: geo.size.width, height: geo.size.height)
-                                                }
+            TabView(selection: $vm.selectedTab) {
+                FeedColumn(vm: vm, tab: 0, searchText: $searchText, searchFocused: $searchFocused).tag(0)
+                FeedColumn(vm: vm, tab: 1, searchText: $searchText, searchFocused: $searchFocused).tag(1)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
                                             }
                                             .background(LateNightTheme.background)
                // Group into a single accessibility container so the identifier
@@ -1819,3 +1407,434 @@ func tagColor(for tag: String) -> Color {
 }
 
 // MARK: - Shared Blocked Users Helper
+
+struct FeedColumn: View {
+    @ObservedObject var vm: FeedViewModel
+    let tab: Int
+    @Binding var searchText: String
+    var searchFocused: FocusState<Bool>.Binding
+
+    private func matchesSearch(_ post: FeedPost) -> Bool {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return true }
+        return post.handle.lowercased().contains(q)
+            || post.text.lowercased().contains(q)
+            || (post.tag?.lowercased().contains(q) ?? false)
+    }
+
+    @ViewBuilder private var inlineSearchBar: some View {
+                                HStack(spacing: 10) {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "magnifyingglass")
+                                            .font(.system(size: 15, weight: .regular))
+                                            .foregroundColor(ToskaColor.text3)
+                                        TextField("search", text: $searchText)
+                                            .font(.system(size: 15))
+                                            .foregroundColor(ToskaColor.handle)
+                                            .autocorrectionDisabled()
+                                            .textInputAutocapitalization(.never)
+                                            .focused(searchFocused)
+                                            .submitLabel(.search)
+                                            .accessibilityLabel("Search")
+                                        if !searchText.isEmpty {
+                                            Button {
+                                                searchText = ""
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 15))
+                                                    .foregroundColor(ToskaColor.text3)
+                                            }
+                                            .accessibilityLabel("Clear search")
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    // Clean, minimal search field: a quiet gray
+                                    // fill that recedes into the page — no heavy
+                                    // shadow or border competing with the floating
+                                    // tab bar. MODERNIZED (2026 / iOS 26): a
+                                    // translucent glass capsule instead of a flat
+                                    // fill, matching the floating tab bar's material.
+                                    .toskaGlass(in: Capsule(), frosted: true)
+
+                                    // Cancel — appears while searching; clears the
+                                    // query and drops focus, returning to the feed.
+                                    if searchFocused.wrappedValue || !searchText.isEmpty {
+                                        Button {
+                                            searchText = ""
+                                            searchFocused.wrappedValue = false
+                                        } label: {
+                                            Text("cancel")
+                                                .font(.system(size: 15))
+                                                .foregroundColor(ToskaColor.accent)
+                                        }
+                                        .transition(.opacity)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 12)
+                                .padding(.bottom, 8)
+    }
+
+    @ViewBuilder private var categoryPills: some View {
+                                if searchFocused.wrappedValue || !searchText.isEmpty {
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 8) {
+                                            // "all" — clears the tag filter. Selected
+                                            // (dark pill) when no tag query is active.
+                                            let allSelected = searchText.isEmpty
+                                            Button {
+                                                searchText = ""
+                                            } label: {
+                                                Text("all")
+                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
+                                                    .padding(.horizontal, 13)
+                                                    .padding(.vertical, 5)
+                                                    .background(allSelected ? ToskaColor.accent : Color.clear)
+                                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
+                                                    .clipShape(Capsule())
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            ForEach(sharedTags, id: \.name) { tag in
+                                                let isSel = searchText == tag.name
+                                                Button {
+                                                    searchText = tag.name
+                                                    searchFocused.wrappedValue = false
+                                                } label: {
+                                                    HStack(spacing: 5) {
+                                                        Image(systemName: tag.icon)
+                                                            .font(.system(size: 11))
+                                                        Text(tag.name)
+                                                            .font(.system(size: 13, weight: .medium))
+                                                    }
+                                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 7)
+                                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
+                                                    .clipShape(Capsule())
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                    }
+                                    .padding(.top, 10)
+                                    .padding(.bottom, 12)
+                                    .transition(.opacity)
+                                }
+    }
+
+    var body: some View {
+                GeometryReader { geo in
+                            ScrollViewReader { proxy in
+                                ScrollView(showsIndicators: false) {
+                            // VStack, not LazyVStack. LazyVStack inside this
+                            // ScrollView produces a blank feed on cold launch:
+                            // posts arrive in vm.posts and the body recomputes
+                            // into the loaded ForEach branch, but the LazyVStack
+                            // reports near-zero measured height and never
+                            // materialises the rows until pull-to-refresh
+                            // re-triggers layout. The earlier perf concern
+                            // (eager render of 60+ posts firing the 5-from-end
+                            // prefetch immediately) is acceptable in exchange
+                            // for the feed actually appearing on launch — the
+                            // user-visible bug here is far worse than the
+                            // wasted prefetch.
+                                    VStack(spacing: 0) {
+                                                                                Color.clear.frame(height: 0).id("feedTop")
+                                // Pull-to-refresh is handled entirely by the native
+                                // .refreshable below. The old custom ToskaRefreshHeader
+                                // was driven by vm.dragOffset/isRefreshing — both now
+                                // dead (always 0/false since the custom drag gesture
+                                // was removed), so it rendered a second, out-of-sync
+                                // spinner box on refresh. Removed (2026 polish).
+                                            if let error = vm.fetchError {
+                                                HStack(spacing: 6) {
+                                                    Image(systemName: "exclamationmark.circle")
+                                                        .font(.system(size: 10))
+                                                    Text(error)
+                                                        .font(.system(size: 11))
+                                                    Spacer()
+                                                    Button {
+                                                        vm.fetchError = nil
+                                                        vm.fetchPosts()
+                                                    } label: {
+                                                        Text("retry")
+                                                            .font(.system(size: 11, weight: .semibold))
+                                                    }
+                                                }
+                                                .foregroundColor(Color.toskaErrorRed)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 8)
+                                                .frame(maxWidth: .infinity)
+                                                .background(Color.toskaErrorRed.opacity(0.06))
+                                            }
+                                // MARK: - Collapsed feed header
+                                // Hidden while searching (focused or query present)
+                                // so the search + filter chips take over the top.
+                                                    if tab == 0 && !(searchFocused.wrappedValue || !searchText.isEmpty) {
+                                                        FeedHeaderCard(vm: vm)
+                                                    }
+
+                                inlineSearchBar
+
+                                categoryPills
+
+                                if tab == 1 && vm.followingPosts.isEmpty {
+                                                        VStack(spacing: 12) {
+                                                            Text("\"the things we don't\nsay out loud still\nneed somewhere to go.\"")
+                                                                .font(ToskaFont.serifItalic(20))
+                                                                .foregroundColor(LateNightTheme.tertiaryText)
+                                                                .multilineTextAlignment(.center)
+                                                                .lineSpacing(4)
+                                                            Text("follow someone to see their words here")
+                                                                .font(.system(size: 11))
+                                                                .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                        }
+                                                        .frame(maxWidth: .infinity)
+                                                        .padding(.vertical, 60)
+                                                    }
+                                        
+                                        if tab == 1 && vm.followingFetchIncomplete {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "exclamationmark.circle")
+                                                    .font(.system(size: 10))
+                                                Text("some posts may be missing — pull to refresh")
+                                                    .font(.system(size: 11))
+                                            }
+                                            .foregroundColor(Color.toskaAccentTan)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 8)
+                                            .frame(maxWidth: .infinity)
+                                            .background(Color.toskaAccentTan.opacity(0.06))
+                                        }
+                    
+                    
+                                if vm.postsForTab(tab).isEmpty && !vm.hasLoadedOnce {
+                                                                    #if DEBUG
+                                                                    let _ = print("🎨 BODY — branch: SKELETONS (posts.isEmpty, !hasLoadedOnce)")
+                                                                    #endif
+                                                                    ForEach(0..<6, id: \.self) { _ in
+                                                                        SkeletonPostRow()
+                                                                            .background(LateNightTheme.background)
+                                                                    }
+                                                                } else if vm.postsForTab(tab).isEmpty && vm.hasLoadedOnce && tab == 0 {
+                                                                    #if DEBUG
+                                                                    let _ = print("🎨 BODY — branch: EMPTY STATE (posts.isEmpty, hasLoadedOnce, tab 0)")
+                                                                    #endif
+                                    // First-run empty state. The fetch finished
+                                    // and there's genuinely nothing to show
+                                    // (no posts in window, none from people
+                                    // they follow). Coach concrete actions
+                                    // instead of leaving a blank screen.
+                                    VStack(spacing: 14) {
+                                        Image(systemName: "moon.stars")
+                                            .font(.system(size: 28, weight: .light))
+                                            .foregroundColor(LateNightTheme.tertiaryText)
+                                        Text("\"its quiet right now.\"")
+                                            .font(.custom("Georgia-Italic", size: 18))
+                                            .foregroundColor(LateNightTheme.secondaryText)
+                                            .multilineTextAlignment(.center)
+                                        Text("be the first one to say what you couldnt say to them.\nor go find someone who already did.")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(LateNightTheme.tertiaryText)
+                                            .multilineTextAlignment(.center)
+                                            .lineSpacing(3)
+                                            .padding(.horizontal, 24)
+                                        HStack(spacing: 10) {
+                                            Button {
+                                                NotificationCenter.default.post(name: .openComposeFromEmptyFeed, object: nil)
+                                            } label: {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: "plus.circle")
+                                                        .font(.system(size: 11))
+                                                    Text("say something")
+                                                        .font(.system(size: 12, weight: .medium))
+                                                }
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(Color.toskaBlue)
+                                                .cornerRadius(10)
+                                            }
+                                            Button {
+                                                vm.showExplore = true
+                                            } label: {
+                                                HStack(spacing: 5) {
+                                                    Image(systemName: "magnifyingglass")
+                                                        .font(.system(size: 11))
+                                                    Text("explore")
+                                                        .font(.system(size: 12, weight: .medium))
+                                                }
+                                                .foregroundColor(Color.toskaBlue)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(Color.toskaBlue.opacity(0.1))
+                                                .cornerRadius(10)
+                                            }
+                                        }
+                                        .padding(.top, 4)
+                                        Text("pull down to refresh")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                            .padding(.top, 8)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 60)
+                                    .padding(.bottom, 40)
+                                                                } else {
+                                                                                                                                    ForEach(vm.postsForTab(tab).filter(matchesSearch)) { post in
+                                                                                                                                        if post.id.hasPrefix("sample_") {
+                                                                                                                                            FeedPostRow(
+                                                                                                                                                handle: post.handle,
+                                                                                                                                                text: post.text,
+                                                                                                                                                tag: post.tag,
+                                                                                                                                                likes: post.likes,
+                                                                                                                                                reposts: post.reposts,
+                                                                                                                                                replies: post.replies,
+                                                                                                                                                time: post.time
+                                                                                                                                            )
+                                                                                                                                        } else {
+                                                                                                                                            FeedPostRow(
+                                                                                                                                                handle: post.originalHandle ?? post.handle,
+                                                                                                                                                text: post.text,
+                                                                                                                                                tag: post.tag,
+                                                                                                                                                likes: post.likes,
+                                                                                                                                                reposts: post.reposts,
+                                                                                                                                                replies: post.replies,
+                                                                                                                                                time: post.time,
+                                                                                                                                                postId: post.id,
+                                                                                                                                                authorId: post.authorId,
+                                                                                                                                                isAlreadyReposted: vm.repostedPostIds.contains(post.id),
+                                                                                                                                                isAlreadyLiked: vm.likedPostIds.contains(post.id),
+                                                                                                                                                isAlreadySaved: vm.savedPostIds.contains(post.id),
+                                                                                                                                                isShareable: post.isShareable,
+                                                                                                                                                gifUrl: vm.postGifUrls[post.id],
+                                                                                                                                                isMidnightPost: vm.midnightPostIds.contains(post.id),
+                                                                                                                                                isLetter: vm.letterPostIds.contains(post.id),
+                                                                                                                                                isRepostPost: vm.repostPostIds.contains(post.id),
+                                                                                                                                                isWhisperPost: vm.whisperPostIds.contains(post.id),
+                                                                                                                                                isLetterExpanded: vm.expandedLetterIds.contains(post.id),
+                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
+                                                                                                                                                reposterHandle: post.originalHandle != nil ? post.handle : nil,
+                                                                                                                                                promptText: FeedView.promptText(for: post.promptDate)
+                                                                                                                                                                                                                                                                                            )
+                                                                                                                                                                                                                                                                                            .id(post.id)
+                                                                                                                                                                                                                                                                                            .onAppear {
+                                                                                                                                                                                                                                                                                                // Prefetch the next page when this row is
+                                                                                                                                                                                                                                                                                                // ~5 posts from the end. By the time the
+                                                                                                                                                                                                                                                                                                // user reaches the bottom, the next page
+                                                                                                                                                                                                                                                                                                // is usually already loaded — no visible
+                                                                                                                                                                                                                                                                                                // spinner, smoother feed.
+                                                                                                                                                                                                                                                                                                guard tab == 0,
+                                                                                                                                                                                                                                                                                                      vm.hasMorePosts,
+                                                                                                                                                                                                                                                                                                      !vm.isLoadingMore,
+                                                                                                                                                                                                                                                                                                      vm.posts.count >= 5,
+                                                                                                                                                                                                                                                                                                      post.id == vm.posts[vm.posts.count - 5].id else { return }
+                                                                                                                                                                                                                                                                                                vm.loadMorePosts()
+                                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                        } // end else hasLoadedOnce
+
+                                                                                                                                                                                                            if tab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
+                                            // Visible loading spinner remains as the fallback for
+                                            // slow networks where the prefetch (attached to each
+                                            // post row 5-from-end via .onAppear) hasn't finished
+                                            // by the time the user reaches the bottom.
+                                            ProgressView()
+                                                .tint(Color.toskaBlue)
+                                                .padding(.vertical, 20)
+                                                .onAppear {
+                                                    if !vm.isLoadingMore {
+                                                        vm.loadMorePosts()
+                                                    }
+                                                }
+                                        }
+                    
+                    if tab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
+                                                                VStack(spacing: 4) {
+                                                                    Text("no more posts to show")
+                                                                        .font(.system(size: 10))
+                                                                        .foregroundColor(LateNightTheme.tertiaryText)
+                                                                    // Only annotate when posts are hidden by blocking.
+                                                                    // The neutral end-line stands on its own otherwise —
+                                                                    // the old poetic sublines ("close the app. or dont.")
+                                                                    // read as awkward at the bottom of a real feed.
+                                                                    if vm.endedDueToBlocking {
+                                                                        Text("some posts are hidden")
+                                                                            .font(.custom("Georgia-Italic", size: 10))
+                                                                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                                    }
+                                                                }
+                                                                .padding(.vertical, 20)
+                                                            }
+                    
+                                Color.clear.frame(height: 80)
+                                                                                }
+                                                                                // No outer .id() on the LazyVStack. A previous version keyed
+                                                                                // it on hasLoadedOnce to force a clean rebuild on the
+                                                                                // skeleton-to-loaded transition, but inside a ScrollView a
+                                                                                // LazyVStack rebuild can leave the view reporting zero
+                                                                                // measured height — the posts are in vm.posts and the body
+                                                                                // returns the right ForEach branch, but nothing renders
+                                                                                // until pull-to-refresh re-triggers layout. Letting
+                                                                                // SwiftUI's natural diffing swap the skeleton ForEach for
+                                                                                // the posts ForEach keeps the LazyVStack identity stable
+                                                                                // and avoids the blank-feed-on-launch regression.
+                                                                            }
+                                                                            // Pin to the exact viewport width — NOT maxHeight.
+                                                                            // maxHeight: .infinity would clamp the content to the
+                                                                            // viewport height and kill vertical scrolling (that
+                                                                            // bug surfaced once the seeded feed filled past one
+                                                                            // screen). Fixing the WIDTH to geo.size.width (rather
+                                                                            // than maxWidth: .infinity, which grows to fit an
+                                                                            // oversized child) guarantees the content can never be
+                                                                            // wider than the screen, so the vertical feed can't be
+                                                                            // panned sideways even if a row's media overflows.
+                                                                            .frame(width: geo.size.width)
+                                                                                .onReceive(NotificationCenter.default.publisher(for: .scrollFeedToTop)) { _ in                                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                                        proxy.scrollTo("feedTop", anchor: .top)
+                                                    }
+                                                }
+                // Removed .restoreFeedScroll observer — it was never posted
+                // anywhere in the project (orphaned wiring). MainTabView's
+                // tab-keep-alive (.opacity trick on each NavigationStack)
+                // already preserves scroll position when switching tabs, so
+                // an explicit save/restore round-trip isn't needed here.
+            } // end ScrollViewReader
+                                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                                        // Native pull-to-refresh. This replaces a custom
+                                                        // simultaneousGesture(DragGesture()) that fired on EVERY
+                                                        // downward drag — even mid-feed, not just at the top —
+                                                        // setting dragOffset and expanding the refresh header,
+                                                        // which shoved content around while scrolling and made
+                                                        // the feed feel wonky. .refreshable engages only at the
+                                                        // top and lets the scroll view own touch arbitration, so
+                                                        // normal scrolling stays seamless. refreshAll() refreshes
+                                                        // posts + header content, matching the old behavior.
+                                                        .refreshable {
+                                                            HapticManager.play(.tabSwitch)
+                                                            let start = Date()
+                                                            vm.refreshAll()
+                                                            // Hold the native spinner until the posts query actually
+                                                            // finishes (tracked by isFetchingPosts) instead of a blind
+                                                            // 1.2s timer — that timer left the spinner out of sync with
+                                                            // the content reflow, which is what felt glitchy. Bounded by
+                                                            // a 0.5s floor (no flash on a cached refresh) and a 5s
+                                                            // ceiling (can't hang if a fetch stalls).
+                                                            while vm.isFetchingPosts && Date().timeIntervalSince(start) < 5 {
+                                                                try? await Task.sleep(nanoseconds: 80_000_000)
+                                                            }
+                                                            let elapsed = Date().timeIntervalSince(start)
+                                                            if elapsed < 0.5 {
+                                                                try? await Task.sleep(nanoseconds: UInt64((0.5 - elapsed) * 1_000_000_000))
+                                                            }
+                                                        }
+                                                .frame(width: geo.size.width, height: geo.size.height)
+                                                }
+        .background(LateNightTheme.background)
+    }
+}

@@ -161,6 +161,12 @@ class FeedViewModel: ObservableObject {
         }
     }
 
+    /// Posts for a SPECIFIC feed column, independent of `selectedTab` — used by
+    /// the swipeable for-you/following pager so each page renders its own tab.
+    func postsForTab(_ tab: Int) -> [FeedPost] {
+        tab == 1 ? (followingPosts.isEmpty ? [] : followingPosts) : posts
+    }
+
     var todaysPrompt: (String, String, String) {
         guard !Self.dailyPrompts.isEmpty else {
             return ("how are you, really?", "confusion", "questionmark.circle")

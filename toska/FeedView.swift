@@ -1449,13 +1449,15 @@ struct FeedColumn: View {
                                     }
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 11)
-                                    // Clean, minimal search field: a quiet gray
-                                    // fill that recedes into the page — no heavy
-                                    // shadow or border competing with the floating
-                                    // tab bar. MODERNIZED (2026 / iOS 26): a
-                                    // translucent glass capsule instead of a flat
-                                    // fill, matching the floating tab bar's material.
-                                    .toskaGlass(in: Capsule(), frosted: true)
+                                    // Quiet gray capsule fill. Was a frosted glass
+                                    // material (.thinMaterial / .glassEffect), but
+                                    // SwiftUI materials render as an OPAQUE rectangle
+                                    // during navigation push/pop (they can't sample
+                                    // their backdrop mid-transition) — that was the
+                                    // "rectangle covers the search bar for a second"
+                                    // flash when opening a post. A solid fill looks
+                                    // nearly identical and transitions cleanly.
+                                    .background(ToskaColor.input, in: Capsule())
 
                                     // Cancel — appears while searching; clears the
                                     // query and drops focus, returning to the feed.

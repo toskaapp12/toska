@@ -192,6 +192,17 @@ struct ProfileView: View {
                             try? await Task.sleep(nanoseconds: 1_500_000_000)
                             reconcileCountsIfNeeded()
                         }
+                        // The tabs are now a swipeable pager, so pre-load the other
+                        // tabs shortly after the posts tab renders. This keeps the
+                        // fast initial open (posts first) while making swipes CLEAN —
+                        // by the time the user swipes, each page already has its data,
+                        // instead of sliding into a blank page that then pops content.
+                        Task {
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            loadTabIfNeeded(1)
+                            loadTabIfNeeded(2)
+                            loadTabIfNeeded(3)
+                        }
                     }
                     loadProfile()
                 }

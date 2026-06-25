@@ -342,10 +342,15 @@ final class WalkthroughUITests: XCTestCase {
         snap("08a-profile-posts")
         // Profile tab bar is icon-only: text.document / heart / bookmark / bubble.left
         XCTAssertTrue(waitFor(app.buttons["settings"], 8), "Not on profile (settings gear missing)")
-        for (icon, name) in [("heart", "liked"), ("bookmark", "saved"), ("bubble.left", "replies")] {
-            let tab = app.images[icon].firstMatch
+        // Tab buttons carry accessibilityLabels (posts/liked/saved/replies/reposts).
+        for name in ["liked", "saved", "replies", "reposts"] {
+            let tab = app.buttons[name].firstMatch
             if tab.exists { forceTap(tab); sleep(2); snap("08b-profile-\(name)") }
         }
+        // Swipe back across the pager to the first tab (posts).
+        let prof = app.otherElements["feedView"].exists ? app.otherElements["feedView"] : app.windows.firstMatch
+        prof.swipeRight(); sleep(1); prof.swipeRight(); sleep(1)
+        snap("08c-profile-after-swiperight")
         app.buttons["Home"].tap()
     }
 

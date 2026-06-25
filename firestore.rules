@@ -645,8 +645,17 @@ service cloud.firestore {
       // .get('moderationStatus', 'live') defaults docs without the field
       // to "live" — safe because the backfill migration set every
       // existing prod post to "live" before this rule deployed.
+      // resource == null guard: reading a NON-EXISTENT post must be allowed
+      // (it returns null to the caller — no data leaks). Without this,
+      // moderationVisible(resource.data) dereferences null.data and ERRORS,
+      // which Firestore treats as deny. That broke the repost transaction:
+      // PostInteractionManager.repost reads its would-be repost doc
+      // (posts/{uid}_repost_{postId}, which doesn't exist yet) inside the
+      // transaction as a dedup safety net — that read hit the null-deref and
+      // failed the whole transaction with PERMISSION_DENIED ("green→grey").
+      // Confirmed via on-device FIRFirestoreErrorDomain Code=7 + staging repro.
       allow read: if isAuth()
-        && moderationVisible(resource.data);
+        && (resource == null || moderationVisible(resource.data));
       allow create: if isAuth()
         && notRestricted()
         && hasConfirmedAdult()

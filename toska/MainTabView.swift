@@ -278,8 +278,17 @@ struct MainTabView: View {
             // `.hidesAppTabBar()` (PostDetailView, etc.) so the reply composer
             // owns the bottom instead of stacking under a redundant tab bar.
             // The preference auto-reverts to false when the view is popped.
-            withAnimation(.easeInOut(duration: 0.22)) {
-                tabBarHidden = hidden
+            if hidden {
+                // Hide INSTANTLY when pushing into a detail. The floating tab bar
+                // lives in this app-level overlay (above the NavigationStack), so
+                // animating it out over 0.22s left it floating on top of the
+                // incoming push — which read as the "jumpy" slide. The pushed
+                // view covers it, so an instant hide is invisible and clean.
+                tabBarHidden = true
+            } else {
+                // Reveal smoothly when returning to a top-level tab so it doesn't
+                // pop back abruptly.
+                withAnimation(.easeInOut(duration: 0.22)) { tabBarHidden = false }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in

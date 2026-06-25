@@ -229,6 +229,25 @@ final class WalkthroughUITests: XCTestCase {
 
     // MARK: 05 — post detail: open, like, save, reply
 
+    // Reproduce the repost bug against staging: tap repost, confirm it STICKS
+    // (button stays "Already reposted") rather than reverting (green→grey).
+    func test05z_repost() throws {
+        try requireFeed()
+        let repost = app.buttons["Repost"].firstMatch
+        XCTAssertTrue(waitFor(repost, 10), "No un-reposted post found (all already reposted?)")
+        snap("05z1-before-repost")
+        repost.tap()
+        sleep(1)
+        snap("05z2-just-after-tap")   // should be green / "Already reposted"
+        sleep(5)                      // let transaction + validatePost settle
+        snap("05z3-after-settle")
+        // If the write was denied, the button reverts to "Repost".
+        let stuck = app.buttons["Already reposted"].firstMatch.exists
+        let reverted = app.buttons["Repost"].firstMatch.exists
+        print("🔁 REPOST RESULT — stuck(Already reposted)=\(stuck)  reverted(Repost)=\(reverted)")
+        XCTAssertTrue(stuck, "Repost did NOT stick — reverted to 'Repost' (green→grey reproduced)")
+    }
+
     func test05_postDetailInteractions() throws {
         try requireFeed()
         // Post rows are Buttons labelled "handle, age, text, tag" — open the first.

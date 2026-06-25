@@ -229,6 +229,24 @@ final class WalkthroughUITests: XCTestCase {
 
     // MARK: 05 — post detail: open, like, save, reply
 
+    // Opening a post to READ it must NOT summon the keyboard. Reproduces the
+    // "blank then keyboard" delay: open a post, do NOT tap reply, assert the
+    // keyboard is absent.
+    func test05y_openPostNoKeyboard() throws {
+        try requireFeed()
+        let firstPost = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'first light' OR label CONTAINS 'the quiet' OR label CONTAINS 'storm'")).firstMatch
+        XCTAssertTrue(waitFor(firstPost, 10), "No post row found")
+        forceTap(firstPost)
+        sleep(1)
+        snap("05y1-post-just-opened")
+        sleep(2)
+        snap("05y2-post-settled")
+        let kbVisible = app.keyboards.firstMatch.exists
+        print("⌨️ OPEN-POST KEYBOARD VISIBLE (should be false): \(kbVisible)")
+        XCTAssertFalse(kbVisible, "Keyboard auto-appeared on opening a post to read it")
+    }
+
     // Reproduce the repost bug against staging: tap repost, confirm it STICKS
     // (button stays "Already reposted") rather than reverting (green→grey).
     func test05z_repost() throws {

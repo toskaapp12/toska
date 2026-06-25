@@ -100,263 +100,39 @@ struct ProfileView: View {
                     .accessibilityLabel("settings")
                 }
                 
-                ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                                    // Top-of-list anchor — used by the
-                                    // tap-active-tab-to-scroll-to-top pattern
-                                    // (MainTabView posts scrollProfileToTop
-                                    // when the user re-taps the profile tab).
-                                    Color.clear.frame(height: 0).id("top")
-                                    if profileLoadFailed {
-                                        ToskaErrorBanner("couldn't load your profile — check your connection") {
-                                            profileLoadFailed = false
-                                            loadProfile()
-                                        }
-                                    }
-                                    VStack(alignment: .leading, spacing: 0) {
-                                        // Identity — eyebrow + large serif handle
-                                        // + the anonymity bio line. Reads quiet and
-                                        // editorial; no follower/stat chrome (the
-                                        // anonymity is the point).
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            Text("anonymous")
-                                                .font(ToskaFont.eyebrow)
-                                                .textCase(.uppercase)
-                                                .tracking(1.4)
-                                                .foregroundColor(ToskaColor.text3)
-
-                                            Text("@\(userHandle)")
-                                                .font(ToskaFont.serifMedium(22))
-                                                .tracking(-0.4)
-                                                .foregroundColor(ToskaColor.text)
-
-                                            Text("no name, no face. just the things you needed to say.")
-                                                .font(ToskaFont.serifItalic(14))
-                                                .foregroundColor(ToskaColor.text2)
-                                                .lineSpacing(3)
-                                                .fixedSize(horizontal: false, vertical: true)
-
-                                            // Joined date (Twitter-style) — calendar + month/year.
-                                            HStack(spacing: 5) {
-                                                Image(systemName: "calendar")
-                                                    .font(.system(size: 11, weight: .medium))
-                                                Text("joined \(joinedDate.lowercased())")
-                                                    .font(.system(size: 12.5, weight: .regular))
-                                            }
-                                            .foregroundColor(ToskaColor.text3)
-                                            .padding(.top, 2)
-
-                                            // Following / followers stats — both tappable to
-                                            // their lists (the user asked for the Twitter-style
-                                            // row). Count bold in the text color, label muted.
-                                            HStack(spacing: 18) {
-                                                NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
-                                                    HStack(spacing: 4) {
-                                                        Text("\(followingCount)")
-                                                            .font(.system(size: 13.5, weight: .bold))
-                                                            .foregroundColor(ToskaColor.text)
-                                                        Text("following")
-                                                            .font(.system(size: 13.5, weight: .regular))
-                                                            .foregroundColor(ToskaColor.text2)
-                                                    }
-                                                }
-                                                NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
-                                                    HStack(spacing: 4) {
-                                                        Text("\(followerCount)")
-                                                            .font(.system(size: 13.5, weight: .bold))
-                                                            .foregroundColor(ToskaColor.text)
-                                                        Text("followers")
-                                                            .font(.system(size: 13.5, weight: .regular))
-                                                            .foregroundColor(ToskaColor.text2)
-                                                    }
-                                                }
-                                            }
-                                            .padding(.top, 4)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 6)
-                                        .padding(.bottom, 18)
-                        
-                                        HStack(spacing: 0) {
-                                            ForEach(0..<tabIcons.count, id: \.self) { index in
-                                                Button {
-                                                    withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
-                                                } label: {
-                                                    VStack(spacing: 9) {
-                                                        Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
-                                                            .font(.system(size: 18, weight: selectedTab == index ? .medium : .regular))
-                                                            .foregroundColor(selectedTab == index ? ToskaColor.handle : ToskaColor.time)
-                                                        Rectangle()
-                                                            .fill(selectedTab == index ? ToskaColor.handle : Color.clear)
-                                                            .frame(width: 26, height: 2)
-                                                    }
-                                                    .frame(maxWidth: .infinity)
-                                                    .padding(.top, 13)
-                                                }
-                                                .accessibilityLabel(tabAccessibilityLabels[index])
-                                            }
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .overlay(
-                                            Rectangle().fill(ToskaColor.divider).frame(height: 1),
-                                            alignment: .bottom
-                                        )
-                                        // Breathing room between the tab underline/divider
-                                        // and the first content card below it.
-                                        .padding(.bottom, 10)
-
-                                        switch selectedTab {
-                                                                case 0:
-                                                                    let authoredPosts = myPosts.filter { !$0.isRepost }
-                                                                    if authoredPosts.isEmpty {
-                                                                        emptyState(icon: "square.and.pencil", title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
-                                                                    } else {
-                                                                        LazyVStack(spacing: 0) {
-                                                                            ForEach(authoredPosts) { post in
-                                                                                Button { openMyPost(post) } label: {
-                                                                                    VStack(alignment: .leading, spacing: 0) {
-                                                                                        if post.pendingReview {
-                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
-                                                                                        }
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
-                                                                                    }
-                                                                                }
-                                                                                .buttonStyle(.plain)
-                                                                            }
-                                                                            // The fetch caps at 50 posts COMBINED (authored +
-                                                                            // reposts), so key the truncation note on the full
-                                                                            // myPosts count, not the filtered authored subset —
-                                                                            // otherwise it never shows for users who repost.
-                                                                            if myPosts.count >= 50 {
-                                                                                Text("showing your 50 most recent posts")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
-                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                case 4:
-                                                                    let repostItems = myPosts.filter { $0.isRepost }
-                                                                    if repostItems.isEmpty {
-                                                                        emptyState(icon: "arrow.2.squarepath", title: "no reposts yet.", subtitle: "when something says it better than you could, repost it.")
-                                                                    } else {
-                                                                        LazyVStack(spacing: 0) {
-                                                                            ForEach(repostItems) { post in
-                                                                                Button { openMyPost(post) } label: {
-                                                                                    VStack(alignment: .leading, spacing: 0) {
-                                                                                        HStack(spacing: 4) {
-                                                                                            Image(systemName: "arrow.2.squarepath")
-                                                                                                .font(.system(size: 9))
-                                                                                            Text("you reposted")
-                                                                                                .font(.system(size: 10, weight: .medium))
-                                                                                        }
-                                                                                        .foregroundColor(Color.toskaMovingOnGreen)
-                                                                                        .padding(.horizontal, 16)
-                                                                                        .padding(.top, 8)
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
-                                                                                    }
-                                                                                }
-                                                                                .buttonStyle(.plain)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                case 1:
-                                                                    let likedItems = mergedLikedItems
-                                                                    if likedItems.isEmpty {
-                                                                        emptyState(icon: "heart", title: "nothing felt yet.", subtitle: "youll know it when you see it.")
-                                                                    } else {
-                                                                        LazyVStack(spacing: 0) {
-                                                                            ForEach(likedItems) { item in
-                                                                                switch item {
-                                                                                case .post(let post):
-                                                                                    Button { openSavedPost(post) } label: {
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
-                                                                                    }
-                                                                                    .buttonStyle(.plain)
-                                                                                case .reply(let liked):
-                                                                                    Button { openLikedReply(liked) } label: {
-                                                                                        ReplyEngagementRow(handle: liked.replyHandle, text: liked.replyText, time: liked.likedAt)
-                                                                                    }
-                                                                                    .buttonStyle(.plain)
-                                                                                }
-                                                                            }
-                                                                            if likedItems.count >= 100 {
-                                                                                Text("showing your most recent likes")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
-                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                case 2:
-                                                                    let items = mergedSavedItems
-                                                                    if items.isEmpty {
-                                                                        emptyState(icon: "bookmark", title: "nothing saved.", subtitle: "some things are worth keeping.")
-                                                                    } else {
-                                                                        LazyVStack(spacing: 0) {
-                                                                            ForEach(items) { item in
-                                                                                switch item {
-                                                                                case .post(let post):
-                                                                                    Button { openSavedPost(post) } label: {
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
-                                                                                    }
-                                                                                    .buttonStyle(.plain)
-                                                                                case .reply(let saved):
-                                                                                    Button { openSavedReply(saved) } label: {
-                                                                                        ReplyEngagementRow(handle: saved.replyHandle, text: saved.replyText, time: saved.savedAt)
-                                                                                    }
-                                                                                    .buttonStyle(.plain)
-                                                                                }
-                                                                            }
-                                                                            if items.count >= 100 {
-                                                                                Text("showing your most recent saves")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
-                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                case 3:
-                                                                    if myReplies.isEmpty {
-                                                                        emptyState(icon: "arrowshape.turn.up.left", title: "no replies yet.", subtitle: "say something back to someone who needed it.")
-                                                                    } else {
-                                                                        LazyVStack(spacing: 0) {
-                                                                            ForEach(myReplies) { reply in
-                                                                                replyRow(reply)
-                                                                            }
-                                                                            if myReplies.count >= 30 {
-                                                                                Text("showing your most recent replies")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
-                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                default: EmptyView()
-                                                                }
-
-                        Color.clear.frame(height: 80)
+                if profileLoadFailed {
+                    ToskaErrorBanner("couldn't load your profile — check your connection") {
+                        profileLoadFailed = false
+                        loadProfile()
                     }
                 }
-                .refreshable {
-                                    loadProfile()
-                                    switch selectedTab {
-                                    case 0: loadMyPosts()
-                                    case 1:
-                                        loadLikedPosts()
-                                        loadLikedReplies()
-                                    case 2:
-                                        loadSavedPosts()
-                                        loadSavedReplies()
-                                    case 3:
-                                        loadMyReplies()
-                                    default: break
-                                    }
-                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+
+                // Fixed identity header + tab selector; content pages horizontally
+                // beneath them (same pattern as the feed / most-felt tabs).
+                profileIdentitySection
+                profileTabSelector
+
+                // Swipeable content: swipe between posts / liked / saved / replies
+                // / reposts (tapping the tabs still works — both drive selectedTab).
+                TabView(selection: $selectedTab) {
+                    ForEach(0..<tabIcons.count, id: \.self) { index in
+                        ScrollViewReader { proxy in
+                            ScrollView(showsIndicators: false) {
+                                Color.clear.frame(height: 0).id("top")
+                                profileTabContent(index)
+                                Color.clear.frame(height: 80)
+                            }
+                            .refreshable { await refreshProfileTab(index) }
+                            .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
+                                withAnimation(.easeInOut(duration: 0.4)) {
+                                    proxy.scrollTo("top", anchor: .top)
                                 }
-                .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
-                    withAnimation(.easeInOut(duration: 0.4)) {
-                        proxy.scrollTo("top", anchor: .top)
+                            }
+                        }
+                        .tag(index)
                     }
                 }
-                } // end ScrollViewReader
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }
@@ -1206,6 +982,244 @@ struct ProfileView: View {
             guard Auth.auth().currentUser?.uid == uid else { return }
             myReplies = results.sorted { $0.createdAt > $1.createdAt }
         }
+    }
+
+    // MARK: - Profile sections (extracted for the swipeable tab pager)
+
+    private var profileIdentitySection: some View {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text("anonymous")
+                                                .font(ToskaFont.eyebrow)
+                                                .textCase(.uppercase)
+                                                .tracking(1.4)
+                                                .foregroundColor(ToskaColor.text3)
+
+                                            Text("@\(userHandle)")
+                                                .font(ToskaFont.serifMedium(22))
+                                                .tracking(-0.4)
+                                                .foregroundColor(ToskaColor.text)
+
+                                            Text("no name, no face. just the things you needed to say.")
+                                                .font(ToskaFont.serifItalic(14))
+                                                .foregroundColor(ToskaColor.text2)
+                                                .lineSpacing(3)
+                                                .fixedSize(horizontal: false, vertical: true)
+
+                                            // Joined date (Twitter-style) — calendar + month/year.
+                                            HStack(spacing: 5) {
+                                                Image(systemName: "calendar")
+                                                    .font(.system(size: 11, weight: .medium))
+                                                Text("joined \(joinedDate.lowercased())")
+                                                    .font(.system(size: 12.5, weight: .regular))
+                                            }
+                                            .foregroundColor(ToskaColor.text3)
+                                            .padding(.top, 2)
+
+                                            // Following / followers stats — both tappable to
+                                            // their lists (the user asked for the Twitter-style
+                                            // row). Count bold in the text color, label muted.
+                                            HStack(spacing: 18) {
+                                                NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
+                                                    HStack(spacing: 4) {
+                                                        Text("\(followingCount)")
+                                                            .font(.system(size: 13.5, weight: .bold))
+                                                            .foregroundColor(ToskaColor.text)
+                                                        Text("following")
+                                                            .font(.system(size: 13.5, weight: .regular))
+                                                            .foregroundColor(ToskaColor.text2)
+                                                    }
+                                                }
+                                                NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
+                                                    HStack(spacing: 4) {
+                                                        Text("\(followerCount)")
+                                                            .font(.system(size: 13.5, weight: .bold))
+                                                            .foregroundColor(ToskaColor.text)
+                                                        Text("followers")
+                                                            .font(.system(size: 13.5, weight: .regular))
+                                                            .foregroundColor(ToskaColor.text2)
+                                                    }
+                                                }
+                                            }
+                                            .padding(.top, 4)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 16)
+                                        .padding(.top, 6)
+                                        .padding(.bottom, 18)
+            .padding(.bottom, 4)
+    }
+
+    private var profileTabSelector: some View {
+                                        HStack(spacing: 0) {
+                                            ForEach(0..<tabIcons.count, id: \.self) { index in
+                                                Button {
+                                                    withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
+                                                } label: {
+                                                    VStack(spacing: 9) {
+                                                        Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
+                                                            .font(.system(size: 18, weight: selectedTab == index ? .medium : .regular))
+                                                            // Purple accent on the active profile tab (icon +
+                                                            // underline), matching the feed / most-felt tabs.
+                                                            .foregroundColor(selectedTab == index ? ToskaColor.accent : ToskaColor.time)
+                                                        Capsule()
+                                                            .fill(selectedTab == index ? ToskaColor.accent : Color.clear)
+                                                            .frame(width: 26, height: 2)
+                                                    }
+                                                    .frame(maxWidth: .infinity)
+                                                    .padding(.top, 13)
+                                                }
+                                                .accessibilityLabel(tabAccessibilityLabels[index])
+                                            }
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .overlay(
+                                            Rectangle().fill(ToskaColor.divider).frame(height: 1),
+                                            alignment: .bottom
+                                        )
+                                        // Breathing room between the tab underline/divider
+                                        // and the first content card below it.
+                                        .padding(.bottom, 10)
+    }
+
+    @ViewBuilder
+    private func profileTabContent(_ index: Int) -> some View {
+                                        switch index {
+                                                                case 0:
+                                                                    let authoredPosts = myPosts.filter { !$0.isRepost }
+                                                                    if authoredPosts.isEmpty {
+                                                                        emptyState(icon: "square.and.pencil", title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(authoredPosts) { post in
+                                                                                Button { openMyPost(post) } label: {
+                                                                                    VStack(alignment: .leading, spacing: 0) {
+                                                                                        if post.pendingReview {
+                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
+                                                                                        }
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
+                                                                                    }
+                                                                                }
+                                                                                .buttonStyle(.plain)
+                                                                            }
+                                                                            // The fetch caps at 50 posts COMBINED (authored +
+                                                                            // reposts), so key the truncation note on the full
+                                                                            // myPosts count, not the filtered authored subset —
+                                                                            // otherwise it never shows for users who repost.
+                                                                            if myPosts.count >= 50 {
+                                                                                Text("showing your 50 most recent posts")
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                case 4:
+                                                                    let repostItems = myPosts.filter { $0.isRepost }
+                                                                    if repostItems.isEmpty {
+                                                                        emptyState(icon: "arrow.2.squarepath", title: "no reposts yet.", subtitle: "when something says it better than you could, repost it.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(repostItems) { post in
+                                                                                Button { openMyPost(post) } label: {
+                                                                                    VStack(alignment: .leading, spacing: 0) {
+                                                                                        HStack(spacing: 4) {
+                                                                                            Image(systemName: "arrow.2.squarepath")
+                                                                                                .font(.system(size: 9))
+                                                                                            Text("you reposted")
+                                                                                                .font(.system(size: 10, weight: .medium))
+                                                                                        }
+                                                                                        .foregroundColor(Color.toskaMovingOnGreen)
+                                                                                        .padding(.horizontal, 16)
+                                                                                        .padding(.top, 8)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
+                                                                                    }
+                                                                                }
+                                                                                .buttonStyle(.plain)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                case 1:
+                                                                    let likedItems = mergedLikedItems
+                                                                    if likedItems.isEmpty {
+                                                                        emptyState(icon: "heart", title: "nothing felt yet.", subtitle: "youll know it when you see it.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(likedItems) { item in
+                                                                                switch item {
+                                                                                case .post(let post):
+                                                                                    Button { openSavedPost(post) } label: {
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
+                                                                                case .reply(let liked):
+                                                                                    Button { openLikedReply(liked) } label: {
+                                                                                        ReplyEngagementRow(handle: liked.replyHandle, text: liked.replyText, time: liked.likedAt)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
+                                                                                }
+                                                                            }
+                                                                            if likedItems.count >= 100 {
+                                                                                Text("showing your most recent likes")
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                case 2:
+                                                                    let items = mergedSavedItems
+                                                                    if items.isEmpty {
+                                                                        emptyState(icon: "bookmark", title: "nothing saved.", subtitle: "some things are worth keeping.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(items) { item in
+                                                                                switch item {
+                                                                                case .post(let post):
+                                                                                    Button { openSavedPost(post) } label: {
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
+                                                                                case .reply(let saved):
+                                                                                    Button { openSavedReply(saved) } label: {
+                                                                                        ReplyEngagementRow(handle: saved.replyHandle, text: saved.replyText, time: saved.savedAt)
+                                                                                    }
+                                                                                    .buttonStyle(.plain)
+                                                                                }
+                                                                            }
+                                                                            if items.count >= 100 {
+                                                                                Text("showing your most recent saves")
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                case 3:
+                                                                    if myReplies.isEmpty {
+                                                                        emptyState(icon: "arrowshape.turn.up.left", title: "no replies yet.", subtitle: "say something back to someone who needed it.")
+                                                                    } else {
+                                                                        LazyVStack(spacing: 0) {
+                                                                            ForEach(myReplies) { reply in
+                                                                                replyRow(reply)
+                                                                            }
+                                                                            if myReplies.count >= 30 {
+                                                                                Text("showing your most recent replies")
+                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                default: EmptyView()
+                                                                }
+    }
+
+    private func refreshProfileTab(_ index: Int) async {
+        loadProfile()
+        switch index {
+        case 0, 4: loadMyPosts()
+        case 1: loadLikedPosts(); loadLikedReplies()
+        case 2: loadSavedPosts(); loadSavedReplies()
+        case 3: loadMyReplies()
+        default: break
+        }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
     }
 }
 

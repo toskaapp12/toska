@@ -80,11 +80,24 @@ struct TopView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if posts.isEmpty {
-            VStack {
-                emptyState
-                Spacer()
+            // Empty state must STILL be pull-to-refreshable — a quiet day on
+            // "today" shouldn't trap the user with no way to recheck. A
+            // ScrollView (even with little content) gives .refreshable a
+            // scrollable surface; the tall min-height keeps the pull gesture
+            // available across the whole page.
+            GeometryReader { geo in
+                ScrollView {
+                    VStack {
+                        emptyState
+                    }
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                }
+                .refreshable {
+                    await withCheckedContinuation { continuation in
+                        fetchTopPosts(for: p, force: true, onComplete: { continuation.resume() })
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             TopPeriodColumn(posts: posts, period: p) {
                 await withCheckedContinuation { continuation in

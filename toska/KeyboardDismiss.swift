@@ -81,6 +81,29 @@ extension UIApplication {
         tap.delegate = KeyboardDismissDelegate.shared
         window.addGestureRecognizer(tap)
     }
+
+    /// Pre-warm the keyboard subsystem at launch. iOS lazily spins up the
+    /// keyboard process the FIRST time any field becomes first responder, which
+    /// causes a 0.5–1.5s "blank gap, then keyboard" delay on the first reply/
+    /// compose of a session. Briefly making an offscreen text field first
+    /// responder (then resigning it) forces that init up front so the first
+    /// real keyboard slides up instantly. Runs once, silently, off-screen.
+    @MainActor
+    func prewarmKeyboard() {
+        let windows = connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+        guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return }
+        let field = UITextField(frame: .zero)
+        field.isHidden = true
+        window.addSubview(field)
+        field.becomeFirstResponder()
+        // Resign + remove on the next runloop so the warmup is invisible.
+        DispatchQueue.main.async {
+            field.resignFirstResponder()
+            field.removeFromSuperview()
+        }
+    }
 }
 
 extension View {
@@ -92,6 +115,9 @@ extension View {
             UIApplication.shared.installKeyboardDismissGesture()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 UIApplication.shared.installKeyboardDismissGesture()
+                // Pre-warm once the window is attached so the first reply/compose
+                // keyboard appears instantly instead of lagging (blank-then-keyboard).
+                UIApplication.shared.prewarmKeyboard()
             }
         }
     }

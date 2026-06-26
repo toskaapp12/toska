@@ -137,7 +137,7 @@ struct LateNightTheme {
     // neutral blue, and more distinctive. Kept muted/grown-up, not pastel. This
     // single token drives the compose +, the active tab underline, selected
     // states, toggles, and links, so the whole app wears the plum from here.
-    static var accent: Color { isLateNight ? Color(hex: "9387C0") : Color(hex: "7E6FA6") }
+    static var accent: Color { isLateNight ? Color(hex: "9387C0") : Color(hex: "6D55C9") }
 
     // Timestamp / meta tertiary, badge, and scrim
     static var timeText: Color { isLateNight ? Color(hex: "4E5157") : Color(hex: "B7BAC1") }

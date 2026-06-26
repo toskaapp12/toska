@@ -40,7 +40,7 @@ struct TopView: View {
 
     var body: some View {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 header
@@ -113,8 +113,13 @@ struct TopView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text("most felt")
-                .toskaEyebrow()
+            HStack(spacing: 5) {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(ToskaColor.accent)
+                Text("most felt")
+                    .toskaEyebrow()
+            }
             Text("top")
                 .toskaScreenTitle()
         }

@@ -202,23 +202,15 @@ struct MainTabView: View {
                 // above the home indicator, an elevated white (card) surface with
                 // a bold two-layer drop shadow — instead of a flat edge-to-edge
                 // panel. The page shows behind/below it so it reads as floating.
-                // MODERNIZED (2026 / iOS 26): the floating home bar is now a
-                // Liquid Glass capsule — translucent and refractive, so the feed
-                // scrolls visibly beneath it (the iconic iOS 26 look) instead of
-                // the old opaque white pill. A thin rim-light overlay defines the
-                // glass edge; the layered drop shadow keeps it floating.
-                .toskaGlass(in: Capsule(), frosted: true)
-                // H3: the glass material (.thinMaterial/.glassEffect) is the one
-                // surface in the app that reacts to the SYSTEM appearance. With
-                // the device in Dark Mode during the day (isLateNight == false)
-                // the glass would render dark while the tab icons stay dark
-                // (their daytime LateNightTheme values) → dark-on-dark. Pin the
-                // pill's color scheme to the app's OWN day/night intent so the
-                // glass tracks the icons, not the device. (The rim stroke below
-                // already branches on isLateNight for the same reason.)
-                .environment(\.colorScheme, LateNightTheme.isLateNight ? .dark : .light)
+                // SOLID white pill (2026 mockup). Was a frosted-glass material
+                // (.thinMaterial/.glassEffect), but SwiftUI materials render their
+                // full RECTANGULAR bounds as an opaque box behind the capsule
+                // (the "rectangle bar behind the bottom tab") — and they flash
+                // during scroll/transitions. A plain card-colored capsule fill
+                // matches the mockup and has no rectangle artifact.
+                .background(LateNightTheme.cardBackground, in: Capsule())
                 .overlay(
-                    Capsule().stroke(Color.white.opacity(LateNightTheme.isLateNight ? 0.10 : 0.35), lineWidth: 0.5)
+                    Capsule().stroke(Color.black.opacity(LateNightTheme.isLateNight ? 0.0 : 0.05), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
                 .shadow(color: .black.opacity(0.16), radius: 28, x: 0, y: 14)

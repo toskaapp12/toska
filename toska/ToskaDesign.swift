@@ -46,13 +46,27 @@ enum ToskaFont {
     static var postDetailBody: Font { serif(22) }         // 22 / 400, line-height 1.45
     static var replyBody: Font      { serif(15.5) }       // 15.5 / 400, line-height 1.5
 
-    // Sans — all UI chrome
-    static var eyebrow: Font     { .system(size: 10.5, weight: .semibold) } // UPPERCASE, tracking 1.4
-    static var handle: Font      { .system(size: 13,   weight: .medium) }   // understated username — content leads, not the chrome
-    static var meta: Font        { .system(size: 12,   weight: .regular) }  // timestamp: smaller + lower contrast
-    static var actionCount: Font { .system(size: 11.5, weight: .medium) }
-    static var chip: Font        { .system(size: 12,   weight: .semibold) }
-    static func button(_ size: CGFloat = 15) -> Font { .system(size: size, weight: .semibold) }
+    // Sans = Hanken Grotesk (bundled in Fonts/, registered via Info.plist).
+    // Used for all UI chrome — usernames, tabs, mood labels, counts, eyebrows.
+    // (Newsreader serif stays on content: wordmark, post text, prompt, headlines.)
+    static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let name: String
+        switch weight {
+        case .medium:                 name = "HankenGrotesk-Medium"
+        case .semibold:               name = "HankenGrotesk-SemiBold"
+        case .bold, .heavy, .black:   name = "HankenGrotesk-Bold"
+        default:                      name = "HankenGrotesk-Regular"
+        }
+        return .custom(name, size: size, relativeTo: .body)
+    }
+
+    // Sans — all UI chrome (now Hanken Grotesk)
+    static var eyebrow: Font     { sans(10.5, weight: .semibold) } // UPPERCASE, tracking 1.4
+    static var handle: Font      { sans(13,   weight: .medium) }   // understated username — content leads, not the chrome
+    static var meta: Font        { sans(12,   weight: .regular) }  // timestamp: smaller + lower contrast
+    static var actionCount: Font { sans(11.5, weight: .medium) }
+    static var chip: Font        { sans(12,   weight: .semibold) }
+    static func button(_ size: CGFloat = 15) -> Font { sans(size, weight: .semibold) }
 }
 
 // MARK: - Color Tokens

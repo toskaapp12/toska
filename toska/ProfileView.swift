@@ -119,7 +119,7 @@ struct ProfileView: View {
                         ScrollView(showsIndicators: false) {
                             Color.clear.frame(height: 0).id("top")
                             profileTabContent(index)
-                            Color.clear.frame(height: 80)
+                            Color.clear.frame(height: 130)
                         }
                         .refreshable { await refreshProfileTab(index) }
                         .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in

@@ -45,11 +45,12 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Continuous page-color base so the area behind/below the floating
-            // tab pill is the SAME surface as the feed — no distinct lighter
-            // panel/seam showing behind the bar. The pill floats over one
-            // uniform background instead of a separate bottom panel.
-            ToskaColor.bg.ignoresSafeArea()
+            // White base so the floating pill sits over the same white surface as
+            // the feed — no gray panel/rectangle behind it. The content fills the
+            // full height (no bottom reservation), so the feed scrolls visibly
+            // BEHIND the pill (each scroll view adds its own bottom inset to clear
+            // the pill). Dark theme keeps the near-black ground.
+            LateNightTheme.feedBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 OfflineBannerView()
@@ -103,14 +104,11 @@ struct MainTabView: View {
             // When a drill-in view hides the tab bar, drop the reservation so
             // its bottom-anchored UI (the reply composer) sits flush at the
             // bottom instead of floating above an empty 92pt gap.
-            .padding(.bottom, tabBarHidden ? 0 : 92)
-            // Snap this bottom-clearance change INSTANTLY (opt out of the
-            // tabBarHidden withAnimation below). Animating the 92→0 reflow over
-            // 0.22s competed with the navigation push, so the feed + the
-            // incoming detail visibly "bounced" mid-transition. The tab bar
-            // overlay itself still hides smoothly (its own animation); only this
-            // layout reservation snaps, which is hidden by the push.
-            .animation(nil, value: tabBarHidden)
+            // NO bottom reservation: the content fills the full height so the feed
+            // scrolls BEHIND the floating pill (the pill is transparent-feeling —
+            // you see the feed through/behind it, not a gray panel). Each tab's
+            // scroll view carries its own bottom inset (Color.clear ~130) so the
+            // last row still clears the pill.
 
             // MARK: - Tab bar
             // Always visible (the hide preference is intentionally ignored,

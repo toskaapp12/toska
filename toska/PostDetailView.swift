@@ -151,6 +151,11 @@ struct PostDetailView: View {
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(false)
             .onAppear {
+                            // Re-warm the keyboard the moment a post opens, so it's
+                            // hot by the time the user taps the reply field (~1s later)
+                            // — no blank-gap wait. Invisible (off-screen field resigned
+                            // next runloop); cheap; complements the launch-time prewarm.
+                            UIApplication.shared.prewarmKeyboard()
                             postText = text
                             likeCount = likes
                             localRepostCount = reposts

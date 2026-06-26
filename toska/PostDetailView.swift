@@ -111,6 +111,7 @@ struct PostDetailView: View {
     @State private var isDeleting = false
     @State private var deleteError = ""
     @State private var didOpenHaptic = false
+    @State private var replyDraftSaveTask: Task<Void, Never>? = nil   // debounces the encrypted reply-draft write
     @State private var postText: String = ""
     // GIF URL attached to the post. Populated by the live snapshot listener
     // (startLiveListener), so it appears as soon as the post doc is read and
@@ -597,14 +598,24 @@ struct PostDetailView: View {
                             }
                             replyText = String(newValue[..<endIdx])
                         }
-                        // Persist reply draft per post so a kill mid-typing
-                        // doesn't lose words. Cleared on successful send.
-                        // N-4: protected DraftStore instead of UserDefaults.
+                        // Persist reply draft per post so a kill mid-typing doesn't
+                        // lose words. DEBOUNCED (perf): DraftStore.set is a synchronous
+                        // encrypted atomic disk write — doing it every keystroke lagged
+                        // typing. Wait ~0.5s after typing stops; empty writes (clear on
+                        // send) go through immediately.
                         if !postId.isEmpty {
-                            DraftStore.set(
-                                replyText,
-                                forKey: UserDefaultsKeys.replyDraft(postId: postId)
-                            )
+                            let key = UserDefaultsKeys.replyDraft(postId: postId)
+                            replyDraftSaveTask?.cancel()
+                            if replyText.isEmpty {
+                                DraftStore.set(replyText, forKey: key)
+                            } else {
+                                let toSave = replyText
+                                replyDraftSaveTask = Task {
+                                    try? await Task.sleep(nanoseconds: 500_000_000)
+                                    guard !Task.isCancelled else { return }
+                                    DraftStore.set(toSave, forKey: key)
+                                }
+                            }
                         }
                     }
                 Button { sendReply() } label: {

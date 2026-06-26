@@ -110,6 +110,7 @@ struct PostDetailView: View {
     @State private var editText = ""
     @State private var isDeleting = false
     @State private var deleteError = ""
+    @State private var didOpenHaptic = false
     @State private var postText: String = ""
     // GIF URL attached to the post. Populated by the live snapshot listener
     // (startLiveListener), so it appears as soon as the post doc is read and
@@ -155,6 +156,12 @@ struct PostDetailView: View {
                             // device the becomeFirstResponder briefly flashed the
                             // keyboard as a rectangle over the reply bar when the post
                             // opened. The launch-time prewarm (KeyboardDismiss) stays.
+                            // Light haptic on first open (gated so returning to this
+                            // post from a deeper push doesn't re-fire).
+                            if !didOpenHaptic {
+                                didOpenHaptic = true
+                                HapticManager.play(.tabSwitch)
+                            }
                             postText = text
                             likeCount = likes
                             localRepostCount = reposts

@@ -810,7 +810,7 @@ struct FeedPostRow: View {
                                             }
                                             .accessibilityLabel("Reply")
                                             .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
-                                            .buttonStyle(.plain)
+                                            .buttonStyle(ToskaTapStyle())
 
                                             // repost
                                             Button { repostPost() } label: {
@@ -818,7 +818,7 @@ struct FeedPostRow: View {
                                             }
                                             .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
                                             .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                            .buttonStyle(.plain)
+                                            .buttonStyle(ToskaTapStyle())
                                             .disabled(isRepostPost)
                                             .opacity(isRepostPost ? 0.3 : 1.0)
 
@@ -838,7 +838,7 @@ struct FeedPostRow: View {
                                             }
                                             .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
                                             .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                            .buttonStyle(.plain)
+                                            .buttonStyle(ToskaTapStyle())
                                             .scaleEffect(likePulse ? 1.15 : 1.0)
                                             .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
 
@@ -853,7 +853,7 @@ struct FeedPostRow: View {
                                                     .foregroundColor(isSaved ? ToskaColor.accent : ToskaColor.text3)
                                             }
                                             .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-                                            .buttonStyle(.plain)
+                                            .buttonStyle(ToskaTapStyle())
 
                                             // share — hidden for letters & whispers
                                             // (those are private/ephemeral and not
@@ -866,7 +866,7 @@ struct FeedPostRow: View {
                                                         .foregroundColor(ToskaColor.text3)
                                                 }
                                                 .accessibilityLabel("Share post")
-                                                .buttonStyle(.plain)
+                                                .buttonStyle(ToskaTapStyle())
                                             } else {
                                                 Color.clear.frame(width: 18, height: 1)
                                             }
@@ -1136,7 +1136,23 @@ struct FeedRowPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(configuration.isPressed ? Color.toskaDivider.opacity(0.18) : Color.clear)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+            // Subtle scale on touch-down so a full-row tap reads instantly (a big
+            // row can't scale much without looking odd — 0.99 is enough to register).
+            .scaleEffect(configuration.isPressed ? 0.99 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+// Press style for the small action buttons (like / repost / save / share /
+// reply). `.plain` gave them NO touch-down feedback (the "mushy" feel) — this
+// scales + dims them the moment the finger lands, then springs back on release.
+struct ToskaTapStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1.0)
+            .opacity(configuration.isPressed ? 0.55 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .contentShape(Rectangle())
     }
 }
 

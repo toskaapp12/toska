@@ -94,11 +94,20 @@ extension UIApplication {
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
         guard let window = windows.first(where: { $0.isKeyWindow }) ?? windows.first else { return }
-        let field = UITextField(frame: .zero)
-        field.isHidden = true
+        // The field must be VISIBLE and non-zero-size to accept first responder —
+        // UIKit refuses becomeFirstResponder() on a hidden / zero-frame view, which
+        // made the previous (isHidden = true) version a silent no-op (keyboard never
+        // warmed). Place it just OFF-SCREEN with alpha ~0 instead: real enough to
+        // become first responder and spin up the keyboard, invisible to the user.
+        let field = UITextField(frame: CGRect(x: -10, y: window.bounds.height + 10, width: 10, height: 10))
+        field.alpha = 0.01
         window.addSubview(field)
         field.becomeFirstResponder()
-        // Resign + remove on the next runloop so the warmup is invisible.
+        // Resign on the NEXT runloop: becomeFirstResponder has already kicked off
+        // the keyboard-process launch (the expensive warmup), but resigning before
+        // the ~0.25s slide-up animation begins means the keyboard never visibly
+        // appears at launch. The first real reply/compose keyboard then connects to
+        // the already-spun-up process and slides in instantly.
         DispatchQueue.main.async {
             field.resignFirstResponder()
             field.removeFromSuperview()

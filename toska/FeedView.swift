@@ -223,11 +223,9 @@ struct FeedView: View {
                 .fill(LateNightTheme.divider)
                 .frame(height: 0.5)
 
-            TabView(selection: $vm.selectedTab) {
-                FeedColumn(vm: vm, tab: 0, searchText: $searchText, searchFocused: $searchFocused).tag(0)
-                FeedColumn(vm: vm, tab: 1, searchText: $searchText, searchFocused: $searchFocused).tag(1)
+            SwipePager(selection: $vm.selectedTab, ids: [0, 1]) { tab in
+                FeedColumn(vm: vm, tab: tab, searchText: $searchText, searchFocused: $searchFocused)
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
                                             }
                                             .background(LateNightTheme.background)
                // Group into a single accessibility container so the identifier

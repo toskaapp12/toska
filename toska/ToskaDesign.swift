@@ -308,3 +308,48 @@ struct ToskaErrorBanner: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+// MARK: - SwipePager
+//
+// Horizontal paging container used by the feed / most-felt / profile tab pagers.
+// Replaces TabView(.page), which renders heavy post-lists roughly during the
+// drag. Built on iOS 17's ScrollView paging (scrollTargetBehavior(.paging) +
+// scrollTargetLayout + scrollPosition) — much smoother with content-heavy pages,
+// and nested vertical scrolls disambiguate cleanly.
+//
+// `selection` stays in sync BOTH ways: tapping a tab (which sets selection)
+// scrolls here; swiping updates selection so the tab indicator follows. Generic
+// over the tab id so it serves Int tabs (feed/profile) and the Period enum (top).
+struct SwipePager<ID: Hashable, Content: View>: View {
+    @Binding var selection: ID
+    let ids: [ID]
+    @ViewBuilder var content: (ID) -> Content
+
+    @State private var posID: ID?
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(ids, id: \.self) { id in
+                    content(id)
+                        .containerRelativeFrame(.horizontal)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $posID)
+        .scrollIndicators(.hidden)
+        .onAppear { if posID == nil { posID = selection } }
+        .onChange(of: selection) { _, newValue in
+            // Tab tapped → page to it (the only animated path).
+            if posID != newValue {
+                withAnimation(.easeInOut(duration: 0.28)) { posID = newValue }
+            }
+        }
+        .onChange(of: posID) { _, newValue in
+            // Swiped → update the selected tab (drives the indicator).
+            if let newValue, selection != newValue { selection = newValue }
+        }
+    }
+}

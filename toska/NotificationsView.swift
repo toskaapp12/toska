@@ -147,7 +147,7 @@ struct NotificationsView: View {
                                         .padding(.vertical, 12)
                                 }
 
-                                Color.clear.frame(height: 80)
+                                Color.clear.frame(height: 130)
                             }
                         }
                     }

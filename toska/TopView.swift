@@ -317,7 +317,7 @@ struct TopPeriodColumn: View {
                     }
                 }
 
-                Color.clear.frame(height: 100)
+                Color.clear.frame(height: 130)
             }
             .refreshable { await onRefresh() }
             .onReceive(NotificationCenter.default.publisher(for: .scrollTopTabToTop)) { _ in

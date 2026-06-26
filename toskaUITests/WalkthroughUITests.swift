@@ -215,16 +215,18 @@ final class WalkthroughUITests: XCTestCase {
 
     func test04_search() throws {
         try requireFeed()
-        let search = app.textFields["Search"]
-        XCTAssertTrue(waitFor(search, 8), "Inline search field missing")
-        forceTap(search)
+        snap("04a-default-no-searchbar")        // 🔍 icon in header, no bar
+        let searchIcon = app.buttons["Search"]
+        XCTAssertTrue(waitFor(searchIcon, 8), "Search icon missing in header")
+        forceTap(searchIcon)
         sleep(1)
-        app.typeText("light")
-        sleep(2)
-        snap("04-search-results")
-        // dismiss keyboard / clear
-        if app.buttons["cancel"].exists { forceTap(app.buttons["cancel"]) }
-        else { app.swipeDown() }
+        snap("04b-search-expanded")             // search bar revealed
+        let field = app.textFields["search moments, people, feelings"]
+        if waitFor(field, 4) {
+            field.typeText("light")
+            sleep(2)
+            snap("04c-search-results")
+        }
     }
 
     // MARK: 05 — post detail: open, like, save, reply

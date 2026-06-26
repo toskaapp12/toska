@@ -362,8 +362,13 @@ struct SwipePager<ID: Hashable, Content: View>: View {
             }
         }
         .onChange(of: posID) { _, newValue in
-            // Swiped → update the selected tab (drives the indicator).
-            if let newValue, selection != newValue { selection = newValue }
+            // Swiped → update the selected tab (drives the indicator) + a light
+            // haptic on swipe-commit (only here, not on tab taps — a tab tap
+            // changes selection first, so posID arrives already == selection).
+            if let newValue, selection != newValue {
+                selection = newValue
+                HapticManager.play(.tabSwitch)
+            }
         }
     }
 }

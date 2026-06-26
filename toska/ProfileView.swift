@@ -21,6 +21,11 @@ struct ProfileView: View {
     @State private var myPosts: [MyPost] = []
     @State private var savedPosts: [SavedPost] = []
     @State private var savedReplies: [SavedReply] = []
+    // Cached merged + sorted lists for the liked/saved tabs. Rebuilt only when a
+    // source array actually changes (via .onChange) instead of being a computed
+    // property that re-merged + re-sorted 100+ items on every body recompute.
+    @State private var savedItemsCache: [SavedItem] = []
+    @State private var likedItemsCache: [LikedItem] = []
     @State private var myReplies: [MyReply] = []
     @State private var likedPosts: [SavedPost] = []
     @State private var likedReplies: [LikedReply] = []
@@ -205,6 +210,12 @@ struct ProfileView: View {
         .onChange(of: selectedTab) { _, newValue in
             loadTabIfNeeded(newValue)
         }
+        // Rebuild the merged liked/saved caches only when their source arrays
+        // change (load, delete) — not on every body recompute.
+        .onChange(of: savedPosts) { _, _ in rebuildSavedCache() }
+        .onChange(of: savedReplies) { _, _ in rebuildSavedCache() }
+        .onChange(of: likedPosts) { _, _ in rebuildLikedCache() }
+        .onChange(of: likedReplies) { _, _ in rebuildLikedCache() }
         // Reset on sign-out so any in-flight ProfileView state from the
         // previous account doesn't blend into the next user's UI when
         // MainTabView remounts. hasFetchedInitial=false re-arms the
@@ -760,10 +771,10 @@ struct ProfileView: View {
         }
     }
 
-    var mergedSavedItems: [SavedItem] {
+    func rebuildSavedCache() {
         let posts = savedPosts.map { SavedItem.post($0) }
         let replies = savedReplies.map { SavedItem.reply($0) }
-        return (posts + replies).sorted { $0.createdAt > $1.createdAt }
+        savedItemsCache = (posts + replies).sorted { $0.createdAt > $1.createdAt }
     }
 
     // Tap handler for a saved-reply row. Fetches the parent post (one read)
@@ -848,10 +859,10 @@ struct ProfileView: View {
         }
     }
 
-    var mergedLikedItems: [LikedItem] {
+    func rebuildLikedCache() {
         let posts = likedPosts.map { LikedItem.post($0) }
         let replies = likedReplies.map { LikedItem.reply($0) }
-        return (posts + replies).sorted { $0.createdAt > $1.createdAt }
+        likedItemsCache = (posts + replies).sorted { $0.createdAt > $1.createdAt }
     }
 
     // Tap handler for a liked-reply row. Same self-healing on stale data
@@ -1145,7 +1156,7 @@ struct ProfileView: View {
                                                                         }
                                                                     }
                                                                 case 1:
-                                                                    let likedItems = mergedLikedItems
+                                                                    let likedItems = likedItemsCache
                                                                     if likedItems.isEmpty {
                                                                         emptyState(icon: "heart", title: "nothing felt yet.", subtitle: "youll know it when you see it.")
                                                                     } else {
@@ -1172,7 +1183,7 @@ struct ProfileView: View {
                                                                         }
                                                                     }
                                                                 case 2:
-                                                                    let items = mergedSavedItems
+                                                                    let items = savedItemsCache
                                                                     if items.isEmpty {
                                                                         emptyState(icon: "bookmark", title: "nothing saved.", subtitle: "some things are worth keeping.")
                                                                     } else {

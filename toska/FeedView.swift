@@ -506,7 +506,39 @@ struct FeedView: View {
 // MARK: - Feed Post Row
 
 @MainActor
-struct FeedPostRow: View {
+struct FeedPostRow: View, Equatable {
+    // Equatable so the feed can wrap rows in .equatable(): when one post's
+    // interaction state changes (a like/save mutates the VM's @Published sets and
+    // recomputes the whole feed body), SwiftUI skips re-rendering every OTHER row
+    // because their value inputs are unchanged. Without this, the closures below
+    // are recreated each ForEach pass, so SwiftUI can never skip a row — every
+    // like re-rendered all ~20 visible rows. The onLetterExpand closure is
+    // intentionally NOT compared (it captures post.id, already covered by postId).
+    nonisolated static func == (l: FeedPostRow, r: FeedPostRow) -> Bool {
+        l.handle == r.handle
+            && l.text == r.text
+            && l.tag == r.tag
+            && l.likes == r.likes
+            && l.reposts == r.reposts
+            && l.replies == r.replies
+            && l.time == r.time
+            && l.postId == r.postId
+            && l.authorId == r.authorId
+            && l.isAlreadyReposted == r.isAlreadyReposted
+            && l.isAlreadyLiked == r.isAlreadyLiked
+            && l.isAlreadySaved == r.isAlreadySaved
+            && l.isShareable == r.isShareable
+            && l.gifUrl == r.gifUrl
+            && l.isMidnightPost == r.isMidnightPost
+            && l.isLetter == r.isLetter
+            && l.isRepostPost == r.isRepostPost
+            && l.isWhisperPost == r.isWhisperPost
+            && l.isLetterExpanded == r.isLetterExpanded
+            && l.reposterHandle == r.reposterHandle
+            && l.promptText == r.promptText
+            && l.rank == r.rank
+    }
+
     let handle: String
     let text: String
     let tag: String?
@@ -1651,6 +1683,7 @@ struct FeedColumn: View {
                                                                                                                                                 replies: post.replies,
                                                                                                                                                 time: post.time
                                                                                                                                             )
+                                                                                                                                            .equatable()
                                                                                                                                         } else {
                                                                                                                                             FeedPostRow(
                                                                                                                                                 handle: post.originalHandle ?? post.handle,
@@ -1676,6 +1709,7 @@ struct FeedColumn: View {
                                                                                                                                                 reposterHandle: post.originalHandle != nil ? post.handle : nil,
                                                                                                                                                 promptText: FeedView.promptText(for: post.promptDate)
                                                                                                                                                                                                                                                                                             )
+                                                                                                                                                                                                                                                                                            .equatable()
                                                                                                                                                                                                                                                                                             .id(post.id)
                                                                                                                                                                                                                                                                                             .onAppear {
                                                                                                                                                                                                                                                                                                 // Prefetch the next page when this row is

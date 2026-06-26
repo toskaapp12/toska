@@ -50,6 +50,7 @@ struct ComposeView: View {
     // them, the .onChange handlers below write through.
     @State private var draftText: String = ""
     @State private var draftTag: String = ""
+    @State private var draftSaveTask: Task<Void, Never>? = nil   // debounces the encrypted draft write
     @State private var text = ""
     @State private var selectedTag: String? = nil
     @State private var showTagPicker = false
@@ -725,11 +726,23 @@ struct ComposeView: View {
             // compose restores both. Empty string when nil.
             draftTag = newValue ?? ""
         }
-        // N-4: write drafts through to the protected DraftStore on every change
-        // (mirrors the prior per-keystroke @AppStorage persistence). Clearing
-        // draftText/draftTag to "" removes the on-disk file.
+        // N-4: persist drafts to the protected DraftStore. DEBOUNCED (perf pass):
+        // DraftStore.set does a synchronous atomic + complete-file-protection
+        // (encrypted) disk write — doing that on every keystroke caused visible
+        // typing lag on longer posts. Now we wait ~0.5s after typing stops, so a
+        // burst of keystrokes collapses to a single write. An empty value writes
+        // immediately (clearing the draft on send/dismiss must not be deferred).
         .onChange(of: draftText) { _, newValue in
-            DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
+            draftSaveTask?.cancel()
+            if newValue.isEmpty {
+                DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
+            } else {
+                draftSaveTask = Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    guard !Task.isCancelled else { return }
+                    DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
+                }
+            }
         }
         .onChange(of: draftTag) { _, newValue in
             DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftTag)

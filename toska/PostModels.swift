@@ -42,7 +42,7 @@ struct PostDetailData {
 }
 
 /// Used in ProfileView for saved/liked posts (has Date for sorting, handle for display)
-struct SavedPost: Identifiable {
+struct SavedPost: Identifiable, Equatable {
     let id: String          // doc ID
     let authorId: String
     let handle: String
@@ -138,7 +138,7 @@ struct MyReply: Identifiable {
 /// the reply itself; tap navigates to the parent post (where the reply
 /// renders inline). Text + handle snapshotted at save time — see
 /// PostInteractionManager.toggleReplySave for the stale-on-edit trade-off.
-struct SavedReply: Identifiable {
+struct SavedReply: Identifiable, Equatable {
     let id: String          // reply doc id
     let postId: String      // parent post id (for navigation on tap)
     let replyText: String
@@ -151,7 +151,7 @@ struct SavedReply: Identifiable {
 /// users/{uid}/savedReplies) snapshot the same fields at write time. Kept
 /// as a separate type for semantic clarity at call sites — same row UI
 /// (ReplyEngagementRow) renders both.
-struct LikedReply: Identifiable {
+struct LikedReply: Identifiable, Equatable {
     let id: String
     let postId: String
     let replyText: String

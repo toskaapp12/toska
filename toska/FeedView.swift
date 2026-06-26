@@ -235,7 +235,7 @@ struct FeedView: View {
                     } label: {
                         VStack(spacing: 7) {
                             Text(vm.tabs[index])
-                                .font(.system(size: 16, weight: isSel ? .semibold : .regular))
+                                .font(ToskaFont.sans(16, weight: isSel ? .semibold : .regular))
                                 .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
                             Capsule()
                                 .fill(isSel ? ToskaColor.accent : Color.clear)
@@ -689,7 +689,7 @@ struct FeedPostRow: View {
                                                         .fill(tagColor(for: tag))
                                                         .frame(width: 6, height: 6)
                                                     Text(tag)
-                                                        .font(.system(size: 13, weight: .medium))
+                                                        .font(ToskaFont.sans(13, weight: .medium))
                                                         .foregroundColor(tagColor(for: tag))
                                                 }
                                             }
@@ -1165,7 +1165,7 @@ struct FeedHeaderCard: View {
                         Image(systemName: "sparkle")
                             .font(.system(size: 12, weight: .semibold))
                         Text("today's prompt")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(ToskaFont.sans(11, weight: .semibold))
                             .textCase(.uppercase)
                             .tracking(1.3)
                     }
@@ -1184,7 +1184,7 @@ struct FeedHeaderCard: View {
                             HapticManager.play(.compose)
                         } label: {
                             Text("respond")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(ToskaFont.sans(15, weight: .semibold))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 22)
                                 .padding(.vertical, 11)

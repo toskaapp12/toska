@@ -1711,7 +1711,7 @@ struct FeedColumn: View {
                                                                 .padding(.vertical, 20)
                                                             }
                     
-                                Color.clear.frame(height: 80)
+                                Color.clear.frame(height: 130)
                                                                                 }
                                                                                 // No outer .id() on the LazyVStack. A previous version keyed
                                                                                 // it on hasLoadedOnce to force a clean rebuild on the

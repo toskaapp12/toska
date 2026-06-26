@@ -135,7 +135,7 @@ struct MainTabView: View {
                     }
                     .accessibilityLabel("Home")
 
-                    tabIcon(icon: "chart.line.uptrend.xyaxis", activeIcon: "chart.line.uptrend.xyaxis", tab: .top)
+                    tabIcon(icon: "sparkle", activeIcon: "sparkle", tab: .top)
 
                     // Compose button
                     Button {

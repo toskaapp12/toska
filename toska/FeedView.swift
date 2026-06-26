@@ -136,49 +136,7 @@ struct FeedView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
-                .padding(.bottom, 8)
-
-                // Tag filter chips while searching.
-                if searchFocused || !searchText.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            let allSelected = searchText.isEmpty
-                            Button { searchText = "" } label: {
-                                Text("all")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
-                                    .padding(.horizontal, 13)
-                                    .padding(.vertical, 5)
-                                    .background(allSelected ? ToskaColor.accent : Color.clear)
-                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            ForEach(sharedTags, id: \.name) { tag in
-                                let isSel = searchText == tag.name
-                                Button {
-                                    searchText = tag.name
-                                    searchFocused = false
-                                } label: {
-                                    HStack(spacing: 5) {
-                                        Image(systemName: tag.icon)
-                                            .font(.system(size: 11))
-                                        Text(tag.name)
-                                            .font(.system(size: 13, weight: .medium))
-                                    }
-                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
-                                    .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                    }
-                    .padding(.bottom, 10)
-                }
+                .padding(.bottom, 10)
             }
             .transition(.opacity)
         }
@@ -913,12 +871,10 @@ struct FeedPostRow: View {
                                                 Color.clear.frame(width: 18, height: 1)
                                             }
                                         }
-                                        // Spread the action icons evenly across the full
-                                        // width — first at the leading edge, last at the
-                                        // trailing edge — like X/Instagram. The Spacers
-                                        // between them grow to distribute the row.
+                                        // reply/repost/heart on the left, bookmark/share
+                                        // pushed to the trailing edge (2026 mockup).
                                         .frame(maxWidth: .infinity)
-                                        .padding(.top, 4)
+                                        .padding(.top, 10)
                                     }
                                 }
                                             // Span the full width so the whole card is one
@@ -938,8 +894,8 @@ struct FeedPostRow: View {
                                             // (X-style), not a stack of floating cards. The
                                             // press highlight still lives in FeedRowPressStyle
                                             // on the content link.
-                                            .padding(.horizontal, 20)
-                                            .padding(.vertical, 18)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 16)
                                             .contentShape(Rectangle())
                                             .overlay(alignment: .bottom) {
                                                 Rectangle()

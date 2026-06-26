@@ -114,25 +114,21 @@ struct ProfileView: View {
 
                 // Swipeable content: swipe between posts / liked / saved / replies
                 // / reposts (tapping the tabs still works — both drive selectedTab).
-                TabView(selection: $selectedTab) {
-                    ForEach(0..<tabIcons.count, id: \.self) { index in
-                        ScrollViewReader { proxy in
-                            ScrollView(showsIndicators: false) {
-                                Color.clear.frame(height: 0).id("top")
-                                profileTabContent(index)
-                                Color.clear.frame(height: 80)
-                            }
-                            .refreshable { await refreshProfileTab(index) }
-                            .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
-                                withAnimation(.easeInOut(duration: 0.4)) {
-                                    proxy.scrollTo("top", anchor: .top)
-                                }
+                SwipePager(selection: $selectedTab, ids: Array(0..<tabIcons.count)) { index in
+                    ScrollViewReader { proxy in
+                        ScrollView(showsIndicators: false) {
+                            Color.clear.frame(height: 0).id("top")
+                            profileTabContent(index)
+                            Color.clear.frame(height: 80)
+                        }
+                        .refreshable { await refreshProfileTab(index) }
+                        .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                proxy.scrollTo("top", anchor: .top)
                             }
                         }
-                        .tag(index)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .navigationDestination(isPresented: $showSettings) { SettingsView() }

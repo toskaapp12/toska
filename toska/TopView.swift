@@ -51,13 +51,9 @@ struct TopView: View {
                 // period selector above and this TabView both bind to `period`,
                 // so tapping a tab and swiping stay in sync — same pattern as the
                 // main feed's for-you/following pager.
-                TabView(selection: $period) {
-                    ForEach(Period.allCases) { p in
-                        periodPage(p)
-                            .tag(p)
-                    }
+                SwipePager(selection: $period, ids: Period.allCases) { p in
+                    periodPage(p)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .onAppear {

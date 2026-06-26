@@ -40,6 +40,9 @@ struct FeedView: View {
     // query. No Firestore round-trip — searches only what's already
     // loaded. Cleared text returns to the unfiltered feed.
     @State private var searchText = ""
+    // Search collapses to a 🔍 icon in the header; tapping it reveals the search
+    // bar (2026 mockup). Kept open while a query is active so results stay visible.
+    @State private var showSearch = false
     // Take-a-break gentle reminder. After 15 minutes of continuous time on
     // the feed, a soft banner appears at the top — non-modal, dismissable
     // with a tap. Specific to a mental-health-adjacent app: heartbreak
@@ -74,10 +77,111 @@ struct FeedView: View {
                             Text("toska")
                                 .toskaScreenTitle()
                             Spacer()
+                            // Search toggle (2026 mockup): a magnifying glass in the
+                            // top-right reveals the search bar below the header.
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    showSearch.toggle()
+                                }
+                                if showSearch {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        searchFocused = true
+                                    }
+                                } else {
+                                    searchText = ""
+                                    searchFocused = false
+                                }
+                            } label: {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 19, weight: .regular))
+                                    .foregroundColor(ToskaColor.text)
+                                    .contentShape(Rectangle())
+                            }
+                            .accessibilityLabel("Search")
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                         .padding(.bottom, 8)
+    }
+
+    // Header search bar — revealed by the 🔍 toggle. Sits between the header and
+    // the tabs (2026 mockup). The TextField + category chips moved up here from
+    // the per-column body so search is one control at the screen level.
+    @ViewBuilder private var headerSearchBar: some View {
+        if showSearch || !searchText.isEmpty {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 15))
+                            .foregroundColor(ToskaColor.text3)
+                        TextField("search moments, people, feelings", text: $searchText)
+                            .font(.system(size: 15))
+                            .foregroundColor(ToskaColor.handle)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .focused($searchFocused)
+                            .submitLabel(.search)
+                        if !searchText.isEmpty {
+                            Button { searchText = "" } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(ToskaColor.text3)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .background(ToskaColor.input, in: Capsule())
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 8)
+
+                // Tag filter chips while searching.
+                if searchFocused || !searchText.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            let allSelected = searchText.isEmpty
+                            Button { searchText = "" } label: {
+                                Text("all")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
+                                    .padding(.horizontal, 13)
+                                    .padding(.vertical, 5)
+                                    .background(allSelected ? ToskaColor.accent : Color.clear)
+                                    .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            ForEach(sharedTags, id: \.name) { tag in
+                                let isSel = searchText == tag.name
+                                Button {
+                                    searchText = tag.name
+                                    searchFocused = false
+                                } label: {
+                                    HStack(spacing: 5) {
+                                        Image(systemName: tag.icon)
+                                            .font(.system(size: 11))
+                                        Text(tag.name)
+                                            .font(.system(size: 13, weight: .medium))
+                                    }
+                                    .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .padding(.bottom, 10)
+                }
+            }
+            .transition(.opacity)
+        }
     }
 
     // MARK: - Take-a-break banner
@@ -160,7 +264,10 @@ struct FeedView: View {
     // text tabs + a short underline indicator under the selected one —
     // quieter and more modern, doesn't compete with the cards below.
     @ViewBuilder private var feedTabs: some View {
-            HStack(spacing: 0) {
+            // Left-aligned text tabs (2026 mockup): "for you" / "following" grouped
+            // at the leading edge with a short underline under the active one — not
+            // spread across the full width.
+            HStack(spacing: 26) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
                     let isSel = vm.selectedTab == index
                     Button {
@@ -170,20 +277,20 @@ struct FeedView: View {
                     } label: {
                         VStack(spacing: 7) {
                             Text(vm.tabs[index])
-                                .font(.system(size: 14, weight: isSel ? .semibold : .regular))
+                                .font(.system(size: 16, weight: isSel ? .semibold : .regular))
                                 .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
                             Capsule()
                                 .fill(isSel ? ToskaColor.accent : Color.clear)
-                                .frame(width: 22, height: 2)
+                                .frame(width: 24, height: 2)
                         }
-                        .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.top, 6)
             .padding(.bottom, 2)
     }
 
@@ -213,6 +320,8 @@ struct FeedView: View {
             VStack(spacing: 0) {
                     headerSection
 
+                    headerSearchBar
+
                     takeBreakBanner
 
                     newPostsBanner
@@ -227,7 +336,7 @@ struct FeedView: View {
                 FeedColumn(vm: vm, tab: tab, searchText: $searchText, searchFocused: $searchFocused)
             }
                                             }
-                                            .background(LateNightTheme.background)
+                                            .background(LateNightTheme.feedBackground)
                // Group into a single accessibility container so the identifier
                // lands on ONE queryable Other element. Without .contain, SwiftUI
                // propagates the identifier onto every child (header text, tab
@@ -611,33 +720,23 @@ struct FeedPostRow: View {
                                                     .foregroundColor(Color.toskaWhisperPink.opacity(0.5))
                                             }
 
-                                            // Report/block menu. Hidden on the user's
-                                            // own posts and on posts where we don't
-                                            // have an authorId (repost/legacy docs).
-                                            if !authorId.isEmpty, authorId != Auth.auth().currentUser?.uid {
-                                                Menu {
-                                                    Button {
-                                                        showReportSheet = true
-                                                    } label: {
-                                                        Label("report", systemImage: "flag")
-                                                    }
-                                                    Button(role: .destructive) {
-                                                        showBlockConfirm = true
-                                                    } label: {
-                                                        Label("block \(handle)", systemImage: "person.slash")
-                                                    }
-                                                } label: {
-                                                    Image(systemName: "ellipsis")
-                                                        .font(.system(size: 13))
-                                                        .foregroundColor(ToskaColor.text3)
-                                                        .padding(.horizontal, 6)
-                                                        .padding(.vertical, 4)
-                                                        .contentShape(Rectangle())
+                                            // Emotion tag on the RIGHT of the header row
+                                            // (2026 mockup): a colored dot + the tag name
+                                            // in the tag's color. Replaces the filled pill
+                                            // that used to sit below the post text. Report
+                                            // / block moved to the long-press menu.
+                                            if let tag = tag {
+                                                HStack(spacing: 5) {
+                                                    Circle()
+                                                        .fill(tagColor(for: tag))
+                                                        .frame(width: 6, height: 6)
+                                                    Text(tag)
+                                                        .font(.system(size: 13, weight: .medium))
+                                                        .foregroundColor(tagColor(for: tag))
                                                 }
-                                                .accessibilityLabel("More options for \(handle)'s post")
                                             }
                                         }
-                                        .padding(.bottom, 6)
+                                        .padding(.bottom, 8)
                 
                 // Post text
                 if !text.isEmpty {
@@ -693,36 +792,11 @@ struct FeedPostRow: View {
                                             }
                                         }
                                         
-                                        // Tag pill — slightly bigger so it
-                                        // reads as a real chip, not a footnote.
-                                        // Now includes the tag's SF Symbol
-                                        // alongside the name (icon defined in
-                                        // sharedTags); matches how Compose and
-                                        // Explore render the same chips so the
-                                        // visual vocabulary is consistent.
-                                        if let tag = tag {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: ToskaEmotion.icon(tag))
-                                                    .font(.system(size: 10, weight: .regular))
-                                                Text(tag)
-                                                    .font(.system(size: 11, weight: .medium))
-                                            }
-                                            // Softer, clearly-filled pill: a touch
-                                            // more fill + lighter text weight so it
-                                            // reads as a quiet filled chip rather
-                                            // than sharp colored text.
-                                            .foregroundColor(tagColor(for: tag))
-                                            .padding(.vertical, 5)
-                                            .padding(.leading, 9)
-                                            .padding(.trailing, 11)
-                                            .background(tagColor(for: tag).opacity(0.14))
-                                            .overlay(
-                                                Capsule().stroke(tagColor(for: tag).opacity(0.30), lineWidth: 0.75)
-                                            )
-                                            .clipShape(Capsule())
-                                            .padding(.bottom, 10)
-                                        }
-                                        
+                                        // Tag now renders as a colored dot + name on the
+                                        // RIGHT of the header row (see handle row above) —
+                                        // the old filled pill below the text was removed
+                                        // to match the 2026 mockup.
+
                                         // GIF — animated. Uses StableGifPreview
                                         // (shared from ComposeView) so frames
                                         // actually animate via UIImageView; the
@@ -751,7 +825,11 @@ struct FeedPostRow: View {
                     // Action bar — larger icons + a bit tighter spacing so
                                     // the row feels more substantial without crowding.
                                     if !postId.isEmpty {
-                                        HStack(spacing: 0) {
+                                        // reply/repost/like grouped tight on the left,
+                                        // bookmark/share pushed right (2026 mockup) — the
+                                        // 26pt HStack spacing handles the left group; one
+                                        // flexible Spacer before bookmark splits the row.
+                                        HStack(spacing: 26) {
                                             // reply
                                             NavigationLink {
                                                 PostDetailView(
@@ -776,8 +854,6 @@ struct FeedPostRow: View {
                                             .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
                                             .buttonStyle(.plain)
 
-                                            Spacer(minLength: 8)
-
                                             // repost
                                             Button { repostPost() } label: {
                                                 actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
@@ -787,8 +863,6 @@ struct FeedPostRow: View {
                                             .buttonStyle(.plain)
                                             .disabled(isRepostPost)
                                             .opacity(isRepostPost ? 0.3 : 1.0)
-
-                                            Spacer(minLength: 8)
 
                                             // like (with burst overlay — only visible mid-animation;
                                             // allowsHitTesting(false) so taps still hit the button)
@@ -810,7 +884,9 @@ struct FeedPostRow: View {
                                             .scaleEffect(likePulse ? 1.15 : 1.0)
                                             .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
 
-                                            Spacer(minLength: 8)
+                                            // Flexible gap — pushes bookmark + share to
+                                            // the trailing edge.
+                                            Spacer(minLength: 16)
 
                                             // bookmark
                                             Button { toggleSave() } label: {
@@ -820,8 +896,6 @@ struct FeedPostRow: View {
                                             }
                                             .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                                             .buttonStyle(.plain)
-
-                                            Spacer(minLength: 8)
 
                                             // share — hidden for letters & whispers
                                             // (those are private/ephemeral and not
@@ -902,6 +976,17 @@ struct FeedPostRow: View {
                                             }
                                         }
 
+                    // Report / block moved here (long-press) so the post header can
+                    // stay clean — the tag sits where the inline ⋯ menu used to.
+                    if !authorId.isEmpty, authorId != Auth.auth().currentUser?.uid {
+                        Divider()
+                        Button { showReportSheet = true } label: {
+                            Label("report", systemImage: "flag")
+                        }
+                        Button(role: .destructive) { showBlockConfirm = true } label: {
+                            Label("block \(handle)", systemImage: "person.slash")
+                        }
+                    }
                 }
                 .onAppear {
                                                     if !hasInitialized {
@@ -1115,65 +1200,54 @@ struct FeedHeaderCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-                // Collapsed: just the prompt + tap to expand
-                Button {
-                                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 7) {
-                                        // Eyebrow — uppercase, tracked, muted.
-                                        Text(vm.promptTimeLabel)
-                                            .font(ToskaFont.eyebrow)
-                                            .textCase(.uppercase)
-                                            .foregroundColor(ToskaColor.text3)
-                                            .tracking(1.4)
+                // Lavender prompt card (2026 mockup): "✦ TODAY'S PROMPT" eyebrow,
+                // serif-italic prompt, and a purple "respond" pill. Soft plum-tinted
+                // fill, rounded — the daily prompt is the app's hook, so it reads as
+                // a distinct accent card rather than plain text on the page.
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("today's prompt")
+                            .font(.system(size: 11, weight: .semibold))
+                            .textCase(.uppercase)
+                            .tracking(1.3)
+                    }
+                    .foregroundColor(ToskaColor.accent)
 
-                                        // Greeting — editorial serif italic on the
-                                        // plain surface (no card).
-                                        Text(vm.todaysPrompt.0)
-                                            .font(ToskaFont.serifItalic(17))
-                                            .foregroundColor(ToskaColor.text)
-                                            .lineSpacing(3)
-                                            .lineLimit(isExpanded ? nil : 3)
-                                            .multilineTextAlignment(.leading)
+                    Text(vm.todaysPrompt.0)
+                        .font(ToskaFont.serifItalic(18))
+                        .foregroundColor(ToskaColor.text)
+                        .lineSpacing(4)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                                        // "todays moment" affordance — accent link row
-                                        // (sparkle + label + chevron), per design.
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "sparkle")
-                                                .font(.system(size: 13))
-                                                .foregroundColor(ToskaColor.accent)
-                                            Text("todays moment")
-                                                .font(.system(size: 12.5, weight: .semibold))
-                                                .foregroundColor(ToskaColor.accent)
-                                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                                .font(.system(size: 11, weight: .semibold))
-                                                .foregroundColor(ToskaColor.accent)
-                                        }
-                                        .padding(.top, 2)
-
-                                        if isExpanded {
-                                            Text("new one tomorrow.")
-                                                .font(.system(size: 10, weight: .regular))
-                                                .foregroundColor(ToskaColor.text3)
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    // Flattened to match the content-first feed: the daily
-                                    // prompt sits directly on the page background (no plum
-                                    // card or border), set apart by TYPOGRAPHY — the
-                                    // uppercase eyebrow + serif-italic greeting + accent
-                                    // "todays moment" link — rather than a box. A hairline
-                                    // separates it from the posts below. Subtle purple
-                                    // identity stays in the accent link + eyebrow.
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 18)
-                                    .overlay(alignment: .bottom) {
-                                        Rectangle()
-                                            .fill(ToskaColor.divider.opacity(0.5))
-                                            .frame(height: 0.5)
-                                    }
-                                }
-                                .buttonStyle(.plain)
+                    if vm.todaysPromptResponse == nil {
+                        Button {
+                            vm.showPromptCompose = true
+                            HapticManager.play(.compose)
+                        } label: {
+                            Text("respond")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 22)
+                                .padding(.vertical, 11)
+                                .background(ToskaColor.accent)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(ToskaColor.accent.opacity(LateNightTheme.isLateNight ? 0.16 : 0.10))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 8)
 
                 // ALWAYS-visible "your response" card (not gated by isExpanded).
                 // When the user has responded today, this sits right under the
@@ -1230,97 +1304,6 @@ struct FeedHeaderCard: View {
                     .buttonStyle(.plain)
                 }
 
-                // Expanded content
-                if isExpanded {
-                    VStack(spacing: 0) {
-                        Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-
-                        // Respond button — hidden once today's response exists
-                        // (soft one-per-day cap). The "your response" card
-                        // above replaces it.
-                        if vm.todaysPromptResponse == nil {
-                            // Clear action row: "respond to today's prompt" (write
-                            // your OWN response). Reads as an action, not the cryptic
-                            // emotion-tag chip it used to lead with. Pairs with the
-                            // "someone needs a reply" row below (reply to someone who
-                            // already shared) so both paths are obvious.
-                            Button { vm.showPromptCompose = true } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "pencil.line")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(Color.toskaBlue)
-                                    Text("respond to today's prompt")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(Color.toskaBlue)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 9, weight: .light))
-                                        .foregroundColor(LateNightTheme.tertiaryText)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 11)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        // Daily moment
-                        if vm.hasDailyMoment {
-                            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-                            Button { vm.showDailyMoment = true } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "sparkles")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(Color.toskaAccentTan)
-                                    Text(vm.dailyMomentLabel)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(LateNightTheme.handleText)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 9, weight: .light))
-                                        .foregroundColor(LateNightTheme.tertiaryText)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        // Witness post
-                        if vm.witnessPost != nil {
-                            Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
-                            Button { vm.showWitnessPost = true } label: {
-                                HStack(spacing: 8) {
-                                    Circle()
-                                        .fill(Color.toskaBlue)
-                                        .frame(width: 5, height: 5)
-                                    Text("someone needs a reply")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(Color.toskaBlue)
-                                    Spacer()
-                                    Text("be there")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(Color.toskaBlue)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.toskaBlue.opacity(0.1))
-                                        .cornerRadius(10)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                        // "most unsaid today" surface removed — it was the same
-                        // data as the trending tab (top-liked post in the last
-                        // 24h) and pulled the prompt card away from its core
-                        // job (prompt → respond → your response). The state +
-                        // fetcher stay in FeedViewModel because hasDailyMoment
-                        // also depends on that query.
-                    }
-                }
-                
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
             }
 
         // Anniversary post (always visible, not collapsed)
@@ -1571,16 +1554,13 @@ struct FeedColumn: View {
                                                 .frame(maxWidth: .infinity)
                                                 .background(Color.toskaErrorRed.opacity(0.06))
                                             }
-                                // MARK: - Collapsed feed header
-                                // Hidden while searching (focused or query present)
-                                // so the search + filter chips take over the top.
-                                                    if tab == 0 && !(searchFocused.wrappedValue || !searchText.isEmpty) {
+                                // MARK: - Collapsed feed header (daily prompt). The
+                                // search bar + filter chips now live in the screen
+                                // header (toggled by the 🔍 icon), so here we only hide
+                                // the prompt while an active query is filtering.
+                                                    if tab == 0 && searchText.isEmpty {
                                                         FeedHeaderCard(vm: vm)
                                                     }
-
-                                inlineSearchBar
-
-                                categoryPills
 
                                 if tab == 1 && vm.followingPosts.isEmpty {
                                                         VStack(spacing: 12) {
@@ -1618,7 +1598,7 @@ struct FeedColumn: View {
                                                                     #endif
                                                                     ForEach(0..<6, id: \.self) { _ in
                                                                         SkeletonPostRow()
-                                                                            .background(LateNightTheme.background)
+                                                                            .background(LateNightTheme.feedBackground)
                                                                     }
                                                                 } else if vm.postsForTab(tab).isEmpty && vm.hasLoadedOnce && tab == 0 {
                                                                     #if DEBUG
@@ -1835,6 +1815,6 @@ struct FeedColumn: View {
                                                         }
                                                 .frame(width: geo.size.width, height: geo.size.height)
                                                 }
-        .background(LateNightTheme.background)
+        .background(LateNightTheme.feedBackground)
     }
 }

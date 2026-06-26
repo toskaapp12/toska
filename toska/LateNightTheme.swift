@@ -114,6 +114,9 @@ struct LateNightTheme {
     // "midnight / toska" identity. Daytime stays clean neutral so reading is
     // crisp; the purple lives in the accent + the night theme.
     static var background: Color      { isLateNight ? Color(hex: "0B0A10") : Color(hex: "EEEFF1") }
+    // Clean white feed surface (2026 redesign mockup) — posts sit directly on
+    // white with hairline dividers; dark theme keeps the near-black ground.
+    static var feedBackground: Color  { isLateNight ? Color(hex: "0B0A10") : Color(hex: "FFFFFF") }
     static var bg2: Color             { isLateNight ? Color(hex: "08070C") : Color(hex: "E7E8EB") }
     static var cardBackground: Color  { isLateNight ? Color(hex: "16141C") : Color(hex: "FFFFFF") }
     static var card2: Color           { isLateNight ? Color(hex: "1E1B27") : Color(hex: "F6F7F8") }

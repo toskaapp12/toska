@@ -814,7 +814,7 @@ struct FeedPostRow: View {
 
                                             // repost
                                             Button { repostPost() } label: {
-                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "5a9e8f")
+                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "3E9B72")
                                             }
                                             .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
                                             .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
@@ -826,7 +826,7 @@ struct FeedPostRow: View {
                                             // allowsHitTesting(false) so taps still hit the button)
                                             Button { toggleLike() } label: {
                                                 ZStack {
-                                                    actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "c47a8a")
+                                                    actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "C25C7C")
                                                     Image(systemName: "heart.fill")
                                                         .font(.system(size: 15, weight: .regular))
                                                         .foregroundColor(ToskaColor.badge)
@@ -1329,17 +1329,20 @@ func tagColor(for tag: String) -> Color {
     // distinct hue while staying dusty/editorial, not neon. "numb" was missing
     // from the palette entirely (fell back to gray); it now has its own cool
     // slate. Kept in sync with sharedTags below.
+    // Mood color language (2026 design spec).
     switch tag {
-    case "longing": return Color(hex: "6E7BA0")
-    case "numb": return Color(hex: "7C8A93")
+    case "longing": return Color(hex: "5E50A6")      // violet
+    case "rebuilding": return Color(hex: "3E7E5C")   // green
+    case "acceptance": return Color(hex: "3F6796")   // blue
+    case "lonely": return Color(hex: "5A6478")       // slate
+    case "numb": return Color(hex: "6F6B7B")         // neutral grey-violet
     case "anger": return Color(hex: "BC554F")
     case "regret": return Color(hex: "7E6FC0")
-    case "acceptance": return Color(hex: "4E9B82")
     case "confusion": return Color(hex: "BE8E50")
     case "unsent": return Color(hex: "6B8AAE")
-    case "moving on": return Color(hex: "4E9B88")
+    case "moving on": return Color(hex: "3E7E5C")
     case "still love you": return Color(hex: "C56F82")
-    default: return Color(hex: "7C8A93")
+    default: return Color(hex: "6F6B7B")
     }
 }
 

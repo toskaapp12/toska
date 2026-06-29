@@ -106,7 +106,7 @@ struct NotificationsView: View {
                                     .multilineTextAlignment(.center)
                                     .lineSpacing(4)
                                 Text(timeAwareNotifEmpty())
-                                    .font(.system(size: 11))
+                                    .font(ToskaFont.sans(11))
                                     .foregroundColor(Color.toskaDivider)
                                     .multilineTextAlignment(.center)
                                 Spacer()
@@ -141,7 +141,7 @@ struct NotificationsView: View {
 
                                 if notifications.count >= 50 {
                                     Text("showing your 50 most recent notifications")
-                                        .font(.system(size: 9))
+                                        .font(ToskaFont.sans(11))
                                         .foregroundColor(Color.toskaPlaceholderGray)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -306,12 +306,12 @@ struct NotificationsView: View {
                     // Text
                     VStack(alignment: .leading, spacing: 3) {
                         Text(notif.displayText)
-                            .font(.system(size: 13.5, weight: notif.isUnread ? .medium : .regular))
+                            .font(ToskaFont.sans(13, weight: notif.isUnread ? .medium : .regular))
                             .foregroundColor(ToskaColor.text)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Text(notif.time)
-                            .font(.system(size: 11.5))
+                            .font(ToskaFont.sans(12))
                             .foregroundColor(notif.isUnread ? ToskaColor.accent : ToskaColor.time)
                     }
 
@@ -609,7 +609,7 @@ struct NotificationsView: View {
                     .foregroundColor(LateNightTheme.handleText)
 
                 Text("we'll let you know when someone feels what you wrote, replies to you, or follows you.\n\nthats it. no marketing. no daily nudges.")
-                    .font(.system(size: 12))
+                    .font(ToskaFont.sans(12))
                     .foregroundColor(LateNightTheme.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
@@ -627,7 +627,7 @@ struct NotificationsView: View {
                         PushNotificationManager.shared.requestPermission()
                     } label: {
                         Text("yes, notify me")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(ToskaFont.sans(13, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -641,7 +641,7 @@ struct NotificationsView: View {
                         showPushPrimer = false
                     } label: {
                         Text("not now")
-                            .font(.system(size: 12))
+                            .font(ToskaFont.sans(12))
                             .foregroundColor(LateNightTheme.secondaryText)
                             .padding(.vertical, 10)
                     }
@@ -649,12 +649,12 @@ struct NotificationsView: View {
                 .padding(.top, 4)
 
                 Text("you can change this any time in Settings → Notifications")
-                    .font(.system(size: 9))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(LateNightTheme.tertiaryText)
                     .multilineTextAlignment(.center)
                     .padding(.top, 2)
             }
-            .padding(22)
+            .padding(ToskaSpace.xl)
             .background(LateNightTheme.cardBackground)
             .cornerRadius(16)
             .padding(.horizontal, 32)

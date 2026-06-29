@@ -426,6 +426,12 @@ struct ComposeView: View {
                                                             .padding(.top, 4)
                                                             .frame(minHeight: 200)
                                                             .focused($textFocused)
+                                                            // Drag down inside the editor to dismiss the
+                                                            // keyboard. Replaces a blanket tap-to-dismiss
+                                                            // gesture on the whole screen that intercepted
+                                                            // the editor's own taps and broke the
+                                                            // select/paste menu + cursor placement.
+                                                            .scrollDismissesKeyboard(.interactively)
                                 .onChange(of: text) { _, newValue in
                                     // Truncate using the same metric the Firestore rule uses
                                     // (UTF-16 length) so heavy-emoji posts don't silently fail
@@ -750,11 +756,11 @@ struct ComposeView: View {
         // Drives the fade/scale transition on the gentle-check overlay
         // regardless of which surface (button, tap-outside, etc.) flips it.
         .animation(.easeOut(duration: 0.2), value: showGentleCheck)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-            }
-        )
+        // NOTE: removed the blanket .simultaneousGesture(TapGesture) that dismissed
+        // the keyboard on any tap — it fired alongside the TextEditor's own taps,
+        // which suppressed the select/paste edit menu and cursor placement (paste
+        // didn't work while composing). Keyboard now dismisses via drag inside the
+        // editor (.scrollDismissesKeyboard above) or the cancel/post buttons.
         .onAppear {
                     HapticManager.play(.compose)
                     // N-4: load any persisted draft from the protected store

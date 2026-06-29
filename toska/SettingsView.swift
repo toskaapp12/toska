@@ -19,6 +19,7 @@ struct UserSettings: Equatable {
 @MainActor
 struct SettingsView: View {
     @Environment(\.dismiss) var dismiss
+    @ObservedObject private var admin = AdminManager.shared
     @State private var settings = UserSettings()
     @State private var showDeleteAlert = false
     @State private var showSignOutAlert = false
@@ -80,6 +81,37 @@ struct SettingsView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
+
+                        // MARK: - Moderation (admins only — gated by AdminManager /
+                        // firestore.rules isAdmin(); invisible to everyone else).
+                        if admin.isAdmin {
+                            settingsGroup {
+                                groupHeader("admin")
+                                VStack(spacing: 0) {
+                                    NavigationLink(destination: AdminModerationView()) {
+                                        HStack(alignment: .top, spacing: 12) {
+                                            settingsIcon("checkmark.shield.fill", Color.toskaAccentGold)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text("moderation")
+                                                    .font(ToskaFont.sans(15, weight: .medium))
+                                                    .foregroundColor(Color.toskaTextDark)
+                                                Text("review reports, flagged + crisis posts")
+                                                    .font(ToskaFont.sans(12))
+                                                    .foregroundColor(Color.toskaTextLight)
+                                            }
+                                            Spacer()
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 12, weight: .regular))
+                                                .foregroundColor(Color.toskaDivider)
+                                        }
+                                        .padding(.vertical, 16)
+                                        .padding(.horizontal, 16)
+                                    }
+                                }
+                                .background(LateNightTheme.cardBackground)
+                                .cornerRadius(12)
+                            }
+                        }
 
                         // MARK: - Privacy
                         settingsGroup {
@@ -377,6 +409,7 @@ struct SettingsView: View {
         }
         .onAppear {
                     loadSettings()
+                    admin.refresh()   // reveals the moderation row if this account is an admin
                 }
         .onDisappear {
             // If a debounced save is still pending, flush it now instead of

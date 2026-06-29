@@ -145,7 +145,7 @@ struct TopView: View {
                 } label: {
                     VStack(spacing: 7) {
                         Text(p.rawValue)
-                            .font(.system(size: 14, weight: isSel ? .semibold : .regular))
+                            .font(ToskaFont.sans(13, weight: isSel ? .semibold : .regular))
                             .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
                         Capsule()
                             .fill(isSel ? ToskaColor.accent : Color.clear)
@@ -171,10 +171,10 @@ struct TopView: View {
                 .font(.system(size: 24, weight: .light))
                 .foregroundColor(ToskaColor.text3)
             Text("nothing yet")
-                .font(.system(size: 13))
+                .font(ToskaFont.sans(13))
                 .foregroundColor(ToskaColor.text2)
             Text("everyones being quiet right now.")
-                .font(.system(size: 11))
+                .font(ToskaFont.sans(11))
                 .foregroundColor(ToskaColor.text3)
         }
         .frame(maxWidth: .infinity)
@@ -406,16 +406,16 @@ struct TopPeriodColumn: View {
                     Spacer()
                     HStack(spacing: 4) {
                         Text(formatCount(post.likes))
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(ToskaFont.sans(13, weight: .semibold))
                             .foregroundColor(ToskaColor.text)
                         Text("felt this")
-                            .font(.system(size: 13))
+                            .font(ToskaFont.sans(13))
                             .foregroundColor(ToskaColor.text2)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
+            .padding(ToskaSpace.lg)
             .toskaCard()
         }
         .buttonStyle(.plain)
@@ -447,14 +447,14 @@ struct TopPeriodColumn: View {
                                 .font(.system(size: 11))
                                 .foregroundColor(tagColor(for: tag))
                             Text(tag)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(tagColor(for: tag))
                             Text("·")
-                                .font(.system(size: 12))
+                                .font(ToskaFont.sans(12))
                                 .foregroundColor(ToskaColor.text3)
                         }
                         Text("\(formatCount(post.likes)) felt this")
-                            .font(.system(size: 12.5))
+                            .font(ToskaFont.sans(12))
                             .foregroundColor(ToskaColor.text2)
                     }
                 }

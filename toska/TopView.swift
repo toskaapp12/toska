@@ -113,7 +113,7 @@ struct TopView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: "sparkle")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(ToskaColor.accent)
@@ -143,7 +143,7 @@ struct TopView: View {
                         withAnimation(.easeInOut(duration: 0.18)) { period = p }
                     }
                 } label: {
-                    VStack(spacing: 7) {
+                    VStack(spacing: 8) {
                         Text(p.rawValue)
                             .font(ToskaFont.sans(13, weight: isSel ? .semibold : .regular))
                             .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
@@ -159,7 +159,7 @@ struct TopView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
-        .padding(.bottom, 2)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Content
@@ -291,13 +291,13 @@ struct TopPeriodColumn: View {
                 // Distribution bar — one segment per top post, colored by tag.
                 distributionBar
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, 16)
 
                 // Hero — the single most-felt post.
                 if let hero = posts.first {
                     heroCard(hero)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 22)
+                        .padding(.bottom, 24)
                 }
 
                 // The rest — ranked 02…N.
@@ -368,7 +368,7 @@ struct TopPeriodColumn: View {
     }
 
     private var distributionBar: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             ForEach(Array(posts.prefix(7).enumerated()), id: \.element.id) { _, post in
                 Rectangle()
                     .fill(post.tag.map { tagColor(for: $0) } ?? ToskaColor.text3)
@@ -441,7 +441,7 @@ struct TopPeriodColumn: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
 
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         if let tag = post.tag {
                             Image(systemName: ToskaEmotion.icon(tag))
                                 .font(.system(size: 11))
@@ -461,7 +461,7 @@ struct TopPeriodColumn: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -470,16 +470,16 @@ struct TopPeriodColumn: View {
     // MARK: - Emotion chip (hero)
 
     private func emotionChip(_ tag: String) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Image(systemName: ToskaEmotion.icon(tag))
                 .font(.system(size: 13, weight: .medium))
             Text(tag)
                 .font(ToskaFont.chip)
         }
         .foregroundColor(tagColor(for: tag))
-        .padding(.vertical, 5)
-        .padding(.leading, 9)
-        .padding(.trailing, 11)
+        .padding(.vertical, 4)
+        .padding(.leading, 8)
+        .padding(.trailing, 12)
         .background(tagColor(for: tag).opacity(0.13))
         .clipShape(Capsule())
     }

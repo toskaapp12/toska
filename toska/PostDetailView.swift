@@ -402,8 +402,8 @@ struct PostDetailView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         postHeaderSection
-                            .padding(.horizontal, 18)
-                            .padding(.top, 14)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 16)
 
                         if replyLoadFailed {
                             ToskaErrorBanner("couldn't load replies — check your connection") {
@@ -425,19 +425,19 @@ struct PostDetailView: View {
                                     Rectangle()
                                         .fill(Color.toskaBorderLight.opacity(0.5))
                                         .frame(height: 0.5)
-                                        .padding(.leading, 18)
+                                        .padding(.leading, 16)
                                 }
                             }
                             .transition(.opacity)
                         } else if replyList.isEmpty {
-                                                    VStack(spacing: 10) {
+                                                    VStack(spacing: 8) {
                                                         Text("\"some words just need\na witness.\"")
                                                             .font(.custom("Georgia-Italic", size: 18))
                                                             .foregroundColor(Color.toskaTimestamp)
                                                             .multilineTextAlignment(.center)
                                                             .lineSpacing(4)
                                                         Text("be the first to reply")
-                                                            .font(.system(size: 11))
+                                                            .font(ToskaFont.sans(11))
                                                             .foregroundColor(Color.toskaDivider)
                                                     }
                                                     .frame(maxWidth: .infinity)
@@ -459,7 +459,7 @@ struct PostDetailView: View {
                                                 Text(item.hiddenChildren == 1
                                                      ? "show 1 more reply"
                                                      : "show \(item.hiddenChildren) more replies")
-                                                    .font(.system(size: 11, weight: .medium))
+                                                    .font(ToskaFont.sans(11, weight: .medium))
                                             }
                                             .foregroundColor(Color.toskaBlue)
                                             .padding(.leading, 18 + indent + 18)
@@ -548,14 +548,14 @@ struct PostDetailView: View {
                     }
                     Spacer()
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 6)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
             }
 
             if let handle = replyingToHandle {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text("replying to \(handle)")
-                        .font(.system(size: 11))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(Color.toskaBlue)
                     Spacer()
                     Button {
@@ -567,16 +567,16 @@ struct PostDetailView: View {
                             .foregroundColor(Color.toskaTimestamp)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 TextField("say something gently…", text: $replyText)
                     .font(.system(size: 14))
                     .focused($replyFocused)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
+                    .padding(.vertical, 12)
                     .background(ToskaColor.input)
                     .clipShape(Capsule())
                     // Subtle hairline so the field reads as a distinct input
@@ -631,7 +631,7 @@ struct PostDetailView: View {
                 .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil)
             }
             .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 8)
                     }
         .background(
             LateNightTheme.cardBackground.ignoresSafeArea(edges: .bottom)
@@ -643,44 +643,44 @@ struct PostDetailView: View {
 
     var postHeaderSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Button {
                     if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
                 } label: {
                     // De-emphasized handle (quiet gray, not accent) so the post
                     // text leads — matches the feed.
                     Text(handle)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(ToskaFont.sans(15, weight: .medium))
                         .foregroundColor(ToskaColor.text2)
                 }
                 if isOwnPost {
                     Text("· you")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(ToskaFont.sans(11, weight: .medium))
                         .foregroundColor(ToskaColor.text3)
                 }
                 if let tag = tag {
-                    Text("·").font(.system(size: 9)).foregroundColor(Color.toskaDivider)
+                    Text("·").font(ToskaFont.sans(11)).foregroundColor(Color.toskaDivider)
                     // Softer filled chip (Capsule, medium weight, 0.16 fill) —
                     // matches the feed tag chip vocabulary.
                     Text(tag)
-                        .font(.system(size: 9, weight: .medium))
+                        .font(ToskaFont.sans(11, weight: .medium))
                         .foregroundColor(tagColor(for: tag))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(tagColor(for: tag).opacity(0.16))
                         .clipShape(Capsule())
                 }
                 Spacer()
                 Text(time)
-                    .font(.system(size: 12.5))
+                    .font(ToskaFont.sans(12))
                     .foregroundColor(ToskaColor.time)
             }
-            .padding(.bottom, 10)
+            .padding(.bottom, 8)
 
             Text(postText)
                 .toskaPostDetailBody()
                 .foregroundColor(ToskaColor.text)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 14)
+                .padding(.bottom, 16)
 
             // Attached GIF, if the post has one. Read from Firestore by the
             // live listener (data["gifUrl"]) — PostDetailView previously never
@@ -690,24 +690,24 @@ struct PostDetailView: View {
             // that recompute frequently.
             if let gifUrl = postGifUrl, !gifUrl.isEmpty {
                 StableGifPreview(urlString: gifUrl)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 16)
             }
 
             HStack(spacing: 12) {
                             HStack(spacing: 4) {
                                 Text(formatFull(likeCount))
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(ToskaFont.sans(12, weight: .bold))
                                     .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextDark)
                                     .scaleEffect(likePulse ? 1.15 : 1.0)
                                     .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
                                 Text("felt this")
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(ToskaFont.sans(11, weight: .medium))
                                     .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextLight)
                             }
                             statLabel(count: replyList.isEmpty ? replies : replyList.count, label: "replies")
                             Spacer()
                         }
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 8)
 
             Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
 
@@ -767,17 +767,17 @@ struct PostDetailView: View {
     // MARK: - UI Helpers
 
     func statLabel(count: Int, label: String) -> some View {
-        HStack(spacing: 3) {
-            Text(formatFull(count)).font(.system(size: 11, weight: .semibold)).foregroundColor(Color.toskaTextDark)
-            Text(label).font(.system(size: 11)).foregroundColor(Color.toskaTextLight)
+        HStack(spacing: 4) {
+            Text(formatFull(count)).font(ToskaFont.sans(11, weight: .semibold)).foregroundColor(Color.toskaTextDark)
+            Text(label).font(ToskaFont.sans(11)).foregroundColor(Color.toskaTextLight)
         }
     }
 
     func actionButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button { action() } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 4) {
                 Image(systemName: icon).font(.system(size: 14, weight: .light))
-                Text(label).font(.system(size: 8))
+                Text(label).font(ToskaFont.sans(8))
             }
             .foregroundColor(active ? Color.toskaBlue : Color.toskaInactiveGray)
             .frame(maxWidth: .infinity)
@@ -1700,18 +1700,18 @@ struct EditPostView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaMidGray)
+                        Text("cancel").font(ToskaFont.sans(13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
-                    Text("edit post").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
+                    Text("edit post").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { attemptSave() } label: {
                         HStack(spacing: 4) {
                             if isSaving { ProgressView().scaleEffect(0.7).tint(.white) }
-                            else { Image(systemName: "checkmark").font(.system(size: 11)); Text("save").font(.system(size: 13, weight: .semibold)) }
+                            else { Image(systemName: "checkmark").font(ToskaFont.sans(11)); Text("save").font(ToskaFont.sans(13, weight: .semibold)) }
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                         .background(editText.isEmpty || editText == currentText ? Color.toskaDivider : Color.toskaBlue)
                         .cornerRadius(16)
                     }
@@ -1722,12 +1722,12 @@ struct EditPostView: View {
                 Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
 
                 if !saveError.isEmpty {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.circle").font(.system(size: 10))
-                        Text(saveError).font(.system(size: 11))
+                        Text(saveError).font(ToskaFont.sans(11))
                     }
                     .foregroundColor(Color.toskaErrorRed)
-                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.toskaErrorRed.opacity(0.05))
                 }
@@ -1736,12 +1736,12 @@ struct EditPostView: View {
                     if editText.isEmpty {
                         Text("say what you never said...")
                             .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text3)
-                            .padding(.horizontal, 18).padding(.top, 16)
+                            .padding(.horizontal, 16).padding(.top, 16)
                     }
                     TextEditor(text: $editText)
                         .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text)
                         .lineSpacing(4).scrollContentBackground(.hidden)
-                        .padding(.horizontal, 14).padding(.top, 8)
+                        .padding(.horizontal, 16).padding(.top, 8)
                         .onChange(of: editText) { _, newValue in
                             // Truncate on UTF-16 length (the metric the Firestore
                             // rule's size() check uses) so heavy-emoji edits don't
@@ -1767,7 +1767,7 @@ struct EditPostView: View {
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: "pencil").font(.system(size: 10))
-                            Text("editing your post").font(.system(size: 10))
+                            Text("editing your post").font(ToskaFont.sans(11))
                         }
                         .foregroundColor(Color.toskaAccentGold)
                         Spacer()
@@ -1783,7 +1783,7 @@ struct EditPostView: View {
                             .font(.system(size: 10, design: .monospaced))
                             .foregroundColor(editText.utf16.count > charLimit - 50 ? Color.toskaErrorRed : Color.toskaTimestamp)
                     }
-                    .padding(.horizontal, 18).padding(.vertical, 10)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
                 }
                 .background(Color.white)
             }
@@ -1896,20 +1896,20 @@ struct SwipeToReplyRow: View {
             ReplyDetailView(postId: postId, reply: item.reply)
                 .navigationBarHidden(true)
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
                     if item.depth > 0 {
                         Rectangle().fill(Color.toskaBlue.opacity(0.2))
                             .frame(width: 2, height: 16).cornerRadius(1).padding(.trailing, 4)
                     }
                     Text(item.reply.handle)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(ToskaFont.sans(13, weight: .medium))
                         .foregroundColor(ToskaColor.text2)
                     Text("·")
-                        .font(.system(size: 11))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(Color.toskaDivider)
                     Text(item.reply.time)
-                        .font(.system(size: 12))
+                        .font(ToskaFont.sans(12))
                         .foregroundColor(Color.toskaTimestamp)
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
@@ -1932,7 +1932,7 @@ struct SwipeToReplyRow: View {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 13))
                                 .foregroundColor(Color.toskaTimestamp)
-                                .padding(.horizontal, 6)
+                                .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .contentShape(Rectangle())
                         }
@@ -1985,12 +1985,12 @@ struct SwipeToReplyRow: View {
                             Button {
                                 onRepost()
                             } label: {
-                                HStack(spacing: 5) {
+                                HStack(spacing: 4) {
                                     Image(systemName: "arrow.2.squarepath")
                                         .font(.system(size: 17, weight: .regular))
                                     if item.reply.repostCount > 0 {
                                         Text("\(item.reply.repostCount)")
-                                            .font(.system(size: 12))
+                                            .font(ToskaFont.sans(12))
                                     }
                                 }
                                 .foregroundColor(item.reply.isReposted ? Color.toskaMovingOnGreen : Color.toskaDivider)
@@ -2028,12 +2028,12 @@ struct SwipeToReplyRow: View {
                             Button {
                                 onToggleLike()
                             } label: {
-                                HStack(spacing: 5) {
+                                HStack(spacing: 4) {
                                     Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
                                         .font(.system(size: 17, weight: .regular))
                                     if item.reply.likes > 0 {
                                         Text("\(item.reply.likes)")
-                                            .font(.system(size: 12))
+                                            .font(ToskaFont.sans(12))
                                     }
                                 }
                                 .foregroundColor(item.reply.isLiked ? Color.toskaWhisperPink : Color.toskaDivider)
@@ -2047,8 +2047,8 @@ struct SwipeToReplyRow: View {
                 }
             }
             .padding(.leading, 18 + indent)
-            .padding(.trailing, 18)
-            .padding(.vertical, 14)
+            .padding(.trailing, 16)
+            .padding(.vertical, 16)
             .background(LateNightTheme.background)
             .contentShape(Rectangle())
         } // end NavigationLink label

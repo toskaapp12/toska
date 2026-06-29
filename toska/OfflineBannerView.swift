@@ -9,7 +9,7 @@ struct OfflineBannerView: View {
                 Image(systemName: network.isConnected ? "wifi" : "wifi.slash")
                     .font(.system(size: 11))
                 Text(network.isConnected ? "back online" : "no connection")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)

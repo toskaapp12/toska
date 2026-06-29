@@ -1143,7 +1143,7 @@ class FeedViewModel: ObservableObject {
                         .fill(Color.toskaBlue)
                         .frame(width: 4, height: 4)
                     Text("most unsaid today")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(ToskaFont.sans(11, weight: .semibold))
                         .foregroundColor(Color.toskaBlue)
                         .tracking(1)
                 }
@@ -1159,7 +1159,7 @@ class FeedViewModel: ObservableObject {
                 Spacer()
 
                 Text("\(formatCount(mostUnsaidLikes)) felt this")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(ToskaFont.sans(13, weight: .medium))
                     .foregroundColor(Color.toskaWhisperPink.opacity(0.7))
                     .padding(.bottom, 24)
 
@@ -1168,7 +1168,7 @@ class FeedViewModel: ObservableObject {
                         .font(.custom("Georgia-Italic", size: 18))
                         .foregroundColor(.white.opacity(0.15))
                     Text("say what you never said")
-                        .font(.system(size: 9))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.08))
                 }
                 .padding(.bottom, 40)

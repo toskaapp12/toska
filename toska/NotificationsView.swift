@@ -94,7 +94,7 @@ struct NotificationsView: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height)
                         } else if notifications.isEmpty {
-                            VStack(spacing: 14) {
+                            VStack(spacing: 16) {
                                 Spacer()
                                 Image(systemName: "heart.text.square")
                                     .font(.system(size: 30, weight: .ultraLight))
@@ -279,9 +279,9 @@ struct NotificationsView: View {
                 .foregroundColor(ToskaColor.text3)
             Spacer()
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 14)
-        .padding(.bottom, 6)
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 8)
         .background(LateNightTheme.background)
     }
 
@@ -304,7 +304,7 @@ struct NotificationsView: View {
                     }
 
                     // Text
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(notif.displayText)
                             .font(ToskaFont.sans(13, weight: notif.isUnread ? .medium : .regular))
                             .foregroundColor(ToskaColor.text)
@@ -318,14 +318,14 @@ struct NotificationsView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 13)
+                .padding(.vertical, 12)
                 // Unread → accent left bar (per design); all rows get a hairline.
                 .overlay(alignment: .leading) {
                     if notif.isUnread {
                         Rectangle()
                             .fill(ToskaColor.accent)
                             .frame(width: 2.5)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 16)
                     }
                 }
                 .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 0.5), alignment: .bottom)
@@ -599,7 +599,7 @@ struct NotificationsView: View {
             Color.black.opacity(0.5).ignoresSafeArea()
                 .onTapGesture {} // swallow taps so background stays interactable only via card
 
-            VStack(spacing: 14) {
+            VStack(spacing: 16) {
                 Image(systemName: "bell.badge")
                     .font(.system(size: 32, weight: .light))
                     .foregroundColor(Color.toskaBlue)
@@ -630,7 +630,7 @@ struct NotificationsView: View {
                             .font(ToskaFont.sans(13, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
+                            .padding(.vertical, 12)
                             .background(Color.toskaBlue)
                             .cornerRadius(12)
                     }
@@ -643,7 +643,7 @@ struct NotificationsView: View {
                         Text("not now")
                             .font(ToskaFont.sans(12))
                             .foregroundColor(LateNightTheme.secondaryText)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 8)
                     }
                 }
                 .padding(.top, 4)
@@ -652,7 +652,7 @@ struct NotificationsView: View {
                     .font(ToskaFont.sans(11))
                     .foregroundColor(LateNightTheme.tertiaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.top, 2)
+                    .padding(.top, 4)
             }
             .padding(ToskaSpace.xl)
             .background(LateNightTheme.cardBackground)

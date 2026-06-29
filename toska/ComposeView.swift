@@ -169,7 +169,7 @@ struct ComposeView: View {
 
             VStack(spacing: 0) {
                 // MARK: - Top bar
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button { dismiss() } label: {
                         Text("cancel")
                             .font(ToskaFont.sans(13))
@@ -210,7 +210,7 @@ struct ComposeView: View {
                     .disabled(!canPost)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
 
                 // MARK: - Toolbar (formerly at the bottom; moved to sit right
                 // under the cancel/save/post header so the modifiers are
@@ -234,7 +234,7 @@ struct ComposeView: View {
                         }
                         if isWhisper && !whisperHintSeen { whisperHintSeen = true; activeHint = .whisper }
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 4) {
                             Image(systemName: isWhisper ? "eye.slash.fill" : "eye.slash")
                                 .font(.system(size: 13, weight: .light))
                             if isWhisper {
@@ -253,7 +253,7 @@ struct ComposeView: View {
                         }
                         if expiresAtMidnight && !midnightHintSeen { midnightHintSeen = true; activeHint = .midnight }
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 4) {
                             Image(systemName: expiresAtMidnight ? "moon.fill" : "moon")
                                 .font(.system(size: 13, weight: .light))
                             if expiresAtMidnight {
@@ -279,8 +279,8 @@ struct ComposeView: View {
                         Text("GIF")
                             .font(ToskaFont.sans(12, weight: .bold))
                             .foregroundColor(selectedGifUrl != nil ? .white : .white.opacity(0.7))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4)
                                     .stroke(selectedGifUrl != nil ? .white : .white.opacity(0.45), lineWidth: 1)
@@ -291,7 +291,7 @@ struct ComposeView: View {
                     Spacer()
 
                     if text.count > 0 {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             ZStack {
                                 Circle()
                                     .stroke(Color.white.opacity(0.25), lineWidth: 2)
@@ -314,7 +314,7 @@ struct ComposeView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
                 // Plum compose toolbar with white icons (active = full white,
                 // inactive = dimmed) — a branded accent bar between the header and
                 // the editor.
@@ -330,7 +330,7 @@ struct ComposeView: View {
                             .foregroundColor(LateNightTheme.secondaryText)
                             .tracking(0.5)
                             .padding(.horizontal, 16)
-                            .padding(.top, 10)
+                            .padding(.top, 8)
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -339,7 +339,7 @@ struct ComposeView: View {
                                         selectedTag = tag.name
                                         withAnimation(.easeOut(duration: 0.2)) { showTagPicker = false }
                                     } label: {
-                                        HStack(spacing: 5) {
+                                        HStack(spacing: 4) {
                                             Image(systemName: tag.icon)
                                                 .font(.system(size: 10))
                                             Text(tag.name)
@@ -355,7 +355,7 @@ struct ComposeView: View {
                             }
                             .padding(.horizontal, 16)
                         }
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 8)
                     }
                     .background(LateNightTheme.cardBackground)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -387,7 +387,7 @@ struct ComposeView: View {
                 // when editing an existing draft (the call to action
                 // is already obvious there).
                 if UserHandleCache.shared.breakupStage == "still in it" && editingDraftId == nil {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "lock.shield")
                             .font(.system(size: 10))
                         Text("dont have to share it. tap save and it stays just for you.")
@@ -479,8 +479,8 @@ struct ComposeView: View {
                                     )
                                     .monospacedDigit()
                             }
-                            .padding(.horizontal, 18)
-                            .padding(.top, 2)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
                         }
 
                         // Selected GIF preview
@@ -514,7 +514,7 @@ struct ComposeView: View {
 
                         // Selected tag pill
                         if let tag = selectedTag {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 let tagData = tags.first(where: { $0.name == tag })
                                 Image(systemName: tagData?.icon ?? "tag")
                                     .font(.system(size: 10))
@@ -527,8 +527,8 @@ struct ComposeView: View {
                                 }
                             }
                             .foregroundColor(Color(hex: tags.first(where: { $0.name == tag })?.colorHex ?? "9198a8"))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
                             .background(Color(hex: tags.first(where: { $0.name == tag })?.colorHex ?? "9198a8").opacity(0.08))
                             .cornerRadius(16)
                             .padding(.horizontal, 16)
@@ -539,7 +539,7 @@ struct ComposeView: View {
 
                 // Letter mode banner
                 if isLetter {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "envelope.open")
                             .font(.system(size: 11))
                         Text("writing a letter · up to 2,000 characters")
@@ -559,7 +559,7 @@ struct ComposeView: View {
 
                 // Whisper mode banner
                 if isWhisper {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "eye.slash")
                             .font(.system(size: 11))
                         Text("whisper · disappears in 1 hour")
@@ -579,7 +579,7 @@ struct ComposeView: View {
 
                 // Midnight mode banner
                 if expiresAtMidnight {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "moon.stars")
                             .font(.system(size: 11))
                         Text("this post disappears at midnight")
@@ -630,13 +630,13 @@ struct ComposeView: View {
                         .lineSpacing(2)
 
                     Button { showContentWarning = false } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             Image(systemName: "pencil").font(.system(size: 13))
                             Text("edit my post").font(ToskaFont.sans(13, weight: .medium))
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
+                        .padding(.vertical, 12)
                         .background(Color.toskaBlue)
                         .cornerRadius(12)
                     }
@@ -671,13 +671,13 @@ struct ComposeView: View {
 
                     VStack(spacing: 8) {
                         Button { showNameWarning = false } label: {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 Image(systemName: "pencil").font(.system(size: 13))
                                 Text("edit my post").font(ToskaFont.sans(13, weight: .medium))
                             }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
+                            .padding(.vertical, 12)
                             .background(Color.toskaBlue)
                             .cornerRadius(12)
                         }
@@ -699,7 +699,7 @@ struct ComposeView: View {
                                 .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(LateNightTheme.secondaryText)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 13)
+                                .padding(.vertical, 12)
                                 .background(LateNightTheme.divider.opacity(0.5))
                                 .cornerRadius(12)
                         }
@@ -709,7 +709,7 @@ struct ComposeView: View {
                     Text("try \"he\", \"she\", \"they\", or just \"you\"")
                         .font(ToskaFont.sans(11))
                         .foregroundColor(LateNightTheme.tertiaryText)
-                        .padding(.top, 2)
+                        .padding(.top, 4)
                 }
                 .padding(ToskaSpace.xl)
                 .background(LateNightTheme.cardBackground)
@@ -829,12 +829,12 @@ struct ComposeView: View {
     // MARK: - Warning Banner
 
     func warningBanner(icon: String, text: String, color: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             Image(systemName: icon).font(.system(size: 10))
             Text(text).font(ToskaFont.sans(11))
         }
         .foregroundColor(Color(hex: color))
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(Color(hex: color).opacity(0.08))

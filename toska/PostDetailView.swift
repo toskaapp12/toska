@@ -734,9 +734,8 @@ struct PostDetailView: View {
                                    .font(.system(size: 15, weight: .light))
                                    .foregroundColor(isReposted ? Color.toskaMovingOnGreen : Color.toskaTextLight)
                            }
-                           .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                           .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
                            .frame(maxWidth: .infinity)
-                           .disabled(isReposted)
 
                            Button { toggleSave() } label: {
                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -965,7 +964,16 @@ struct PostDetailView: View {
     // MARK: - Repost
 
     func repostPost() {
-        guard !isReposted else { return }
+        // Toggle: undo the repost if already reposted, else create it.
+        if isReposted {
+            PostInteractionManager.unrepost(
+                postId: postId, currentCount: localRepostCount
+            ) { result in
+                isReposted = result.isReposted
+                localRepostCount = result.newCount
+            }
+            return
+        }
         PostInteractionManager.repost(
             postId: postId, postText: postText, postTag: tag,
             authorId: authorUserId, originalHandle: handle, currentCount: localRepostCount
@@ -1393,8 +1401,20 @@ struct PostDetailView: View {
 
     private func repostReplyAt(replyId: String) {
         guard let reply = findReplyInTree(replyId: replyId) else { return }
-        if reply.isReposted { return } // idempotent — already reposted
         let currentCount = reply.repostCount
+        // Toggle: undo the reply-repost if already reposted.
+        if reply.isReposted {
+            PostInteractionManager.unrepostReply(
+                replyId: reply.id,
+                currentCount: currentCount
+            ) { result in
+                mutateReplyInTree(replyId: replyId) { r in
+                    r.isReposted = result.isReposted
+                    r.repostCount = result.newCount
+                }
+            }
+            return
+        }
         PostInteractionManager.repostReply(
             postId: postId,
             replyId: reply.id,
@@ -1977,7 +1997,7 @@ struct SwipeToReplyRow: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(item.reply.isReposted ? "Already reposted" : "Repost reply")
+                            .accessibilityLabel(item.reply.isReposted ? "Undo repost" : "Repost reply")
                         }
                         if let onToggleSave = onToggleSave {
                             Button {

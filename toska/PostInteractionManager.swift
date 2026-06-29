@@ -477,6 +477,55 @@ class PostInteractionManager {
             }
     }
 
+    // MARK: - Un-repost (undo a repost)
+
+    /// Deletes the caller's repost of `postId`. The repost doc has a deterministic
+    /// id (`{uid}_repost_{postId}`) set by repost(); deleting it both removes it
+    /// from the feed and fires onRepostDeletedUpdateCount server-side, which
+    /// decrements the original post's repostCount. Optimistic: flips the UI to
+    /// not-reposted + decrements immediately, rolls back on failure.
+    @MainActor
+    static func unrepost(
+        postId: String,
+        currentCount: Int,
+        onUpdate: @escaping (RepostResult) -> Void
+    ) {
+        guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
+            if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
+            return
+        }
+        guard NetworkMonitor.shared.isConnected else {
+            print("⚠️ unrepost — offline, skipping")
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        // Optimistic: flip off + decrement, and broadcast so other surfaces match.
+        onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
+        NotificationCenter.default.post(
+            name: .postInteractionChanged,
+            object: nil,
+            userInfo: ["postId": postId, "action": "repost", "value": false]
+        )
+
+        let db = Firestore.firestore()
+        db.collection("posts").document("\(uid)_repost_\(postId)").delete { error in
+            Task { @MainActor in
+                if let error = error {
+                    print("⚠️ unrepost failed: \(error)")
+                    // Roll back the optimistic update.
+                    onUpdate(RepostResult(isReposted: true, newCount: currentCount))
+                    NotificationCenter.default.post(
+                        name: .postInteractionChanged,
+                        object: nil,
+                        userInfo: ["postId": postId, "action": "repost", "value": true]
+                    )
+                }
+                // Server-side repostCount decrement handled by onRepostDeletedUpdateCount.
+            }
+        }
+    }
+
     // MARK: - Notification
 
     @MainActor
@@ -794,6 +843,38 @@ class PostInteractionManager {
                     NotificationCenter.default.post(name: .newPostCreated, object: nil)
                 }
             })
+        }
+    }
+
+    /// Undo a reply-repost. Deletes the deterministic doc
+    /// (`{uid}_replyrepost_{replyId}`) set by repostReply(); the delete fires
+    /// onReplyRepostDeletedUpdateCount server-side, which decrements the reply
+    /// doc's repostCount. Optimistic flip + rollback on failure.
+    @MainActor
+    static func unrepostReply(
+        replyId: String,
+        currentCount: Int,
+        onUpdate: @escaping (RepostResult) -> Void
+    ) {
+        guard let uid = Auth.auth().currentUser?.uid, !replyId.isEmpty else {
+            if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
+            return
+        }
+        guard NetworkMonitor.shared.isConnected else {
+            print("⚠️ unrepostReply — offline, skipping")
+            return
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
+
+        let db = Firestore.firestore()
+        db.collection("posts").document("\(uid)_replyrepost_\(replyId)").delete { error in
+            Task { @MainActor in
+                if let error = error {
+                    print("⚠️ unrepostReply failed: \(error)")
+                    onUpdate(RepostResult(isReposted: true, newCount: currentCount))
+                }
+            }
         }
     }
 }

@@ -329,13 +329,13 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrowshape.turn.up.left").font(.system(size: 8))
-                    Text("replying to \(reply.parentHandle)").font(.system(size: 10, weight: .medium))
-                    Text("·").font(.system(size: 8)).foregroundColor(Color.toskaDivider)
-                    Text(reply.replyTime).font(.system(size: 10, weight: .light)).foregroundColor(Color.toskaInactiveGray)
+                    Text("replying to \(reply.parentHandle)").font(ToskaFont.sans(11, weight: .medium))
+                    Text("·").font(ToskaFont.sans(8)).foregroundColor(Color.toskaDivider)
+                    Text(reply.replyTime).font(ToskaFont.sans(11, weight: .light)).foregroundColor(Color.toskaInactiveGray)
                 }.foregroundColor(Color.toskaTextLight)
                 
                 Text(reply.parentText)
-                    .font(.system(size: 11))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaTimestamp)
                     .lineLimit(1)
                     .padding(.leading, 8)
@@ -419,7 +419,7 @@ struct ProfileView: View {
                     .font(ToskaFont.serifItalic(18))
                     .foregroundColor(Color.toskaTextLight)
                 Text(subtitle)
-                    .font(.system(size: 11))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaDivider)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -456,7 +456,7 @@ struct ProfileView: View {
                     .padding(.bottom, 16)
                 
                 Text("i've been on toska")
-                    .font(.system(size: 13))
+                    .font(ToskaFont.sans(13))
                     .foregroundColor(.white.opacity(0.4))
                     .padding(.bottom, 4)
                 
@@ -470,7 +470,7 @@ struct ProfileView: View {
                         Image(systemName: "flame")
                             .font(.system(size: 10))
                         Text(streakLabel)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(ToskaFont.sans(12, weight: .medium))
                     }
                     .foregroundColor(Color.toskaAccentTan)
                     .padding(.bottom, 8)
@@ -487,7 +487,7 @@ struct ProfileView: View {
                         .font(ToskaFont.serifItalic(18))
                         .foregroundColor(.white.opacity(0.15))
                     Text("for the things you cant say out loud")
-                        .font(.system(size: 9))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.08))
                 }
                 .padding(.bottom, 40)
@@ -1028,7 +1028,7 @@ struct ProfileView: View {
                                                 Image(systemName: "calendar")
                                                     .font(.system(size: 11, weight: .medium))
                                                 Text("joined \(joinedDate.lowercased())")
-                                                    .font(.system(size: 12.5, weight: .regular))
+                                                    .font(ToskaFont.sans(12, weight: .regular))
                                             }
                                             .foregroundColor(ToskaColor.text3)
                                             .padding(.top, 2)
@@ -1040,20 +1040,20 @@ struct ProfileView: View {
                                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
                                                     HStack(spacing: 4) {
                                                         Text("\(followingCount)")
-                                                            .font(.system(size: 13.5, weight: .bold))
+                                                            .font(ToskaFont.sans(13, weight: .bold))
                                                             .foregroundColor(ToskaColor.text)
                                                         Text("following")
-                                                            .font(.system(size: 13.5, weight: .regular))
+                                                            .font(ToskaFont.sans(13, weight: .regular))
                                                             .foregroundColor(ToskaColor.text2)
                                                     }
                                                 }
                                                 NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
                                                     HStack(spacing: 4) {
                                                         Text("\(followerCount)")
-                                                            .font(.system(size: 13.5, weight: .bold))
+                                                            .font(ToskaFont.sans(13, weight: .bold))
                                                             .foregroundColor(ToskaColor.text)
                                                         Text("followers")
-                                                            .font(.system(size: 13.5, weight: .regular))
+                                                            .font(ToskaFont.sans(13, weight: .regular))
                                                             .foregroundColor(ToskaColor.text2)
                                                     }
                                                 }
@@ -1125,7 +1125,7 @@ struct ProfileView: View {
                                                                             // otherwise it never shows for users who repost.
                                                                             if myPosts.count >= 50 {
                                                                                 Text("showing your 50 most recent posts")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .font(ToskaFont.sans(11)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -1143,7 +1143,7 @@ struct ProfileView: View {
                                                                                             Image(systemName: "arrow.2.squarepath")
                                                                                                 .font(.system(size: 9))
                                                                                             Text("you reposted")
-                                                                                                .font(.system(size: 10, weight: .medium))
+                                                                                                .font(ToskaFont.sans(11, weight: .medium))
                                                                                         }
                                                                                         .foregroundColor(Color.toskaMovingOnGreen)
                                                                                         .padding(.horizontal, 16)
@@ -1177,7 +1177,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if likedItems.count >= 100 {
                                                                                 Text("showing your most recent likes")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .font(ToskaFont.sans(11)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -1204,7 +1204,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if items.count >= 100 {
                                                                                 Text("showing your most recent saves")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .font(ToskaFont.sans(11)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -1219,7 +1219,7 @@ struct ProfileView: View {
                                                                             }
                                                                             if myReplies.count >= 30 {
                                                                                 Text("showing your most recent replies")
-                                                                                    .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                                                                    .font(ToskaFont.sans(11)).foregroundColor(Color.toskaPlaceholderGray)
                                                                                     .frame(maxWidth: .infinity).padding(.vertical, 12)
                                                                             }
                                                                         }
@@ -1263,14 +1263,14 @@ struct ReplyEngagementRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(handle)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(ToskaFont.sans(11, weight: .semibold))
                         .foregroundColor(Color.toskaBlue)
                     Text("· reply")
-                        .font(.system(size: 9))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(Color.toskaTimestamp)
                     Spacer()
                     Text(ToskaFormatters.timeAgo(from: time))
-                        .font(.system(size: 9, weight: .light))
+                        .font(ToskaFont.sans(11, weight: .light))
                         .foregroundColor(Color.toskaInactiveGray)
                 }
                 Text(text)
@@ -1280,7 +1280,7 @@ struct ReplyEngagementRow: View {
                     .lineLimit(5)
                     .multilineTextAlignment(.leading)
                 Text("tap to read in thread")
-                    .font(.system(size: 9))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaDivider)
                     .padding(.top, 2)
             }
@@ -1337,11 +1337,11 @@ struct FollowListView: View {
                     } else if users.isEmpty {
                         Spacer()
                         VStack(spacing: 8) {
-                            Text("no \(title) yet").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextLight)
+                            Text("no \(title) yet").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(Color.toskaTextLight)
                             Text(isFollowingTab
                                  ? "tap a handle on a post to follow someone"
                                  : "keep posting — people you reach will follow")
-                                .font(.system(size: 12))
+                                .font(ToskaFont.sans(12))
                                 .foregroundColor(Color.toskaPlaceholderGray)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 32)
@@ -1363,7 +1363,7 @@ struct FollowListView: View {
                                 }
                                 if users.count >= 50 {
                                     Text("showing your first 50 \(title)")
-                                        .font(.system(size: 9)).foregroundColor(Color.toskaPlaceholderGray)
+                                        .font(ToskaFont.sans(11)).foregroundColor(Color.toskaPlaceholderGray)
                                         .frame(maxWidth: .infinity).padding(.vertical, 12)
                                 }
                             }
@@ -1379,7 +1379,7 @@ struct FollowListView: View {
                     VStack {
                         Spacer()
                         Text(err)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(ToskaFont.sans(12, weight: .medium))
                             .foregroundColor(.white)
                             .padding(.horizontal, 16).padding(.vertical, 10)
                             .background(Color.black.opacity(0.85))
@@ -1539,7 +1539,7 @@ private struct FollowRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(handle)
-                .font(.system(size: 15, weight: .semibold))
+                .font(ToskaFont.sans(15, weight: .semibold))
                 .foregroundColor(Color.toskaBlue)
                 .lineLimit(1)
 
@@ -1548,7 +1548,7 @@ private struct FollowRow: View {
             if showUnfollow {
                 Button(action: onUnfollow) {
                     Text("following")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(ToskaFont.sans(11, weight: .medium))
                         .foregroundColor(Color(hex: "888888"))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
@@ -1601,13 +1601,13 @@ struct EditReplyView: View {
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
-                        Text("cancel").font(.system(size: 13)).foregroundColor(Color.toskaMidGray)
+                        Text("cancel").font(ToskaFont.sans(13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
-                    Text("edit reply").font(.system(size: 14, weight: .medium)).foregroundColor(Color.toskaTextDark)
+                    Text("edit reply").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(Color.toskaTextDark)
                     Spacer()
                     Button { attemptSave() } label: {
-                        Text("save").font(.system(size: 13, weight: .semibold)).foregroundColor(.white)
+                        Text("save").font(ToskaFont.sans(13, weight: .semibold)).foregroundColor(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving ? Color.toskaDivider : Color.toskaBlue)
                             .cornerRadius(16)
@@ -1620,7 +1620,7 @@ struct EditReplyView: View {
 
                 if let saveError {
                     Text(saveError)
-                        .font(.system(size: 11))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(Color.toskaErrorRed)
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
@@ -1762,15 +1762,15 @@ struct PendingReviewBanner: View {
                 .font(.system(size: 10))
             VStack(alignment: .leading, spacing: 2) {
                 Text("under review — visible only to you")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(ToskaFont.sans(11, weight: .semibold))
                 if let label = reasonLabel {
                     Text(label)
-                        .font(.system(size: 10))
+                        .font(ToskaFont.sans(11))
                         .opacity(0.85)
                 }
                 if isCrisis {
                     Text("if you're struggling, you're not alone — support is here:")
-                        .font(.system(size: 10))
+                        .font(ToskaFont.sans(11))
                         .opacity(0.9)
                         .padding(.top, 3)
                     ForEach(CrisisLines.resources.prefix(2), id: \.url) { res in
@@ -1778,7 +1778,7 @@ struct PendingReviewBanner: View {
                             Link(destination: url) {
                                 HStack(spacing: 5) {
                                     Image(systemName: res.icon).font(.system(size: 10))
-                                    Text(res.label).font(.system(size: 11, weight: .semibold)).underline()
+                                    Text(res.label).font(ToskaFont.sans(11, weight: .semibold)).underline()
                                 }
                             }
                         }

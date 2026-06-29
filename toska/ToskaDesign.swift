@@ -39,12 +39,28 @@ enum ToskaFont {
     static func serifMedium(_ size: CGFloat) -> Font { .custom("Newsreader-Medium",  size: size, relativeTo: .body) }
     static func serifItalic(_ size: CGFloat) -> Font { .custom("Newsreader-Italic",  size: size, relativeTo: .body) }
 
+    // ───────────────────────────────────────────────────────────────────────
+    // TOSKA TYPE SCALE — one limited 8-step ramp. Premium apps use few sizes;
+    // the audit found 24 distinct inline sizes across the app, so everything
+    // routes through these tokens. Half-point sizes were rounded to the scale
+    // (15.5→16, 10.5→11, 11.5→12) so the steps are clean and the hierarchy reads.
+    //   24  title   (serif medium)   screen titles, "most felt" headline
+    //   22  detail  (serif)          post-detail reading body
+    //   18  headline(serif italic)   prompts, greetings
+    //   16  body    (serif)          feed post text
+    //   15  button  (sans semibold)  primary CTAs
+    //   13  label   (sans medium)    usernames, secondary UI
+    //   12  caption (sans)           counts, timestamps, chips
+    //   11  micro   (sans semibold)  UPPERCASE eyebrows
+    // Comfortable line height lives at the call site via ToskaLineSpacing.
+    // ───────────────────────────────────────────────────────────────────────
+
     // Serif — content only (the locked ramp)
     static var screenTitle: Font    { serifMedium(24) }   // 24 / 500, tracking -0.5, lowercase
     static var greeting: Font       { serifItalic(18) }   // italic 18 / 400
-    static var postBody: Font       { serif(15.5) }       // 15.5 / 400 — bumped from 14 (2026 de-plain: more reading presence)
+    static var postBody: Font       { serif(16) }         // 16 / 400 reading body
     static var postDetailBody: Font { serif(22) }         // 22 / 400, line-height 1.45
-    static var replyBody: Font      { serif(15.5) }       // 15.5 / 400, line-height 1.5
+    static var replyBody: Font      { serif(16) }         // 16 / 400, line-height 1.5
 
     // Sans = Hanken Grotesk (bundled in Fonts/, registered via Info.plist).
     // Used for all UI chrome — usernames, tabs, mood labels, counts, eyebrows.
@@ -60,13 +76,38 @@ enum ToskaFont {
         return .custom(name, size: size, relativeTo: .body)
     }
 
-    // Sans — all UI chrome (now Hanken Grotesk)
-    static var eyebrow: Font     { sans(10.5, weight: .semibold) } // UPPERCASE, tracking 1.4
-    static var handle: Font      { sans(13,   weight: .medium) }   // understated username — content leads, not the chrome
-    static var meta: Font        { sans(12,   weight: .regular) }  // timestamp: smaller + lower contrast
-    static var actionCount: Font { sans(11.5, weight: .medium) }
-    static var chip: Font        { sans(12,   weight: .semibold) }
+    // Sans — all UI chrome (Hanken Grotesk), snapped to the scale above
+    static var eyebrow: Font     { sans(11, weight: .semibold) }  // UPPERCASE, tracking 1.4
+    static var handle: Font      { sans(13, weight: .medium) }    // understated username — content leads, not the chrome
+    static var meta: Font        { sans(12, weight: .regular) }   // timestamp: smaller + lower contrast
+    static var actionCount: Font { sans(12, weight: .medium) }    // counts — same step as meta (was 11.5)
+    static var chip: Font        { sans(12, weight: .semibold) }
     static func button(_ size: CGFloat = 15) -> Font { sans(size, weight: .semibold) }
+}
+
+// MARK: - Spacing (8-point system)
+//
+// Premium layouts breathe on a consistent rhythm. The audit found 252 of 646
+// padding values OFF the 4pt grid (arbitrary 5/7/11/13/18/22/26). These tokens
+// are the canonical steps — a base unit of 4, doubling/stepping by 4 — so
+// padding, stack spacing, and margins all land on the same grid.
+enum ToskaSpace {
+    static let xxs: CGFloat = 4    // hairline gaps (icon↔label)
+    static let xs:  CGFloat = 8    // tight intra-component
+    static let sm:  CGFloat = 12   // related elements
+    static let md:  CGFloat = 16   // standard row / card padding (the workhorse)
+    static let lg:  CGFloat = 20   // section spacing
+    static let xl:  CGFloat = 24   // major section breaks
+    static let xxl: CGFloat = 32   // screen-level separation
+}
+
+// Comfortable, consistent reading line-height. SwiftUI's lineSpacing is the GAP
+// added between lines (not a multiplier), so these are tuned per role to give
+// the body text room to breathe without looking loose.
+enum ToskaLineSpacing {
+    static let body:    CGFloat = 5   // feed/reply reading text (~1.3× at 16pt)
+    static let detail:  CGFloat = 7   // post-detail body (~1.3× at 22pt)
+    static let compact: CGFloat = 3   // dense secondary text
 }
 
 // MARK: - Color Tokens

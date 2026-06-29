@@ -10,7 +10,7 @@
          <base> hijack; script-src is pinned to self + the gstatic Firebase CDN
          ('unsafe-inline' is required because the app logic is an inline module and
          GitHub Pages can't serve a nonce). connect-src allows Firebase backends. -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://firestore.googleapis.com wss://*.firebaseio.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.googleapis.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.gstatic.com https://www.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://firestore.googleapis.com wss://*.firebaseio.com https://www.google.com https://www.recaptcha.net; frame-src https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
     <title>toska admin</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -192,12 +192,24 @@
         // reach Firestore; firestore.rules remain the authoritative perimeter.
         const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
         if (RECAPTCHA_SITE_KEY) {
-            const { initializeAppCheck, ReCaptchaEnterpriseProvider } =
-                await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js");
-            initializeAppCheck(app, {
-                provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
-                isTokenAutoRefreshEnabled: true,
-            });
+            // Wrapped in try/catch so an App Check / reCAPTCHA init failure
+            // (e.g. the page loaded on a domain the reCAPTCHA key doesn't
+            // accept) can NOT halt the rest of the script — otherwise the
+            // top-level await throws here and onAuthStateChanged never
+            // registers, leaving the login hidden and the page black.
+            try {
+                const { initializeAppCheck, ReCaptchaEnterpriseProvider } =
+                    await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js");
+                initializeAppCheck(app, {
+                    provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
+                    isTokenAutoRefreshEnabled: true,
+                });
+            } catch (e) {
+                // Surface it in the login error area instead of black-screening.
+                console.error("App Check init failed:", e);
+                const le = document.getElementById("loginError");
+                if (le) le.textContent = "app check init failed (" + (e.code || e.message) + ") — try www.toskaapp.com";
+            }
         }
 
         const auth = getAuth(app);

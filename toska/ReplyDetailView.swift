@@ -89,7 +89,7 @@ struct ReplyDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // Reply rendered as the "post."
                         VStack(alignment: .leading, spacing: 0) {
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 // De-emphasized handle (quiet gray, not loud blue)
                                 // so the reply text leads — matches the feed.
                                 // Tappable → the reply author's profile (mirrors the
@@ -99,21 +99,21 @@ struct ReplyDetailView: View {
                                     if !isOwnReply && !replyAuthorId.isEmpty { showOtherProfile = true }
                                 } label: {
                                     Text(replyHandle)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(ToskaFont.sans(12, weight: .medium))
                                         .foregroundColor(ToskaColor.text2)
                                 }
                                 .buttonStyle(.plain)
                                 if isOwnReply {
                                     Text("· you")
-                                        .font(.system(size: 9, weight: .medium))
+                                        .font(ToskaFont.sans(11, weight: .medium))
                                         .foregroundColor(ToskaColor.text3)
                                 }
                                 Spacer()
                                 Text(replyTime)
-                                    .font(.system(size: 10, weight: .light))
+                                    .font(ToskaFont.sans(11, weight: .light))
                                     .foregroundColor(Color.toskaInactiveGray)
                             }
-                            .padding(.bottom, 10)
+                            .padding(.bottom, 8)
 
                             Text(replyText)
                                 // G-1 (2026-06-16): route through the design-system
@@ -124,23 +124,23 @@ struct ReplyDetailView: View {
                                 .foregroundColor(Color(hex: "1a1a1a"))
                                 .lineSpacing(5)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(.bottom, 14)
+                                .padding(.bottom, 16)
 
                             // Stats — minimal.
                             HStack(spacing: 12) {
                                 HStack(spacing: 4) {
                                     Text("\(likeCount)")
-                                        .font(.system(size: 12, weight: .bold))
+                                        .font(ToskaFont.sans(12, weight: .bold))
                                         .foregroundColor(Color.toskaTextDark)
-                                    Text("felt this").font(.system(size: 11))
+                                    Text("felt this").font(ToskaFont.sans(11))
                                         .foregroundColor(Color.toskaTextLight)
                                 }
                                 HStack(spacing: 4) {
                                     Text("\(children.count)")
-                                        .font(.system(size: 12, weight: .bold))
+                                        .font(ToskaFont.sans(12, weight: .bold))
                                         .foregroundColor(Color.toskaTextDark)
                                     Text(children.count == 1 ? "reply" : "replies")
-                                        .font(.system(size: 11))
+                                        .font(ToskaFont.sans(11))
                                         .foregroundColor(Color.toskaTextLight)
                                 }
                             }
@@ -180,8 +180,8 @@ struct ReplyDetailView: View {
                             .padding(.vertical, 8)
                             Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.top, 14)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
 
                         // Direct children only. Each is a SwipeToReplyRow whose
                         // tap pushes its own ReplyDetailView, so grandchildren
@@ -191,7 +191,7 @@ struct ReplyDetailView: View {
                                 ForEach(0..<3, id: \.self) { _ in
                                     SkeletonReplyRow()
                                     Rectangle().fill(Color.toskaBorderLight.opacity(0.5))
-                                        .frame(height: 0.5).padding(.leading, 18)
+                                        .frame(height: 0.5).padding(.leading, 16)
                                 }
                             }
                         } else if children.isEmpty {
@@ -201,7 +201,7 @@ struct ReplyDetailView: View {
                                     .foregroundColor(Color.toskaTimestamp)
                                     .multilineTextAlignment(.center)
                                 Text("be the first to reply")
-                                    .font(.system(size: 10))
+                                    .font(ToskaFont.sans(11))
                                     .foregroundColor(Color.toskaDivider)
                             }
                             .frame(maxWidth: .infinity).padding(.vertical, 32)
@@ -220,7 +220,7 @@ struct ReplyDetailView: View {
                                     )
                                     if index < children.count - 1 {
                                         Rectangle().fill(Color.toskaBorderLight.opacity(0.5))
-                                            .frame(height: 0.5).padding(.leading, 18)
+                                            .frame(height: 0.5).padding(.leading, 16)
                                     }
                                 }
                             }
@@ -295,16 +295,16 @@ struct ReplyDetailView: View {
     private var composerBar: some View {
         VStack(spacing: 0) {
             if let err = postError, !err.isEmpty {
-                Text(err).font(.system(size: 11)).foregroundColor(Color.toskaErrorRed)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
+                Text(err).font(ToskaFont.sans(11)).foregroundColor(Color.toskaErrorRed)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
             }
             Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 TextField("say what you can't say anywhere else", text: $composerText, axis: .vertical)
-                    .font(.system(size: 14))
+                    .font(ToskaFont.sans(13))
                     .focused($composerFocused)
                     .lineLimit(1...4)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(Color(hex: "f0f0ec"))
                     .clipShape(RoundedRectangle(cornerRadius: 18))
 

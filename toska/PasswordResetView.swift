@@ -21,7 +21,7 @@ struct PasswordResetView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13))
                         Text("back")
-                            .font(.system(size: 13))
+                            .font(ToskaFont.sans(13))
                     }
                     .foregroundColor(Color.toskaBlue)
                 }
@@ -34,18 +34,18 @@ struct PasswordResetView: View {
                     .padding(.bottom, 4)
                 
                 Text("we'll send you a link to reset it.")
-                    .font(.system(size: 11))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color(hex: "aaaaaa"))
                     .padding(.bottom, 24)
                 
                 Text("EMAIL")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
                     .foregroundColor(Color(hex: "bbbbbb"))
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
                 TextField("your@email.com", text: $email)
-                    .font(.system(size: 13))
+                    .font(ToskaFont.sans(13))
                     .padding(11)
                     .background(isSent ? Color(hex: "e8eaed") : Color.white)
                     .cornerRadius(10)
@@ -60,7 +60,7 @@ struct PasswordResetView: View {
                 
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
-                        .font(.system(size: 11))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.red)
                         .padding(.bottom, 10)
                 }
@@ -71,7 +71,7 @@ struct PasswordResetView: View {
                             .font(.system(size: 12))
                             .foregroundColor(Color.toskaBlue)
                         Text("link sent")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(ToskaFont.sans(12, weight: .medium))
                             .foregroundColor(Color.toskaBlue)
                     }
                     .padding(.bottom, 12)
@@ -81,7 +81,7 @@ struct PasswordResetView: View {
                         sendReset()
                     } label: {
                         Text("didn't get it? resend")
-                            .font(.system(size: 10))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(Color.toskaBlue)
                     }
                 } else {
@@ -93,7 +93,7 @@ struct PasswordResetView: View {
                                 ProgressView().tint(.white)
                             } else {
                                 Text("send reset link")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(ToskaFont.sans(13, weight: .medium))
                                     .foregroundColor(.white)
                             }
                         }

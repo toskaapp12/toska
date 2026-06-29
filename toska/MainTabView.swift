@@ -173,7 +173,7 @@ struct MainTabView: View {
                             .overlay(alignment: .topTrailing) {
                                 if unreadCount > 0 {
                                     Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
-                                        .font(.system(size: 9, weight: .bold))
+                                        .font(ToskaFont.sans(11, weight: .bold))
                                         .foregroundColor(.white)
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 2)
@@ -233,7 +233,7 @@ struct MainTabView: View {
                     Spacer()
                     HStack(spacing: 12) {
                         Text("blocked \(toast.handle)")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(ToskaFont.sans(13, weight: .medium))
                             .foregroundColor(.white)
                         Spacer()
                         Button {
@@ -248,7 +248,7 @@ struct MainTabView: View {
                             HapticManager.play(.tabSwitch)
                         } label: {
                             Text("undo")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(ToskaFont.sans(13, weight: .semibold))
                                 .foregroundColor(Color(hex: "f5c97a"))
                         }
                     }

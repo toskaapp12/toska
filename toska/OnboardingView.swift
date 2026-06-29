@@ -180,7 +180,7 @@ struct OnboardingView: View {
                             }
                         } label: {
                             Text("next")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
@@ -198,7 +198,7 @@ struct OnboardingView: View {
                             }
                         } label: {
                             Text("next")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
@@ -210,7 +210,7 @@ struct OnboardingView: View {
                             saveStageAndAdvance()
                         } label: {
                             Text("next")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
@@ -228,7 +228,7 @@ struct OnboardingView: View {
                             }
                         } label: {
                             Text("skip")
-                                .font(.system(size: 11))
+                                .font(ToskaFont.sans(11))
                                 .foregroundColor(Color.white.opacity(0.3))
                         }
                     } else if currentStep == 3 {
@@ -236,7 +236,7 @@ struct OnboardingView: View {
                             saveMoodAndAdvance()
                         } label: {
                             Text("next")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
@@ -248,7 +248,7 @@ struct OnboardingView: View {
                             finishOnboarding(persistMood: true)
                         } label: {
                             Text(isFinishingOnboarding ? "saving…" : "skip")
-                                .font(.system(size: 11))
+                                .font(ToskaFont.sans(11))
                                 .foregroundColor(Color.white.opacity(0.3))
                         }
                         .disabled(isFinishingOnboarding)
@@ -257,7 +257,7 @@ struct OnboardingView: View {
                             showFirstPostCompose = true
                         } label: {
                             Text("say it")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 13)
@@ -269,7 +269,7 @@ struct OnboardingView: View {
                             finishOnboarding(persistMood: true)
                         } label: {
                             Text(isFinishingOnboarding ? "saving…" : "skip for now")
-                                .font(.system(size: 11))
+                                .font(ToskaFont.sans(11))
                                 .foregroundColor(Color.white.opacity(0.3))
                         }
                         .disabled(isFinishingOnboarding)
@@ -572,7 +572,7 @@ struct OnboardingView: View {
                     .padding(.bottom, 4)
                 
                 Text("i built this during a breakup.\ni was tired of pretending i was fine\nand had nowhere to say the real stuff.\nso i made somewhere.")
-                    .font(.system(size: 12))
+                    .font(ToskaFont.sans(12))
                     .foregroundColor(Color.white.opacity(0.5))
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
@@ -599,17 +599,17 @@ struct OnboardingView: View {
                             .foregroundColor(Color(hex: "111111"))
                         
                         Text("no names. no faces. just what you feel.")
-                            .font(.system(size: 11))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(Color.toskaMidGray)
                             .padding(.bottom, 12)
             
             HStack {
                 Text(userHandle)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(ToskaFont.sans(13, weight: .semibold))
                     .foregroundColor(Color.toskaBlue)
                 Spacer()
                 Text("your handle")
-                    .font(.system(size: 9))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaPlaceholderGray)
             }
             .padding(.horizontal, 14)
@@ -623,7 +623,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 32)
             
             Text("nobody knows who you are here.\nthats the whole point.")
-                .font(.system(size: 10))
+                .font(ToskaFont.sans(11))
                 .foregroundColor(Color.toskaPlaceholderGray)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
@@ -638,7 +638,7 @@ struct OnboardingView: View {
                 .foregroundColor(.white)
 
             Text("nobody else has to know.\nthis just helps us know what to show you.")
-                .font(.system(size: 11))
+                .font(ToskaFont.sans(11))
                 .foregroundColor(Color.toskaBlue)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -651,7 +651,7 @@ struct OnboardingView: View {
                         fetchStageCohortCount(for: stage)
                     } label: {
                         Text(stage)
-                            .font(.system(size: 13, weight: selectedStage == stage ? .semibold : .regular))
+                            .font(ToskaFont.sans(13, weight: selectedStage == stage ? .semibold : .regular))
                             .foregroundColor(selectedStage == stage ? .white : Color.white.opacity(0.7))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 16)
@@ -748,7 +748,7 @@ struct OnboardingView: View {
                                     .foregroundColor(.white)
                                 
                                 Text("well show you people who feel the same")
-                                    .font(.system(size: 11))
+                                    .font(ToskaFont.sans(11))
                                     .foregroundColor(Color.toskaBlue)
                                     .padding(.bottom, 8)
                 
@@ -761,7 +761,7 @@ struct OnboardingView: View {
                                 Image(systemName: tag.icon)
                                     .font(.system(size: 12))
                                 Text(tag.name)
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(ToskaFont.sans(11, weight: .medium))
                             }
                             .foregroundColor(selectedMood == tag.name ? .white : Color(hex: tag.colorHex))
                             .frame(maxWidth: .infinity)
@@ -791,7 +791,7 @@ struct OnboardingView: View {
                                     .foregroundColor(.white)
                                 
                                 Text("the thing youve been holding in.\nthe thing you type and delete.\nsay it here. no one knows its you.")
-                                    .font(.system(size: 11))
+                                    .font(ToskaFont.sans(11))
                                     .foregroundColor(Color.white.opacity(0.4))
                                     .multilineTextAlignment(.center)
                                     .lineSpacing(3)
@@ -800,7 +800,7 @@ struct OnboardingView: View {
                 // Show the prompt as inspiration
                 VStack(spacing: 8) {
                     Text(promptTimeLabel)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(ToskaFont.sans(11, weight: .semibold))
                         .foregroundColor(Color.toskaBlue)
                         .tracking(1)
                     
@@ -827,7 +827,7 @@ struct OnboardingView: View {
                         Image(systemName: tagData?.icon ?? "tag")
                             .font(.system(size: 10))
                         Text(mood)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                     }
                     .foregroundColor(tagColor(for: mood).opacity(0.6))
                     .padding(.top, 4)

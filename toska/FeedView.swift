@@ -110,7 +110,7 @@ struct FeedView: View {
     @ViewBuilder private var headerSearchBar: some View {
         if showSearch || !searchText.isEmpty {
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 15))
@@ -130,13 +130,13 @@ struct FeedView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                     .background(ToskaColor.input, in: Capsule())
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 4)
-                .padding(.bottom, 10)
+                .padding(.bottom, 8)
             }
             .transition(.opacity)
         }
@@ -171,11 +171,11 @@ struct FeedView: View {
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(Color.toskaDivider)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                     .background(Color.toskaFollowGreen.opacity(0.08))
                     .cornerRadius(10)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 16)
                     .padding(.bottom, 4)
                 }
                 .buttonStyle(.plain)
@@ -197,7 +197,7 @@ struct FeedView: View {
                     }
                     HapticManager.play(.tabSwitch)
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 12))
                         Text(newPostsBadgeCount == 1
@@ -206,8 +206,8 @@ struct FeedView: View {
                             .font(.system(size: 12, weight: .medium))
                     }
                     .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                     .background(Color.toskaBlue)
                     .clipShape(Capsule())
                     .padding(.bottom, 4)
@@ -233,7 +233,7 @@ struct FeedView: View {
                             vm.selectedTab = index
                         }
                     } label: {
-                        VStack(spacing: 7) {
+                        VStack(spacing: 8) {
                             Text(vm.tabs[index])
                                 .font(ToskaFont.sans(16, weight: isSel ? .semibold : .regular))
                                 .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
@@ -248,8 +248,8 @@ struct FeedView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
     }
 
     // MARK: - Inline search
@@ -640,7 +640,7 @@ struct FeedPostRow: View, Equatable {
                 // prompt, show the prompt itself in plum above the reply so the
                 // card reads "prompt → reply" (the answer in context).
                 if let prompt = promptText, !prompt.isEmpty {
-                    HStack(alignment: .top, spacing: 6) {
+                    HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "sparkle")
                             .font(.system(size: 10, weight: .semibold))
                         Text(prompt)
@@ -659,19 +659,19 @@ struct FeedPostRow: View, Equatable {
                 // is set (FeedView passes it for reposts; other call sites
                 // pass nil so this row is hidden there).
                 if let reposter = reposterHandle, !reposter.isEmpty {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "arrow.2.squarepath")
                             .font(.system(size: 10, weight: .regular))
                         Text("\(reposter) reposted")
                             .font(.system(size: 11, weight: .medium))
                     }
                     .foregroundColor(ToskaColor.text3)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 8)
                 }
 
                 // Handle row — compact: handle is the anchor with the
                 // separator dot and time trailing it.
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                                             // De-emphasized: a quiet secondary
                                             // gray (not the loud accent) so the
                                             // post TEXT leads the card and the
@@ -695,7 +695,7 @@ struct FeedPostRow: View, Equatable {
                                                 Text(String(format: "%02d", rank))
                                                     .font(ToskaFont.serifItalic(13))
                                                     .foregroundColor(ToskaColor.text3)
-                                                    .padding(.trailing, 2)
+                                                    .padding(.trailing, 4)
                                             }
 
                                             if isMidnightPost {
@@ -716,7 +716,7 @@ struct FeedPostRow: View, Equatable {
                                             // that used to sit below the post text. Report
                                             // / block moved to the long-press menu.
                                             if let tag = tag {
-                                                HStack(spacing: 5) {
+                                                HStack(spacing: 4) {
                                                     Circle()
                                                         .fill(tagColor(for: tag))
                                                         .frame(width: 6, height: 6)
@@ -754,7 +754,7 @@ struct FeedPostRow: View, Equatable {
                                 Text("read this letter...")
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundColor(Color.toskaBlue)
-                                    .padding(.top, 2)
+                                    .padding(.top, 4)
                             }
                         }
                                                 .padding(.bottom, 4)
@@ -795,7 +795,7 @@ struct FeedPostRow: View, Equatable {
                                         // doesn't iterate GIF frames.
                 if let gifUrl = gifUrl, !gifUrl.isEmpty {
                     StableGifPreview(urlString: gifUrl, maxHeight: 200)
-                        .padding(.bottom, 10)
+                        .padding(.bottom, 8)
                 }
                   }
                   .frame(maxWidth: .infinity, alignment: .leading)
@@ -1057,7 +1057,7 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Action Label
 
     func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "828AA0") -> some View {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(isActive ? Color(hex: activeColor) : ToskaColor.text3)
@@ -1223,7 +1223,7 @@ struct FeedHeaderCard: View {
                 // fill, rounded — the daily prompt is the app's hook, so it reads as
                 // a distinct accent card rather than plain text on the page.
                 VStack(alignment: .leading, spacing: ToskaSpace.md) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "sparkle")
                             .font(.system(size: 12, weight: .semibold))
                         Text("today's prompt")
@@ -1290,8 +1290,8 @@ struct FeedHeaderCard: View {
                         )
                         .navigationBarHidden(true)
                     } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 5) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 4) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 10))
                                     .foregroundColor(Color.toskaBlue.opacity(0.7))
@@ -1310,13 +1310,13 @@ struct FeedHeaderCard: View {
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.toskaBlue.opacity(0.06))
                         .cornerRadius(10)
                         .padding(.horizontal, 12)
-                        .padding(.top, 6)
+                        .padding(.top, 8)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -1425,7 +1425,7 @@ struct FeedColumn: View {
     }
 
     @ViewBuilder private var inlineSearchBar: some View {
-                                HStack(spacing: 10) {
+                                HStack(spacing: 8) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "magnifyingglass")
                                             .font(.system(size: 15, weight: .regular))
@@ -1449,8 +1449,8 @@ struct FeedColumn: View {
                                             .accessibilityLabel("Clear search")
                                         }
                                     }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 11)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
                                     // Quiet gray capsule fill. Was a frosted glass
                                     // material (.thinMaterial / .glassEffect), but
                                     // SwiftUI materials render as an OPAQUE rectangle
@@ -1493,8 +1493,8 @@ struct FeedColumn: View {
                                                 Text("all")
                                                     .font(.system(size: 12, weight: .semibold))
                                                     .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
-                                                    .padding(.horizontal, 13)
-                                                    .padding(.vertical, 5)
+                                                    .padding(.horizontal, 12)
+                                                    .padding(.vertical, 4)
                                                     .background(allSelected ? ToskaColor.accent : Color.clear)
                                                     .overlay(Capsule().stroke(allSelected ? Color.clear : ToskaColor.divider, lineWidth: 1))
                                                     .clipShape(Capsule())
@@ -1507,7 +1507,7 @@ struct FeedColumn: View {
                                                     searchText = tag.name
                                                     searchFocused.wrappedValue = false
                                                 } label: {
-                                                    HStack(spacing: 5) {
+                                                    HStack(spacing: 4) {
                                                         Image(systemName: tag.icon)
                                                             .font(.system(size: 11))
                                                         Text(tag.name)
@@ -1515,7 +1515,7 @@ struct FeedColumn: View {
                                                     }
                                                     .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
                                                     .padding(.horizontal, 12)
-                                                    .padding(.vertical, 7)
+                                                    .padding(.vertical, 8)
                                                     .background(isSel ? Color(hex: tag.colorHex) : Color(hex: tag.colorHex).opacity(0.12))
                                                     .clipShape(Capsule())
                                                 }
@@ -1524,7 +1524,7 @@ struct FeedColumn: View {
                                         }
                                         .padding(.horizontal, 16)
                                     }
-                                    .padding(.top, 10)
+                                    .padding(.top, 8)
                                     .padding(.bottom, 12)
                                     .transition(.opacity)
                                 }
@@ -1555,7 +1555,7 @@ struct FeedColumn: View {
                                 // was removed), so it rendered a second, out-of-sync
                                 // spinner box on refresh. Removed (2026 polish).
                                             if let error = vm.fetchError {
-                                                HStack(spacing: 6) {
+                                                HStack(spacing: 8) {
                                                     Image(systemName: "exclamationmark.circle")
                                                         .font(.system(size: 10))
                                                     Text(error)
@@ -1599,7 +1599,7 @@ struct FeedColumn: View {
                                                     }
                                         
                                         if tab == 1 && vm.followingFetchIncomplete {
-                                            HStack(spacing: 6) {
+                                            HStack(spacing: 8) {
                                                 Image(systemName: "exclamationmark.circle")
                                                     .font(.system(size: 10))
                                                 Text("some posts may be missing — pull to refresh")
@@ -1630,7 +1630,7 @@ struct FeedColumn: View {
                                     // (no posts in window, none from people
                                     // they follow). Coach concrete actions
                                     // instead of leaving a blank screen.
-                                    VStack(spacing: 14) {
+                                    VStack(spacing: 16) {
                                         Image(systemName: "moon.stars")
                                             .font(.system(size: 28, weight: .light))
                                             .foregroundColor(LateNightTheme.tertiaryText)
@@ -1644,34 +1644,34 @@ struct FeedColumn: View {
                                             .multilineTextAlignment(.center)
                                             .lineSpacing(3)
                                             .padding(.horizontal, 24)
-                                        HStack(spacing: 10) {
+                                        HStack(spacing: 8) {
                                             Button {
                                                 NotificationCenter.default.post(name: .openComposeFromEmptyFeed, object: nil)
                                             } label: {
-                                                HStack(spacing: 5) {
+                                                HStack(spacing: 4) {
                                                     Image(systemName: "plus.circle")
                                                         .font(.system(size: 11))
                                                     Text("say something")
                                                         .font(.system(size: 12, weight: .medium))
                                                 }
                                                 .foregroundColor(.white)
-                                                .padding(.horizontal, 14)
-                                                .padding(.vertical, 10)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 8)
                                                 .background(Color.toskaBlue)
                                                 .cornerRadius(10)
                                             }
                                             Button {
                                                 vm.showExplore = true
                                             } label: {
-                                                HStack(spacing: 5) {
+                                                HStack(spacing: 4) {
                                                     Image(systemName: "magnifyingglass")
                                                         .font(.system(size: 11))
                                                     Text("explore")
                                                         .font(.system(size: 12, weight: .medium))
                                                 }
                                                 .foregroundColor(Color.toskaBlue)
-                                                .padding(.horizontal, 14)
-                                                .padding(.vertical, 10)
+                                                .padding(.horizontal, 16)
+                                                .padding(.vertical, 8)
                                                 .background(Color.toskaBlue.opacity(0.1))
                                                 .cornerRadius(10)
                                             }

@@ -53,7 +53,7 @@ struct SplashView: View {
                         showCreateAccount = true
                     } label: {
                         Text("im new here")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(ToskaFont.sans(15, weight: .medium))
                             .foregroundColor(Color(hex: "1a1c22"))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -65,7 +65,7 @@ struct SplashView: View {
                         showSignIn = true
                     } label: {
                         Text("sign in")
-                            .font(.system(size: 15, weight: .regular))
+                            .font(ToskaFont.sans(15, weight: .regular))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -122,11 +122,11 @@ struct SplashView: View {
                                         .frame(width: 18, height: 18)
                                 } else {
                                     Text("G")
-                                        .font(.system(size: 18, weight: .bold))
+                                        .font(ToskaFont.sans(18, weight: .bold))
                                         .foregroundColor(Color(hex: "4285F4"))
                                 }
                                 Text("Sign in with Google")
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(ToskaFont.sans(15, weight: .medium))
                                     .foregroundColor(Color(hex: "3C4043"))
                             }
                         }
@@ -143,23 +143,23 @@ struct SplashView: View {
 
                     if !errorMessage.isEmpty {
                         Text(errorMessage)
-                            .font(.system(size: 10))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.7))
                             .padding(.top, 2)
                     }
 
                     HStack(spacing: 0) {
                         Text("by being here you agree to our ")
-                            .font(.system(size: 10))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.3))
                         Link("terms", destination: URL(string: "https://www.toskaapp.com/terms")!)
-                            .font(.system(size: 10))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.5))
                         Text(" and ")
-                            .font(.system(size: 10))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.3))
                         Link("privacy policy", destination: URL(string: "https://www.toskaapp.com/privacy")!)
-                            .font(.system(size: 10))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.5))
                     }
                     .padding(.top, 4)

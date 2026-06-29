@@ -7,6 +7,7 @@ struct SignInView: View {
     
     @State private var email = ""
     @State private var password = ""
+    @State private var showPassword = false
     @State private var errorMessage = ""
     @State private var isLoading = false
     @State private var showReset = false
@@ -77,9 +78,19 @@ struct SignInView: View {
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
-                SecureField("••••••••", text: $password)
+                ZStack(alignment: .trailing) {
+                    Group {
+                        if showPassword {
+                            TextField("••••••••", text: $password)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        } else {
+                            SecureField("••••••••", text: $password)
+                        }
+                    }
                     .font(ToskaFont.sans(13))
                     .padding(11)
+                    .padding(.trailing, 34)   // room for the eye toggle
                     .background(Color.white)
                     .cornerRadius(10)
                     .overlay(
@@ -87,9 +98,19 @@ struct SignInView: View {
                             .stroke(Color(hex: "e8e2d9"), lineWidth: 0.5)
                     )
                     .textContentType(.password)
-                    .padding(.bottom, 8)
                     .accessibilityIdentifier("passwordField")
                     .accessibilityLabel("password")
+
+                    Button { showPassword.toggle() } label: {
+                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "999999"))
+                            .padding(.horizontal, 12)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                }
+                .padding(.bottom, 8)
                 
                 HStack {
                     Spacer()

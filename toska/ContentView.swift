@@ -31,12 +31,12 @@ struct ContentView: View {
                             Text(Auth.auth().currentUser != nil
                                  ? "setting up your account"
                                  : "couldn't connect")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(.white.opacity(0.8))
                             Text(Auth.auth().currentUser != nil
                                  ? "this sometimes takes a moment after creating or restoring an account — tap retry"
                                  : "check your connection and try again")
-                                .font(.system(size: 12))
+                                .font(ToskaFont.sans(12))
                                 .foregroundColor(.white.opacity(0.4))
                             Button {
                                 showVerifyError = false
@@ -46,7 +46,7 @@ struct ContentView: View {
                                 }
                             } label: {
                                 Text("retry")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(ToskaFont.sans(13, weight: .medium))
                                     .foregroundColor(Color.toskaBlue)
                                     .padding(.horizontal, 28)
                                     .padding(.vertical, 10)

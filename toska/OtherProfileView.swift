@@ -88,28 +88,28 @@ struct OtherProfileView: View {
                         // counts 13pt → 16pt bold, labels 9pt → 12pt;
                         // calendar/join 8-9pt → 11pt; follow button text
                         // 12pt → 14pt with bigger pill.
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 16) {
                             if !joinedDate.isEmpty {
                                 HStack(spacing: 4) {
                                     Image(systemName: "calendar").font(.system(size: 10))
-                                    Text("joined \(joinedDate)").font(.system(size: 11))
+                                    Text("joined \(joinedDate)").font(ToskaFont.sans(11))
                                 }
                                 .foregroundColor(Color.toskaTimestamp)
                             }
 
                             if showFollowerCount {
-                                HStack(spacing: 22) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("\(followerCount)").font(.system(size: 16, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("followers").font(.system(size: 12)).foregroundColor(Color.toskaTimestamp)
+                                HStack(spacing: 24) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("\(followerCount)").font(ToskaFont.sans(16, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("followers").font(ToskaFont.sans(12)).foregroundColor(Color.toskaTimestamp)
                                     }
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("\(followingCount)").font(.system(size: 16, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("following").font(.system(size: 12)).foregroundColor(Color.toskaTimestamp)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("\(followingCount)").font(ToskaFont.sans(16, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("following").font(ToskaFont.sans(12)).foregroundColor(Color.toskaTimestamp)
                                     }
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(formatCount(totalLikes)).font(.system(size: 16, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("felt").font(.system(size: 12)).foregroundColor(Color.toskaTimestamp)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(formatCount(totalLikes)).font(ToskaFont.sans(16, weight: .bold)).foregroundColor(Color.toskaTextDark)
+                                        Text("felt").font(ToskaFont.sans(12)).foregroundColor(Color.toskaTimestamp)
                                     }
                                 }
                             }
@@ -121,27 +121,27 @@ struct OtherProfileView: View {
                                 // code stays in place for legacy data only.
                                 Button { toggleFollow() } label: {
                                     Text(isFollowing ? "following" : "follow")
-                                        .font(.system(size: 14, weight: .semibold))
+                                        .font(ToskaFont.sans(13, weight: .semibold))
                                         .foregroundColor(isFollowing ? Color(hex: "888888") : .white)
                                         .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 11)
+                                        .padding(.vertical, 12)
                                         .background(isFollowing ? Color.toskaBorderLight : Color.toskaBlue)
                                         .cornerRadius(22)
                                 }
                             } else {
                                 Text("this is you")
-                                    .font(.system(size: 11))
+                                    .font(ToskaFont.sans(11))
                                     .foregroundColor(Color.toskaTimestamp)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
-                        .padding(.bottom, 18)
+                        .padding(.bottom, 16)
                         
                         HStack(spacing: 0) {
                             Button { selectedTab = 0 } label: {
-                                VStack(spacing: 6) {
+                                VStack(spacing: 8) {
                                     Image(systemName: selectedTab == 0 ? "square.grid.2x2.fill" : "square.grid.2x2")
                                         .font(.system(size: 14, weight: selectedTab == 0 ? .medium : .light))
                                         .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color.toskaInactiveGray)
@@ -151,7 +151,7 @@ struct OtherProfileView: View {
                             }
                             .accessibilityLabel("posts")
                             Button { selectedTab = 1 } label: {
-                                VStack(spacing: 6) {
+                                VStack(spacing: 8) {
                                     Image(systemName: selectedTab == 1 ? "bubble.left.fill" : "bubble.left")
                                         .font(.system(size: 14, weight: selectedTab == 1 ? .medium : .light))
                                         .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color.toskaInactiveGray)
@@ -167,11 +167,11 @@ struct OtherProfileView: View {
                         
                         if selectedTab == 0 {
                             if posts.isEmpty {
-                                VStack(spacing: 14) {
+                                VStack(spacing: 16) {
                                     Image(systemName: "pencil.line")
                                         .font(.system(size: 28, weight: .ultraLight))
                                         .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                        .padding(.bottom, 2)
+                                        .padding(.bottom, 4)
                                     Text("nothing here yet")
                                         .font(.custom("Georgia-Italic", size: 18))
                                         .foregroundColor(Color.toskaTextLight)
@@ -187,11 +187,11 @@ struct OtherProfileView: View {
                             }
                         } else {
                             if userReplies.isEmpty {
-                                VStack(spacing: 14) {
+                                VStack(spacing: 16) {
                                     Image(systemName: "bubble.left")
                                         .font(.system(size: 28, weight: .ultraLight))
                                         .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                        .padding(.bottom, 2)
+                                        .padding(.bottom, 4)
                                     Text("quiet so far")
                                         .font(.custom("Georgia-Italic", size: 18))
                                         .foregroundColor(Color.toskaTextLight)
@@ -201,17 +201,17 @@ struct OtherProfileView: View {
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(userReplies) { reply in
-                                        VStack(alignment: .leading, spacing: 6) {
+                                        VStack(alignment: .leading, spacing: 8) {
                                             HStack(spacing: 4) {
                                                 Image(systemName: "arrowshape.turn.up.left")
                                                     .font(.system(size: 8))
                                                 Text("replying to \(reply.parentHandle)")
-                                                    .font(.system(size: 9, weight: .medium))
+                                                    .font(ToskaFont.sans(11, weight: .medium))
                                             }
                                             .foregroundColor(Color.toskaTextLight)
                                             
                                             Text(reply.parentText)
-                                                .font(.system(size: 11))
+                                                .font(ToskaFont.sans(11))
                                                 .foregroundColor(Color.toskaTimestamp)
                                                 .lineLimit(2)
                                             
@@ -219,22 +219,22 @@ struct OtherProfileView: View {
                                                 Rectangle()
                                                     .fill(Color.toskaBlue.opacity(0.3))
                                                     .frame(width: 2)
-                                                    .padding(.trailing, 10)
+                                                    .padding(.trailing, 8)
                                                 
-                                                VStack(alignment: .leading, spacing: 3) {
+                                                VStack(alignment: .leading, spacing: 4) {
                                                     Text(reply.replyText)
                                                         .font(.custom("Georgia", size: 13))
                                                         .foregroundColor(Color.toskaTextDark)
                                                         .lineSpacing(3)
                                                     
                                                     Text(reply.replyTime)
-                                                        .font(.system(size: 9, weight: .light))
+                                                        .font(ToskaFont.sans(11, weight: .light))
                                                         .foregroundColor(Color.toskaInactiveGray)
                                                 }
                                             }
-                                            .padding(.top, 2)
+                                            .padding(.top, 4)
                                         }
-                                        .padding(.horizontal, 18)
+                                        .padding(.horizontal, 16)
                                         .padding(.vertical, 12)
                                         .background(Color.white)
                                         .overlay(

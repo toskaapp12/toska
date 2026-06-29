@@ -92,13 +92,13 @@ struct DailyMomentView: View {
                                 .fill(Color.toskaBlue)
                                 .frame(width: 4, height: 4)
                             Text(timeLabel)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(ToskaFont.sans(11, weight: .semibold))
                                 .foregroundColor(Color.toskaBlue)
                                 .tracking(1)
                         }
 
                         Text(formattedDate())
-                            .font(.system(size: 9))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.2))
                     }
                     .opacity(isVisible ? 1 : 0)
@@ -121,17 +121,17 @@ struct DailyMomentView: View {
                     VStack(spacing: 8) {
                         if let tag = postTag {
                             Text(tag)
-                                .font(.system(size: 9, weight: .medium))
+                                .font(ToskaFont.sans(11, weight: .medium))
                                 .foregroundColor(tagColor(for: tag).opacity(0.5))
                                 .tracking(1)
                         }
 
                         Text("\(formatCount(feltCount)) felt this")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                             .foregroundColor(Color.toskaBlue.opacity(0.7))
 
                         Text(postHandle)
-                            .font(.system(size: 9))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.15))
                     }
                     .opacity(isVisible ? 1 : 0)
@@ -144,7 +144,7 @@ struct DailyMomentView: View {
                             Image(systemName: "camera.viewfinder")
                                 .font(.system(size: 10))
                             Text("screenshot this. share it. someone needs to see it.")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(ToskaFont.sans(11, weight: .medium))
                         }
                         .foregroundColor(.white.opacity(0.2))
                         .opacity(isVisible ? 1 : 0)
@@ -157,7 +157,7 @@ struct DailyMomentView: View {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 12))
                                 Text("share moment")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(ToskaFont.sans(12, weight: .medium))
                             }
                             .foregroundColor(Color.toskaBlue)
                             .padding(.horizontal, 24)
@@ -436,7 +436,7 @@ struct DailyMomentView: View {
                         .fill(Color.toskaBlue)
                         .frame(width: 4, height: 4)
                     Text(timeLabel)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(ToskaFont.sans(11, weight: .semibold))
                         .foregroundColor(Color.toskaBlue)
                         .tracking(1)
                 }
@@ -457,19 +457,19 @@ struct DailyMomentView: View {
                         Image(systemName: tagData?.icon ?? "tag")
                             .font(.system(size: 10))
                         Text(tag)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                     }
                     .foregroundColor(tagColor(for: tag).opacity(0.5))
                     .padding(.bottom, 8)
                 }
 
                 Text("\(formatCount(feltCount)) felt this")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(ToskaFont.sans(13, weight: .medium))
                     .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .padding(.bottom, 6)
 
                 Text(postHandle)
-                    .font(.system(size: 10))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(.white.opacity(0.15))
                     .padding(.bottom, 24)
 
@@ -478,7 +478,7 @@ struct DailyMomentView: View {
                         .font(ToskaFont.serifItalic(18))
                         .foregroundColor(.white.opacity(0.15))
                     Text("for the things you couldnt say to them")
-                        .font(.system(size: 9))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.08))
                 }
                 .padding(.bottom, 40)

@@ -163,7 +163,7 @@ struct ShareCardView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Text(showOptions ? "fewer options" : "more options")
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(ToskaFont.sans(11, weight: .medium))
                                     Image(systemName: showOptions ? "chevron.up" : "chevron.down")
                                         .font(.system(size: 8, weight: .semibold))
                                 }
@@ -243,7 +243,7 @@ struct ShareCardView: View {
                                 Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
                                     .font(.system(size: 11))
                                 Text(showCopied ? "copied" : "copy text instead")
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(ToskaFont.sans(11, weight: .medium))
                             }
                             // Quiet tertiary text link (no grey box) so the Save/Share
                             // pills stay the clear primary actions.
@@ -279,7 +279,7 @@ struct ShareCardView: View {
                     Text(savedToPhotos
                          ? "share it whenever you're ready"
                          : "the things we can't say out loud\ntravel the farthest")
-                        .font(.system(size: 10))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.2))
                         .multilineTextAlignment(.center)
 
@@ -290,7 +290,7 @@ struct ShareCardView: View {
                         }
                     } label: {
                         Text("okay")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(ToskaFont.sans(12, weight: .medium))
                             .foregroundColor(.white.opacity(0.4))
                             .padding(.horizontal, 32)
                             .padding(.vertical, 8)
@@ -357,7 +357,7 @@ struct ShareCardView: View {
                                 .scaleEffect(isSelected ? 1.08 : 1.0)
 
                             Text(styles[index])
-                                .font(.system(size: 9.5, weight: isSelected ? .semibold : .regular))
+                                .font(ToskaFont.sans(11, weight: isSelected ? .semibold : .regular))
                                 .foregroundColor(isSelected ? Color(hex: "1a1720") : Color(hex: "8a8790"))
                         }
                     }
@@ -383,7 +383,7 @@ struct ShareCardView: View {
                     Text("Aa")
                         .font(fontPickerFont(selectedFont))
                     Text(fonts[selectedFont])
-                        .font(.system(size: 9, weight: .medium))
+                        .font(ToskaFont.sans(11, weight: .medium))
                         .foregroundColor(Color(hex: "8a8790"))
                 }
                 .foregroundColor(Color(hex: "1a1720"))
@@ -462,7 +462,7 @@ struct ShareCardView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { selectedRatio = index }
                 } label: {
                     Text(ratios[index])
-                        .font(.system(size: 10, weight: selectedRatio == index ? .semibold : .regular))
+                        .font(ToskaFont.sans(11, weight: selectedRatio == index ? .semibold : .regular))
                         .foregroundColor(selectedRatio == index ? composerAccent : Color(hex: "8a8790"))
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -491,7 +491,7 @@ struct ShareCardView: View {
                     .font(.system(size: 11))
                     .foregroundColor(showFeltCount ? composerAccent : Color(hex: "8a8790"))
                 Text("felt count")
-                    .font(.system(size: 10, weight: showFeltCount ? .medium : .regular))
+                    .font(ToskaFont.sans(11, weight: showFeltCount ? .medium : .regular))
                     .foregroundColor(showFeltCount ? Color(hex: "1a1720") : Color(hex: "8a8790"))
             }
             .padding(.horizontal, 12)
@@ -547,7 +547,7 @@ struct ShareCardView: View {
                     .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 0.75))
                     .shadow(color: colors.first?.opacity(0.45) ?? .clear, radius: 9, y: 4)
                 Text(name)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(ToskaFont.sans(11, weight: .semibold))
                     .foregroundColor(Color(hex: "1a1720"))
             }
             .frame(maxWidth: .infinity)
@@ -563,7 +563,7 @@ struct ShareCardView: View {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .semibold))
                 Text(name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(ToskaFont.sans(15, weight: .semibold))
             }
             .foregroundColor(.white)
             .frame(maxWidth: .infinity)
@@ -622,7 +622,7 @@ struct ShareCardView: View {
                             .fill(accentColor.opacity(0.4))
                             .frame(width: 4, height: 4)
                         Text(tag)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(ToskaFont.sans(11, weight: .semibold))
                             .tracking(1)
                             .foregroundColor(accentColor.opacity(0.5))
                     }
@@ -649,7 +649,7 @@ struct ShareCardView: View {
                 VStack(spacing: 6) {
                     if feltCount > 0 && showFeltCount {
                         Text("\(formatCount(feltCount)) felt this")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                             .foregroundColor(accentColor.opacity(0.35))
                     }
 
@@ -918,7 +918,7 @@ struct ShareCardView: View {
                             .fill(accentColor.opacity(0.4))
                             .frame(width: 5, height: 5)
                         Text(tag)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(ToskaFont.sans(11, weight: .semibold))
                             .tracking(1)
                             .foregroundColor(accentColor.opacity(0.5))
                     }
@@ -946,7 +946,7 @@ struct ShareCardView: View {
                 VStack(spacing: 7) {
                     if feltCount > 0 && showFeltCount {
                         Text("\(formatCount(feltCount)) felt this")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                             .foregroundColor(accentColor.opacity(0.35))
                     }
 

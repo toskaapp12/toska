@@ -24,14 +24,14 @@ struct AnniversaryCardView: View {
                     .foregroundColor(Color.toskaAccentGold)
 
                 Text(post.milestoneLabel)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(ToskaFont.sans(11, weight: .semibold))
                     .foregroundColor(Color.toskaAccentGold)
                     .tracking(0.3)
 
                 Spacer()
 
                 Text(post.dateString)
-                    .font(.system(size: 9, weight: .light))
+                    .font(ToskaFont.sans(11, weight: .light))
                     .foregroundColor(Color.toskaAccentGold.opacity(0.5))
             }
             .padding(.bottom, 10)
@@ -45,14 +45,14 @@ struct AnniversaryCardView: View {
 
             if let tag = post.tag {
                 Text(tag)
-                    .font(.system(size: 8, weight: .medium))
+                    .font(ToskaFont.sans(8, weight: .medium))
                     .foregroundColor(tagColor(for: tag).opacity(0.6))
                     .padding(.bottom, 8)
             }
 
             if !saveError.isEmpty {
                 Text(saveError)
-                    .font(.system(size: 10))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaErrorRed)
                     .padding(.bottom, 4)
             }
@@ -67,7 +67,7 @@ struct AnniversaryCardView: View {
                         Image(systemName: "arrow.turn.down.right")
                             .font(.system(size: 8))
                         Text("how you feel now")
-                            .font(.system(size: 9, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                     }
                     .foregroundColor(Color.toskaAccentGold.opacity(0.6))
                     .padding(.top, 4)
@@ -84,7 +84,7 @@ struct AnniversaryCardView: View {
                         .frame(height: 0.5)
 
                     Text("how do you feel about this now?")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(ToskaFont.sans(11, weight: .medium))
                         .foregroundColor(Color.toskaAccentGold.opacity(0.7))
                         .padding(.top, 4)
 
@@ -108,7 +108,7 @@ struct AnniversaryCardView: View {
                                         .font(.system(size: 10))
                                 }
                                 Text("save")
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(ToskaFont.sans(11, weight: .medium))
                             }
                             .foregroundColor(.white)
                             .padding(.horizontal, 14)
@@ -133,7 +133,7 @@ struct AnniversaryCardView: View {
                         Image(systemName: "pencil.line")
                             .font(.system(size: 10))
                         Text("how do you feel about this now?")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                     }
                     .foregroundColor(Color.toskaAccentGold)
                     .padding(.top, 4)

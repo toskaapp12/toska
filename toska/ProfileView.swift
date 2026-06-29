@@ -326,7 +326,7 @@ struct ProfileView: View {
                 showPost = true
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrowshape.turn.up.left").font(.system(size: 8))
                     Text("replying to \(reply.parentHandle)").font(ToskaFont.sans(11, weight: .medium))
@@ -410,11 +410,11 @@ struct ProfileView: View {
         }
     
     func emptyState(icon: String = "tray", title: String, subtitle: String) -> some View {
-            VStack(spacing: 14) {
+            VStack(spacing: 16) {
                 Image(systemName: icon)
                     .font(.system(size: 28, weight: .ultraLight))
                     .foregroundColor(Color.toskaBlue.opacity(0.4))
-                    .padding(.bottom, 2)
+                    .padding(.bottom, 4)
                 Text(title)
                     .font(ToskaFont.serifItalic(18))
                     .foregroundColor(Color.toskaTextLight)
@@ -1024,19 +1024,19 @@ struct ProfileView: View {
                                                 .fixedSize(horizontal: false, vertical: true)
 
                                             // Joined date (Twitter-style) — calendar + month/year.
-                                            HStack(spacing: 5) {
+                                            HStack(spacing: 4) {
                                                 Image(systemName: "calendar")
                                                     .font(.system(size: 11, weight: .medium))
                                                 Text("joined \(joinedDate.lowercased())")
                                                     .font(ToskaFont.sans(12, weight: .regular))
                                             }
                                             .foregroundColor(ToskaColor.text3)
-                                            .padding(.top, 2)
+                                            .padding(.top, 4)
 
                                             // Following / followers stats — both tappable to
                                             // their lists (the user asked for the Twitter-style
                                             // row). Count bold in the text color, label muted.
-                                            HStack(spacing: 18) {
+                                            HStack(spacing: 16) {
                                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
                                                     HStack(spacing: 4) {
                                                         Text("\(followingCount)")
@@ -1062,8 +1062,8 @@ struct ProfileView: View {
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, 16)
-                                        .padding(.top, 6)
-                                        .padding(.bottom, 18)
+                                        .padding(.top, 8)
+                                        .padding(.bottom, 16)
             .padding(.bottom, 4)
     }
 
@@ -1073,7 +1073,7 @@ struct ProfileView: View {
                                                 Button {
                                                     withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
                                                 } label: {
-                                                    VStack(spacing: 9) {
+                                                    VStack(spacing: 8) {
                                                         Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
                                                             .font(.system(size: 18, weight: selectedTab == index ? .medium : .regular))
                                                             // Purple accent on the active profile tab (icon +
@@ -1084,7 +1084,7 @@ struct ProfileView: View {
                                                             .frame(width: 26, height: 2)
                                                     }
                                                     .frame(maxWidth: .infinity)
-                                                    .padding(.top, 13)
+                                                    .padding(.top, 12)
                                                 }
                                                 .accessibilityLabel(tabAccessibilityLabels[index])
                                             }
@@ -1096,7 +1096,7 @@ struct ProfileView: View {
                                         )
                                         // Breathing room between the tab underline/divider
                                         // and the first content card below it.
-                                        .padding(.bottom, 10)
+                                        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -1255,13 +1255,13 @@ struct ReplyEngagementRow: View {
     let text: String
     let time: Date
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left")
                 .font(.system(size: 11, weight: .light))
                 .foregroundColor(Color.toskaBlue.opacity(0.7))
-                .padding(.top, 2)
+                .padding(.top, 4)
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(handle)
                         .font(ToskaFont.sans(11, weight: .semibold))
                         .foregroundColor(Color.toskaBlue)
@@ -1282,7 +1282,7 @@ struct ReplyEngagementRow: View {
                 Text("tap to read in thread")
                     .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaDivider)
-                    .padding(.top, 2)
+                    .padding(.top, 4)
             }
         }
         .padding(.horizontal, 16)
@@ -1381,7 +1381,7 @@ struct FollowListView: View {
                         Text(err)
                             .font(ToskaFont.sans(12, weight: .medium))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .padding(.horizontal, 16).padding(.vertical, 8)
                             .background(Color.black.opacity(0.85))
                             .cornerRadius(10)
                             .padding(.bottom, 32)
@@ -1550,8 +1550,8 @@ private struct FollowRow: View {
                     Text("following")
                         .font(ToskaFont.sans(11, weight: .medium))
                         .foregroundColor(Color(hex: "888888"))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                         .background(
                             Capsule().stroke(Color.toskaDividerHairline, lineWidth: 0.5)
                         )
@@ -1564,7 +1564,7 @@ private struct FollowRow: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
         .contentShape(Rectangle())
         .onTapGesture { onTap() }
     }
@@ -1608,7 +1608,7 @@ struct EditReplyView: View {
                     Spacer()
                     Button { attemptSave() } label: {
                         Text("save").font(ToskaFont.sans(13, weight: .semibold)).foregroundColor(.white)
-                            .padding(.horizontal, 14).padding(.vertical, 7)
+                            .padding(.horizontal, 16).padding(.vertical, 8)
                             .background(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving ? Color.toskaDivider : Color.toskaBlue)
                             .cornerRadius(16)
                     }
@@ -1630,12 +1630,12 @@ struct EditReplyView: View {
                     if replyText.isEmpty {
                         Text("say what you feel...")
                             .font(ToskaFont.serif(16)).foregroundColor(Color(hex: "c0c3ca"))
-                            .padding(.horizontal, 18).padding(.top, 16)
+                            .padding(.horizontal, 16).padding(.top, 16)
                     }
                     TextEditor(text: $replyText)
                         .font(ToskaFont.serif(16)).foregroundColor(Color(hex: "1a1a1a"))
                         .lineSpacing(4).scrollContentBackground(.hidden)
-                        .padding(.horizontal, 14).padding(.top, 8)
+                        .padding(.horizontal, 16).padding(.top, 8)
                         .onChange(of: replyText) { _, newValue in
                             // Truncate on UTF-16 length to match the Firestore rule's
                             // size() check (mirrors ComposeView) so heavy-emoji edits
@@ -1760,7 +1760,7 @@ struct PendingReviewBanner: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isCrisis ? "heart.fill" : "eye.slash.fill")
                 .font(.system(size: 10))
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("under review — visible only to you")
                     .font(ToskaFont.sans(11, weight: .semibold))
                 if let label = reasonLabel {
@@ -1772,11 +1772,11 @@ struct PendingReviewBanner: View {
                     Text("if you're struggling, you're not alone — support is here:")
                         .font(ToskaFont.sans(11))
                         .opacity(0.9)
-                        .padding(.top, 3)
+                        .padding(.top, 4)
                     ForEach(CrisisLines.resources.prefix(2), id: \.url) { res in
                         if let url = URL(string: res.url) {
                             Link(destination: url) {
-                                HStack(spacing: 5) {
+                                HStack(spacing: 4) {
                                     Image(systemName: res.icon).font(.system(size: 10))
                                     Text(res.label).font(ToskaFont.sans(11, weight: .semibold)).underline()
                                 }

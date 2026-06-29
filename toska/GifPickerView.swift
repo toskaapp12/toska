@@ -32,7 +32,7 @@ struct GifPickerView: View {
                 .accessibilityLabel("close GIF picker")
                 Spacer()
                 Text("GIFs")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(ToskaFont.sans(13, weight: .semibold))
                     .foregroundColor(Color.toskaTextDark)
                 Spacer()
                 // Spacer placeholder to keep "GIFs" centered. Hidden from
@@ -100,7 +100,7 @@ struct GifPickerView: View {
                         .font(.system(size: 20, weight: .light))
                         .foregroundColor(Color.toskaDivider)
                     Text(fetchError ?? "no GIFs found")
-                        .font(.system(size: 13))
+                        .font(ToskaFont.sans(13))
                         .foregroundColor(Color.toskaTextLight)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
@@ -109,7 +109,7 @@ struct GifPickerView: View {
                             fetchTrending()
                         } label: {
                             Text("retry")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(ToskaFont.sans(12, weight: .medium))
                                 .foregroundColor(Color.toskaBlue)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 6)
@@ -165,7 +165,7 @@ struct GifPickerView: View {
             HStack {
                 Spacer()
                 Text("Powered by GIPHY")
-                    .font(.system(size: 9))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaPlaceholderGray)
                 Spacer()
             }

@@ -387,15 +387,20 @@ struct FeedView: View {
                         .navigationBarHidden(true)
                     }
                 }
-        .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { notif in
+            // Refresh the feed so the just-created content lands in real time
+            // (a composed post OR a repost). Re-baseline the new-posts banner so
+            // it doesn't pop "1 new post" for the user's own content either way.
             vm.handleNewPostCreated()
-            // The local user just created a post — auto-scroll to top so
-            // they see it land, and resync the new-posts baseline so the
-            // banner doesn't pop "1 new post" referring to their own
-            // freshly-published content.
-            NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
             newPostsBadgeCount = 0
             previousPostCount = -1 // re-baseline on next .onChange tick
+            // Only auto-scroll to the top for a freshly COMPOSED post (so they
+            // watch it land). A repost must NOT yank the feed to the top — it
+            // updates in place and the user keeps their scroll position.
+            let isRepost = (notif.userInfo?["isRepost"] as? Bool) ?? false
+            if !isRepost {
+                NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
+            }
         }
         // Drop the cached daily-prompt response card the moment the user
         // deletes that post via PostDetailView. Without this, the response

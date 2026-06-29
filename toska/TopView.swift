@@ -393,10 +393,12 @@ struct TopPeriodColumn: View {
                     .foregroundColor(ToskaColor.accent)
 
                 Text(post.text)
-                    .font(ToskaFont.serif(24))
+                    .font(ToskaFont.serif(20))
                     .foregroundColor(ToskaColor.text)
                     .lineSpacing(4)
                     .multilineTextAlignment(.leading)
+                    .lineLimit(6)
+                    .minimumScaleFactor(0.6)
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(alignment: .center) {

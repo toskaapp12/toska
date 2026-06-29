@@ -61,7 +61,7 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Root tab — no back chevron.
@@ -282,7 +282,7 @@ struct NotificationsView: View {
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 8)
-        .background(LateNightTheme.background)
+        .background(LateNightTheme.feedBackground)
     }
 
     // MARK: - Row

@@ -88,7 +88,7 @@ struct ProfileView: View {
     
     var body: some View {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 // Profile root tab — large bold handle as the title via
@@ -382,7 +382,7 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(LateNightTheme.background)
+            .background(LateNightTheme.feedBackground)
             .overlay(Rectangle().fill(LateNightTheme.divider).frame(height: 0.5), alignment: .bottom)
         }
         .buttonStyle(.plain)
@@ -1358,7 +1358,7 @@ struct FollowListView: View {
         // Inner-stack would nest and break .navigationDestination(item:)
         // for the row-tap → OtherProfileView push below.
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 ToskaHeader(title: title, onBack: { dismiss() })
                     if isLoading {
@@ -1626,7 +1626,7 @@ struct EditReplyView: View {
 
     var body: some View {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {

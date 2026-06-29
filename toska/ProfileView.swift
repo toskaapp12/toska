@@ -241,6 +241,35 @@ struct ProfileView: View {
                     showSettings = false
                     showEditReply = false
                 }
+        // Keep the profile tabs in sync when the user likes / saves / reposts
+        // ANYWHERE (e.g. in the feed) — without this, the Liked / Saved / Reposts
+        // tabs stayed on their first-loaded snapshot and only updated on a manual
+        // pull-to-refresh. The interaction notification fires optimistically
+        // (before the Firestore transaction commits), so we re-fetch the affected
+        // source a beat later to avoid racing the reverse-index write. Only tabs
+        // already loaded are refreshed; unopened tabs fetch fresh on first view.
+        .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
+            guard let action = notif.userInfo?["action"] as? String else { return }
+            let affected: Int       // which loaded-tab's data this touches
+            switch action {
+            case "like":   affected = 1            // Liked tab
+            case "save":   affected = 2            // Saved tab
+            case "repost": affected = 0            // reposts live in myPosts (Posts + Reposts tabs)
+            default: return
+            }
+            guard loadedTabs.contains(affected) else { return }
+            let uid = Auth.auth().currentUser?.uid
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                guard Auth.auth().currentUser?.uid == uid else { return }
+                switch affected {
+                case 0: loadMyPosts()
+                case 1: loadLikedPosts(); loadLikedReplies()
+                case 2: loadSavedPosts(); loadSavedReplies()
+                default: break
+                }
+            }
+        }
     }
     
     func ensurePresenceThenLoadStreak() {

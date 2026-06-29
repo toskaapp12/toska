@@ -225,7 +225,7 @@ struct FeedView: View {
             // Left-aligned text tabs (2026 mockup): "for you" / "following" grouped
             // at the leading edge with a short underline under the active one — not
             // spread across the full width.
-            HStack(spacing: 26) {
+            HStack(spacing: ToskaSpace.xl) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
                     let isSel = vm.selectedTab == index
                     Button {
@@ -743,7 +743,7 @@ struct FeedPostRow: View, Equatable {
                             Text(text)
                                                             .font(ToskaFont.postBody)
                                                             .foregroundColor(ToskaColor.text)
-                                                            .lineSpacing(4)
+                                                            .lineSpacing(ToskaLineSpacing.body)
                                                             .lineLimit(3)
                             
                             Button {
@@ -775,7 +775,7 @@ struct FeedPostRow: View, Equatable {
                                                             .foregroundColor(ToskaColor.text)
                                                             // Comfortable journal-like line height — the post
                                                             // text is the focus, so give it room to breathe.
-                                                            .lineSpacing(6)
+                                                            .lineSpacing(ToskaLineSpacing.body)
                                                             .multilineTextAlignment(.leading)
                         }
                         .padding(.bottom, 8)
@@ -817,9 +817,9 @@ struct FeedPostRow: View, Equatable {
                                     if !postId.isEmpty {
                                         // reply/repost/like grouped tight on the left,
                                         // bookmark/share pushed right (2026 mockup) — the
-                                        // 26pt HStack spacing handles the left group; one
-                                        // flexible Spacer before bookmark splits the row.
-                                        HStack(spacing: 26) {
+                                        // Even action spacing on the grid; one flexible
+                                        // Spacer before bookmark splits the row.
+                                        HStack(spacing: ToskaSpace.xl) {
                                             // reply
                                             NavigationLink {
                                                 PostDetailView(
@@ -848,7 +848,7 @@ struct FeedPostRow: View, Equatable {
                                             Button { repostPost() } label: {
                                                 actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "3E9B72")
                                             }
-                                            .accessibilityLabel(isReposted ? "Already reposted" : "Repost")
+                                            .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
                                             .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
                                             .buttonStyle(ToskaTapStyle())
                                             .disabled(isRepostPost)
@@ -906,7 +906,7 @@ struct FeedPostRow: View, Equatable {
                                         // reply/repost/heart on the left, bookmark/share
                                         // pushed to the trailing edge (2026 mockup).
                                         .frame(maxWidth: .infinity)
-                                        .padding(.top, 10)
+                                        .padding(.top, ToskaSpace.sm)
                                     }
                                 }
                                             // Span the full width so the whole card is one
@@ -951,9 +951,8 @@ struct FeedPostRow: View, Equatable {
                         Button {
                             repostPost()
                         } label: {
-                            Label(isReposted ? "reposted" : "repost", systemImage: "arrow.2.squarepath")
+                            Label(isReposted ? "undo repost" : "repost", systemImage: isReposted ? "arrow.2.squarepath.circle" : "arrow.2.squarepath")
                         }
-                        .disabled(isReposted)
                     }
 
                     if isShareable && !isLetter && !isWhisperPost {
@@ -1114,10 +1113,25 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Repost
         
         func repostPost() {
-            guard !isReposted, !isRepostPost else { return }
+            // Can't repost a repost itself.
+            guard !isRepostPost else { return }
             // C-3: arm the suppression window so the feed listener echo doesn't
             // clobber the optimistic count (mirrors toggleLike).
             suppressRepostListenerUntil = Date().addingTimeInterval(2.0)
+
+            // Toggle: if already reposted, UNDO it (delete the repost doc).
+            if isReposted {
+                PostInteractionManager.unrepost(
+                    postId: postId,
+                    currentCount: localRepostCount
+                ) { result in
+                    isReposted = result.isReposted
+                    localRepostCount = result.newCount
+                    suppressRepostListenerUntil = Date().addingTimeInterval(1.5)
+                }
+                return
+            }
+
             PostInteractionManager.repost(
                 postId: postId,
                 postText: text,
@@ -1208,7 +1222,7 @@ struct FeedHeaderCard: View {
                 // serif-italic prompt, and a purple "respond" pill. Soft plum-tinted
                 // fill, rounded — the daily prompt is the app's hook, so it reads as
                 // a distinct accent card rather than plain text on the page.
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: ToskaSpace.md) {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkle")
                             .font(.system(size: 12, weight: .semibold))
@@ -1222,7 +1236,7 @@ struct FeedHeaderCard: View {
                     Text(vm.todaysPrompt.0)
                         .font(ToskaFont.serifItalic(18))
                         .foregroundColor(ToskaColor.text)
-                        .lineSpacing(4)
+                        .lineSpacing(ToskaLineSpacing.body)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -1232,25 +1246,25 @@ struct FeedHeaderCard: View {
                             HapticManager.play(.compose)
                         } label: {
                             Text("respond")
-                                .font(ToskaFont.sans(15, weight: .semibold))
+                                .font(ToskaFont.button())
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 22)
-                                .padding(.vertical, 11)
+                                .padding(.horizontal, ToskaSpace.xl)
+                                .padding(.vertical, ToskaSpace.sm)
                                 .background(ToskaColor.accent)
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .padding(.top, 2)
+                        .padding(.top, ToskaSpace.xxs)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(18)
+                .padding(ToskaSpace.lg)
                 .background(
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(ToskaColor.accent.opacity(LateNightTheme.isLateNight ? 0.16 : 0.10))
                 )
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
+                .padding(.horizontal, ToskaSpace.md)
+                .padding(.top, ToskaSpace.md)
                 .padding(.bottom, 8)
 
                 // ALWAYS-visible "your response" card (not gated by isExpanded).

@@ -9,6 +9,7 @@ struct CreateAccountView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
+    @State private var showPassword = false
     @State private var errorMessage = ""
     @State private var isLoading = false
     @State private var assignedHandle = ""
@@ -135,25 +136,41 @@ struct CreateAccountView: View {
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
-                SecureField("••••••••", text: $password)
+                ZStack(alignment: .trailing) {
+                    Group {
+                        if showPassword {
+                            TextField("••••••••", text: $password)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        } else {
+                            SecureField("••••••••", text: $password)
+                        }
+                    }
                                     .font(ToskaFont.sans(13))
                                     .padding(11)
+                                    .padding(.trailing, 34)
                                     .background(Color.white)
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
                                             .stroke(Color.toskaBorderLight, lineWidth: 0.5)
                                     )
-                                    .padding(.bottom, 12)
                                     // `.newPassword` signals iOS to offer the Keychain-backed
                                     // strong-password suggestion and routes 3rd-party password
-                                    // managers through the right autofill path. `.oneTimeCode`
-                                    // (the previous value) is for SMS/email verification codes
-                                    // and breaks both — new accounts would get no autofill
-                                    // assistance at all.
+                                    // managers through the right autofill path.
                                     .textContentType(.newPassword)
                                     .accessibilityIdentifier("createPasswordField")
                                     .accessibilityLabel("new password")
+                    Button { showPassword.toggle() } label: {
+                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.toskaTextLight)
+                            .padding(.horizontal, 12)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                }
+                .padding(.bottom, 12)
                 
                 Text("CONFIRM PASSWORD")
                     .font(ToskaFont.sans(11, weight: .medium))
@@ -161,19 +178,38 @@ struct CreateAccountView: View {
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
-                SecureField("••••••••", text: $confirmPassword)
+                ZStack(alignment: .trailing) {
+                    Group {
+                        if showPassword {
+                            TextField("••••••••", text: $confirmPassword)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        } else {
+                            SecureField("••••••••", text: $confirmPassword)
+                        }
+                    }
                                     .font(ToskaFont.sans(13))
                                     .padding(11)
+                                    .padding(.trailing, 34)
                                     .background(Color.white)
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
                                             .stroke(Color.toskaBorderLight, lineWidth: 0.5)
                                     )
-                                    .padding(.bottom, 20)
                                     .textContentType(.newPassword)
                                     .accessibilityIdentifier("createConfirmPasswordField")
                                     .accessibilityLabel("confirm password")
+                    Button { showPassword.toggle() } label: {
+                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.toskaTextLight)
+                            .padding(.horizontal, 12)
+                            .frame(maxHeight: .infinity)
+                    }
+                    .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                }
+                .padding(.bottom, 20)
                 
                 if !errorMessage.isEmpty {
                     Text(errorMessage)

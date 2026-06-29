@@ -31,7 +31,7 @@ struct CreateAccountView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13))
                         Text("back")
-                            .font(.system(size: 13))
+                            .font(ToskaFont.sans(13))
                     }
                     .foregroundColor(Color.toskaBlue)
                 }
@@ -44,13 +44,13 @@ struct CreateAccountView: View {
                     .padding(.bottom, 4)
                 
                 Text("no names. no faces. not even theirs.")
-                    .font(.system(size: 11))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaTextLight)
                     .padding(.bottom, 16)
                 
                 VStack(alignment: .leading, spacing: 8) {
                                     Text("your anonymous handle")
-                                        .font(.system(size: 9, weight: .medium))
+                                        .font(ToskaFont.sans(11, weight: .medium))
                                         .foregroundColor(Color.toskaTextLight)
                                     
                                     HStack {
@@ -85,7 +85,7 @@ struct CreateAccountView: View {
                                                 Image(systemName: "arrow.triangle.2.circlepath")
                                                     .font(.system(size: 11))
                                                 Text("shuffle")
-                                                    .font(.system(size: 11, weight: .medium))
+                                                    .font(ToskaFont.sans(11, weight: .medium))
                                             }
                                             .foregroundColor(Color.toskaBlue)
                                             .padding(.horizontal, 10)
@@ -96,7 +96,7 @@ struct CreateAccountView: View {
                                     }
                                     
                                     Text("tap shuffle until you find one that feels right")
-                                        .font(.system(size: 9))
+                                        .font(ToskaFont.sans(11))
                                         .foregroundColor(Color.toskaTimestamp)
                                 }
                                 .padding(.bottom, 12)
@@ -107,13 +107,13 @@ struct CreateAccountView: View {
                     .padding(.bottom, 16)
                 
                 Text("EMAIL")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
                     .foregroundColor(Color.toskaTextLight)
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
                 TextField("your@email.com", text: $email)
-                    .font(.system(size: 13))
+                    .font(ToskaFont.sans(13))
                     .padding(11)
                     .background(Color.white)
                     .cornerRadius(10)
@@ -130,13 +130,13 @@ struct CreateAccountView: View {
                     .accessibilityLabel("email address")
                 
                 Text("PASSWORD")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
                     .foregroundColor(Color.toskaTextLight)
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
                 SecureField("••••••••", text: $password)
-                                    .font(.system(size: 13))
+                                    .font(ToskaFont.sans(13))
                                     .padding(11)
                                     .background(Color.white)
                                     .cornerRadius(10)
@@ -156,13 +156,13 @@ struct CreateAccountView: View {
                                     .accessibilityLabel("new password")
                 
                 Text("CONFIRM PASSWORD")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
                     .foregroundColor(Color.toskaTextLight)
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
                 SecureField("••••••••", text: $confirmPassword)
-                                    .font(.system(size: 13))
+                                    .font(ToskaFont.sans(13))
                                     .padding(11)
                                     .background(Color.white)
                                     .cornerRadius(10)
@@ -177,7 +177,7 @@ struct CreateAccountView: View {
                 
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
-                        .font(.system(size: 11))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(Color.toskaErrorRed)
                         .padding(.bottom, 10)
                 }
@@ -190,7 +190,7 @@ struct CreateAccountView: View {
                             ProgressView().tint(.white)
                         } else {
                             Text("create account")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(.white)
                         }
                     }
@@ -210,7 +210,7 @@ struct CreateAccountView: View {
                         dismiss()
                     } label: {
                         Text("already have an account? sign in")
-                            .font(.system(size: 11))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()

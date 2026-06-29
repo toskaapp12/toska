@@ -147,16 +147,16 @@ struct ExploreView: View {
                                                 if let count = breakupStageCounts[stage], count > 0 {
                                                     HStack(spacing: 4) {
                                                         Text(stage)
-                                                            .font(.system(size: 11, weight: .medium))
+                                                            .font(ToskaFont.sans(11, weight: .medium))
                                                         Text("·")
-                                                            .font(.system(size: 8))
+                                                            .font(ToskaFont.sans(8))
                                                             .foregroundColor(Color.toskaBlue.opacity(0.4))
                                                         Text("\(count)")
-                                                            .font(.system(size: 10))
+                                                            .font(ToskaFont.sans(11))
                                                     }
                                                     .foregroundColor(Color.toskaBlue)
-                                                    .padding(.horizontal, 10)
-                                                    .padding(.vertical, 6)
+                                                    .padding(.horizontal, 8)
+                                                    .padding(.vertical, 8)
                                                     .background(Color.toskaBlue.opacity(0.06))
                                                     .cornerRadius(16)
                                                 }
@@ -189,18 +189,18 @@ struct ExploreView: View {
                                                             Image(systemName: tag.icon)
                                                                 .font(.system(size: 10))
                                                             Text(tag.name)
-                                                                .font(.system(size: 11, weight: .medium))
+                                                                .font(ToskaFont.sans(11, weight: .medium))
                                                             if let count = tagCounts[tag.name], count > 0 {
                                                                 Text("·")
-                                                                    .font(.system(size: 8))
+                                                                    .font(ToskaFont.sans(8))
                                                                     .foregroundColor(Color(hex: tag.colorHex).opacity(0.4))
                                                                 Text("\(count)")
-                                                                    .font(.system(size: 10))
+                                                                    .font(ToskaFont.sans(11))
                                                             }
                                                         }
                                                         .foregroundColor(Color(hex: tag.colorHex))
-                                                        .padding(.horizontal, 10)
-                                                        .padding(.vertical, 6)
+                                                        .padding(.horizontal, 8)
+                                                        .padding(.vertical, 8)
                                                         .background(Color(hex: tag.colorHex).opacity(0.06))
                                                         .cornerRadius(16)
                                                     }
@@ -231,17 +231,17 @@ struct ExploreView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left").font(.system(size: 11))
-                                    Text("explore").font(.system(size: 11))
+                                    Text("explore").font(ToskaFont.sans(11))
                                 }.foregroundColor(Color.toskaBlue)
                             }
                             Spacer()
                             Text("results for \"\(searchText)\"")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(ToskaFont.sans(11, weight: .medium))
                                 .foregroundColor(Color.toskaTextLight)
                             Spacer()
-                            Text("explore").font(.system(size: 11)).foregroundColor(.clear)
+                            Text("explore").font(ToskaFont.sans(11)).foregroundColor(.clear)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                         
                         Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         
@@ -253,18 +253,18 @@ struct ExploreView: View {
                             Spacer()
                             VStack(spacing: 8) {
                                 Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .light)).foregroundColor(Color.toskaDivider)
-                                Text("nothing found").font(.system(size: 13)).foregroundColor(Color.toskaTextLight)
-                                                                                                Text("nobody said it here yet. maybe you should.").font(.system(size: 11)).foregroundColor(Color.toskaPlaceholderGray)
+                                Text("nothing found").font(ToskaFont.sans(13)).foregroundColor(Color.toskaTextLight)
+                                                                                                Text("nobody said it here yet. maybe you should.").font(ToskaFont.sans(11)).foregroundColor(Color.toskaPlaceholderGray)
                             }
                             Spacer()
                         } else {
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 0) {
-                                    VStack(alignment: .leading, spacing: 2) {
+                                    VStack(alignment: .leading, spacing: 4) {
                                         Text("searching recent posts")
-                                            .font(.system(size: 9, weight: .medium)).foregroundColor(Color.toskaTextLight)
+                                            .font(ToskaFont.sans(11, weight: .medium)).foregroundColor(Color.toskaTextLight)
                                     }
-                                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 8)
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 8)
                                     ForEach(Array(searchResults.enumerated()), id: \.element.id) { index, post in
                                         FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
                                     }
@@ -283,19 +283,19 @@ struct ExploreView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "chevron.left").font(.system(size: 11))
-                                    Text("explore").font(.system(size: 11))
+                                    Text("explore").font(ToskaFont.sans(11))
                                 }.foregroundColor(Color.toskaBlue)
                             }
                             Spacer()
-                            HStack(spacing: 5) {
+                            HStack(spacing: 4) {
                                 let tagData = tags.first(where: { $0.name == selected })
                                 Image(systemName: tagData?.icon ?? "tag").font(.system(size: 11)).foregroundColor(tagColor(for: selected))
-                                Text(selected).font(.system(size: 13, weight: .semibold)).foregroundColor(tagColor(for: selected))
+                                Text(selected).font(ToskaFont.sans(13, weight: .semibold)).foregroundColor(tagColor(for: selected))
                             }
                             Spacer()
-                            Text("explore").font(.system(size: 11)).foregroundColor(.clear)
+                            Text("explore").font(ToskaFont.sans(11)).foregroundColor(.clear)
                         }
-                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
                         
                         Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         
@@ -307,9 +307,9 @@ struct ExploreView: View {
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 0) {
                                     if !feelingPeople.isEmpty {
-                                        VStack(alignment: .leading, spacing: 10) {
+                                        VStack(alignment: .leading, spacing: 8) {
                                             Text("people feeling this too")
-                                                .font(.system(size: 10, weight: .semibold))
+                                                .font(ToskaFont.sans(11, weight: .semibold))
                                                 .foregroundColor(Color.toskaTextLight)
                                                 .tracking(0.3)
                                             
@@ -318,16 +318,16 @@ struct ExploreView: View {
                                             // soft "you're not alone" surface, just without a
                                             // direct-message affordance.
                                             ForEach(feelingPeople) { person in
-                                                HStack(spacing: 10) {
+                                                HStack(spacing: 8) {
                                                     Text(person.handle)
-                                                        .font(.system(size: 12, weight: .medium))
+                                                        .font(ToskaFont.sans(12, weight: .medium))
                                                         .foregroundColor(Color.toskaTextDark)
                                                     Spacer()
                                                 }
                                             }
                                         }
                                         .padding(.horizontal, 16)
-                                        .padding(.vertical, 14)
+                                        .padding(.vertical, 16)
                                         .background(Color.white)
                                         
                                         Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
@@ -340,16 +340,16 @@ struct ExploreView: View {
                                             if let tag = selectedTag { fetchPostsForTag(tag) }
                                         }
                                     } else if tagPosts.isEmpty {
-                                        VStack(spacing: 14) {
+                                        VStack(spacing: 16) {
                                             Image(systemName: "pencil.line")
                                                 .font(.system(size: 28, weight: .ultraLight))
                                                 .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                                .padding(.bottom, 2)
+                                                .padding(.bottom, 4)
                                             Text("nobody's said it yet")
                                                 .font(ToskaFont.serifItalic(18))
                                                 .foregroundColor(Color.toskaTextLight)
                                             Text("be the first.")
-                                                .font(.system(size: 11))
+                                                .font(ToskaFont.sans(11))
                                                 .foregroundColor(Color.toskaDivider)
                                         }.frame(maxWidth: .infinity).padding(.vertical, 60)
                                     } else {
@@ -380,7 +380,7 @@ struct ExploreView: View {
                                                                             }
                                                                             .padding(.vertical, 40)
                                                                         } else if trendingPosts.isEmpty {
-                                                                            VStack(spacing: 10) {
+                                                                            VStack(spacing: 8) {
                                                                                 Text("\"everyone's being\nquiet right now.\"")
                                                                                     .font(ToskaFont.serifItalic(18))
                                                                                     .foregroundColor(Color.toskaTimestamp)

@@ -31,7 +31,7 @@ struct SignInView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 13))
                         Text("back")
-                            .font(.system(size: 13))
+                            .font(ToskaFont.sans(13))
                     }
                     .foregroundColor(Color.toskaBlue)
                 }
@@ -44,18 +44,18 @@ struct SignInView: View {
                     .padding(.bottom, 4)
                 
                 Text("its still here when youre ready.")
-                    .font(.system(size: 11))
+                    .font(ToskaFont.sans(11))
                     .foregroundColor(Color.toskaTextLight)
                     .padding(.bottom, 24)
                 
                 Text("EMAIL")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
                     .foregroundColor(Color(hex: "bbbbbb"))
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
                 TextField("your@email.com", text: $email)
-                    .font(.system(size: 13))
+                    .font(ToskaFont.sans(13))
                     .padding(11)
                     .background(Color.white)
                     .cornerRadius(10)
@@ -72,13 +72,13 @@ struct SignInView: View {
                     .accessibilityLabel("email address")
                 
                 Text("PASSWORD")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(ToskaFont.sans(11, weight: .medium))
                     .foregroundColor(Color(hex: "bbbbbb"))
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
                 SecureField("••••••••", text: $password)
-                    .font(.system(size: 13))
+                    .font(ToskaFont.sans(13))
                     .padding(11)
                     .background(Color.white)
                     .cornerRadius(10)
@@ -103,7 +103,7 @@ struct SignInView: View {
                 
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
-                        .font(.system(size: 11))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.red)
                         .padding(.bottom, 10)
                 }
@@ -116,7 +116,7 @@ struct SignInView: View {
                             ProgressView().tint(.white)
                         } else {
                             Text("sign in")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(.white)
                         }
                     }
@@ -137,7 +137,7 @@ struct SignInView: View {
                         dismiss()
                     } label: {
                         Text("no account? create one")
-                            .font(.system(size: 11))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()

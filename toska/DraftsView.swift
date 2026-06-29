@@ -52,7 +52,7 @@ struct DraftsView: View {
                             .font(.custom("Georgia-Italic", size: 16))
                             .foregroundColor(LateNightTheme.secondaryText)
                         Text("write something, tap save instead of post.\nit stays here, just for you.")
-                            .font(.system(size: 11))
+                            .font(ToskaFont.sans(11))
                             .foregroundColor(LateNightTheme.tertiaryText)
                             .multilineTextAlignment(.center)
                             .lineSpacing(2)
@@ -72,7 +72,7 @@ struct DraftsView: View {
                                         .lineLimit(3)
                                         .multilineTextAlignment(.leading)
                                     Text(ToskaFormatters.fullDate.string(from: draft.createdAt).lowercased())
-                                        .font(.system(size: 11))
+                                        .font(ToskaFont.sans(11))
                                         .foregroundColor(LateNightTheme.tertiaryText)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)

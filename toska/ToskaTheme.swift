@@ -829,7 +829,7 @@ struct CrisisCheckInView: View {
                     .multilineTextAlignment(.center)
 
                 Text(subhead)
-                    .font(.system(size: 12))
+                    .font(ToskaFont.sans(12))
                     .foregroundColor(LateNightTheme.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
@@ -857,7 +857,7 @@ struct CrisisCheckInView: View {
                         isPresented = false
                     } label: {
                         Text(proceedLabel)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(ToskaFont.sans(13, weight: .medium))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -869,7 +869,7 @@ struct CrisisCheckInView: View {
                         isPresented = false
                     } label: {
                         Text("not now")
-                            .font(.system(size: 12))
+                            .font(ToskaFont.sans(12))
                             .foregroundColor(LateNightTheme.secondaryText)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
@@ -920,9 +920,9 @@ struct CrisisCheckInView: View {
                     .frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(label)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(ToskaFont.sans(13, weight: .medium))
                     Text(sublabel)
-                        .font(.system(size: 10))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(LateNightTheme.tertiaryText)
                 }
                 Spacer()
@@ -1085,7 +1085,7 @@ struct AgeGateView: View {
                 .foregroundColor(.white)
 
             Text("toska is for 17 and up.\nsome of what people share here is heavy.\nwe want to make sure youre ready for that.")
-                .font(.system(size: 13))
+                .font(ToskaFont.sans(13))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -1098,7 +1098,7 @@ struct AgeGateView: View {
                     onConfirmAdult()
                 } label: {
                     Text("i am 17 or older")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(ToskaFont.sans(13, weight: .medium))
                         .foregroundColor(Color.toskaNearBlack)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -1110,7 +1110,7 @@ struct AgeGateView: View {
                     showUnderageMessage = true
                 } label: {
                     Text("i'm not yet")
-                        .font(.system(size: 12))
+                        .font(ToskaFont.sans(12))
                         .foregroundColor(.white.opacity(0.4))
                         .padding(.vertical, 10)
                 }
@@ -1138,7 +1138,7 @@ struct AgeGateView: View {
             // resource. Pulled from CrisisLines so the right local number
             // shows regardless of where the user is.
             Text("toska gets heavy. we want you to have the right support around you.\n\nif youre going through something hard right now, please talk to a trusted adult, or reach out to \(CrisisLines.resources.first?.label ?? "a crisis line"). youre not alone.")
-                .font(.system(size: 13))
+                .font(ToskaFont.sans(13))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -1150,7 +1150,7 @@ struct AgeGateView: View {
                 onDecline()
             } label: {
                 Text("okay")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(ToskaFont.sans(13, weight: .medium))
                     .foregroundColor(.white.opacity(0.5))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -1205,7 +1205,7 @@ struct PolicyAcceptanceView: View {
                         .font(ToskaFont.serifItalic(22))
                         .foregroundColor(.white)
                     Text("version \(currentPolicyVersion) · last updated 2026")
-                        .font(.system(size: 10))
+                        .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.3))
                 }
                 .padding(.top, 20)
@@ -1216,7 +1216,7 @@ struct PolicyAcceptanceView: View {
                 // Scrollable body
                 ScrollView(showsIndicators: true) {
                     Text(toskaPolicyBody)
-                        .font(.system(size: 13))
+                        .font(ToskaFont.sans(13))
                         .foregroundColor(.white.opacity(0.75))
                         .lineSpacing(4)
                         .padding(20)
@@ -1239,7 +1239,7 @@ struct PolicyAcceptanceView: View {
                             onAccept()
                         } label: {
                             Text("done")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(Color.toskaNearBlack)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
@@ -1255,7 +1255,7 @@ struct PolicyAcceptanceView: View {
                                     .font(.system(size: 18))
                                     .foregroundColor(agreed ? Color.toskaBlue : .white.opacity(0.3))
                                 Text("i confirm i am 17 or older and i agree to the terms and content policy above.")
-                                    .font(.system(size: 12))
+                                    .font(ToskaFont.sans(12))
                                     .foregroundColor(.white.opacity(0.7))
                                     .multilineTextAlignment(.leading)
                                     .lineSpacing(2)
@@ -1268,7 +1268,7 @@ struct PolicyAcceptanceView: View {
                             if agreed { onAccept() }
                         } label: {
                             Text("i agree and continue")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(agreed ? Color.toskaNearBlack : .white.opacity(0.3))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
@@ -1281,7 +1281,7 @@ struct PolicyAcceptanceView: View {
                             onDecline()
                         } label: {
                             Text("i don't agree")
-                                .font(.system(size: 11))
+                                .font(ToskaFont.sans(11))
                                 .foregroundColor(.white.opacity(0.35))
                         }
                     }
@@ -1456,15 +1456,15 @@ struct ReportSheet: View {
                 HStack {
                     Button { dismiss() } label: {
                         Text("cancel")
-                            .font(.system(size: 13))
+                            .font(ToskaFont.sans(13))
                             .foregroundColor(Color.toskaBlue)
                     }
                     Spacer()
                     Text(headerTitle)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(ToskaFont.sans(13, weight: .semibold))
                         .foregroundColor(.white)
                     Spacer()
-                    Text("cancel").font(.system(size: 13)).foregroundColor(.clear)
+                    Text("cancel").font(ToskaFont.sans(13)).foregroundColor(.clear)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
@@ -1498,7 +1498,7 @@ struct ReportSheet: View {
     private var reasonList: some View {
         VStack(spacing: 0) {
             Text("why are you reporting this?")
-                .font(.system(size: 12))
+                .font(ToskaFont.sans(12))
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.top, 14)
                 .padding(.bottom, 8)
@@ -1514,7 +1514,7 @@ struct ReportSheet: View {
                                     .font(.system(size: 16))
                                     .foregroundColor(selectedReason == reason ? Color.toskaBlue : .white.opacity(0.25))
                                 Text(reason.rawValue)
-                                    .font(.system(size: 14))
+                                    .font(ToskaFont.sans(13))
                                     .foregroundColor(.white.opacity(0.85))
                                 Spacer()
                             }
@@ -1537,7 +1537,7 @@ struct ReportSheet: View {
                         ProgressView().tint(.white)
                     } else {
                         Text("submit report")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(ToskaFont.sans(13, weight: .medium))
                             .foregroundColor(selectedReason != nil ? Color.toskaNearBlack : .white.opacity(0.3))
                     }
                 }
@@ -1551,7 +1551,7 @@ struct ReportSheet: View {
             .padding(.bottom, 20)
 
             Text("reports are reviewed within 24 hours.")
-                .font(.system(size: 10))
+                .font(ToskaFont.sans(11))
                 .foregroundColor(.white.opacity(0.3))
                 .padding(.bottom, 20)
         }
@@ -1567,7 +1567,7 @@ struct ReportSheet: View {
                 .font(ToskaFont.serifItalic(18))
                 .foregroundColor(.white)
             Text("our team reviews every report within 24 hours.")
-                .font(.system(size: 11))
+                .font(ToskaFont.sans(11))
                 .foregroundColor(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -1578,7 +1578,7 @@ struct ReportSheet: View {
                     showBlockOption = true
                 } label: {
                     Text("also block this user?")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(ToskaFont.sans(13, weight: .medium))
                         .foregroundColor(Color.toskaBlue)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -1592,7 +1592,7 @@ struct ReportSheet: View {
                 dismiss()
             } label: {
                 Text("done")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(ToskaFont.sans(13, weight: .medium))
                     .foregroundColor(Color.toskaNearBlack)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -1614,7 +1614,7 @@ struct ReportSheet: View {
                 .font(ToskaFont.serifItalic(18))
                 .foregroundColor(.white)
             Text("you wont see their posts or replies. they wont be notified.")
-                .font(.system(size: 11))
+                .font(ToskaFont.sans(11))
                 .foregroundColor(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
@@ -1628,7 +1628,7 @@ struct ReportSheet: View {
                     dismiss()
                 } label: {
                     Text("yes, block them")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(ToskaFont.sans(13, weight: .medium))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 13)
@@ -1639,7 +1639,7 @@ struct ReportSheet: View {
                     dismiss()
                 } label: {
                     Text("no, just the report")
-                        .font(.system(size: 12))
+                        .font(ToskaFont.sans(12))
                         .foregroundColor(.white.opacity(0.4))
                         .padding(.vertical, 10)
                 }

@@ -466,10 +466,13 @@ class PostInteractionManager {
                                             message: ""
                                         )
                                     }
-                                    NotificationCenter.default.post(
-                                                                            name: .newPostCreated,
-                                                                            object: nil
-                                                                        )
+                                    // NOTE: intentionally NOT posting .newPostCreated here.
+                                    // That notification re-fetches the feed AND scrolls it to
+                                    // the top (it's for composing a brand-new post). A repost
+                                    // should be a quiet action — the button already flips green
+                                    // optimistically and the profile Reposts tab syncs via
+                                    // .postInteractionChanged — so the user keeps their place in
+                                    // the feed instead of being yanked to the top.
                                 }
                             })
                     }
@@ -840,7 +843,8 @@ class PostInteractionManager {
                     // notification surface for "your reply was reposted" is
                     // out-of-scope for v1.0 — falls through to the in-app
                     // count update on the parent post detail view next visit.
-                    NotificationCenter.default.post(name: .newPostCreated, object: nil)
+                    // NOT posting .newPostCreated — see repost(): a repost must not
+                    // re-fetch + scroll the feed to the top; it stays a quiet action.
                 }
             })
         }

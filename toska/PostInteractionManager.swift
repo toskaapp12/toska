@@ -466,13 +466,15 @@ class PostInteractionManager {
                                             message: ""
                                         )
                                     }
-                                    // NOTE: intentionally NOT posting .newPostCreated here.
-                                    // That notification re-fetches the feed AND scrolls it to
-                                    // the top (it's for composing a brand-new post). A repost
-                                    // should be a quiet action — the button already flips green
-                                    // optimistically and the profile Reposts tab syncs via
-                                    // .postInteractionChanged — so the user keeps their place in
-                                    // the feed instead of being yanked to the top.
+                                    // Refresh the feed so the repost shows up in real time —
+                                    // but flagged isRepost:true so FeedView updates IN PLACE and
+                                    // does NOT scroll to the top (that scroll is only for a
+                                    // freshly composed post).
+                                    NotificationCenter.default.post(
+                                        name: .newPostCreated,
+                                        object: nil,
+                                        userInfo: ["isRepost": true]
+                                    )
                                 }
                             })
                     }
@@ -843,8 +845,13 @@ class PostInteractionManager {
                     // notification surface for "your reply was reposted" is
                     // out-of-scope for v1.0 — falls through to the in-app
                     // count update on the parent post detail view next visit.
-                    // NOT posting .newPostCreated — see repost(): a repost must not
-                    // re-fetch + scroll the feed to the top; it stays a quiet action.
+                    // Refresh the feed in real time, flagged isRepost so it updates
+                    // in place without scrolling to the top (see repost()).
+                    NotificationCenter.default.post(
+                        name: .newPostCreated,
+                        object: nil,
+                        userInfo: ["isRepost": true]
+                    )
                 }
             })
         }

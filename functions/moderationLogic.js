@@ -266,15 +266,28 @@ const MOD_CONCERNING = [...MOD_CRISIS_EXPLICIT, ...MOD_CRISIS_SOFT];
 // Crisis posts are HELD for review (not deleted), so leaning toward
 // over-detection is the intended, safe direction.
 function matchesCrisisPhrase(rawText, list) {
-  const lowered = (rawText || "").toLowerCase();
-  const normalized = aggressiveNormalizeForNameMatch(rawText || "");
+  const raw = rawText || "";
+  const lowered = raw.toLowerCase();
+  const normalized = aggressiveNormalizeForNameMatch(raw);
   const noSpace = normalized.replace(/[^a-z0-9]/g, "");
+  // Ambiguous-digit expansion: aggressiveNormalizeForNameMatch's NAME_LEET_MAP
+  // folds "1" -> "i", but "1" is just as commonly an "l" ("ki11 myself" ->
+  // "kiii myself", which never matches "kill myself"). Test a SECOND
+  // normalization where "1" -> "l" so the L-position leet evasion can't slip a
+  // crisis/threat/harassment phrase past the hold and the crisis admin page.
+  // We keep both candidates (i-form catches "su1c1dal", l-form catches
+  // "ki11"), and over-detection is the accepted-safe direction for crisis.
+  const altNormalized = aggressiveNormalizeForNameMatch(raw.replace(/1/g, "l"));
+  const altNoSpace = altNormalized.replace(/[^a-z0-9]/g, "");
   return list.some((phrase) => {
-    if (lowered.includes(phrase) || normalized.includes(phrase)) return true;
+    if (lowered.includes(phrase) ||
+        normalized.includes(phrase) ||
+        altNormalized.includes(phrase)) return true;
     // Space/punct-insensitive fallback, length-guarded so short tokens
     // (e.g. "kms") don't false-positive against arbitrary letter runs.
     const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
-    return pNoSpace.length >= 6 && noSpace.includes(pNoSpace);
+    return pNoSpace.length >= 6 &&
+      (noSpace.includes(pNoSpace) || altNoSpace.includes(pNoSpace));
   });
 }
 

@@ -313,9 +313,17 @@ service cloud.firestore {
       // repeat-offender could drop the doc, which makes notRestricted() short-
       // circuit true on its `!exists` leg, then recreate + re-confirm adult and
       // post again — fully defeating the repeat-offender / admin restriction.
+      // G-2 (2026-06-30 re-review): the previous guard only blocked deletion
+      // while a TIME-BOUND restriction was active. Admin restrictions are
+      // persistent and deliberately leave `restrictedUntil` unset, so
+      // `.get('restrictedUntil', request.time) > request.time` defaulted to
+      // request.time > request.time == false and the whole guard collapsed to
+      // !(false) == true, ALLOWING the strongest sanction to be escaped. Deny
+      // client self-delete whenever restricted == true (both admin and system
+      // restrictions). The legit account-deletion flow never client-deletes
+      // this doc — the Admin-SDK cascade removes it server-side.
       allow delete: if isOwner(userId)
-        && !(resource.data.get('restricted', false) == true
-             && resource.data.get('restrictedUntil', request.time) > request.time);
+        && resource.data.get('restricted', false) != true;
 
       match /following/{followedId} {
         // Reads are owner-only — exposing the full follow graph to any

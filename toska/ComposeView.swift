@@ -108,6 +108,24 @@ struct ComposeView: View {
     var effectiveCharCount: Int { max(text.count, text.utf16.count) }
     var charRemaining: Int { activeCharLimit - effectiveCharCount }
     var isNearLimit: Bool { charRemaining < 50 }
+
+    // Toolbar mode summary shown on the right (2026 mockup): visibility · type.
+    var composeStatusText: String {
+        let visibility = isWhisper ? "whisper" : (expiresAtMidnight ? "midnight" : "public")
+        return isLetter ? "\(visibility) · letter" : visibility
+    }
+
+    // A single toolbar glyph: gray when off, accent-on-soft-purple when on
+    // (matches the selected envelope in the mockup). Replaces the old white-on-
+    // plum bar.
+    @ViewBuilder func composeGlyph(_ system: String, active: Bool) -> some View {
+        Image(systemName: system)
+            .font(.system(size: 16, weight: .regular))
+            .foregroundColor(active ? ToskaColor.accent : ToskaColor.text2)
+            .frame(width: 34, height: 34)
+            .background(active ? ToskaColor.accent.opacity(0.12) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 9))
+    }
     /// Disabled when offline so the user gets visible feedback instead of
     /// the silent Firestore-offline-queue behavior. The offline banner
     /// already explains the state; the inert button reinforces it.
@@ -165,14 +183,14 @@ struct ComposeView: View {
         // dismiss() inside GifPickerView pops the navigation stack.
         NavigationStack {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // MARK: - Top bar
                 HStack(spacing: 8) {
                     Button { dismiss() } label: {
                         Text("cancel")
-                            .font(ToskaFont.sans(13))
+                            .font(ToskaFont.sans(15))
                             .foregroundColor(LateNightTheme.secondaryText)
                     }
 
@@ -184,16 +202,9 @@ struct ComposeView: View {
                     // draft so the user knows whether they're creating
                     // a new entry or revising the open one.
                     Button { saveAsDraft() } label: {
-                        Text(editingDraftId == nil ? "save" : "update")
+                        Text(editingDraftId == nil ? "save draft" : "update")
                             .font(ToskaFont.sans(15, weight: .semibold))
-                            .foregroundColor(canSave ? ToskaColor.text : ToskaColor.text3)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color.clear)
-                            .overlay(
-                                Capsule().stroke(ToskaColor.divider, lineWidth: 1)
-                            )
-                            .clipShape(Capsule())
+                            .foregroundColor(canSave ? ToskaColor.accent : ToskaColor.text3)
                     }
                     .disabled(!canSave)
                     .accessibilityLabel(editingDraftId == nil ? "Save as draft" : "Update draft")
@@ -217,13 +228,11 @@ struct ComposeView: View {
                 // within easy reach without scrolling past the text editor).
                 Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
 
-                HStack(spacing: 20) {
+                HStack(spacing: 4) {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
                     } label: {
-                        Image(systemName: showTagPicker ? "tag.fill" : "tag")
-                            .font(.system(size: 16, weight: .light))
-                            .foregroundColor(showTagPicker ? .white : .white.opacity(0.75))
+                        composeGlyph("tag", active: showTagPicker || selectedTag != nil)
                     }
                     .accessibilityLabel("Tag")
 
@@ -234,15 +243,7 @@ struct ComposeView: View {
                         }
                         if isWhisper && !whisperHintSeen { whisperHintSeen = true; activeHint = .whisper }
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: isWhisper ? "eye.slash.fill" : "eye.slash")
-                                .font(.system(size: 13, weight: .light))
-                            if isWhisper {
-                                Text("1hr")
-                                    .font(ToskaFont.sans(11, weight: .medium))
-                            }
-                        }
-                        .foregroundColor(isWhisper ? .white : .white.opacity(0.75))
+                        composeGlyph(isWhisper ? "eye.fill" : "eye", active: isWhisper)
                     }
                     .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
 
@@ -253,15 +254,7 @@ struct ComposeView: View {
                         }
                         if expiresAtMidnight && !midnightHintSeen { midnightHintSeen = true; activeHint = .midnight }
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: expiresAtMidnight ? "moon.fill" : "moon")
-                                .font(.system(size: 13, weight: .light))
-                            if expiresAtMidnight {
-                                Text("midnight")
-                                    .font(ToskaFont.sans(11, weight: .medium))
-                            }
-                        }
-                        .foregroundColor(expiresAtMidnight ? .white : .white.opacity(0.75))
+                        composeGlyph(expiresAtMidnight ? "moon.fill" : "moon", active: expiresAtMidnight)
                     }
                     .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
 
@@ -269,56 +262,29 @@ struct ComposeView: View {
                         withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
                         if isLetter && !letterHintSeen { letterHintSeen = true; activeHint = .letter }
                     } label: {
-                        Image(systemName: isLetter ? "envelope.open.fill" : "envelope")
-                            .font(.system(size: 14, weight: .light))
-                            .foregroundColor(isLetter ? .white : .white.opacity(0.75))
+                        composeGlyph(isLetter ? "envelope.fill" : "envelope", active: isLetter)
                     }
                     .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
 
                     Button { showGifPicker = true } label: {
                         Text("GIF")
-                            .font(ToskaFont.sans(12, weight: .bold))
-                            .foregroundColor(selectedGifUrl != nil ? .white : .white.opacity(0.7))
+                            .font(ToskaFont.sans(13, weight: .bold))
+                            .foregroundColor(selectedGifUrl != nil ? ToskaColor.accent : ToskaColor.text2)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(selectedGifUrl != nil ? .white : .white.opacity(0.45), lineWidth: 1)
-                            )
+                            .padding(.vertical, 6)
                     }
                     .accessibilityLabel("Add GIF")
 
                     Spacer()
 
-                    if text.count > 0 {
-                        HStack(spacing: 8) {
-                            ZStack {
-                                Circle()
-                                    .stroke(Color.white.opacity(0.25), lineWidth: 2)
-                                    .frame(width: 24, height: 24)
-                                Circle()
-                                    .trim(from: 0, to: CGFloat(effectiveCharCount) / CGFloat(activeCharLimit))
-                                    .stroke(
-                                        isNearLimit ? Color.toskaErrorRed : Color.white,
-                                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                                    )
-                                    .frame(width: 24, height: 24)
-                                    .rotationEffect(.degrees(-90))
-                            }
-                            if isNearLimit {
-                                Text("\(charRemaining)")
-                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                    .foregroundColor(charRemaining < 0 ? Color(hex: "ffd1d1") : .white.opacity(0.85))
-                            }
-                        }
-                    }
+                    // Mode summary (matches the 2026 mockup): "public · letter",
+                    // "whisper", "midnight · letter", etc.
+                    Text(composeStatusText)
+                        .font(ToskaFont.sans(13))
+                        .foregroundColor(ToskaColor.text3)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                // Plum compose toolbar with white icons (active = full white,
-                // inactive = dimmed) — a branded accent bar between the header and
-                // the editor.
-                .background(ToskaColor.accent)
 
                 // Tag picker expansion now drops DOWN from the toolbar above
                 // (was originally pinned to the bottom toolbar with a
@@ -475,18 +441,19 @@ struct ComposeView: View {
                             HStack {
                                 Spacer()
                                 Text("\(activeCharLimit - text.utf16.count)")
-                                    .font(.system(size: 10, weight: .light, design: .monospaced))
+                                    .font(ToskaFont.sans(13))
                                     .foregroundColor(
                                         text.utf16.count >= activeCharLimit
                                             ? Color.toskaErrorRed
                                             : (activeCharLimit - text.utf16.count < 100
-                                                ? Color.toskaWhisperPink
-                                                : Color.toskaDivider)
+                                                ? Color.toskaAccentTan
+                                                : ToskaColor.text3)
                                     )
                                     .monospacedDigit()
                             }
                             .padding(.horizontal, 16)
-                            .padding(.top, 4)
+                            .padding(.top, 12)
+                            .allowsHitTesting(false)
                         }
 
                         // Selected GIF preview

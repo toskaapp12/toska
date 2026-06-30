@@ -555,9 +555,17 @@ class PostInteractionManager {
                 }
                 group.notify(queue: .main) {
                     RateLimiter.shared.markRepostComplete(postId)
-                    if let e = firstErr { rollback(e) }
-                    // else: success. Server repostCount decrement handled by
-                    // onRepostDeletedUpdateCount.
+                    if let e = firstErr { rollback(e); return }
+                    // Success. Server repostCount decrement handled by
+                    // onRepostDeletedUpdateCount — but it fires once PER deleted
+                    // doc. We optimistically decremented by exactly 1, so if more
+                    // than one repost doc matched (legacy random-id + the
+                    // deterministic id), the server drops by N while the UI
+                    // dropped by 1 — a permanent local over-count until a
+                    // listener refresh. Correct the count to match.
+                    if refs.count > 1 {
+                        onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - refs.count)))
+                    }
                 }
             }
     }
@@ -642,6 +650,15 @@ class PostInteractionManager {
             print("⚠️ toggleReplyLike — offline, skipping")
             return
         }
+        // Rate-limit + in-flight guard, mirroring toggleLike: without it, rapid
+        // taps on a reply heart fire N transactions and N CF counter updates and
+        // thrash the optimistic count. Keyed per-reply with a "reply_" prefix so
+        // it can't collide with the post-like keyspace.
+        let rlKey = "reply_\(replyId)"
+        if let last = RateLimiter.shared.lastLikeTime(for: rlKey), Date().timeIntervalSince(last) < 0.8 { return }
+        guard !RateLimiter.shared.isLikeInFlight(rlKey) else { return }
+        RateLimiter.shared.recordLike(for: rlKey)
+        RateLimiter.shared.markLikeInFlight(rlKey)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         let db = Firestore.firestore()
@@ -689,6 +706,7 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
+                RateLimiter.shared.markLikeComplete(rlKey)
                 if let error = error {
                     onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
                     print("⚠️ toggleReplyLike transaction failed: \(error)")

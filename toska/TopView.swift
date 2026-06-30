@@ -191,13 +191,34 @@ struct TopView: View {
         if !force && fetchedPeriods.contains(fetchPeriod) { onComplete?(); return }
         loadingPeriods.insert(fetchPeriod)
         let cutoff = fetchPeriod.cutoff
-        Firestore.firestore().collection("posts")
+        let base = Firestore.firestore().collection("posts")
             // moderationStatus filter required by firestore.rules
             // 2026-05-31 (see FeedViewModel.fetchPosts comment).
             .whereField("moderationStatus", isEqualTo: "live")
-            .whereField("createdAt", isGreaterThan: Timestamp(date: cutoff))
-            .order(by: "createdAt", descending: true)
-            .limit(to: 100)
+        let query: Query
+        if fetchPeriod == .all {
+            // All-time: rank by likes DIRECTLY. The windowed query below orders
+            // by createdAt DESC + limit 100, which for "all time" only ever
+            // ranks the 100 NEWEST posts — so a genuinely top historical post
+            // beyond the newest 100 could never reach the board. Drop the
+            // createdAt window (it spans all history anyway) and order by
+            // likeCount. Uses the moderationStatus ASC, likeCount DESC,
+            // createdAt DESC composite index (verified present).
+            query = base
+                .order(by: "likeCount", descending: true)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 100)
+        } else {
+            // today / this week: a createdAt inequality forces createdAt to be
+            // the first orderBy (Firestore constraint), so these stay
+            // recency-windowed and rank by likes client-side. Acceptable: the
+            // windows are short enough that the 100 newest cover the field.
+            query = base
+                .whereField("createdAt", isGreaterThan: Timestamp(date: cutoff))
+                .order(by: "createdAt", descending: true)
+                .limit(to: 100)
+        }
+        query
             .getDocuments { snapshot, error in
                 Task { @MainActor in
                     if let error = error {

@@ -1594,7 +1594,18 @@ struct PostDetailView: View {
         let db = Firestore.firestore()
         let currentReplyText = trimmed
         Task { @MainActor in
-            let replyHandle = UserHandleCache.shared.handle
+            // Resolve handle. The reply-create rule pins authorHandle to the
+            // user-doc handle, so a cold UserHandleCache ("anonymous" sentinel)
+            // would be REJECTED with a generic error during the launch / just-
+            // signed-in window. Fall back to the user doc — same fix the repost
+            // and ReplyDetailView paths use.
+            var replyHandle = UserHandleCache.shared.handle
+            if replyHandle == "anonymous" {
+                if let snap = try? await db.collection("users").document(uid).getDocumentAsync(),
+                   let h = snap.data()?["handle"] as? String, !h.isEmpty {
+                    replyHandle = h
+                }
+            }
             var replyData: [String: Any] = [
                 "authorId": uid, "authorHandle": replyHandle, "text": currentReplyText,
                 "likeCount": 0, "createdAt": FieldValue.serverTimestamp(),

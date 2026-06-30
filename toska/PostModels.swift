@@ -121,6 +121,15 @@ struct NotificationItem: Identifiable, Equatable {
     let createdAt: Date
     let postId: String
     let fromUserId: String
+    // Rich-row fields (2026 notifications redesign): the bold actor + the action
+    // phrase are shown separately; quote is the referenced post text (filled in
+    // after a batch fetch); replyText is the reply body shown in its own bubble;
+    // othersCount drives "X and N others felt this" grouping for likes.
+    var fromHandle: String = ""
+    var actionText: String = ""
+    var othersCount: Int = 0
+    var quote: String? = nil
+    var replyText: String? = nil
 }
 
 /// Used in ProfileView and OtherProfileView for reply tabs

@@ -136,41 +136,41 @@ struct CreateAccountView: View {
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
-                ZStack(alignment: .trailing) {
-                    Group {
-                        if showPassword {
-                            TextField("••••••••", text: $password)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        } else {
-                            SecureField("••••••••", text: $password)
-                        }
+                Group {
+                    if showPassword {
+                        TextField("••••••••", text: $password)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } else {
+                        SecureField("••••••••", text: $password)
                     }
+                }
                                     .font(ToskaFont.sans(13))
                                     .padding(11)
-                                    .padding(.trailing, 34)
+                                    .padding(.trailing, 38)
                                     .background(Color.white)
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
                                             .stroke(Color.toskaBorderLight, lineWidth: 0.5)
                                     )
+                                    .overlay(alignment: .trailing) {
+                                        Button { showPassword.toggle() } label: {
+                                            Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(Color.toskaTextLight)
+                                                .padding(.horizontal, 12)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                                    }
                                     // `.newPassword` signals iOS to offer the Keychain-backed
                                     // strong-password suggestion and routes 3rd-party password
                                     // managers through the right autofill path.
                                     .textContentType(.newPassword)
                                     .accessibilityIdentifier("createPasswordField")
                                     .accessibilityLabel("new password")
-                    Button { showPassword.toggle() } label: {
-                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.toskaTextLight)
-                            .padding(.horizontal, 12)
-                            .frame(maxHeight: .infinity)
-                    }
-                    .accessibilityLabel(showPassword ? "Hide password" : "Show password")
-                }
-                .padding(.bottom, 12)
+                                    .padding(.bottom, 12)
                 
                 Text("CONFIRM PASSWORD")
                     .font(ToskaFont.sans(11, weight: .medium))
@@ -178,38 +178,38 @@ struct CreateAccountView: View {
                     .tracking(1.2)
                     .padding(.bottom, 4)
                 
-                ZStack(alignment: .trailing) {
-                    Group {
-                        if showPassword {
-                            TextField("••••••••", text: $confirmPassword)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        } else {
-                            SecureField("••••••••", text: $confirmPassword)
-                        }
+                Group {
+                    if showPassword {
+                        TextField("••••••••", text: $confirmPassword)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } else {
+                        SecureField("••••••••", text: $confirmPassword)
                     }
+                }
                                     .font(ToskaFont.sans(13))
                                     .padding(11)
-                                    .padding(.trailing, 34)
+                                    .padding(.trailing, 38)
                                     .background(Color.white)
                                     .cornerRadius(10)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
                                             .stroke(Color.toskaBorderLight, lineWidth: 0.5)
                                     )
+                                    .overlay(alignment: .trailing) {
+                                        Button { showPassword.toggle() } label: {
+                                            Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                                .font(.system(size: 14))
+                                                .foregroundColor(Color.toskaTextLight)
+                                                .padding(.horizontal, 12)
+                                                .contentShape(Rectangle())
+                                        }
+                                        .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                                    }
                                     .textContentType(.newPassword)
                                     .accessibilityIdentifier("createConfirmPasswordField")
                                     .accessibilityLabel("confirm password")
-                    Button { showPassword.toggle() } label: {
-                        Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.toskaTextLight)
-                            .padding(.horizontal, 12)
-                            .frame(maxHeight: .infinity)
-                    }
-                    .accessibilityLabel(showPassword ? "Hide password" : "Show password")
-                }
-                .padding(.bottom, 20)
+                                    .padding(.bottom, 20)
                 
                 if !errorMessage.isEmpty {
                     Text(errorMessage)

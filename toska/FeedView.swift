@@ -1826,7 +1826,7 @@ struct FeedColumn: View {
                                                         .refreshable {
                                                             HapticManager.play(.tabSwitch)
                                                             let start = Date()
-                                                            vm.refreshAll()
+                                                            vm.refreshFeed()
                                                             // Hold the native spinner until the posts query actually
                                                             // finishes (tracked by isFetchingPosts) instead of a blind
                                                             // 1.2s timer — that timer left the spinner out of sync with

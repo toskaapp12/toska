@@ -503,6 +503,10 @@ class PostInteractionManager {
             print("⚠️ unrepost — offline, skipping")
             return
         }
+        // Serialize against a concurrent repost/unrepost on the same post so a
+        // double-tap can't fire two optimistic decrements (count drift).
+        guard !RateLimiter.shared.isRepostInFlight(postId) else { return }
+        RateLimiter.shared.markRepostInFlight(postId)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         // Optimistic: flip off + decrement, and broadcast so other surfaces match.
@@ -514,21 +518,48 @@ class PostInteractionManager {
         )
 
         let db = Firestore.firestore()
-        db.collection("posts").document("\(uid)_repost_\(postId)").delete { error in
+
+        func rollback(_ error: Error?) {
             Task { @MainActor in
-                if let error = error {
-                    print("⚠️ unrepost failed: \(error)")
-                    // Roll back the optimistic update.
-                    onUpdate(RepostResult(isReposted: true, newCount: currentCount))
-                    NotificationCenter.default.post(
-                        name: .postInteractionChanged,
-                        object: nil,
-                        userInfo: ["postId": postId, "action": "repost", "value": true]
-                    )
-                }
-                // Server-side repostCount decrement handled by onRepostDeletedUpdateCount.
+                RateLimiter.shared.markRepostComplete(postId)
+                print("⚠️ unrepost failed: \(String(describing: error))")
+                onUpdate(RepostResult(isReposted: true, newCount: currentCount))
+                NotificationCenter.default.post(
+                    name: .postInteractionChanged, object: nil,
+                    userInfo: ["postId": postId, "action": "repost", "value": true]
+                )
             }
         }
+
+        // Find the caller's actual repost doc by query rather than assuming the
+        // deterministic id — LEGACY reposts were created with random addDocument()
+        // ids, so deleting "{uid}_repost_{postId}" would no-op (Firestore returns
+        // success on a missing doc), leaving the repost in place + the count drifted
+        // and the row un-undoable. Query authorId+isRepost+originalPostId, delete
+        // whatever matches; fall back to the deterministic id only if none found.
+        db.collection("posts")
+            .whereField("authorId", isEqualTo: uid)
+            .whereField("isRepost", isEqualTo: true)
+            .whereField("originalPostId", isEqualTo: postId)
+            .getDocuments { snap, qErr in
+                if let qErr = qErr { rollback(qErr); return }
+                let docs = snap?.documents ?? []
+                let refs = docs.isEmpty
+                    ? [db.collection("posts").document("\(uid)_repost_\(postId)")]
+                    : docs.map { $0.reference }
+                let group = DispatchGroup()
+                var firstErr: Error?
+                for ref in refs {
+                    group.enter()
+                    ref.delete { e in if firstErr == nil { firstErr = e }; group.leave() }
+                }
+                group.notify(queue: .main) {
+                    RateLimiter.shared.markRepostComplete(postId)
+                    if let e = firstErr { rollback(e) }
+                    // else: success. Server repostCount decrement handled by
+                    // onRepostDeletedUpdateCount.
+                }
+            }
     }
 
     // MARK: - Notification
@@ -772,6 +803,12 @@ class PostInteractionManager {
             print("⚠️ repostReply — offline, skipping")
             return
         }
+        // Rate-limit on the reply id (mirrors repost()). Without this gate,
+        // repostReply fired an optimistic +1 on every tap, so a rapid double-tap
+        // stacked two increments while the server wrote once — inflating the
+        // reply's repost count by one until refresh.
+        if let last = RateLimiter.shared.lastRepostTime(for: replyId), Date().timeIntervalSince(last) < 2 { return }
+        RateLimiter.shared.recordRepost(for: replyId)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let db = Firestore.firestore()

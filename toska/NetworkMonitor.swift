@@ -101,6 +101,20 @@ class RateLimiter {
     func markLikeInFlight(_ postId: String) { inFlightLikes[postId] = Date() }
     func markLikeComplete(_ postId: String) { inFlightLikes[postId] = nil }
 
+    // Same in-flight pattern for repost/unrepost, keyed by the post (or reply) id.
+    // Because repost AND unrepost both check + mark this, they serialize against
+    // each other — a second tap (double-repost, double-unrepost, or a repost↔
+    // unrepost thrash) is dropped until the in-flight write completes, which is
+    // what otherwise drifted the visible repost count.
+    private var inFlightReposts: [String: Date] = [:]
+    func isRepostInFlight(_ id: String) -> Bool {
+        guard let startedAt = inFlightReposts[id] else { return false }
+        if Date().timeIntervalSince(startedAt) > Self.inFlightTimeout { inFlightReposts[id] = nil; return false }
+        return true
+    }
+    func markRepostInFlight(_ id: String) { inFlightReposts[id] = Date() }
+    func markRepostComplete(_ id: String) { inFlightReposts[id] = nil }
+
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
     func recordSave(for postId: String) {
         prune(&lastSaveByPost)

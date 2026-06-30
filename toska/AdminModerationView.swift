@@ -66,6 +66,10 @@ struct AdminModerationView: View {
     @State private var loading = true
     @State private var toast: String?
     @State private var confirm: ConfirmAction?
+    // Bumped on each loadAll(); a loader completion only applies if its captured
+    // token still matches — so a load from a tab you've since switched away from
+    // can't overwrite the current tab's list.
+    @State private var loadToken = 0
 
     private let db = Firestore.firestore()
     private var adminUid: String { Auth.auth().currentUser?.uid ?? "" }
@@ -81,6 +85,9 @@ struct AdminModerationView: View {
         .navigationBarHidden(true)
         .overlay(alignment: .bottom) { toastView }
         .onAppear { loadAll() }
+        // Reload when the queue changes — crisis/flagged/pending share `posts`, so
+        // without this, switching tabs showed the previous tab's data (or blank).
+        .onChange(of: queue) { _, _ in loadAll() }
         .confirmationDialog(confirm?.title ?? "", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
             if let c = confirm {
                 Button(c.label, role: .destructive) { c.run() }
@@ -221,6 +228,11 @@ struct AdminModerationView: View {
             HStack(spacing: ToskaSpace.xs) {
                 if queue == .pending {
                     actionButton("approve", .green) { approvePending(p.id) }
+                } else if queue == .crisis {
+                    // Acknowledge a crisis post without deleting/clearing it —
+                    // sets crisisReviewedAt so it drops out of the queue (and won't
+                    // reappear), matching the web's mark-reviewed.
+                    actionButton("reviewed", .green) { markCrisisReviewed(p.id) }
                 } else {
                     actionButton("unflag", .green) { unflag(p.id) }
                 }
@@ -320,6 +332,7 @@ struct AdminModerationView: View {
     // MARK: - Loading
 
     private func loadAll() {
+        loadToken += 1
         loading = true
         loadPosts()
         loadReports()
@@ -340,10 +353,16 @@ struct AdminModerationView: View {
     }
 
     private func loadPosts() {
-        guard queue == .crisis || queue == .flagged || queue == .pending else { loading = false; return }
+        guard queue == .crisis || queue == .flagged || queue == .pending else { return }
+        let token = loadToken
+        let q = queue
         postsQuery(queue).limit(to: 50).getDocuments { snap, _ in
             Task { @MainActor in
-                self.posts = (snap?.documents ?? []).map { d in
+                guard self.loadToken == token else { return }
+                // Crisis queue hides already-reviewed posts (parity with the web).
+                // Firestore can't query for an absent field, so filter client-side.
+                let docs = (snap?.documents ?? []).filter { q != .crisis || $0.data()["crisisReviewedAt"] == nil }
+                self.posts = docs.map { d in
                     let x = d.data()
                     return ModPost(
                         id: d.documentID,
@@ -365,8 +384,10 @@ struct AdminModerationView: View {
 
     private func loadReports() {
         guard queue == .reports else { return }
+        let token = loadToken
         db.collection("reports").whereField("status", isEqualTo: "pending").limit(to: 50).getDocuments { snap, _ in
             Task { @MainActor in
+                guard self.loadToken == token else { return }
                 self.reports = (snap?.documents ?? []).map { d in
                     let x = d.data()
                     return ModReport(
@@ -387,8 +408,10 @@ struct AdminModerationView: View {
 
     private func loadUsers() {
         guard queue == .restricted else { return }
+        let token = loadToken
         db.collection("users").whereField("restricted", isEqualTo: true).limit(to: 50).getDocuments { snap, _ in
             Task { @MainActor in
+                guard self.loadToken == token else { return }
                 self.users = (snap?.documents ?? []).map { d in
                     ModUser(id: d.documentID, handle: d.data()["handle"] as? String ?? "anonymous")
                 }
@@ -411,22 +434,49 @@ struct AdminModerationView: View {
 
     // MARK: - Actions (match docs/admin.html writes)
 
+    // All actions check the write error: the row is only removed + a success
+    // toast shown when the write actually lands. On failure the row stays and an
+    // error toast appears — otherwise a denied/offline write looked like success
+    // and the moderator believed harmful content was handled when it wasn't.
+
     private func approvePending(_ id: String) {
         db.collection("posts").document(id).updateData([
             "moderationStatus": "live", "pendingApprovedAt": FieldValue.serverTimestamp(), "pendingApprovedBy": adminUid
-        ]) { _ in Task { @MainActor in removePost(id); showToast("approved") } }
+        ]) { err in Task { @MainActor in
+            if let err = err { showToast("couldn't approve: \(err.localizedDescription)") }
+            else { removePost(id); showToast("approved") }
+        } }
+    }
+
+    private func markCrisisReviewed(_ id: String) {
+        db.collection("posts").document(id).updateData([
+            "crisisReviewedAt": FieldValue.serverTimestamp(), "crisisReviewedBy": adminUid
+        ]) { err in Task { @MainActor in
+            if let err = err { showToast("error: \(err.localizedDescription)") }
+            else { removePost(id); showToast("marked reviewed") }
+        } }
     }
 
     private func unflag(_ id: String) {
+        // Match the web: clear flags + flagReason, stamp the audit, AND restore a
+        // held post to live so clearing the flag actually returns it to the feed.
         db.collection("posts").document(id).updateData([
-            "flagged": false, "concerningContent": false
-        ]) { _ in Task { @MainActor in removePost(id); showToast("cleared") } }
+            "flagged": false, "concerningContent": false, "flagReason": FieldValue.delete(),
+            "moderationStatus": "live", "unflaggedBy": adminUid, "unflaggedAt": FieldValue.serverTimestamp()
+        ]) { err in Task { @MainActor in
+            if let err = err { showToast("couldn't clear: \(err.localizedDescription)") }
+            else { removePost(id); showToast("cleared") }
+        } }
     }
 
     private func deletePost(_ id: String) {
         let ref = db.collection("posts").document(id)
-        ref.updateData(["deletedBy": adminUid, "deletedAt": FieldValue.serverTimestamp()]) { _ in
-            ref.delete { _ in Task { @MainActor in removePost(id); showToast("deleted") } }
+        ref.updateData(["deletedBy": adminUid, "deletedAt": FieldValue.serverTimestamp()]) { err in
+            if let err = err { Task { @MainActor in self.showToast("couldn't delete: \(err.localizedDescription)") }; return }
+            ref.delete { err2 in Task { @MainActor in
+                if let err2 = err2 { self.showToast("couldn't delete: \(err2.localizedDescription)") }
+                else { self.removePost(id); self.showToast("deleted") }
+            } }
         }
     }
 
@@ -434,22 +484,30 @@ struct AdminModerationView: View {
         guard !uid.isEmpty else { return }
         db.collection("users").document(uid).updateData([
             "restricted": true, "restrictedAt": FieldValue.serverTimestamp(), "restrictedBy": adminUid
-        ]) { _ in Task { @MainActor in showToast("\(handle) restricted") } }
+        ]) { err in Task { @MainActor in
+            showToast(err == nil ? "\(handle) restricted" : "couldn't restrict: \(err!.localizedDescription)")
+        } }
     }
 
     private func dismissReport(_ id: String) {
         db.collection("reports").document(id).updateData([
             "status": "dismissed", "reviewedBy": adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "dismissed"
-        ]) { _ in Task { @MainActor in reports.removeAll { $0.id == id }; refreshCount(.reports); showToast("dismissed") } }
+        ]) { err in Task { @MainActor in
+            if let err = err { showToast("error: \(err.localizedDescription)") }
+            else { reports.removeAll { $0.id == id }; refreshCount(.reports); showToast("dismissed") }
+        } }
     }
 
     private func removeReportedPost(_ reportId: String, _ postId: String) {
         let pref = db.collection("posts").document(postId)
-        pref.updateData(["deletedBy": adminUid, "deletedAt": FieldValue.serverTimestamp()]) { _ in
-            pref.delete { _ in
-                db.collection("reports").document(reportId).updateData([
-                    "status": "resolved", "reviewedBy": adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "post_deleted"
-                ]) { _ in Task { @MainActor in reports.removeAll { $0.id == reportId }; refreshCount(.reports); showToast("post removed") } }
+        pref.updateData(["deletedBy": adminUid, "deletedAt": FieldValue.serverTimestamp()]) { err in
+            if let err = err { Task { @MainActor in self.showToast("couldn't remove: \(err.localizedDescription)") }; return }
+            pref.delete { err2 in
+                if let err2 = err2 { Task { @MainActor in self.showToast("couldn't remove: \(err2.localizedDescription)") }; return }
+                // Only mark the report resolved once the post is actually gone.
+                self.db.collection("reports").document(reportId).updateData([
+                    "status": "resolved", "reviewedBy": self.adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "post_deleted"
+                ]) { _ in Task { @MainActor in self.reports.removeAll { $0.id == reportId }; self.refreshCount(.reports); self.showToast("post removed") } }
             }
         }
     }
@@ -457,17 +515,22 @@ struct AdminModerationView: View {
     private func restrictFromReport(_ reportId: String, _ uid: String, _ handle: String) {
         db.collection("users").document(uid).updateData([
             "restricted": true, "restrictedAt": FieldValue.serverTimestamp(), "restrictedBy": adminUid
-        ]) { _ in
-            db.collection("reports").document(reportId).updateData([
-                "status": "resolved", "reviewedBy": adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "user_restricted"
-            ]) { _ in Task { @MainActor in reports.removeAll { $0.id == reportId }; refreshCount(.reports); showToast("\(handle) restricted") } }
+        ]) { err in
+            // Don't mark the report resolved if the restrict write failed.
+            if let err = err { Task { @MainActor in self.showToast("couldn't restrict: \(err.localizedDescription)") }; return }
+            self.db.collection("reports").document(reportId).updateData([
+                "status": "resolved", "reviewedBy": self.adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "user_restricted"
+            ]) { _ in Task { @MainActor in self.reports.removeAll { $0.id == reportId }; self.refreshCount(.reports); self.showToast("\(handle) restricted") } }
         }
     }
 
     private func unrestrictUser(_ uid: String) {
         db.collection("users").document(uid).updateData([
             "restricted": false, "restrictedAt": FieldValue.serverTimestamp(), "restrictedBy": adminUid
-        ]) { _ in Task { @MainActor in users.removeAll { $0.id == uid }; refreshCount(.restricted); showToast("un-restricted") } }
+        ]) { err in Task { @MainActor in
+            if let err = err { showToast("error: \(err.localizedDescription)") }
+            else { users.removeAll { $0.id == uid }; refreshCount(.restricted); showToast("un-restricted") }
+        } }
     }
 
     private func removePost(_ id: String) {

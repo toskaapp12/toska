@@ -373,6 +373,12 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
             feedVM.loadInitialData()
+            // Re-attach the unread badge listener for the (possibly NEW) account.
+            // MainTabView is the persistent shell — it isn't torn down on an
+            // account switch, so without this the badge kept reflecting the
+            // previous user until the next foreground bounce. startUnreadListener
+            // is idempotent (it removes any existing listener first).
+            startUnreadListener()
         }
         .onDisappear {
             unreadListener?.remove()

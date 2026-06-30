@@ -207,6 +207,12 @@ struct ContentView: View {
                 return
             }
             #endif
+            // Show the branded loading screen (not SplashView) while the
+            // post-sign-in user-doc verify round-trips. Without this, isLoading
+            // is false and isLoggedIn not yet true, so the root fell through to
+            // SplashView for a beat — the login screen flashed back before the
+            // feed appeared. Loading → feed reads as a single clean transition.
+            isLoading = true
             verifyUserDocument(uid: uid)
         }
         .onChange(of: scenePhase) { _, newPhase in

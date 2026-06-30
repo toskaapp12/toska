@@ -43,20 +43,65 @@ struct NotificationsView: View {
     // 50-item filters per redraw, which adds up while scrolling.
     @State private var todayNotifs: [NotificationItem] = []
     @State private var earlierNotifs: [NotificationItem] = []
+    // Referenced post text per postId, for the quoted line in each row.
+    @State private var postTexts: [String: String] = [:]
+    // all / mentions filter (mentions == replies to you).
+    @State private var notifTab = 0
+
+    // Tab filter: "all" shows everything; "mentions" shows only replies to you.
+    private var shownToday: [NotificationItem] {
+        notifTab == 0 ? todayNotifs : todayNotifs.filter { $0.type == "reply" }
+    }
+    private var shownEarlier: [NotificationItem] {
+        notifTab == 0 ? earlierNotifs : earlierNotifs.filter { $0.type == "reply" }
+    }
 
     private func recomputeNotificationGroups() {
-        let calendar = Calendar.current
-        var today: [NotificationItem] = []
-        var earlier: [NotificationItem] = []
-        for notif in notifications {
-            if calendar.isDateInToday(notif.createdAt) {
-                today.append(notif)
+        // 1) Fold multiple "likes" on the SAME post into one row
+        //    ("X and N others felt this"). Notifications arrive newest-first, so
+        //    the first like seen per post is the actor we show; the rest bump the
+        //    count. Every other type stays its own row.
+        var grouped: [NotificationItem] = []
+        var likeIndexByPost: [String: Int] = [:]
+        for n in notifications {
+            if n.type == "like", !n.postId.isEmpty, let idx = likeIndexByPost[n.postId] {
+                grouped[idx].othersCount += 1
             } else {
-                earlier.append(notif)
+                if n.type == "like", !n.postId.isEmpty { likeIndexByPost[n.postId] = grouped.count }
+                grouped.append(n)
             }
         }
-        todayNotifs = today
-        earlierNotifs = earlier
+        // 2) Attach the referenced post text (quote) from the batch fetch.
+        grouped = grouped.map { item in
+            guard item.quote == nil, !item.postId.isEmpty, let t = postTexts[item.postId] else { return item }
+            var x = item
+            x.quote = String(t.prefix(160)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return x
+        }
+        // 3) Bucket into new / earlier.
+        let calendar = Calendar.current
+        todayNotifs = grouped.filter { calendar.isDateInToday($0.createdAt) }
+        earlierNotifs = grouped.filter { !calendar.isDateInToday($0.createdAt) }
+    }
+
+    // Batch-fetch the text of every post referenced by a notification so each row
+    // can quote the moment it's about. Chunked by 30 (Firestore `in` cap);
+    // results cached in postTexts, then groups recompute to show the quotes.
+    private func fetchPostTexts() {
+        let ids = Array(Set(notifications.map { $0.postId }.filter { !$0.isEmpty && postTexts[$0] == nil }))
+        guard !ids.isEmpty else { return }
+        let db = Firestore.firestore()
+        let chunks = stride(from: 0, to: ids.count, by: 30).map { Array(ids[$0..<min($0 + 30, ids.count)]) }
+        for chunk in chunks {
+            db.collection("posts").whereField(FieldPath.documentID(), in: chunk).getDocuments { snap, _ in
+                Task { @MainActor in
+                    for doc in snap?.documents ?? [] {
+                        if let t = doc.data()["text"] as? String { postTexts[doc.documentID] = t }
+                    }
+                    recomputeNotificationGroups()
+                }
+            }
+        }
     }
 
     var body: some View {
@@ -64,8 +109,39 @@ struct NotificationsView: View {
             LateNightTheme.feedBackground.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Root tab — no back chevron.
-                ToskaHeader(title: "notifications")
+                // Root tab — no back chevron. "mark read" appears only when there's
+                // something unread to clear.
+                ToskaHeader(title: "notifications", onBack: nil) {
+                    if notifications.contains(where: { $0.isUnread }) {
+                        Button { markAllRemainingAsRead() } label: {
+                            Text("mark read")
+                                .font(ToskaFont.sans(14, weight: .semibold))
+                                .foregroundColor(ToskaColor.accent)
+                        }
+                    }
+                }
+
+                // all / mentions tabs (mentions = replies to you)
+                HStack(spacing: 24) {
+                    ForEach(0..<2, id: \.self) { i in
+                        Button { notifTab = i } label: {
+                            VStack(spacing: 6) {
+                                Text(["all", "mentions"][i])
+                                    .font(ToskaFont.sans(16, weight: notifTab == i ? .semibold : .regular))
+                                    .foregroundColor(notifTab == i ? ToskaColor.text : ToskaColor.text3)
+                                Rectangle()
+                                    .fill(notifTab == i ? ToskaColor.accent : Color.clear)
+                                    .frame(width: 22, height: 2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+                .background(LateNightTheme.feedBackground)
 
                 // MARK: - Content
                 //
@@ -119,9 +195,9 @@ struct NotificationsView: View {
                             .frame(maxWidth: .infinity, minHeight: geo.size.height)
                         } else {
                             LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                                if !todayNotifs.isEmpty {
+                                if !shownToday.isEmpty {
                                     Section {
-                                        ForEach(todayNotifs) { notif in
+                                        ForEach(shownToday) { notif in
                                             notifRow(notif)
                                         }
                                     } header: {
@@ -129,9 +205,9 @@ struct NotificationsView: View {
                                     }
                                 }
 
-                                if !earlierNotifs.isEmpty {
+                                if !shownEarlier.isEmpty {
                                     Section {
-                                        ForEach(earlierNotifs) { notif in
+                                        ForEach(shownEarlier) { notif in
                                             notifRow(notif)
                                         }
                                     } header: {
@@ -289,46 +365,76 @@ struct NotificationsView: View {
 
     func notifRow(_ notif: NotificationItem) -> some View {
             Button { handleNotifTap(notif) } label: {
-                HStack(spacing: 12) {
-                    // Type icon — larger and inside a soft tinted circle so
-                    // each notification class reads at a glance without
-                    // needing to parse the copy. Mirrors the bumped icon
-                    // sizing on the feed row's action bar (15pt → 17pt).
+                HStack(alignment: .top, spacing: 12) {
+                    // Type icon in a soft tinted circle (one color per class).
                     ZStack {
                         Circle()
-                            .fill(iconColor(for: notif.type).opacity(notif.isUnread ? 0.16 : 0.11))
-                            .frame(width: 34, height: 34)
+                            .fill(iconColor(for: notif.type).opacity(0.14))
+                            .frame(width: 38, height: 38)
                         Image(systemName: notif.icon)
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(iconColor(for: notif.type))
                     }
 
-                    // Text
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(notif.displayText)
-                            .font(ToskaFont.sans(13, weight: notif.isUnread ? .medium : .regular))
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Title: bold actor + (optional "and N others") + action phrase.
+                        (Text(notif.fromHandle.isEmpty ? "someone" : notif.fromHandle)
+                            .font(ToskaFont.sans(14, weight: .semibold))
                             .foregroundColor(ToskaColor.text)
+                         + Text(notif.othersCount > 0 ? " and \(notif.othersCount) others " : " ")
+                            .font(ToskaFont.sans(14))
+                            .foregroundColor(ToskaColor.text)
+                         + Text(notif.actionText)
+                            .font(ToskaFont.sans(14))
+                            .foregroundColor(ToskaColor.text2))
                             .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
+
+                        // The post this notification is about — quoted, serif, with
+                        // a left rule (filled in after the batch post-text fetch).
+                        if let q = notif.quote, !q.isEmpty {
+                            Text("\u{201C}\(q)\u{201D}")
+                                .font(ToskaFont.serifItalic(14))
+                                .foregroundColor(ToskaColor.text3)
+                                .lineSpacing(3)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+                                .padding(.leading, 10)
+                                .overlay(alignment: .leading) {
+                                    Rectangle().fill(ToskaColor.divider).frame(width: 2)
+                                }
+                        }
+
+                        // Reply body in its own soft bubble.
+                        if let r = notif.replyText, !r.isEmpty {
+                            Text(r)
+                                .font(ToskaFont.serif(14))
+                                .foregroundColor(ToskaColor.text)
+                                .lineSpacing(3)
+                                .lineLimit(3)
+                                .multilineTextAlignment(.leading)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 10))
+                        }
+
                         Text(notif.time)
                             .font(ToskaFont.sans(12))
                             .foregroundColor(notif.isUnread ? ToskaColor.accent : ToskaColor.time)
                     }
 
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                // Unread → accent left bar (per design); all rows get a hairline.
-                .overlay(alignment: .leading) {
+                    Spacer(minLength: 8)
+
                     if notif.isUnread {
-                        Rectangle()
-                            .fill(ToskaColor.accent)
-                            .frame(width: 2.5)
-                            .padding(.vertical, 16)
+                        Circle().fill(ToskaColor.accent).frame(width: 7, height: 7).padding(.top, 6)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(notif.isUnread ? ToskaColor.accent.opacity(0.045) : Color.clear)
                 .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 0.5), alignment: .bottom)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
@@ -530,21 +636,26 @@ struct NotificationsView: View {
                         let postId = data["postId"] as? String ?? ""
                         let fromUserId = data["fromUserId"] as? String ?? ""
 
-                        let displayText: String
+                        // Actor (bold) + action phrase shown separately in the row.
+                        var actor = fromHandle
+                        let action: String
+                        var replyBody: String? = nil
                         switch type {
-                        case "like": displayText = "\(fromHandle) felt this"
+                        case "like":   action = "felt this"
                         case "reply":
-                            let preview = String(message.prefix(80))
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            displayText = preview.isEmpty
-                                ? "\(fromHandle) replied to your post"
-                                : "\(fromHandle) replied: \u{201C}\(preview)\u{201D}"
-                        case "follow": displayText = "\(fromHandle) followed you"
-                        case "repost": displayText = "\(fromHandle) shared your words"
-                        case "save": displayText = "\(fromHandle) saved your post"
-                        case "milestone": displayText = message.isEmpty ? "your words reached people" : message
-                        default: displayText = message
+                            action = "replied to your moment"
+                            let preview = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                            replyBody = preview.isEmpty ? nil : preview
+                        case "follow":   action = "followed you"
+                        case "repost":   action = "shared your words"
+                        case "save":     action = "saved your post"
+                        case "milestone":
+                            actor = "your words"
+                            action = message.isEmpty ? "reached people who needed them"
+                                : message.replacingOccurrences(of: "your words ", with: "")
+                        default: action = message
                         }
+                        let displayText = "\(actor) \(action)"
 
                         return NotificationItem(
                             id: doc.documentID,
@@ -555,9 +666,17 @@ struct NotificationsView: View {
                             isUnread: !isRead,
                             createdAt: createdAt,
                             postId: postId,
-                            fromUserId: fromUserId
+                            fromUserId: fromUserId,
+                            fromHandle: actor,
+                            actionText: action,
+                            othersCount: 0,
+                            quote: nil,
+                            replyText: replyBody
                         )
                     }
+
+                    // Pull the referenced post texts so each row can quote the moment.
+                    fetchPostTexts()
 
                     // markAllRemainingAsRead sweeps every unread notification up to 500
                     // in one batch. We only want to schedule it once per visit — the

@@ -266,10 +266,11 @@ struct OtherProfileView: View {
                 return
             }
             hasFetchedInitial = true
-            checkIfBlocked()
-            loadProfile()
-            loadPosts()
-            loadReplies()
+            // Block enforcement is the gate: loadProfile/loadPosts/loadReplies
+            // run only AFTER we confirm neither side has blocked the other.
+            // (Previously they fired in parallel with the async check, so a
+            // blocked user's content could paint before dismiss() landed.)
+            loadIfNotBlocked()
             if !isOwnProfile { checkFollowing() }
         }
         .alert("user blocked", isPresented: $showBlockedAlert) {
@@ -301,16 +302,31 @@ struct OtherProfileView: View {
 
     // MARK: - Check Blocked
     
-    func checkIfBlocked() {
-            guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
+    func loadIfNotBlocked() {
+            // Own profile or unauthed: no block relationship to check — load directly.
+            guard let uid = Auth.auth().currentUser?.uid, uid != userId else {
+                loadProfile(); loadPosts(); loadReplies()
+                return
+            }
             let db = Firestore.firestore()
             Task { @MainActor in
-                let iBlockedSnap = try? await db.collection("users").document(uid)
-                    .collection("blocked").document(userId).getDocumentAsync()
-                if iBlockedSnap?.exists == true { dismiss(); return }
-                let theyBlockedSnap = try? await db.collection("users").document(userId)
-                    .collection("blocked").document(uid).getDocumentAsync()
-                if theyBlockedSnap?.exists == true { dismiss() }
+                do {
+                    let iBlockedSnap = try await db.collection("users").document(uid)
+                        .collection("blocked").document(userId).getDocumentAsync()
+                    if iBlockedSnap.exists { dismiss(); return }
+                    let theyBlockedSnap = try await db.collection("users").document(userId)
+                        .collection("blocked").document(uid).getDocumentAsync()
+                    if theyBlockedSnap.exists { dismiss(); return }
+                    // Confirmed not blocked in either direction — safe to render.
+                    loadProfile(); loadPosts(); loadReplies()
+                } catch {
+                    // Fail CLOSED. A block is a safety guarantee in an anonymous
+                    // app; if we can't determine block state (network/permission
+                    // error), do NOT render content that might belong to a
+                    // blocked user. Dismiss rather than fail open.
+                    print("⚠️ OtherProfileView block check failed, failing closed: \(error)")
+                    dismiss()
+                }
             }
         }
     

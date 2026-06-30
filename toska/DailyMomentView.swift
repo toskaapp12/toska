@@ -262,7 +262,15 @@ struct DailyMomentView: View {
                             let authorId = postData["authorId"] as? String ?? ""
                             return BlockedUsersCache.shared.isBlocked(authorId)
                         }()
-                        if isFlagged || isConcerning || isExpired || blockedAuthor {
+                        // Honor the author's sharing consent. This surface
+                        // renders the post into an exportable image card and
+                        // prompts "screenshot this. share it." — redistributing
+                        // a post whose author turned sharing OFF. The feed gates
+                        // its share button on `isShareable`; this surface must
+                        // too. Legacy posts predate the flag and default to
+                        // shareable (matches FeedView/ProfileView).
+                        let notShareable = (postData["isShareable"] as? Bool ?? true) == false
+                        if isFlagged || isConcerning || isExpired || blockedAuthor || notShareable {
                             setFallbackPost()
                         } else {
                             postText      = postData["text"]         as? String ?? ""
@@ -324,6 +332,9 @@ struct DailyMomentView: View {
                         if d["flagged"] as? Bool == true { return false }
                         if d["concerningContent"] as? Bool == true { return false }
                         if d["isRepost"] as? Bool == true { return false }
+                        // Skip posts the author opted out of sharing — this
+                        // surface exports the chosen post as a shareable image.
+                        if (d["isShareable"] as? Bool ?? true) == false { return false }
                         return true
                     }) else {
                         setFallbackPost()

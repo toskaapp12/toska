@@ -119,10 +119,21 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
     let noSpace = String(normalized.unicodeScalars.filter {
         CharacterSet.alphanumerics.contains($0)
     }).lowercased()
+    // Ambiguous-digit expansion: the leet map folds "1"→"i", but "1" is just as
+    // commonly an "l" ("ki11 myself" → "kiii myself" slips "kill myself"). Test
+    // a second normalization where "1"→"l" so the L-position evasion can't slip
+    // a crisis phrase past the compose-time check-in. Mirrors the server-side
+    // matchesCrisisPhrase fix; over-detection is the accepted-safe direction.
+    let altNormalized = aggressiveNormalizeForNameMatch(
+        text.replacingOccurrences(of: "1", with: "l"))
+    let altNoSpace = String(altNormalized.unicodeScalars.filter {
+        CharacterSet.alphanumerics.contains($0)
+    }).lowercased()
     for phrase in list {
-        if lowered.contains(phrase) || normalized.contains(phrase) { return true }
+        if lowered.contains(phrase) || normalized.contains(phrase)
+            || altNormalized.contains(phrase) { return true }
         let pNoSpace = phrase.filter { $0.isLetter || $0.isNumber }
-        if pNoSpace.count >= 6 && noSpace.contains(pNoSpace) { return true }
+        if pNoSpace.count >= 6 && (noSpace.contains(pNoSpace) || altNoSpace.contains(pNoSpace)) { return true }
     }
     return false
 }

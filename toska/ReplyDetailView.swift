@@ -344,6 +344,11 @@ struct ReplyDetailView: View {
             .collection("posts").document(postId).collection("replies")
             .whereField("moderationStatus", isEqualTo: "live")
             .order(by: "createdAt", descending: false)
+            // Bound the read like PostDetailView.fetchReplies (T-6): without a
+            // limit this listener reads every live reply under the post on each
+            // drill-in and rebuilds on every delta, with cost scaling to the
+            // whole thread even though only direct children are rendered.
+            .limit(to: 500)
             .addSnapshotListener { snapshot, error in
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }

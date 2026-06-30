@@ -574,12 +574,22 @@ struct NotificationsView: View {
 
     func markAllRemainingAsRead() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        markAllRemainingAsRead(pinnedUid: uid)
+    }
+
+    private func markAllRemainingAsRead(pinnedUid: String) {
+        // Pin the uid across the recursive sweep. The recursive continuation is
+        // a bare Task that the sign-out / onDisappear cancels don't reach, so if
+        // an account switch lands mid-sweep on a shared device, re-reading
+        // currentUser would mark the NEW user's notifications read (a
+        // cross-account write). Bail if the signed-in user changed.
+        guard Auth.auth().currentUser?.uid == pinnedUid else { return }
         let db = Firestore.firestore()
         // 400 keeps each batch under Firestore's 500-op limit. If a full page
         // comes back there may be more unread, so we keep sweeping until the
         // backlog is cleared — otherwise a user with >500 unread keeps the
         // badge visually zeroed (onAppear) while server isRead stays false.
-        db.collection("users").document(uid).collection("notifications")
+        db.collection("users").document(pinnedUid).collection("notifications")
             .whereField("isRead", isEqualTo: false)
             .limit(to: 400)
             .getDocuments { snapshot, _ in
@@ -596,7 +606,7 @@ struct NotificationsView: View {
                     // callback queue. Hop back to the main actor for the recursive
                     // sweep (matches the scheduled call site) — fixes the cross-
                     // actor call warning and the Swift 6 hard-error.
-                    if docs.count >= 400 { Task { @MainActor in self.markAllRemainingAsRead() } }
+                    if docs.count >= 400 { Task { @MainActor in self.markAllRemainingAsRead(pinnedUid: pinnedUid) } }
                 }
             }
     }

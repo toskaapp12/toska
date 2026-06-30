@@ -252,6 +252,13 @@ struct ContentView: View {
             // feed appeared. Loading → feed reads as a single clean transition.
             isLoading = true
             verifyUserDocument(uid: uid)
+            // Re-persist the FCM token for the now-signed-in user. The
+            // registration-token delegate only fires on token CHANGE, so a
+            // same-session account switch would otherwise leave this user's
+            // token unsaved and they'd receive no pushes until the next cold
+            // launch. Safe: guards on currentUser and only writes if a token
+            // exists, to the owner-only private/data doc.
+            PushNotificationManager.shared.refreshFCMToken()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {

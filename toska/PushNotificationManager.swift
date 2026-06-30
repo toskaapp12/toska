@@ -49,6 +49,25 @@ class PushNotificationManager: NSObject {
                 ], merge: true)
         }
 
+    /// Explicitly fetch + persist the current FCM token. The registration-token
+    /// delegate only fires when the token CHANGES, so on a same-session account
+    /// switch (User A signs out → token deleted + regenerated while currentUser
+    /// is nil, so saveFCMToken guards out → User B signs in but the token is now
+    /// unchanged and the delegate doesn't re-fire) User B's token is never
+    /// written and B gets no pushes for the whole session (self-heals only on
+    /// the next cold launch). Call this on sign-in to close that window.
+    func refreshFCMToken() {
+        guard Auth.auth().currentUser?.uid != nil else { return }
+        Messaging.messaging().token { [weak self] token, error in
+            if let error = error {
+                print("⚠️ refreshFCMToken fetch failed: \(error)")
+                return
+            }
+            guard let token = token else { return }
+            Task { @MainActor in self?.saveFCMToken(token) }
+        }
+    }
+
     func clearFCMToken() {
         // 1. Invalidate the token at the FCM service level first. This is
         //    the load-bearing step for cross-account safety on shared

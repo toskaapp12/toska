@@ -412,6 +412,13 @@ struct FeedView: View {
             if vm.todaysPromptResponse?.id == deletedId {
                 vm.todaysPromptResponse = nil
             }
+            // The anniversary card isn't part of the posts arrays, so removing it
+            // from those isn't enough — clear it explicitly when its own post is
+            // deleted, or the card lingers with deleted content until cold launch
+            // (pull-to-refresh's lean refreshFeed no longer re-fetches it).
+            if vm.anniversaryPost?.postId == deletedId {
+                vm.anniversaryPost = nil
+            }
             vm.posts.removeAll { $0.id == deletedId }
             vm.followingPosts.removeAll { $0.id == deletedId }
         }
@@ -1163,6 +1170,9 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Save
             
             func toggleSave() {
+                // Don't fire the confirm haptic when offline — the manager
+                // silently no-ops there, so the haptic was a false "saved" signal.
+                guard NetworkMonitor.shared.isConnected else { return }
                 HapticManager.play(.feltThis)
                 PostInteractionManager.toggleSave(
                     postId: postId,
@@ -1739,8 +1749,7 @@ struct FeedColumn: View {
                                                                                                                                                                                                                                                                                                 guard tab == 0,
                                                                                                                                                                                                                                                                                                       vm.hasMorePosts,
                                                                                                                                                                                                                                                                                                       !vm.isLoadingMore,
-                                                                                                                                                                                                                                                                                                      vm.posts.count >= 5,
-                                                                                                                                                                                                                                                                                                      post.id == vm.posts[vm.posts.count - 5].id else { return }
+                                                                                                                                                                                                                                                                                                      post.id == vm.posts.dropLast(4).last?.id else { return }
                                                                                                                                                                                                                                                                                                 vm.loadMorePosts()
                                                                                                                                                                                                                                                                                             }
                                                                                                                                                                                                                                                                                         }

@@ -63,11 +63,23 @@ struct NotificationsView: View {
         //    count. Every other type stays its own row.
         var grouped: [NotificationItem] = []
         var likeIndexByPost: [String: Int] = [:]
+        var actorsByPost: [String: Set<String>] = [:]   // dedupe the same actor across re-likes
         for n in notifications {
             if n.type == "like", !n.postId.isEmpty, let idx = likeIndexByPost[n.postId] {
-                grouped[idx].othersCount += 1
+                // Count a folded like only for a NEW actor (so an unlike→re-like by
+                // the same person doesn't read as two people), and keep the group
+                // unread if ANY of its members is unread.
+                let actor = n.fromUserId
+                if actor.isEmpty || actorsByPost[n.postId]?.contains(actor) != true {
+                    grouped[idx].othersCount += 1
+                    if !actor.isEmpty { actorsByPost[n.postId, default: []].insert(actor) }
+                }
+                if n.isUnread { grouped[idx].isUnread = true }
             } else {
-                if n.type == "like", !n.postId.isEmpty { likeIndexByPost[n.postId] = grouped.count }
+                if n.type == "like", !n.postId.isEmpty {
+                    likeIndexByPost[n.postId] = grouped.count
+                    if !n.fromUserId.isEmpty { actorsByPost[n.postId] = [n.fromUserId] }
+                }
                 grouped.append(n)
             }
         }
@@ -91,17 +103,22 @@ struct NotificationsView: View {
         let ids = Array(Set(notifications.map { $0.postId }.filter { !$0.isEmpty && postTexts[$0] == nil }))
         guard !ids.isEmpty else { return }
         let db = Firestore.firestore()
-        let chunks = stride(from: 0, to: ids.count, by: 30).map { Array(ids[$0..<min($0 + 30, ids.count)]) }
-        for chunk in chunks {
-            db.collection("posts").whereField(FieldPath.documentID(), in: chunk).getDocuments { snap, _ in
+        // Per-document fetch, NOT a whereField(documentID in [...]) batch: a single
+        // `in` query fails ENTIRELY (permission-denied) if any one of the ids is a
+        // moderation-held post by another author, which would silently drop quotes
+        // for the whole batch. Individual gets let a denied/missing post fail on its
+        // own without poisoning the rest. Recompute once when all have returned.
+        let group = DispatchGroup()
+        for id in ids {
+            group.enter()
+            db.collection("posts").document(id).getDocument { snap, _ in
                 Task { @MainActor in
-                    for doc in snap?.documents ?? [] {
-                        if let t = doc.data()["text"] as? String { postTexts[doc.documentID] = t }
-                    }
-                    recomputeNotificationGroups()
+                    if let t = snap?.data()?["text"] as? String { postTexts[id] = t }
+                    group.leave()
                 }
             }
         }
+        group.notify(queue: .main) { recomputeNotificationGroups() }
     }
 
     var body: some View {
@@ -169,19 +186,22 @@ struct NotificationsView: View {
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height)
-                        } else if notifications.isEmpty {
+                        } else if shownToday.isEmpty && shownEarlier.isEmpty {
+                            // Based on the FILTERED arrays, not `notifications` — so
+                            // the "mentions" tab with no replies shows an empty state
+                            // instead of a blank list.
                             VStack(spacing: 16) {
                                 Spacer()
-                                Image(systemName: "heart.text.square")
+                                Image(systemName: notifTab == 1 ? "bubble.left" : "heart.text.square")
                                     .font(.system(size: 30, weight: .ultraLight))
                                     .foregroundColor(Color.toskaBlue.opacity(0.4))
                                     .padding(.bottom, 4)
-                                Text("\"someone will feel\nwhat you wrote.\"")
+                                Text(notifTab == 1 ? "\"no replies yet.\"" : "\"someone will feel\nwhat you wrote.\"")
                                     .font(ToskaFont.serifItalic(20))
                                     .foregroundColor(Color.toskaTimestamp)
                                     .multilineTextAlignment(.center)
                                     .lineSpacing(4)
-                                Text(timeAwareNotifEmpty())
+                                Text(notifTab == 1 ? "when someone replies to your moments, it lands here" : timeAwareNotifEmpty())
                                     .font(ToskaFont.sans(11))
                                     .foregroundColor(Color.toskaDivider)
                                     .multilineTextAlignment(.center)
@@ -381,7 +401,7 @@ struct NotificationsView: View {
                         (Text(notif.fromHandle.isEmpty ? "someone" : notif.fromHandle)
                             .font(ToskaFont.sans(14, weight: .semibold))
                             .foregroundColor(ToskaColor.text)
-                         + Text(notif.othersCount > 0 ? " and \(notif.othersCount) others " : " ")
+                         + Text(notif.othersCount > 0 ? " and \(notif.othersCount) \(notif.othersCount == 1 ? "other" : "others") " : " ")
                             .font(ToskaFont.sans(14))
                             .foregroundColor(ToskaColor.text)
                          + Text(notif.actionText)

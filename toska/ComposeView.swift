@@ -131,6 +131,7 @@ struct ComposeView: View {
     /// already explains the state; the inert button reinforces it.
     var canPost: Bool {
         (!trimmedText.isEmpty || selectedGifUrl != nil)
+            && effectiveCharCount <= activeCharLimit   // block over-limit (e.g. toggling letter→normal with a long body) so it can't hit the server rule and fail
             && !isPosting
             && NetworkMonitor.shared.isConnected
             && !UserHandleCache.shared.isRestricted
@@ -748,7 +749,12 @@ struct ComposeView: View {
                     }
                     if selectedTag == nil, let tag = initialTag {
                         selectedTag = tag
-                    } else if selectedTag == nil, !draftTag.isEmpty {
+                    } else if selectedTag == nil, !draftTag.isEmpty, initialText.isEmpty {
+                        // Only restore the saved tag when this isn't an
+                        // initialText-seeded compose (e.g. a prompt response) —
+                        // otherwise a stale tag from an abandoned draft would
+                        // silently attach to an unrelated new post. Mirrors the
+                        // text-restore guard above.
                         selectedTag = draftTag
                     }
                     focusTask?.cancel()
@@ -767,6 +773,15 @@ struct ComposeView: View {
                     offlineMonitorTask = nil
                     focusTask?.cancel()
                     focusTask = nil
+                    // Flush any pending debounced draft write. A quick cancel/dismiss
+                    // within the 0.5s debounce window otherwise abandoned the pending
+                    // Task and dropped the last keystrokes. Idempotent with the
+                    // empty-clear on a successful post (draftText is "" by then).
+                    draftSaveTask?.cancel()
+                    draftSaveTask = nil
+                    if !draftText.isEmpty {
+                        DraftStore.set(draftText, forKey: UserDefaultsKeys.composeDraftText)
+                    }
                 }
         .navigationDestination(isPresented: $showGifPicker) {
             GifPickerView { url in
@@ -821,6 +836,10 @@ struct ComposeView: View {
 
     func attemptPost() {
         guard !isPosting else { return }
+        // Don't re-enter while a confirmation/warning dialog from a prior tap is
+        // still on screen — `isPosting` isn't set until postNow(), so a fast
+        // double-tap otherwise stacked duplicate dialogs through this gap.
+        guard !showContentWarning, !showNameWarning, !showGentleCheck else { return }
         guard (!trimmedText.isEmpty || selectedGifUrl != nil) else { return }
         guard NetworkMonitor.shared.isConnected else {
                     showOfflineWarning = true
@@ -918,7 +937,10 @@ struct ComposeView: View {
         isPosting = true
         postError = ""
         let db = Firestore.firestore()
-        let allowSharing = UserHandleCache.shared.allowSharing
+        // Letters and whispers are never shareable at display time (the share
+        // button is hidden for them in the feed), so store isShareable=false to
+        // match — otherwise the flag claimed shareable for a post that isn't.
+        let allowSharing = UserHandleCache.shared.allowSharing && !isLetter && !isWhisper
 
         Task { @MainActor in
             guard self.isPosting else { return }

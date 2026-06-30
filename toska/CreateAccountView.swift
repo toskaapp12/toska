@@ -10,6 +10,7 @@ struct CreateAccountView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var showPassword = false
+    @State private var showConfirmPassword = false   // independent of the password field's toggle
     @State private var errorMessage = ""
     @State private var isLoading = false
     @State private var assignedHandle = ""
@@ -179,7 +180,7 @@ struct CreateAccountView: View {
                     .padding(.bottom, 4)
                 
                 Group {
-                    if showPassword {
+                    if showConfirmPassword {
                         TextField("••••••••", text: $confirmPassword)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -197,14 +198,14 @@ struct CreateAccountView: View {
                                             .stroke(Color.toskaBorderLight, lineWidth: 0.5)
                                     )
                                     .overlay(alignment: .trailing) {
-                                        Button { showPassword.toggle() } label: {
-                                            Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                                        Button { showConfirmPassword.toggle() } label: {
+                                            Image(systemName: showConfirmPassword ? "eye.slash.fill" : "eye.fill")
                                                 .font(.system(size: 14))
                                                 .foregroundColor(Color.toskaTextLight)
                                                 .padding(.horizontal, 12)
                                                 .contentShape(Rectangle())
                                         }
-                                        .accessibilityLabel(showPassword ? "Hide password" : "Show password")
+                                        .accessibilityLabel(showConfirmPassword ? "Hide confirm password" : "Show confirm password")
                                     }
                                     .textContentType(.newPassword)
                                     .accessibilityIdentifier("createConfirmPasswordField")

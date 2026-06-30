@@ -119,17 +119,17 @@ struct SplashView: View {
                                     Image("GoogleG")
                                         .resizable()
                                         .scaledToFit()
-                                        .frame(width: 20, height: 20)
+                                        .frame(width: 18, height: 18)
                                 } else {
                                     Text("G")
-                                        .font(.system(size: 20, weight: .bold))
+                                        .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(Color(hex: "4285F4"))
                                 }
-                                // Match the native Sign in with Apple button's label
-                                // (system ~19pt medium) so both buttons read as the
-                                // same size, not just the same frame.
+                                // The native Sign in with Apple button renders its
+                                // label at ~17pt; match that (19 was too big, 15 too
+                                // small) so the two buttons read as the same size.
                                 Text("Sign in with Google")
-                                    .font(.system(size: 19, weight: .medium))
+                                    .font(.system(size: 17, weight: .medium))
                                     .foregroundColor(Color(hex: "3C4043"))
                             }
                         }

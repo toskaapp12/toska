@@ -55,7 +55,11 @@ class FeedViewModel: ObservableObject {
     var letterPostIds: Set<String> = []
     var whisperPostIds: Set<String> = []
     var repostPostIds: Set<String> = []
-    var expandedLetterIds: Set<String> = []
+    // @Published: tapping "read this letter..." inserts here, and the feed must
+    // re-render so the row expands. (As a plain var the insert changed no observed
+    // state, so nothing happened on tap.) FeedPostRow is .equatable(), so only the
+    // tapped letter re-renders, not the whole feed.
+    @Published var expandedLetterIds: Set<String> = []
 
     // MARK: - Featured Content
     var witnessPost: WitnessPostData? = nil
@@ -739,6 +743,20 @@ class FeedViewModel: ObservableObject {
                 fetchAnniversaryPost()
                 fetchTodaysPromptResponse()
             }
+
+    /// Lean pull-to-refresh: only the visible feed content + today's prompt
+    /// response. The like/save/repost state is already kept live by snapshot
+    /// listeners (no re-fetch needed), and the decorative extras (weather,
+    /// witness, daily-moment, anniversary) load once on appear via refreshAll().
+    /// Re-running all of those on every pull churned the header and burned reads,
+    /// which is what made the refresh feel unclean — this keeps it to the content
+    /// that actually changes.
+    func refreshFeed() {
+        fetchError = nil
+        fetchPosts()
+        fetchFollowingPosts()
+        fetchTodaysPromptResponse()
+    }
 
     // MARK: - Fetch User Interaction States
 

@@ -187,6 +187,17 @@ struct ContentView: View {
             // and does nothing) or inherit admin UI.
             showVerifyError = false
             AdminManager.shared.reset()
+            // Reset onboarding gate state. `onboardingComplete` is @State set
+            // true only when THIS process finished OnboardingView; if it isn't
+            // cleared, a brand-new Apple/Google signup on this shared device
+            // evaluates `showOnboarding && !onboardingComplete` to false and
+            // skips the age-gate + EULA that live inside OnboardingView — a
+            // child-safety / App Store gate bypass. Clear both flags so the
+            // next user gets a correct fresh decision (returning, already-
+            // onboarded users never get `.showOnboarding` posted, so they
+            // still skip it).
+            showOnboarding = false
+            onboardingComplete = false
             // Clear per-user device-local state so the next user signing in
             // doesn't see the previous user's leftovers. Analytics-opt-out
             // preference stays (it's a per-device choice). Push primer
@@ -209,6 +220,11 @@ struct ContentView: View {
             isLoading = false
             showVerifyError = false
             AdminManager.shared.reset()
+            // Same onboarding-gate reset as the explicit sign-out path above:
+            // a token-expiry logout must not leave `onboardingComplete` set, or
+            // the next signup on this device skips the age-gate + EULA.
+            showOnboarding = false
+            onboardingComplete = false
             // C-2 (2026-06-11): a token-expiry logout must also clear on-device
             // drafts, like the explicit sign-out path above — otherwise the prior
             // user's in-progress grief text survives on a shared device.

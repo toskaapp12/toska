@@ -130,7 +130,11 @@ struct ComposeView: View {
     /// the silent Firestore-offline-queue behavior. The offline banner
     /// already explains the state; the inert button reinforces it.
     var canPost: Bool {
-        (!trimmedText.isEmpty || selectedGifUrl != nil)
+        // Text is required. firestore.rules and the validatePost Cloud Function
+        // both enforce `text.size() > 0`, so a GIF-only post (empty body) is
+        // rejected server-side and would loop on the generic "couldnt post"
+        // error forever. The GIF is a supplement to text, not a standalone post.
+        !trimmedText.isEmpty
             && effectiveCharCount <= activeCharLimit   // block over-limit (e.g. toggling letter→normal with a long body) so it can't hit the server rule and fail
             && !isPosting
             && NetworkMonitor.shared.isConnected
@@ -840,7 +844,9 @@ struct ComposeView: View {
         // still on screen — `isPosting` isn't set until postNow(), so a fast
         // double-tap otherwise stacked duplicate dialogs through this gap.
         guard !showContentWarning, !showNameWarning, !showGentleCheck else { return }
-        guard (!trimmedText.isEmpty || selectedGifUrl != nil) else { return }
+        // Text is required (see canPost): a GIF-only post fails the server's
+        // text.size() > 0 rule. Guard here too so the path can't be reached.
+        guard !trimmedText.isEmpty else { return }
         guard NetworkMonitor.shared.isConnected else {
                     showOfflineWarning = true
                     offlineMonitorTask?.cancel()

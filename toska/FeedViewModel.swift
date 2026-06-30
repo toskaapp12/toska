@@ -1011,15 +1011,28 @@ class FeedViewModel: ObservableObject {
                 // the rule layer denies the entire list operation. Author can
                 // still see their own pending posts via ProfileView (which
                 // filters by authorId == self, so isOwner allows the read).
+                let capturedUid = Auth.auth().currentUser?.uid
                 guard let snapshot = try? await db.collection("posts")
                     .whereField("moderationStatus", isEqualTo: "live")
                     .order(by: "createdAt", descending: true)
                     .limit(to: 60)
                     .getDocumentsAsync() else {
+                    // Distinguish a real load failure (App Check rejection,
+                    // network blip, missing index) from a genuinely empty feed.
+                    // Without this, the failure collapses into the "its quiet
+                    // right now" empty state and the user's only recovery hint
+                    // is a pull-to-refresh. Surface the error banner + retry,
+                    // and DON'T clobber any posts we already had on screen.
                     self.hasLoadedOnce = true
-                    self.posts = []
+                    if self.posts.isEmpty {
+                        self.fetchError = "couldn't load the feed — pull to retry"
+                    }
                     return
                 }
+                // Guard against a sign-out that landed while this public-feed
+                // fetch was in flight — every other async fetch in this file
+                // re-verifies the uid before mutating @Published state.
+                guard Auth.auth().currentUser?.uid == capturedUid else { return }
                 self.fetchError = nil
                 let documents = snapshot.documents
                 print("✅ fetchPosts — got \(documents.count) docs from Firestore")

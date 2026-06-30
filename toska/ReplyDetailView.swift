@@ -383,7 +383,19 @@ struct ReplyDetailView: View {
                             newChildren.append(item)
                         }
                     }
-                    children = newChildren
+                    // Preserve my own just-sent reply that hasn't been promoted
+                    // to `live` yet. The listener only sees live replies, so a
+                    // snapshot delta triggered by ANOTHER user's reply would
+                    // otherwise wipe the optimistic child I just inserted in
+                    // sendReply() — making my reply appear to vanish. Once mine
+                    // goes live it shows up in newChildren (same id) and is no
+                    // longer "still pending", so there's no duplicate.
+                    let liveIds = Set(newChildren.map { $0.id })
+                    let myUid = Auth.auth().currentUser?.uid
+                    let stillPending = children.filter {
+                        $0.authorId == myUid && !liveIds.contains($0.id)
+                    }
+                    children = (newChildren + stillPending).sorted { $0.createdAt < $1.createdAt }
                     hasLoadedChildren = true
                 }
             }
@@ -395,6 +407,7 @@ struct ReplyDetailView: View {
         let trimmed = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !postId.isEmpty else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard !isPosting else { return }
         // T-8 (2026-06-11): restricted users can't reply (the reply-create rule
         // enforces notRestricted() server-side; this gives a clear message
         // instead of a generic Firestore failure, matching ComposeView/
@@ -403,39 +416,81 @@ struct ReplyDetailView: View {
             postError = "your account is restricted and can't reply right now."
             return
         }
-        let myHandle = UserHandleCache.shared.handle
         isPosting = true
         postError = nil
-        let replyData: [String: Any] = [
-            "authorId": uid,
-            "authorHandle": myHandle,
-            "text": trimmed,
-            "likeCount": 0,
-            "createdAt": FieldValue.serverTimestamp(),
-            "parentPostText": replyText,
-            "parentPostHandle": replyHandle,
-            "parentReplyId": reply.id,
-            // T-2 (2026-06-11): start hidden, mirroring posts/PostDetailView.
-            "moderationStatus": "pending_validation"
-        ]
-        Firestore.firestore().collection("posts").document(postId)
-            .collection("replies").addDocument(data: replyData) { err in
+        // Pre-generate the doc id so the optimistic child and the real write
+        // share an identity — when the reply is promoted to live the listener
+        // replaces the optimistic copy with the same-id server doc, no dupe.
+        let newDocRef = Firestore.firestore()
+            .collection("posts").document(postId)
+            .collection("replies").document()
+        Task { @MainActor in
+            // Resolve handle. The reply-create rule pins authorHandle to the
+            // user-doc handle, so a cold UserHandleCache ("anonymous" sentinel)
+            // would be REJECTED. Fall back to the user doc — same fix the repost
+            // paths use (PostInteractionManager.repost).
+            var myHandle = UserHandleCache.shared.handle
+            if myHandle == "anonymous" {
+                if let snap = try? await Firestore.firestore()
+                    .collection("users").document(uid).getDocumentAsync(),
+                   let h = snap.data()?["handle"] as? String, !h.isEmpty {
+                    myHandle = h
+                }
+            }
+            let now = Date()
+            // Optimistically show my reply immediately. The listener only shows
+            // `live` replies and mine starts as pending_validation, so without
+            // this the reply vanishes after send — the user assumes it failed
+            // and resends, producing duplicate replies.
+            let optimistic = ThreadedReply(
+                id: newDocRef.documentID,
+                handle: myHandle,
+                text: trimmed,
+                likes: 0,
+                time: FeedView.timeAgoString(from: now),
+                createdAt: now,
+                authorId: uid,
+                parentReplyId: reply.id,
+                children: [],
+                isLiked: false,
+                isSaved: false,
+                isReposted: false,
+                repostCount: 0
+            )
+            children.append(optimistic)
+            composerText = ""
+            composerFocused = false
+            HapticManager.play(.feltThis)
+
+            let replyData: [String: Any] = [
+                "authorId": uid,
+                "authorHandle": myHandle,
+                "text": trimmed,
+                "likeCount": 0,
+                "createdAt": FieldValue.serverTimestamp(),
+                "parentPostText": replyText,
+                "parentPostHandle": replyHandle,
+                "parentReplyId": reply.id,
+                // T-2 (2026-06-11): start hidden, mirroring posts/PostDetailView.
+                "moderationStatus": "pending_validation"
+            ]
+            newDocRef.setData(replyData) { err in
                 Task { @MainActor in
                     isPosting = false
                     if let err = err {
+                        // Roll back the optimistic insert and restore the text.
+                        children.removeAll { $0.id == newDocRef.documentID }
+                        composerText = trimmed
                         let nsErr = err as NSError
                         if nsErr.domain == "FIRFirestoreErrorDomain", nsErr.code == 7 {
                             postError = "still setting up your account — try again in a moment"
                         } else {
                             postError = "couldn't reply. try again."
                         }
-                    } else {
-                        composerText = ""
-                        composerFocused = false
-                        HapticManager.play(.feltThis)
                     }
                 }
             }
+        }
     }
 
     // MARK: - Like / Save (signatures pulled from PostInteractionManager)

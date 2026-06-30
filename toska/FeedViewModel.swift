@@ -756,6 +756,11 @@ class FeedViewModel: ObservableObject {
         fetchPosts()
         fetchFollowingPosts()
         fetchTodaysPromptResponse()
+        // The anniversary card is rendered + time-windowed + deletable, so it must
+        // re-fetch on pull (else a rolled-over window or a deleted-elsewhere
+        // anniversary stays stale until cold launch). The other decorative extras
+        // aren't surfaced in the current header, so they stay on the appear-load.
+        fetchAnniversaryPost()
     }
 
     // MARK: - Fetch User Interaction States
@@ -970,6 +975,9 @@ class FeedViewModel: ObservableObject {
         letterPostIds = letterPostIds.intersection(keepIds)
         repostPostIds = repostPostIds.intersection(keepIds)
         whisperPostIds = whisperPostIds.intersection(keepIds)
+        // Prune the expanded-letter set too — it's only ever inserted into, so
+        // without this it grew unbounded across a session and kept stale ids alive.
+        expandedLetterIds = expandedLetterIds.intersection(keepIds)
     }
 
     // MARK: - Fetch Posts

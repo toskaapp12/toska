@@ -54,6 +54,20 @@ struct ContentView: View {
                                     .cornerRadius(20)
                             }
                             .padding(.top, 4)
+
+                            // Escape hatch: a permission-denied / deterministic
+                            // failure won't self-heal on Retry, so always offer a
+                            // way back to the login screen instead of a dead-end.
+                            Button {
+                                showVerifyError = false
+                                try? Auth.auth().signOut()
+                                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                            } label: {
+                                Text("back to login")
+                                    .font(ToskaFont.sans(12))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            .padding(.top, 2)
                         }
                     } else {
                         VStack(spacing: 20) {
@@ -167,6 +181,12 @@ struct ContentView: View {
             verifyTask = nil
             isLoggedIn = false
             isLoading = false
+            // Reset the verify-error screen + admin gate so the NEXT user who
+            // signs in on this device doesn't land on the previous session's
+            // stranded "couldn't connect" screen (its Retry reads a now-nil user
+            // and does nothing) or inherit admin UI.
+            showVerifyError = false
+            AdminManager.shared.reset()
             // Clear per-user device-local state so the next user signing in
             // doesn't see the previous user's leftovers. Analytics-opt-out
             // preference stays (it's a per-device choice). Push primer
@@ -187,6 +207,8 @@ struct ContentView: View {
             verifyTask = nil
             isLoggedIn = false
             isLoading = false
+            showVerifyError = false
+            AdminManager.shared.reset()
             // C-2 (2026-06-11): a token-expiry logout must also clear on-device
             // drafts, like the explicit sign-out path above — otherwise the prior
             // user's in-progress grief text survives on a shared device.

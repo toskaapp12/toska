@@ -117,7 +117,7 @@ struct NotificationItem: Identifiable, Equatable {
     let displayText: String
     let type: String
     let time: String
-    let isUnread: Bool
+    var isUnread: Bool   // var: a folded like-group is unread if ANY member is
     let createdAt: Date
     let postId: String
     let fromUserId: String

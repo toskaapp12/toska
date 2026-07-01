@@ -261,6 +261,20 @@
       ]
     },
     {
+      "collectionGroup": "replies",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "concerningContent",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "concerningDetectedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "posts",
       "queryScope": "COLLECTION",
       "fields": [

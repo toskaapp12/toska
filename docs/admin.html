@@ -436,6 +436,8 @@
                 pendingReplies: query(collectionGroup(db, "replies"), where("moderationStatus", "==", "pending_review")),
                 flagged: query(collection(db, "posts"), where("flagged", "==", true)),
                 crisis: query(collection(db, "posts"), where("concerningContent", "==", true)),
+                // Concerning replies fold into the crisis badge below (not its own tab).
+                crisisReplies: query(collectionGroup(db, "replies"), where("concerningContent", "==", true)),
                 restricted: query(collection(db, "users"), where("restricted", "==", true)),
             };
         }
@@ -456,16 +458,24 @@
 
         async function refreshCounts() {
             const queries = countQueries();
+            const counts = {};
             await Promise.all(Object.entries(queries).map(async ([tab, q]) => {
                 try {
                     const snap = await getCountFromServer(q);
-                    setTabCount(tab, snap.data().count);
+                    counts[tab] = snap.data().count;
                 } catch (e) {
                     // A failed aggregation read (e.g. missing index) must never
                     // break the dashboard — just leave that badge hidden.
-                    setTabCount(tab, 0);
+                    counts[tab] = 0;
                 }
             }));
+            // The crisis tab surfaces concerning POSTS and concerning REPLIES, so
+            // its badge sums both; crisisReplies is not its own tab.
+            if ("crisisReplies" in counts) {
+                counts.crisis = (counts.crisis || 0) + counts.crisisReplies;
+                delete counts.crisisReplies;
+            }
+            Object.entries(counts).forEach(([tab, n]) => setTabCount(tab, n));
         }
 
         onAuthStateChanged(auth, async (user) => {
@@ -795,44 +805,101 @@
                     if (snap.docs.length < PAGE) break;          // last page
                     if (pagesScanned >= MAX_PAGES) moreRemain = true; // cap, not exhaustion
                 }
-                if (docs.length === 0) {
-                    emptyState(container, "no unreviewed crisis posts", "everything flagged has been reviewed");
+                // Concerning REPLIES: crisis language in a reply is tagged
+                // concerningContent (NOT hidden — a peer reach-out isn't
+                // censored) and pages an admin, but that FCM page is best-effort.
+                // Without this list a reply whose page didn't deliver was
+                // surfaced NOWHERE. Newest first, filter out already-reviewed
+                // (crisisReviewedAt present) exactly like the posts above. Index:
+                // replies(concerningContent, concerningDetectedAt DESC).
+                let replyDocs = [];
+                try {
+                    const rsnap = await getDocs(query(
+                        collectionGroup(db, "replies"),
+                        where("concerningContent", "==", true),
+                        orderBy("concerningDetectedAt", "desc"),
+                        limit(50)
+                    ));
+                    replyDocs = rsnap.docs.filter(d => !d.data().crisisReviewedAt);
+                } catch (e) {
+                    // Index still building / missing — don't break the posts list.
+                    console.warn("concerning-replies query failed:", e.message);
+                }
+
+                if (docs.length === 0 && replyDocs.length === 0) {
+                    emptyState(container, "no unreviewed crisis content", "everything flagged has been reviewed");
                     return;
                 }
                 container.replaceChildren();
-                container.appendChild(queueHeading("posts with concerning content"));
-                if (moreRemain) {
-                    const note = el("div", "card");
-                    note.style.borderColor = "#c45c5c";
-                    note.textContent = `showing ${docs.length} oldest-reachable unreviewed posts (scan cap hit — clear some and reload to reveal more).`;
-                    container.appendChild(note);
-                }
-                docs.forEach(d => {
-                    const p = d.data();
-                    const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
 
-                    const reviewedBtn = el("button", "btn-dismiss");
-                    reviewedBtn.textContent = "mark reviewed";
-                    reviewedBtn.addEventListener("click", () => markCrisisReviewed(d.id));
+                if (docs.length > 0) {
+                    container.appendChild(queueHeading("posts with concerning content"));
+                    if (moreRemain) {
+                        const note = el("div", "card");
+                        note.style.borderColor = "#c45c5c";
+                        note.textContent = `showing ${docs.length} oldest-reachable unreviewed posts (scan cap hit — clear some and reload to reveal more).`;
+                        container.appendChild(note);
+                    }
+                    docs.forEach(d => {
+                        const p = d.data();
+                        const time = p.createdAt?.toDate?.() ? timeAgo(p.createdAt.toDate()) : "unknown";
 
-                    const deleteBtn = el("button", "btn-remove");
-                    deleteBtn.textContent = "delete post";
-                    deleteBtn.addEventListener("click", () => deletePost(d.id));
+                        const reviewedBtn = el("button", "btn-dismiss");
+                        reviewedBtn.textContent = "mark reviewed";
+                        reviewedBtn.addEventListener("click", () => markCrisisReviewed(d.id));
 
-                    const card = renderCard({
-                        id: `crisis-${d.id}`,
-                        headerLeft: [span("flagged-label", "concerning content")],
-                        time,
-                        text: p.text || "",
-                        meta: [
-                            `by: ${p.authorHandle || "unknown"}`,
-                            `likes: ${p.likeCount || 0}`,
-                            `replies: ${p.replyCount || 0}`,
-                        ],
-                        actions: [reviewedBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                        const deleteBtn = el("button", "btn-remove");
+                        deleteBtn.textContent = "delete post";
+                        deleteBtn.addEventListener("click", () => deletePost(d.id));
+
+                        const card = renderCard({
+                            id: `crisis-${d.id}`,
+                            headerLeft: [span("flagged-label", "concerning content")],
+                            time,
+                            text: p.text || "",
+                            meta: [
+                                `by: ${p.authorHandle || "unknown"}`,
+                                `likes: ${p.likeCount || 0}`,
+                                `replies: ${p.replyCount || 0}`,
+                            ],
+                            actions: [reviewedBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                        });
+                        container.appendChild(card);
                     });
-                    container.appendChild(card);
-                });
+                }
+
+                if (replyDocs.length > 0) {
+                    container.appendChild(queueHeading("replies with concerning content"));
+                    replyDocs.forEach(d => {
+                        const r = d.data();
+                        const detectedAt = r.concerningDetectedAt?.toDate?.() ?? r.createdAt?.toDate?.();
+                        const time = detectedAt ? timeAgo(detectedAt) : "unknown";
+
+                        const reviewedBtn = el("button", "btn-dismiss");
+                        reviewedBtn.textContent = "mark reviewed";
+                        reviewedBtn.addEventListener("click", () => markReplyCrisisReviewed(d.ref, d.id));
+
+                        const deleteBtn = el("button", "btn-remove");
+                        deleteBtn.textContent = "delete reply";
+                        deleteBtn.addEventListener("click", () => deleteCrisisReply(d.ref, `crisisreply-${d.id}`));
+
+                        const card = renderCard({
+                            id: `crisisreply-${d.id}`,
+                            headerLeft: [
+                                span("card-type type-reply", "reply"),
+                                span("flagged-label", "concerning content"),
+                            ],
+                            time,
+                            text: r.text || "",
+                            meta: [
+                                `by: ${r.authorHandle || "unknown"}`,
+                                `on post by: ${r.parentPostHandle || "unknown"}`,
+                            ],
+                            actions: [reviewedBtn, deleteBtn, restrictAuthorButton(r.authorId, r.authorHandle)],
+                        });
+                        container.appendChild(card);
+                    });
+                }
             } catch (e) {
                 container.replaceChildren();
                 const errDiv = el("div", "card");
@@ -853,6 +920,39 @@
                 refreshCounts();
             } catch (e) {
                 alert(`couldn't mark reviewed: ${e.message}`);
+            }
+        }
+
+        // Mark a concerning REPLY reviewed. Stamps crisisReviewedAt/By on the
+        // reply doc (admin has an unconstrained update leg in firestore.rules),
+        // which drops it from the loader's unreviewed filter. Does NOT hide or
+        // delete the reply — a peer reach-out stays live in its thread.
+        async function markReplyCrisisReviewed(replyRef, id) {
+            try {
+                const uid = auth.currentUser?.uid || "";
+                await updateDoc(replyRef, {
+                    crisisReviewedAt: serverTimestamp(),
+                    crisisReviewedBy: uid,
+                });
+                document.getElementById(`crisisreply-${id}`)?.remove();
+                refreshCounts();
+            } catch (e) {
+                alert(`couldn't mark reviewed: ${e.message}`);
+            }
+        }
+
+        // Delete a concerning reply (removeReply hardcodes a "pendingreply-"
+        // card prefix, so the crisis tab needs its own that targets the passed
+        // card element id).
+        async function deleteCrisisReply(replyRef, cardId) {
+            if (!confirm("delete this reply permanently?")) return;
+            try {
+                await deleteDoc(replyRef);
+                document.getElementById(cardId)?.remove();
+                refreshCounts();
+                showToast("reply deleted");
+            } catch (e) {
+                showToast("error: " + e.message);
             }
         }
 

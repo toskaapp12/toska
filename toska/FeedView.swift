@@ -441,7 +441,10 @@ struct FeedView: View {
                 // first id changed). A pagination append grows the count with the
                 // head unchanged and must NOT trigger the banner — that was the
                 // misfire where "N new posts" appeared during ordinary scrolling.
-                if newHeadId != previousHeadId {
+                // Also require a non-nil previous head: an all-blocked page wipes
+                // posts to [] (head → nil) then loadMore repopulates (nil → B),
+                // which would otherwise false-fire the full page count.
+                if newHeadId != previousHeadId, previousHeadId != nil {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         newPostsBadgeCount += (newValue - previousPostCount)
                     }

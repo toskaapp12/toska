@@ -127,7 +127,10 @@ struct ContentView: View {
             // Version-bump retro-prompt. A user declining here is signed out
             // rather than deleted — their account and content persist so they
             // can return and accept later if they change their mind.
-            EdgeSwipeDismissWrapper {
+            // NOT wrapped in EdgeSwipeDismissWrapper: this is a BLOCKING ToS
+            // re-acceptance gate (same class as the age/EULA gates, which also
+            // omit the wrapper). A swipe-dismiss would drop the user into the app
+            // on the old policy version without accepting or being signed out.
             PolicyAcceptanceView(
                 onAccept: {
                     // Version-bump retro-prompt records only the policy
@@ -164,7 +167,6 @@ struct ContentView: View {
                     }
                 }
             )
-            }
         }
         .onAppear {
             #if DEBUG
@@ -240,6 +242,13 @@ struct ContentView: View {
             DraftStore.clearAll()
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftText)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftTag)
+            // Invalidate the FCM device token. Unlike the explicit sign-out paths,
+            // expiry has no chance to await the wipe while authenticated — but
+            // clearFCMToken's deleteToken step is auth-free and rotates the device
+            // token so the NEXT user's pushes can't land on this device (the
+            // Firestore-copy wipe no-ops here since auth is already gone; server
+            // self-heal clears the stale copy on the next invalid-token send).
+            PushNotificationManager.shared.clearFCMToken()
         }
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignIn)) { notification in
             guard let uid = notification.userInfo?["uid"] as? String else { return }

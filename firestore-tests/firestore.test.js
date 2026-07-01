@@ -2211,12 +2211,14 @@ describe("user doc: aggregate counters are server-owned (SEC-1)", () => {
     await assertFails(a.collection("users").doc("alice").update({ followerCount: 999999 }));
   });
 
-  it("rejects owner forging followingCount / totalLikes / postCount", async () => {
+  it("rejects owner forging followingCount / totalLikes", async () => {
+    // postCount was removed 2026-06-30 (unused + unmaintained), so it's no
+    // longer a locked server-owned counter — only followerCount/followingCount/
+    // totalLikes remain locked.
     await setUserDoc("alice");
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(a.collection("users").doc("alice").update({ followingCount: 500 }));
     await assertFails(a.collection("users").doc("alice").update({ totalLikes: 12345 }));
-    await assertFails(a.collection("users").doc("alice").update({ postCount: 999 }));
   });
 
   it("still allows owner to update a normal field (allowSharing)", async () => {

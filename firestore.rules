@@ -267,7 +267,6 @@ service cloud.firestore {
         && request.resource.data.get('followerCount', 0) == 0
         && request.resource.data.get('followingCount', 0) == 0
         && request.resource.data.get('totalLikes', 0) == 0
-        && request.resource.data.get('postCount', 0) == 0
         // Restriction fields are server/admin-owned — a tampered client must not
         // be able to pre-seed them on its own doc at create.
         && !request.resource.data.keys()
@@ -292,7 +291,12 @@ service cloud.firestore {
                          // tampered client could set followerCount = 999999 on
                          // its own doc and forge follower-count social proof,
                          // since OtherProfileView reads these fields directly.
-                         'followerCount', 'followingCount', 'totalLikes', 'postCount'])
+                         // postCount removed 2026-06-30: it was advertised as a
+                         // server-owned counter but no Cloud Function ever
+                         // maintained it and nothing reads it (permanently 0). If
+                         // a post-count display is ever built, re-add a
+                         // maintenance trigger AND re-lock it here.
+                         'followerCount', 'followingCount', 'totalLikes'])
             // Legacy PII fields (email/selectedMood/notify*/pushEnabled/
             // gentleCheckIn) must not be re-introduced or modified once the
             // migration to users/{uid}/private/data is complete. Deletes are
@@ -824,6 +828,12 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.authorId == request.resource.data.originalAuthorId
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.text == request.resource.data.text
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isRepost', false) != true
+            // F-1 (2026-06-30 re-review): can't repost a HELD post
+            // (moderationStatus == 'pending_review') — mirrors the reply-repost
+            // branch above. Without this an author could repost their OWN
+            // report-hidden / held post and republish it live (re-moderation
+            // doesn't catch a community-reported post, whose text is clean).
+            && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('moderationStatus', 'live') == 'live'
             && notBlockedBy(request.resource.data.originalAuthorId)
             && (
                  !('originalHandle' in request.resource.data.keys())

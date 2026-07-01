@@ -555,6 +555,30 @@ describe("#3a reply-repost is denied for a held reply", () => {
   });
 });
 
+// F-1 (2026-06-30): the POST-repost branch must also refuse a HELD original,
+// mirroring the reply-repost check above — else an author could repost their own
+// report-hidden/held post and republish it live.
+describe("F-1 post-repost is denied for a held post", () => {
+  const TEXT = "hello";
+  const repost = () => ({
+    authorId: "reposter", authorHandle: "handle_reposter", text: TEXT,
+    createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+    isRepost: true, originalPostId: "opost", originalAuthorId: "opauthor",
+  });
+  it("CONTROL: reposting a LIVE post is allowed", async () => {
+    await seedUser("reposter", { handle: "handle_reposter" });
+    await seedPost("opost", "opauthor", { moderationStatus: "live" });
+    const db = env.authenticatedContext("reposter").firestore();
+    await assertSucceeds(db.collection("posts").doc("reposter_repost_opost_live").set(repost()));
+  });
+  it("reposting a HELD (pending_review) post is DENIED", async () => {
+    await seedUser("reposter", { handle: "handle_reposter" });
+    await seedPost("opost", "opauthor", { moderationStatus: "pending_review" });
+    const db = env.authenticatedContext("reposter").firestore();
+    await assertFails(db.collection("posts").doc("reposter_repost_opost_held").set(repost()));
+  });
+});
+
 describe("#3b held reply's liker list is gated on the reply's moderationStatus", () => {
   async function setupLike(modStatus) {
     await seedPost("p", "postauthor"); // live post

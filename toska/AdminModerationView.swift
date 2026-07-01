@@ -421,6 +421,17 @@ struct AdminModerationView: View {
     }
 
     private func refreshCount(_ q: ModQueue) {
+        // Crisis can't use a server aggregation: the list EXCLUDES already-
+        // reviewed posts (crisisReviewedAt set) and Firestore can't count on an
+        // absent field. Fetch + filter client-side so the badge matches the list
+        // and actually clears once everything's reviewed (was permanently > 0).
+        if q == .crisis {
+            postsQuery(.crisis).limit(to: 200).getDocuments { snap, _ in
+                let n = (snap?.documents ?? []).filter { $0.data()["crisisReviewedAt"] == nil }.count
+                Task { @MainActor in counts[.crisis] = n }
+            }
+            return
+        }
         let query: Query
         switch q {
         case .reports:    query = db.collection("reports").whereField("status", isEqualTo: "pending")
@@ -504,10 +515,16 @@ struct AdminModerationView: View {
             if let err = err { Task { @MainActor in self.showToast("couldn't remove: \(err.localizedDescription)") }; return }
             pref.delete { err2 in
                 if let err2 = err2 { Task { @MainActor in self.showToast("couldn't remove: \(err2.localizedDescription)") }; return }
-                // Only mark the report resolved once the post is actually gone.
+                // Only mark the report resolved once the post is actually gone —
+                // and only remove the row / claim success if THAT write lands too,
+                // else the report reads as resolved locally while staying pending
+                // on the server (it'd re-appear for the next moderator).
                 self.db.collection("reports").document(reportId).updateData([
                     "status": "resolved", "reviewedBy": self.adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "post_deleted"
-                ]) { _ in Task { @MainActor in self.reports.removeAll { $0.id == reportId }; self.refreshCount(.reports); self.showToast("post removed") } }
+                ]) { err3 in Task { @MainActor in
+                    if let err3 = err3 { self.showToast("post removed, but couldn't resolve the report: \(err3.localizedDescription)") }
+                    else { self.reports.removeAll { $0.id == reportId }; self.refreshCount(.reports); self.showToast("post removed") }
+                } }
             }
         }
     }
@@ -520,7 +537,12 @@ struct AdminModerationView: View {
             if let err = err { Task { @MainActor in self.showToast("couldn't restrict: \(err.localizedDescription)") }; return }
             self.db.collection("reports").document(reportId).updateData([
                 "status": "resolved", "reviewedBy": self.adminUid, "reviewedAt": FieldValue.serverTimestamp(), "action": "user_restricted"
-            ]) { _ in Task { @MainActor in self.reports.removeAll { $0.id == reportId }; self.refreshCount(.reports); self.showToast("\(handle) restricted") } }
+            ]) { err2 in Task { @MainActor in
+                // User is restricted; only clear the row if the resolve write also
+                // landed, else the report stays pending on the server.
+                if let err2 = err2 { self.showToast("\(handle) restricted, but couldn't resolve the report: \(err2.localizedDescription)") }
+                else { self.reports.removeAll { $0.id == reportId }; self.refreshCount(.reports); self.showToast("\(handle) restricted") }
+            } }
         }
     }
 

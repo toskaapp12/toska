@@ -385,12 +385,18 @@ struct MainTabView: View {
             unreadListener = nil
             unreadPollTask?.cancel()
             unreadPollTask = nil
+            pendingUnreadTask?.cancel()
+            pendingUnreadTask = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
             unreadListener?.remove()
             unreadListener = nil
             unreadPollTask?.cancel()
             unreadPollTask = nil
+            // Cancel the 3s mark-all-read sweep too — otherwise it can fire after
+            // a fast account switch and mark the NEW user's notifications read.
+            pendingUnreadTask?.cancel()
+            pendingUnreadTask = nil
             // Tear down the feed view-model's listeners and in-flight tasks
             // on sign-out. MainTabView is held by SwiftUI for a tick after
             // the SplashView swap, and feedVM is a @StateObject that
@@ -415,10 +421,13 @@ struct MainTabView: View {
 
             pendingUnreadTask?.cancel()
             if newTab == .notifications && unreadCount > 0 {
+                // Pin the uid at schedule time so the delayed sweep can't run
+                // against a different account if the user switches within 3s.
+                let pinnedUid = Auth.auth().currentUser?.uid
                 pendingUnreadTask = Task {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    guard !Task.isCancelled else { return }
-                    await markAllNotificationsRead()
+                    guard !Task.isCancelled, let pinnedUid else { return }
+                    await markAllNotificationsRead(pinnedUid: pinnedUid)
                 }
             }
         }
@@ -461,14 +470,17 @@ struct MainTabView: View {
 
     // MARK: - Notifications
 
-    func markAllNotificationsRead() async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+    func markAllNotificationsRead(pinnedUid: String) async {
+        // Only sweep if the pinned account is still the current one — guards the
+        // 3s-delayed call against a mid-window account switch (cross-account write).
+        guard Auth.auth().currentUser?.uid == pinnedUid else { return }
+        let uid = pinnedUid
         let db = Firestore.firestore()
         let baseQuery = db.collection("users").document(uid).collection("notifications")
             .whereField("isRead", isEqualTo: false)
 
         var hasMore = true
-        while hasMore && !Task.isCancelled {
+        while hasMore && !Task.isCancelled && Auth.auth().currentUser?.uid == pinnedUid {
             guard let snapshot = try? await baseQuery.limit(to: 100).getDocumentsAsync() else { break }
             guard !snapshot.documents.isEmpty else { break }
 

@@ -156,6 +156,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 } else {
                     BlockedUsersCache.shared.stopListening()
                     UserHandleCache.shared.stopListening()
+                    // Out-of-band sign-outs (token revoked server-side, account
+                    // deleted elsewhere, credential invalidated) don't go through
+                    // the in-app buttons, so the per-user local scrub (drafts,
+                    // admin gate, onboarding flags, FCM token) never ran. Post the
+                    // expiry event so ContentView's scrub fires for EVERY sign-out.
+                    // Idempotent with the button paths' .userDidSignOut (both just
+                    // clear already-clear state).
+                    NotificationCenter.default.post(name: .authSessionExpired, object: nil)
                 }
             }
         }

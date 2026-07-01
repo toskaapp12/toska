@@ -496,7 +496,8 @@ struct AdminModerationView: View {
         db.collection("users").document(uid).updateData([
             "restricted": true, "restrictedAt": FieldValue.serverTimestamp(), "restrictedBy": adminUid
         ]) { err in Task { @MainActor in
-            showToast(err == nil ? "\(handle) restricted" : "couldn't restrict: \(err!.localizedDescription)")
+            if let err = err { showToast("couldn't restrict: \(err.localizedDescription)") }
+            else { refreshCount(.restricted); showToast("\(handle) restricted") }
         } }
     }
 

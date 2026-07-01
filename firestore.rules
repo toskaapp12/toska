@@ -307,7 +307,11 @@ service cloud.firestore {
             && legacyPIIFieldsImmutable())
         || (isAdmin()
             && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']));
+               .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil'])
+            // Pin restrictedBy to the acting admin so auditUserRestriction's
+            // inferred adminUid is trustworthy (can't frame another admin).
+            && (!('restrictedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                || request.resource.data.restrictedBy == request.auth.uid));
       // G-2 (2026-06-11 security re-review): block a restricted user from
       // deleting their own user doc to escape an active restriction. The
       // legit account-deletion flow does NOT delete this doc from the client —
@@ -1206,7 +1210,13 @@ service cloud.firestore {
            ]);
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['status', 'reviewedBy', 'reviewedAt', 'action']);
+           .hasOnly(['status', 'reviewedBy', 'reviewedAt', 'action'])
+        // Pin the attribution to the acting admin so auditReportResolution's
+        // trigger-inferred adminUid is trustworthy — without this one admin could
+        // resolve a report stamping reviewedBy as ANOTHER admin (framing them in
+        // the audit log). The admin tooling always writes reviewedBy = self.
+        && (!('reviewedBy' in request.resource.data.diff(resource.data).affectedKeys())
+            || request.resource.data.reviewedBy == request.auth.uid);
       allow delete: if false;
     }
 

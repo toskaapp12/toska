@@ -944,7 +944,13 @@ struct ComposeView: View {
     /// by the server hold + moderation.
     private var contentViolationAllowsOverride: Bool {
         switch contentViolationType {
-        case .spam, .link, .threat: return true
+        // Only the low-severity, FP-prone categories are user-overridable into a
+        // held-for-review post. .threat is hard-blocked (edit required) like
+        // slur/harassment/sexual — a threat is more severe than harassment (which
+        // was already hard-blocked), and letting the user override their own
+        // client-detected threat risks it shipping live if the server threat
+        // classifier doesn't independently catch it.
+        case .spam, .link: return true
         default: return false
         }
     }

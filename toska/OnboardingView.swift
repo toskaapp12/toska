@@ -399,15 +399,15 @@ struct OnboardingView: View {
     /// hits the gate.
     func checkAcceptanceStatus(attempt: Int = 0) {
         guard !acceptanceChecked else { return }
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            // No user (shouldn't happen — onboarding follows a successful
+            // sign-in) — fail SAFE to the gate rather than stranding the spinner.
+            acceptanceChecked = true
+            showAgeGate = true
+            return
+        }
         let recentFlagKey = UserDefaultsKeys.recentlyConfirmedAdult(uid: uid)
         let recentlyConfirmedAdult = UserDefaults.standard.bool(forKey: recentFlagKey)
-        if recentlyConfirmedAdult {
-            // Consume the flag so a later session that needs the gate
-            // (e.g. confirmAdult Cloud Function never propagated) still
-            // triggers it.
-            UserDefaults.standard.removeObject(forKey: recentFlagKey)
-        }
         Task { @MainActor in
             do {
                 let snapshot = try await Firestore.firestore()
@@ -415,12 +415,20 @@ struct OnboardingView: View {
                 let data = snapshot.data() ?? [:]
                 let confirmedAdult = (data["confirmedAdult"] as? Bool ?? false) || recentlyConfirmedAdult
                 let acceptedVersion = data["acceptedPolicyVersion"] as? Int ?? 0
+                // Consume the recently-confirmed flag ONLY now that the read
+                // succeeded. Consuming it up-front (before the Task) meant a
+                // retried read — after a transient failure — re-read it as false
+                // and re-showed the age gate to a user who just confirmed. A
+                // later session that genuinely needs the gate still gets it
+                // because confirmedAdult is read from Firestore.
+                if recentlyConfirmedAdult {
+                    UserDefaults.standard.removeObject(forKey: recentFlagKey)
+                }
                 // Only lock acceptanceChecked to true on a successful read.
-                // If the read fails transiently, the next onAppear will
-                // retry instead of silently skipping the gate. Previously
-                // a network blip flipped the flag true and a user who had
-                // already accepted was shown the age gate a second time
-                // (confirmedAdult defaults to false on fetch failure).
+                // If the read fails transiently, we retry (below) instead of
+                // silently skipping the gate — a network blip must not flip the
+                // flag true and skip a real gate (confirmedAdult defaults false
+                // on fetch failure).
                 acceptanceChecked = true
                 if !confirmedAdult || acceptedVersion < currentPolicyVersion {
                     showAgeGate = true

@@ -430,6 +430,9 @@ struct CreateAccountView: View {
                     Telemetry.recordError(error, context: "CreateAccount.userDocWrite")
                     isLoading = false
                     errorMessage = "account creation failed — please try again"
+                    // Parity with the other sign-out/deletion paths (harmless on
+                    // a brand-new account that never persisted a token).
+                    PushNotificationManager.shared.clearFCMToken()
                     do {
                         try await Auth.auth().currentUser?.delete()
                     } catch let deleteError {

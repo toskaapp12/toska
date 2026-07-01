@@ -182,6 +182,16 @@ describe("§3-F privileged reads + self-escalation are denied", () => {
     const db = env.authenticatedContext("expired").firestore();
     await assertSucceeds(db.collection("users").doc("expired").delete());
   });
+  it("G-2: an ADMIN-restricted user (persistent, no restrictedUntil) cannot delete their own doc", async () => {
+    // The exact case the 2026-06-30 fix closed: admin restrictions are
+    // persistent and leave restrictedUntil UNSET, so the old guard's
+    // `.get('restrictedUntil', request.time) > request.time` default collapsed
+    // to allow and let the strongest sanction be escaped. Without this test a
+    // regression to the too-lax guard would keep all suites green.
+    await seedUser("adminRestricted", { restricted: true }); // no restrictedUntil
+    const db = env.authenticatedContext("adminRestricted").firestore();
+    await assertFails(db.collection("users").doc("adminRestricted").delete());
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

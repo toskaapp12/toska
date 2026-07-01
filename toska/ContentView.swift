@@ -60,6 +60,11 @@ struct ContentView: View {
                             // way back to the login screen instead of a dead-end.
                             Button {
                                 showVerifyError = false
+                                // Parity with the other sign-out paths (fire-and-
+                                // forget; may no-op here since this screen is
+                                // reached on a permission-denied verify, but the
+                                // next successful sign-in re-persists the token).
+                                PushNotificationManager.shared.clearFCMToken()
                                 try? Auth.auth().signOut()
                                 NotificationCenter.default.post(name: .userDidSignOut, object: nil)
                             } label: {

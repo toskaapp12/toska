@@ -201,6 +201,10 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             // account. Try to delete it (we just signed in so there's no
             // requires-recent-login risk). Fall back to signOut if delete
             // fails for any reason — at minimum the device session is cleared.
+            // Clear any FCM token first for parity with the other sign-out/
+            // deletion paths (harmless on a brand-new account that never
+            // persisted one).
+            PushNotificationManager.shared.clearFCMToken()
             if isNewUser {
                 do {
                     try await Auth.auth().currentUser?.delete()

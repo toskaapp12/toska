@@ -2,16 +2,17 @@
 //
 // The name/PII detector exists in BOTH functions/moderation.js
 // (containsNameOrIdentifyingInfo — the server HOLD decision) and
-// toska/FeedView.swift (containsNameOrIdentifyingInfo — the compose-time
-// warning). They are hand-synced with no automated pin, and three server-side
+// toska/ContentModeration.swift (containsNameOrIdentifyingInfo — the compose-
+// time warning). They are hand-synced with no automated pin, and three server-side
 // false-positive fixes (M-2 title-words guard, N-13 number-list strip,
 // N-13/N-15 keyword trims) once drifted: the client warned on grief content
 // ("Pearl Jam", "Central Park", "my Broken Heart", timeline number lists,
 // "lives in my head") that the server accepted.
 //
-// This script EXTRACTS the real Swift detector from FeedView.swift, compiles it
-// standalone (swiftc -enable-bare-slash-regex), runs a shared corpus through it
-// AND through moderation.js, and FAILS (exit 1) on any divergence. It is the
+// This script EXTRACTS the real Swift detector + crisis matcher from
+// ContentModeration.swift, compiles it standalone (swiftc -enable-bare-slash-
+// regex), runs shared name + crisis corpora through it AND through
+// moderation.js / moderationLogic.js, and FAILS (exit 1) on any divergence. It is the
 // missing pin. Requires macOS + a Swift toolchain, so it is NOT part of the
 // default `npm test` (which must run on any CI); run it on a macOS lane:
 //
@@ -25,6 +26,35 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { containsNameOrIdentifyingInfo: serverDetect } = require("../functions/moderation.js");
+// Crisis matcher parity (added 2026-06-30): the crisis phrase lists + matcher
+// exist in BOTH moderationLogic.js (matchesCrisisPhrase / isPostExplicitCrisis /
+// isPostConcerning) and ContentModeration.swift (crisisPhraseMatch / crisisLevel),
+// hand-synced with no pin — the same drift risk as the name path. Pin them too.
+const { isPostExplicitCrisis, isPostConcerning } = require("../functions/moderationLogic.js");
+function serverCrisis(t) {
+  if (isPostExplicitCrisis(t)) return "explicit";
+  if (isPostConcerning(t)) return "soft";
+  return "none";
+}
+// Crisis corpus: [text, expected level]. Includes the leet-evasion strings the
+// 2026-06-30 fix closed (1/!/| → i or l) plus benign digit/punctuation lines
+// that must NOT over-detect from the ambiguous-glyph expansion.
+const CRISIS_CORPUS = [
+  ["i want to kill myself", "explicit"],
+  ["i want to ki11 myself", "explicit"],   // 1 -> l
+  ["i want to k!ll myself", "explicit"],   // ! -> i
+  ["i want to ki|| myself", "explicit"],   // | -> l
+  ["i think about su1c1de a lot", "explicit"], // 1 -> i in-word
+  ["thinking about su!c!de tonight", "explicit"], // ! -> i in-word
+  ["i feel so suicidal", "explicit"],
+  ["i can't go on", "soft"],
+  ["nobody would miss me", "soft"],
+  ["there's no point in living", "soft"],
+  ["this breakup is killing me", "none"],  // idiom
+  ["i could die of embarrassment", "none"],// idiom
+  ["1 more day and then i'm free!", "none"],// benign digit/! — no over-detection
+  ["he broke my heart!!! i hate this", "none"], // benign ! run
+];
 
 // Shared corpus: [text, expected]  — expected is the agreed verdict both layers
 // must produce. 'allow' = clean (no warning / no hold); 'hold' = flagged.
@@ -88,7 +118,11 @@ const CORPUS = [
 
 // ── Extract the Swift detector + its helpers from FeedView.swift ──
 const swiftSrc = readFileSync(join(import.meta.dirname, "../toska/ContentModeration.swift"), "utf8").split("\n");
-const startIdx = swiftSrc.findIndex((l) => l.startsWith("private let nameConfusableMap"));
+// Start the extraction at the crisis phrase lists (line ~33) rather than the
+// name-confusable map, so the compiled binary ALSO exposes crisisLevel() and its
+// helpers — the span from here through containsNameOrIdentifyingInfo's close is
+// self-contained (the normalizer + its deps sit inside it).
+const startIdx = swiftSrc.findIndex((l) => l.startsWith("let explicitCrisisPhrases"));
 const fnIdx = swiftSrc.findIndex((l) => l.startsWith("func containsNameOrIdentifyingInfo"));
 if (startIdx < 0 || fnIdx < 0) { console.error("could not locate Swift detector"); process.exit(2); }
 // Function closes at the first line that is exactly "}" at col 0 after fnIdx.
@@ -98,13 +132,27 @@ if (endIdx < 0) { console.error("could not find detector function close"); proce
 const detectorSrc = swiftSrc.slice(startIdx, endIdx + 1).join("\n");
 
 const corpusSwift = CORPUS.map(([t]) => `  ${JSON.stringify(t)},`).join("\n");
+const crisisSwift = CRISIS_CORPUS.map(([t]) => `  ${JSON.stringify(t)},`).join("\n");
 const harness = `import Foundation
 ${detectorSrc}
+func crisisVerdict(_ t: String) -> String {
+  switch crisisLevel(for: t) {
+  case .explicit: return "explicit"
+  case .soft: return "soft"
+  case .none: return "none"
+  }
+}
 let corpus = [
 ${corpusSwift}
 ]
 for t in corpus {
   print((containsNameOrIdentifyingInfo(t) ? "hold" : "allow") + "\\t" + t)
+}
+let crisisCorpus = [
+${crisisSwift}
+]
+for t in crisisCorpus {
+  print("CRISIS\\t" + crisisVerdict(t) + "\\t" + t)
 }
 `;
 
@@ -119,7 +167,16 @@ try {
   process.exit(2);
 }
 const clientOut = execFileSync(binFile, { encoding: "utf8" }).trim().split("\n");
-const clientVerdict = new Map(clientOut.map((line) => { const [v, ...rest] = line.split("\t"); return [rest.join("\t"), v]; }));
+const clientVerdict = new Map();
+const clientCrisis = new Map();
+for (const line of clientOut) {
+  const parts = line.split("\t");
+  if (parts[0] === "CRISIS") {
+    clientCrisis.set(parts.slice(2).join("\t"), parts[1]);
+  } else {
+    clientVerdict.set(parts.slice(1).join("\t"), parts[0]);
+  }
+}
 
 // ── Compare ──
 let mismatches = 0;
@@ -130,13 +187,24 @@ for (const [text, expected] of CORPUS) {
   const meetsExpected = server === expected && client === expected;
   if (!agree || !meetsExpected) {
     mismatches++;
-    console.log(`✗ server=${server} client=${client} expected=${expected}  | ${text}`);
+    console.log(`✗ NAME server=${server} client=${client} expected=${expected}  | ${text}`);
   }
 }
+for (const [text, expected] of CRISIS_CORPUS) {
+  const server = serverCrisis(text);
+  const client = clientCrisis.get(text);
+  const agree = server === client;
+  const meetsExpected = server === expected && client === expected;
+  if (!agree || !meetsExpected) {
+    mismatches++;
+    console.log(`✗ CRISIS server=${server} client=${client} expected=${expected}  | ${text}`);
+  }
+}
+const total = CORPUS.length + CRISIS_CORPUS.length;
 if (mismatches === 0) {
-  console.log(`✓ detector parity: ${CORPUS.length}/${CORPUS.length} cases — client and server agree and match expected`);
+  console.log(`✓ detector parity: ${total}/${total} cases (name + crisis) — client and server agree and match expected`);
   process.exit(0);
 } else {
-  console.error(`\n${mismatches} parity mismatch(es) — the Swift and JS detectors have drifted. Re-sync ContentModeration.swift and moderation.js.`);
+  console.error(`\n${mismatches} parity mismatch(es) — the Swift and JS detectors have drifted. Re-sync ContentModeration.swift with moderation.js / moderationLogic.js.`);
   process.exit(1);
 }

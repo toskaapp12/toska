@@ -114,26 +114,31 @@ enum CrisisLevel {
 // vulnerable user the feature exists for. Now normalized identically to the
 // server so the hold and the check-in fire on the same input.
 private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
+    func noSpaceOf(_ s: String) -> String {
+        String(s.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }).lowercased()
+    }
+    // Map every ambiguous glyph (the whole [1!|] set) to a single target — "1",
+    // "!", and "|" all stand in for BOTH "i" and "l" (ki11 / k!ll / ki|| → kill;
+    // su1c1de / su!c!de → suicide). Build an i-form and an l-form and OR their
+    // matches. Mirrors the server-side matchesCrisisPhrase; crisis-only (kept OUT
+    // of the name/PII path, where !/| would false-positive); over-detection is
+    // the accepted-safe direction for crisis.
+    func mapAmbiguous(_ s: String, to r: Character) -> String {
+        String(s.map { "1!|".contains($0) ? r : $0 })
+    }
     let lowered = text.lowercased()
     let normalized = aggressiveNormalizeForNameMatch(text)
-    let noSpace = String(normalized.unicodeScalars.filter {
-        CharacterSet.alphanumerics.contains($0)
-    }).lowercased()
-    // Ambiguous-digit expansion: the leet map folds "1"→"i", but "1" is just as
-    // commonly an "l" ("ki11 myself" → "kiii myself" slips "kill myself"). Test
-    // a second normalization where "1"→"l" so the L-position evasion can't slip
-    // a crisis phrase past the compose-time check-in. Mirrors the server-side
-    // matchesCrisisPhrase fix; over-detection is the accepted-safe direction.
-    let altNormalized = aggressiveNormalizeForNameMatch(
-        text.replacingOccurrences(of: "1", with: "l"))
-    let altNoSpace = String(altNormalized.unicodeScalars.filter {
-        CharacterSet.alphanumerics.contains($0)
-    }).lowercased()
+    let noSpace = noSpaceOf(normalized)
+    let iForm = aggressiveNormalizeForNameMatch(mapAmbiguous(text, to: "i"))
+    let lForm = aggressiveNormalizeForNameMatch(mapAmbiguous(text, to: "l"))
+    let iNoSpace = noSpaceOf(iForm)
+    let lNoSpace = noSpaceOf(lForm)
     for phrase in list {
         if lowered.contains(phrase) || normalized.contains(phrase)
-            || altNormalized.contains(phrase) { return true }
+            || iForm.contains(phrase) || lForm.contains(phrase) { return true }
         let pNoSpace = phrase.filter { $0.isLetter || $0.isNumber }
-        if pNoSpace.count >= 6 && (noSpace.contains(pNoSpace) || altNoSpace.contains(pNoSpace)) { return true }
+        if pNoSpace.count >= 6 &&
+            (noSpace.contains(pNoSpace) || iNoSpace.contains(pNoSpace) || lNoSpace.contains(pNoSpace)) { return true }
     }
     return false
 }

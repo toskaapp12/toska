@@ -826,6 +826,12 @@ class PostInteractionManager {
         // stacked two increments while the server wrote once — inflating the
         // reply's repost count by one until refresh.
         if let last = RateLimiter.shared.lastRepostTime(for: replyId), Date().timeIntervalSince(last) < 2 { return }
+        // In-flight guard (shared key with unrepostReply) so a write slower than
+        // the 2s rate window can't let a second optimistic +1 land while the first
+        // transaction is still open.
+        let flightKey = "reply_\(replyId)"
+        guard !RateLimiter.shared.isRepostInFlight(flightKey) else { return }
+        RateLimiter.shared.markRepostInFlight(flightKey)
         RateLimiter.shared.recordRepost(for: replyId)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
@@ -890,6 +896,7 @@ class PostInteractionManager {
                 return nil
             }, completion: { _, error in
                 Task { @MainActor in
+                    RateLimiter.shared.markRepostComplete(flightKey)
                     if let error = error {
                         print("⚠️ repostReply transaction failed: \(error)")
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
@@ -930,12 +937,20 @@ class PostInteractionManager {
             print("⚠️ unrepostReply — offline, skipping")
             return
         }
+        // Serialize against a concurrent repost/unrepost on the same reply so a
+        // double-tap can't fire two optimistic decrements (count drift). Keyed
+        // "reply_<id>" so it shares the guard with repostReply below and can't
+        // collide with the post-repost keyspace.
+        let flightKey = "reply_\(replyId)"
+        guard !RateLimiter.shared.isRepostInFlight(flightKey) else { return }
+        RateLimiter.shared.markRepostInFlight(flightKey)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
 
         let db = Firestore.firestore()
         db.collection("posts").document("\(uid)_replyrepost_\(replyId)").delete { error in
             Task { @MainActor in
+                RateLimiter.shared.markRepostComplete(flightKey)
                 if let error = error {
                     print("⚠️ unrepostReply failed: \(error)")
                     onUpdate(RepostResult(isReposted: true, newCount: currentCount))

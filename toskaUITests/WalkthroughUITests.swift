@@ -294,7 +294,9 @@ final class WalkthroughUITests: XCTestCase {
         let repost = app.buttons["Repost"].firstMatch
         XCTAssertTrue(waitFor(repost, 10), "No un-reposted post found (all already reposted?)")
         snap("05z1-before-repost")
-        repost.tap()
+        // forceTap: the repost glyph sits under the floating glass tab bar, so a
+        // plain .tap() fails XCUITest's hittability check (not a repost bug).
+        forceTap(repost)
         sleep(1)
         snap("05z2-just-after-tap")   // should be green / "Already reposted"
         sleep(5)                      // let transaction + validatePost settle
@@ -565,5 +567,27 @@ final class WalkthroughUITests: XCTestCase {
         snap("15-back-from-switcher")
         clearComposeEditor()
         app.buttons["cancel"].tap()
+    }
+
+    // MARK: 16 — grief phrasing must NOT be hard-blocked (build-47 threat-FP fix)
+    // "she dropped a bomb on me" contains bare "bomb", which the old client
+    // threat list hard-blocked with no override — locking a grieving user out of
+    // posting content the server itself publishes. Regression guard: the
+    // content-violation dialog ("hold on") must NOT appear, and the post lands.
+    func test16_griefPhraseNotBlocked() throws {
+        try requireFeed()
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        focusAndType(app.textViews.firstMatch, "she dropped a bomb on me and i havent slept since (walkthrough)")
+        snap("16a-grief-typed")
+        let post = app.buttons["post"]
+        XCTAssertTrue(post.isEnabled, "post button disabled")
+        post.tap()
+        // The content-violation dialog title is "hold on" — it must NOT fire.
+        let blocked = app.staticTexts["hold on"].waitForExistence(timeout: 3)
+        XCTAssertFalse(blocked, "grief phrase 'dropped a bomb on me' was wrongly hard-blocked (threat FP not fixed)")
+        sleep(4) // clean content: pending_validation → validatePost (staging) → live
+        snap("16b-grief-posted")
     }
 }

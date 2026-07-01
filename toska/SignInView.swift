@@ -217,7 +217,22 @@ struct SignInView: View {
                 dismiss()
             } catch is TimeoutError {
                 isLoading = false
-                errorMessage = "request timed out — please try again"
+                // withTimeout stops awaiting, but Firebase's signIn isn't
+                // cancellation-aware, so it may have SUCCEEDED just after the
+                // timer fired — currentUser is then set while we'd otherwise show
+                // "timed out" and never post .userDidSignIn, leaving the user
+                // authenticated but stranded on the sign-in screen. If auth
+                // actually landed, complete the sign-in instead of erroring.
+                if let uid = Auth.auth().currentUser?.uid {
+                    Telemetry.signInCompleted(method: .email)
+                    UserHandleCache.shared.startListening()
+                    NotificationCenter.default.post(
+                        name: .userDidSignIn, object: nil, userInfo: ["uid": uid]
+                    )
+                    dismiss()
+                } else {
+                    errorMessage = "request timed out — please try again"
+                }
             } catch {
                 isLoading = false
                 Telemetry.recordError(error, context: "SignInView.emailSignIn")

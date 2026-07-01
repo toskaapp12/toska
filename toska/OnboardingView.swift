@@ -397,7 +397,7 @@ struct OnboardingView: View {
     /// once read so a genuinely-unconfirmed user on a later session
     /// (after force-quit, after a confirmAdult-failed signup, etc.) still
     /// hits the gate.
-    func checkAcceptanceStatus() {
+    func checkAcceptanceStatus(attempt: Int = 0) {
         guard !acceptanceChecked else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let recentFlagKey = UserDefaultsKeys.recentlyConfirmedAdult(uid: uid)
@@ -426,8 +426,21 @@ struct OnboardingView: View {
                     showAgeGate = true
                 }
             } catch {
-                print("⚠️ checkAcceptanceStatus failed: \(error)")
-                // Leave acceptanceChecked false so a subsequent onAppear retries.
+                print("⚠️ checkAcceptanceStatus failed (attempt \(attempt)): \(error)")
+                // The old comment ("a subsequent onAppear retries") was wrong:
+                // onAppear fires once on mount, and advancing steps doesn't
+                // re-mount, so a failed read left step >= 1 stranded on a bare
+                // spinner with no next/back/sign-out — a hard lockout. Retry a
+                // few times for a transient App Check / network blip, then fail
+                // SAFE to the age/EULA gate (re-confirming is harmless; a
+                // permanent spinner is not).
+                if attempt < 3 {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    checkAcceptanceStatus(attempt: attempt + 1)
+                } else {
+                    acceptanceChecked = true
+                    showAgeGate = true
+                }
             }
         }
     }

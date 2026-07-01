@@ -31,6 +31,10 @@ struct ReplyDetailView: View {
 
     @State private var children: [ThreadedReply] = []
     @State private var hasLoadedChildren = false
+    // Bumped at the start of every snapshot-processing Task; a Task whose
+    // captured value is stale after its stamp await bails instead of writing a
+    // list that predates a newer snapshot (which would drop a just-arrived reply).
+    @State private var attachGeneration = 0
     @State private var replyListener: ListenerRegistration? = nil
 
     // Composer
@@ -371,6 +375,8 @@ struct ReplyDetailView: View {
                         return
                     }
                     guard let docs = snapshot?.documents else { return }
+                    attachGeneration += 1
+                    let gen = attachGeneration
                     var newChildren: [ThreadedReply] = []
                     for doc in docs {
                         let data = doc.data()
@@ -460,6 +466,11 @@ struct ReplyDetailView: View {
                         $0.authorId == myUid && !liveIds.contains($0.id)
                             && Date().timeIntervalSince($0.createdAt) < 120
                     }
+                    // Only the newest snapshot's Task writes. If a later snapshot
+                    // started while we were awaiting the stamp, it holds the
+                    // complete current live set — bail so we don't overwrite it
+                    // with our older (possibly reply-missing) list.
+                    guard gen == attachGeneration else { return }
                     children = (newChildren + stillPending).sorted { $0.createdAt < $1.createdAt }
                     hasLoadedChildren = true
                 }

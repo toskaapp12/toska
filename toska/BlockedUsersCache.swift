@@ -106,9 +106,20 @@ class BlockedUsersCache {
     //   3. Revert the local change if the Firestore write fails, so the cache
     //      never drifts permanently out of sync with the server.
 
+    // Fire-and-forget block. Fine for surfaces that show a transient undo-toast
+    // (feed / reply / daily-moment / report menus) where an optimistic local
+    // block is acceptable. For a surface that navigates away on a "blocked"
+    // CONFIRMATION (OtherProfileView), use the async variant and gate the
+    // confirmation on its Bool result — otherwise a failed write shows
+    // "you won't see them anymore" and dismisses while the block didn't persist.
     func block(_ userId: String, handle: String? = nil) {
+        Task { await block(userId, handle: handle) }
+    }
+
+    @discardableResult
+    func block(_ userId: String, handle: String? = nil) async -> Bool {
         guard !userId.isEmpty,
-              let uid = Auth.auth().currentUser?.uid else { return }
+              let uid = Auth.auth().currentUser?.uid else { return false }
 
         // Telemetry — fired before the write so it's recorded even if the
         // network round-trip fails. The block is optimistic locally anyway,
@@ -150,18 +161,18 @@ class BlockedUsersCache {
         if let handle = handle, !handle.isEmpty {
             data["handle"] = handle
         }
-        Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("blocked").document(userId)
-            .setData(data) { [weak self] error in
-                Task { @MainActor [weak self] in
-                    if let error = error {
-                        // 3. Revert if the write failed.
-                        print("⚠️ BlockedUsersCache.block failed: \(error)")
-                        self?.removeLocal(userId)
-                    }
-                }
-            }
+        do {
+            try await Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("blocked").document(userId)
+                .setData(data)
+            return true
+        } catch {
+            // 3. Revert if the write failed.
+            print("⚠️ BlockedUsersCache.block failed: \(error)")
+            removeLocal(userId)
+            return false
+        }
     }
 
     /// Returns true on successful Firestore write, false if it failed (in

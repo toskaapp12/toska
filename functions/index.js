@@ -2021,6 +2021,16 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
         await db.collection("posts").doc(postId).delete();
         return;
       }
+      // Mirror the post-repost F-1 guard: don't promote a repost of a HELD /
+      // non-live reply. The rule layer (firestore.rules requires the original
+      // reply be moderationStatus=='live') is the primary guard; this keeps the
+      // two server validators symmetric so a future rule regression or an
+      // Admin-SDK write can't republish a held reply live.
+      if ((replyData.moderationStatus || "live") !== "live") {
+        console.warn(`Deleting reply-repost ${postId} — original reply ${originalReplyId} not live (${replyData.moderationStatus})`);
+        await db.collection("posts").doc(postId).delete();
+        return;
+      }
       // originalHandle intentionally not equality-checked — same rationale
       // as the post-repost branch (handle may have rotated since fetch).
       // Valid repost of already-moderated content — promote to live so it
@@ -2788,10 +2798,20 @@ async function applyReplyModeration(postId, replyId, flagReason) {
     // mirrors the admin.html label keys ("pii" / "abuse_link").
     await setReplyPendingReview(replyRef, flagReason === "contains_link" ? "abuse_link" : "pii");
     console.log(`Reply ${replyId} on post ${postId} held for review: ${flagReason}`);
+  } else if (flagReason === "harassment" || flagReason === "threat") {
+    // HOLD (recoverable) instead of hard-delete. MOD_HARASSMENT/threat lists
+    // substring-match supportive NEGATED reach-outs — "please don't kill
+    // yourself, call 988, you matter" contains "kill yourself" — which are the
+    // exact replies a breakup peer-support thread exists to protect. Hard-
+    // deleting them destroys the support with no recovery. Holding hides a
+    // genuine attack from its target just the same, but is reviewable and
+    // releasable by an admin instead of silently gone.
+    await setReplyPendingReview(replyRef, "abuse");
+    console.log(`Reply ${replyId} on post ${postId} held for review: ${flagReason}`);
   } else {
-    // Abuse (hate/threat/sexual/harassment): low false-positive, genuinely
-    // removable — keep the hard delete. Counter decrement is handled by
-    // onReplyDeletedUpdateCount on the subsequent delete trigger.
+    // hate / sexual: low false-positive, genuinely removable — keep the hard
+    // delete. Counter decrement is handled by onReplyDeletedUpdateCount on the
+    // subsequent delete trigger.
     await replyRef.delete();
     console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
   }

@@ -164,6 +164,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     // Idempotent with the button paths' .userDidSignOut (both just
                     // clear already-clear state).
                     NotificationCenter.default.post(name: .authSessionExpired, object: nil)
+                    // Also post .userDidSignOut: the view-level teardowns
+                    // (NotificationsView / MainTabView / ProfileView /
+                    // PostDetailView listeners + delayed mark-read tasks) observe
+                    // ONLY .userDidSignOut, not .authSessionExpired. Without this,
+                    // an out-of-band sign-out leaves those listeners/tasks running
+                    // against the previous uid. Idempotent (button paths already
+                    // post it; teardowns just remove already-removable state).
+                    NotificationCenter.default.post(name: .userDidSignOut, object: nil)
                 }
             }
         }

@@ -209,6 +209,9 @@ struct ContentView: View {
             // still skip it).
             showOnboarding = false
             onboardingComplete = false
+            // Dismiss any open policy-re-acceptance cover so a signed-out person
+            // isn't left staring at a "accept updated terms" modal over Splash.
+            showPolicyUpdate = false
             // Clear per-user device-local state so the next user signing in
             // doesn't see the previous user's leftovers. Analytics-opt-out
             // preference stays (it's a per-device choice). Push primer
@@ -236,12 +239,16 @@ struct ContentView: View {
             // the next signup on this device skips the age-gate + EULA.
             showOnboarding = false
             onboardingComplete = false
+            showPolicyUpdate = false
             // C-2 (2026-06-11): a token-expiry logout must also clear on-device
             // drafts, like the explicit sign-out path above — otherwise the prior
             // user's in-progress grief text survives on a shared device.
             DraftStore.clearAll()
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftText)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftTag)
+            // Mirror the explicit sign-out path: clear the push-primer flag so the
+            // next account on this shared device gets a fresh primer.
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.pushPrimerShown)
             // Invalidate the FCM device token. Unlike the explicit sign-out paths,
             // expiry has no chance to await the wipe while authenticated — but
             // clearFCMToken's deleteToken step is auth-free and rotates the device

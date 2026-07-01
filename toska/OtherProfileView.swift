@@ -19,6 +19,7 @@ struct OtherProfileView: View {
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
     @State private var showReportFailedAlert = false
+    @State private var showBlockFailedAlert = false
     @State private var lastFollowTime: Date? = nil
     @State private var hasFetchedInitial = false
     @State private var showFollowerCount = false
@@ -288,6 +289,11 @@ struct OtherProfileView: View {
         } message: {
             Text("something went wrong. please try again in a bit.")
         }
+        .alert("couldnt block", isPresented: $showBlockFailedAlert) {
+            Button("ok") {}
+        } message: {
+            Text("something went wrong. check your connection and try again.")
+        }
         // Tapping any bottom-tab button (home, trending, notifications, profile)
         // posts .dismissAllSheets via MainTabView. Pop ourselves on receive so
         // a user reading someone's profile lands on the destination tab's root
@@ -534,21 +540,22 @@ struct OtherProfileView: View {
     
     func blockUser() {
                 guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
-                guard NetworkMonitor.shared.isConnected else { return }
+                // Offline: surface it instead of a silent no-op tap.
+                guard NetworkMonitor.shared.isConnected else { showBlockFailedAlert = true; return }
                 let db = Firestore.firestore()
                 let uidRef = db.collection("users").document(uid)
                 let theirRef = db.collection("users").document(userId)
 
-            // Route the block through BlockedUsersCache so the local set is
-            // updated optimistically (content from this user hides immediately
-            // across the app instead of waiting for the Firestore snapshot
-            // listener to echo the write back). The cache also handles revert
-            // on write failure. Previously this view wrote the blocked doc
-            // directly, which left a visible lag where the target's posts
-            // still appeared until the listener caught up.
-            BlockedUsersCache.shared.block(userId, handle: handle)
-
             Task { @MainActor in
+                // Route the block through BlockedUsersCache (optimistic local
+                // hide + revert on failure) but AWAIT the result and gate the
+                // "user blocked" confirmation + dismiss on it. Previously this was
+                // fire-and-forget, so a failed write still showed "you wont see
+                // them anymore" and navigated away while the block didn't persist
+                // — the blocked user's content would reappear.
+                let blocked = await BlockedUsersCache.shared.block(userId, handle: handle)
+                guard blocked else { showBlockFailedAlert = true; return }
+
                 // Check both follow directions before touching counts
                 let followingSnap = try? await uidRef.collection("following").document(userId).getDocumentAsync()
                 let followerSnap = try? await uidRef.collection("followers").document(userId).getDocumentAsync()

@@ -275,7 +275,15 @@ struct DailyMomentView: View {
                         // to act on), the exact unreportable-content gap App Store
                         // 1.2 cares about.
                         let noAuthor = (postData["authorId"] as? String ?? "").isEmpty
-                        if isFlagged || isConcerning || isExpired || blockedAuthor || notShareable || noAuthor {
+                        // Parity with the trending query's server-side filters:
+                        // only render a curated post that is still moderationStatus
+                        // == "live" (a later removal / pending_review that didn't
+                        // also set `flagged` would otherwise still show here), and
+                        // skip reposts (they'd credit the reposter's handle for the
+                        // original's words on the shared card).
+                        let notLive = (postData["moderationStatus"] as? String ?? "") != "live"
+                        let isRepost = postData["isRepost"] as? Bool == true
+                        if isFlagged || isConcerning || isExpired || blockedAuthor || notShareable || noAuthor || notLive || isRepost {
                             setFallbackPost()
                         } else {
                             postText      = postData["text"]         as? String ?? ""
@@ -325,6 +333,10 @@ struct DailyMomentView: View {
                     guard let topDoc = sortedByLikes.first(where: {
                         let d = $0.data()
                         let authorId = d["authorId"] as? String ?? ""
+                        // Skip authorless posts — they'd render here unreportable
+                        // (canModerate requires a non-empty authorId). Parity with
+                        // the curated branch's noAuthor fallback.
+                        if authorId.isEmpty { return false }
                         if blockedIds.contains(authorId) { return false }
                         if let expiresAt = d["expiresAt"] as? Timestamp,
                            expiresAt.dateValue() < Date() { return false }

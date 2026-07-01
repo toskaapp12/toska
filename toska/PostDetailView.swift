@@ -1323,12 +1323,29 @@ struct PostDetailView: View {
                 stamped.map { ($0.id, ($0.isLiked, $0.isSaved, $0.isReposted)) },
                 uniquingKeysWith: { a, _ in a }
             )
-            for i in flat.indices {
-                if let s = stampedMap[flat[i].id] {
-                    flat[i].isLiked = s.0; flat[i].isSaved = s.1; flat[i].isReposted = s.2
+            // Re-derive PRESENCE from the current raw stores rather than writing
+            // the pre-await `flat`: another listener delta (query A or B) may have
+            // landed during the stamp await, and rebuilding from stale `flat`
+            // would silently DROP the reply it added until the view is reopened.
+            // Re-read current on-screen interaction state and overlay our fresh
+            // stamps, so two interleaving recombines converge regardless of which
+            // finishes last.
+            var freshById: [String: ThreadedReply] = [:]
+            for r in rawLiveReplies { freshById[r.id] = r }
+            for r in rawHeldReplies where freshById[r.id] == nil { freshById[r.id] = r }
+            var freshFlat = freshById.values.sorted { $0.createdAt < $1.createdAt }
+            var state: [String: (Bool, Bool, Bool)] = [:]
+            func collectState(_ replies: [ThreadedReply]) {
+                for r in replies { state[r.id] = (r.isLiked, r.isSaved, r.isReposted); collectState(r.children) }
+            }
+            collectState(replyList)
+            for (id, s) in stampedMap { state[id] = s }
+            for i in freshFlat.indices {
+                if let s = state[freshFlat[i].id] {
+                    freshFlat[i].isLiked = s.0; freshFlat[i].isSaved = s.1; freshFlat[i].isReposted = s.2
                 }
             }
-            replyList = buildThreadedReplies(from: flat)
+            replyList = buildThreadedReplies(from: freshFlat)
         }
     }
 

@@ -718,10 +718,19 @@ struct NotificationsView: View {
                     if !markReadScheduledThisVisit {
                         markReadScheduledThisVisit = true
                         markAsReadTask?.cancel()
+                        // Pin the uid at SCHEDULE time (not fire time). If we let
+                        // the no-arg markAllRemainingAsRead() re-read currentUser
+                        // when the 3s timer fires, an account switch in that window
+                        // would pin to the NEW user and mark THEIR notifications
+                        // read (authed as them, so the rules allow it — no server
+                        // backstop). Pinning to the scheduling user means a fire
+                        // under a different account targets the original user's
+                        // docs and is rejected. Matches MainTabView's sweep.
+                        let pinnedUid = Auth.auth().currentUser?.uid
                         markAsReadTask = Task {
                             try? await Task.sleep(nanoseconds: 3_000_000_000)
-                            guard !Task.isCancelled else { return }
-                            markAllRemainingAsRead()
+                            guard !Task.isCancelled, let pinnedUid else { return }
+                            markAllRemainingAsRead(pinnedUid: pinnedUid)
                         }
                     }
 

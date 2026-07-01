@@ -58,6 +58,11 @@ struct FeedView: View {
     // an empty initial state.
     @State private var newPostsBadgeCount = 0
     @State private var previousPostCount = -1
+    // Head post id at the last count change. A pagination call APPENDS to the
+    // tail (count grows, head unchanged), which must not trigger the "new posts"
+    // banner; only a genuine head insertion should. Without this the banner
+    // fired on every scroll-to-load.
+    @State private var previousHeadId: String? = nil
     @FocusState private var searchFocused: Bool
 
     /// True when post matches the current search query (or no query is set).
@@ -428,11 +433,18 @@ struct FeedView: View {
             // false-trigger the banner against an empty starting state.
             // Subsequent positive deltas (listener delivers new docs)
             // increment the badge; the user dismisses with a tap.
+            let newHeadId = vm.posts.first?.id
             if previousPostCount == -1 {
                 previousPostCount = newValue
             } else if newValue > previousPostCount {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    newPostsBadgeCount += (newValue - previousPostCount)
+                // Only bump the badge when posts were inserted at the HEAD (the
+                // first id changed). A pagination append grows the count with the
+                // head unchanged and must NOT trigger the banner — that was the
+                // misfire where "N new posts" appeared during ordinary scrolling.
+                if newHeadId != previousHeadId {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        newPostsBadgeCount += (newValue - previousPostCount)
+                    }
                 }
                 previousPostCount = newValue
             } else if newValue < previousPostCount {
@@ -440,6 +452,7 @@ struct FeedView: View {
                 // baseline without bumping the badge.
                 previousPostCount = newValue
             }
+            previousHeadId = newHeadId
         }
         .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
                     if let info = notif.userInfo {
@@ -1768,8 +1781,12 @@ struct FeedColumn: View {
                                                                                                                                     let visible = vm.postsForTab(tab).filter(matchesSearch)
                                                                                                                                     // Prefetch trigger = 5-from-end of the RENDERED list, only when
                                                                                                                                     // not searching and the list is long enough that the trigger row
-                                                                                                                                    // sits in the lazy tail (so it fires on scroll, not on launch).
-                                                                                                                                    let prefetchTriggerId: String? = (searchText.isEmpty && visible.count > 14)
+                                                                                                                                    // sits in the LAZY tail (so it fires on scroll, not on launch).
+                                                                                                                                    // The eager prefix is prefix(14) (indices 0–13), and the trigger is
+                                                                                                                                    // index count-5, so it only clears the eager block when count-5 >= 14,
+                                                                                                                                    // i.e. count >= 19. With the old `> 14` guard, feeds of 15–18 put the
+                                                                                                                                    // trigger INSIDE the eager prefix → loadMore fired on cold launch.
+                                                                                                                                    let prefetchTriggerId: String? = (searchText.isEmpty && visible.count > 18)
                                                                                                                                         ? visible.dropLast(4).last?.id : nil
                                                                                                                                     // Eager prefix fills the screen so the ScrollView measures a real height
                                                                                                                                     // on cold launch (a fully-lazy feed here reports ~0 height and never

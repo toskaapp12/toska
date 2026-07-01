@@ -1070,15 +1070,20 @@ func contentViolation(in text: String) -> ContentViolationType? {
     // --- Threats and violence (targeted at others) ---
     let threatPhrases = [
         "kill you", "kill him", "kill her", "kill them",
-        "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
+        "shoot you", "shoot him", "shoot her", "shoot them", "shoot up the",
         "stab you", "stab him", "stab her", "stab them",
-        "bomb", "shoot up the", "blow up", "burn down",
+        // Bare "bomb"/"blow up" hard-blocked grief language ("she dropped a bomb
+        // on me", "bath bomb", "before I blow up at him") that the server's
+        // MOD_THREAT does NOT flag — so the client was blocking posts the backend
+        // publishes live, with no override (threat is edit-only). Use targeted
+        // forms instead. Same for "beat you" inside "beat yourself up".
+        "bomb you", "bomb your", "blow you up", "blow up your", "burn your house",
         "rape you", "rape her", "rape him",
         "find you and", "find where you live", "know where you live",
         "hunt you down", "come for you",
         "gonna hurt you", "going to hurt you",
-        "beat you", "beat the shit",
-        "curb stomp", "slit your throat", "bash your",
+        "beat you up", "beat the shit",
+        "curb stomp", "slit your throat", "bash your head",
         "put a bullet", "put you in the ground",
     ]
     for phrase in threatPhrases {

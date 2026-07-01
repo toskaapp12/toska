@@ -130,7 +130,10 @@ struct DailyMomentView: View {
                             .font(ToskaFont.sans(11, weight: .medium))
                             .foregroundColor(Color.toskaBlue.opacity(0.7))
 
-                        Text(postHandle)
+                        // Anonymous attribution — never the third party's handle
+                        // (this card is screenshot/share-encouraged; a handle here
+                        // becomes a searchable pseudonym off-platform).
+                        Text("— someone on toska")
                             .font(ToskaFont.sans(11))
                             .foregroundColor(.white.opacity(0.15))
                     }
@@ -496,7 +499,12 @@ struct DailyMomentView: View {
                     .foregroundColor(Color.toskaBlue.opacity(0.7))
                     .padding(.bottom, 6)
 
-                Text(postHandle)
+                // Do NOT stamp the third-party author's handle into the EXPORTED
+                // image — this surface tells users to "screenshot this. share
+                // it." off-platform, which would turn an anonymous pseudonym
+                // into a searchable identifier on public media. Attribute
+                // anonymously, matching ShareCardView (own posts show no handle).
+                Text("— someone on toska")
                     .font(ToskaFont.sans(11))
                     .foregroundColor(.white.opacity(0.15))
                     .padding(.bottom, 24)

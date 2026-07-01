@@ -322,8 +322,19 @@ service cloud.firestore {
       // client self-delete whenever restricted == true (both admin and system
       // restrictions). The legit account-deletion flow never client-deletes
       // this doc — the Admin-SDK cascade removes it server-side.
+      // G-2 (2026-06-30, corrected): deny self-delete only when the user is
+      // GENUINELY restricted — an admin restriction (restricted == true with
+      // NO restrictedUntil) or a still-active time-bound one (restrictedUntil in
+      // the future). A user whose time-bound restriction has EXPIRED is
+      // functionally unrestricted (notRestricted() lets them post again), so
+      // they may delete like anyone else. The prior `restricted != true` guard
+      // was too broad and blocked those expired users (regressed a rules test);
+      // the original `.get('restrictedUntil', request.time) > request.time`
+      // wrongly ALLOWED admin restrictions (unset default collapsed to false).
       allow delete: if isOwner(userId)
-        && resource.data.get('restricted', false) != true;
+        && !(resource.data.get('restricted', false) == true
+             && (!('restrictedUntil' in resource.data)
+                 || resource.data.restrictedUntil > request.time));
 
       match /following/{followedId} {
         // Reads are owner-only — exposing the full follow graph to any

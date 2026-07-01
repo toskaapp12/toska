@@ -314,8 +314,11 @@ struct ProfileView: View {
     
     func openMyPost(_ post: MyPost) {
         guard !post.id.isEmpty else { return }
-        Firestore.firestore().collection("posts").document(post.id).getDocument { snapshot, _ in
+        Firestore.firestore().collection("posts").document(post.id).getDocument { snapshot, error in
             Task { @MainActor in
+                // Transient read error → leave the row in place; only prune on a
+                // confirmed-missing doc (network blips shouldn't vanish posts).
+                if error != nil { return }
                 guard snapshot?.data() != nil else { myPosts.removeAll { $0.id == post.id }; return }
                 let uid = Auth.auth().currentUser?.uid ?? ""
                 selectedPostId = post.id
@@ -328,8 +331,11 @@ struct ProfileView: View {
     func openSavedPost(_ post: SavedPost) {
         guard !post.id.isEmpty else { return }
         let db = Firestore.firestore()
-        db.collection("posts").document(post.id).getDocument { snapshot, _ in
+        db.collection("posts").document(post.id).getDocument { snapshot, error in
             Task { @MainActor in
+                // Transient read error → do NOT delete the saved/liked entry; a
+                // network blip must not be misread as "post deleted".
+                if error != nil { return }
                 guard let data = snapshot?.data() else {
                     if let uid = Auth.auth().currentUser?.uid {
                         db.collection("users").document(uid).collection("saved").document(post.id).delete()
@@ -713,23 +719,32 @@ struct ProfileView: View {
             guard !postIds.isEmpty else { return }
             let chunks = stride(from: 0, to: postIds.count, by: 30).map { Array(postIds[$0..<min($0 + 30, postIds.count)]) }
             var allResults: [SavedPost] = []
-            await withTaskGroup(of: (found: [SavedPost], requested: [String]).self) { group in
+            await withTaskGroup(of: (found: [SavedPost], requested: [String], ok: Bool).self) { group in
                 for chunk in chunks {
                     group.addTask {
                         guard let postSnap = try? await db.collection("posts")
                             .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else { return (found: [], requested: chunk) }
+                            .getDocumentsAsync() else { return (found: [], requested: chunk, ok: false) }
                         let results: [SavedPost] = postSnap.documents.compactMap { doc in
                             let data = doc.data()
                             guard data["text"] != nil else { return nil }
                             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                             return SavedPost(id: doc.documentID, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
                         }
-                        return (found: results, requested: chunk)
+                        return (found: results, requested: chunk, ok: true)
                     }
                 }
                 for await chunkResult in group {
                     allResults.append(contentsOf: chunkResult.found)
+                    // Only self-heal orphaned reverse-index entries when the chunk
+                    // query actually SUCCEEDED. A whole-chunk failure (e.g. one
+                    // saved post is moderation-held by another author, so the `in`
+                    // documentID query is permission-denied for the ENTIRE chunk)
+                    // must NOT be read as "these posts were deleted" — doing so
+                    // permanently wiped up to 30 valid saves per held post, on
+                    // every profile open. On success, an omitted id is genuinely
+                    // deleted (a held post would have failed the whole query).
+                    guard chunkResult.ok else { continue }
                     let foundIds = Set(chunkResult.found.map { $0.id })
                     let missingIds = chunkResult.requested.filter { !foundIds.contains($0) }
                     if !missingIds.isEmpty {
@@ -815,10 +830,16 @@ struct ProfileView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
         Task { @MainActor in
-            guard let snap = try? await db.collection("posts").document(saved.postId).getDocumentAsync(),
-                  let data = snap.data(),
-                  data["text"] != nil else {
-                // Parent gone — clean up the stale saved-reply entry.
+            let snap: DocumentSnapshot
+            do {
+                snap = try await db.collection("posts").document(saved.postId).getDocumentAsync()
+            } catch {
+                // Transient read error (incl. a held parent post) — leave the
+                // saved-reply row in place; only clean up a confirmed-gone parent.
+                return
+            }
+            guard let data = snap.data(), data["text"] != nil else {
+                // Parent genuinely gone — clean up the stale saved-reply entry.
                 try? await db.collection("users").document(uid)
                     .collection("savedReplies").document(saved.id).delete()
                 savedReplies.removeAll { $0.id == saved.id }
@@ -901,9 +922,14 @@ struct ProfileView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
         Task { @MainActor in
-            guard let snap = try? await db.collection("posts").document(liked.postId).getDocumentAsync(),
-                  let data = snap.data(),
-                  data["text"] != nil else {
+            let snap: DocumentSnapshot
+            do {
+                snap = try await db.collection("posts").document(liked.postId).getDocumentAsync()
+            } catch {
+                // Transient read error (incl. a held parent post) — don't delete.
+                return
+            }
+            guard let data = snap.data(), data["text"] != nil else {
                 try? await db.collection("users").document(uid)
                     .collection("likedReplies").document(liked.id).delete()
                 likedReplies.removeAll { $0.id == liked.id }
@@ -939,23 +965,27 @@ struct ProfileView: View {
             guard !postIds.isEmpty else { likedPosts = []; return }
             let chunks = stride(from: 0, to: postIds.count, by: 30).map { Array(postIds[$0..<min($0 + 30, postIds.count)]) }
             var allResults: [SavedPost] = []
-            await withTaskGroup(of: (found: [SavedPost], requested: [String]).self) { group in
+            await withTaskGroup(of: (found: [SavedPost], requested: [String], ok: Bool).self) { group in
                 for chunk in chunks {
                     group.addTask {
                         guard let postSnap = try? await db.collection("posts")
                             .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else { return (found: [], requested: chunk) }
+                            .getDocumentsAsync() else { return (found: [], requested: chunk, ok: false) }
                         let results: [SavedPost] = postSnap.documents.compactMap { doc in
                             let data = doc.data()
                             guard data["text"] != nil else { return nil }
                             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                             return SavedPost(id: doc.documentID, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
                         }
-                        return (found: results, requested: chunk)
+                        return (found: results, requested: chunk, ok: true)
                     }
                 }
                 for await chunkResult in group {
                     allResults.append(contentsOf: chunkResult.found)
+                    // Only self-heal when the chunk query SUCCEEDED — a whole-chunk
+                    // permission failure (one liked post held by another author)
+                    // must not be misread as "deleted" and wipe valid likes.
+                    guard chunkResult.ok else { continue }
                     let foundIds = Set(chunkResult.found.map { $0.id })
                     let missingIds = chunkResult.requested.filter { !foundIds.contains($0) }
                     if !missingIds.isEmpty {

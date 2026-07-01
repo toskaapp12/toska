@@ -633,7 +633,13 @@ struct ComposeView: View {
                             Button {
                                 showContentWarning = false
                                 postWillBeHeld = true
-                                if let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
+                                // Re-run the name/PII check that attemptPost would have
+                                // run NEXT — otherwise a spam/link post that ALSO
+                                // contains a real name slips past the anonymity warning
+                                // via this override. Then the crisis check, then post.
+                                if !trimmedText.isEmpty && containsNameOrIdentifyingInfo(trimmedText) {
+                                    showNameWarning = true
+                                } else if let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
                                     gentleCheckLevel = level
                                     showGentleCheck = true
                                 } else {
@@ -696,7 +702,7 @@ struct ComposeView: View {
                             // for review. Flag so we surface "under review" once
                             // the write lands.
                             postWillBeHeld = true
-                            if let level = crisisCheckLevelRespectingSetting(for: text) {
+                            if let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
                                 gentleCheckLevel = level
                                 showGentleCheck = true
                             } else {

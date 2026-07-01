@@ -37,6 +37,9 @@ struct ReplyDetailView: View {
     @State private var composerText: String = ""
     @State private var isPosting = false
     @State private var postError: String? = nil
+    @State private var showGentleCheck = false
+    @State private var gentleCheckLevel: CrisisLevel = .soft
+    @State private var crisisConfirmed = false
     @FocusState private var composerFocused: Bool
 
     // Edit / delete / report / share sheets
@@ -290,6 +293,17 @@ struct ReplyDetailView: View {
             dismiss()
         }
         .hidesAppTabBar()
+        .overlay {
+            if showGentleCheck {
+                CrisisCheckInView(
+                    isPresented: $showGentleCheck,
+                    level: gentleCheckLevel,
+                    onProceed: { crisisConfirmed = true; sendReply() }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: showGentleCheck)
     }
 
     private var composerBar: some View {
@@ -467,6 +481,16 @@ struct ReplyDetailView: View {
             postError = "your account is restricted and can't reply right now."
             return
         }
+        // Crisis check-in — surface support resources to the author before the
+        // reply is sent, matching ComposeView + PostDetailView's reply path. The
+        // server also flags/pages on a concerning reply; this is the user-facing
+        // rail. onProceed sets crisisConfirmed and re-enters to actually post.
+        if !crisisConfirmed, let level = crisisCheckLevelRespectingSetting(for: trimmed) {
+            gentleCheckLevel = level
+            showGentleCheck = true
+            return
+        }
+        crisisConfirmed = false
         isPosting = true
         postError = nil
         // Pre-generate the doc id so the optimistic child and the real write

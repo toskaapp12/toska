@@ -2056,6 +2056,14 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
       await db.collection("posts").doc(postId).delete();
       return;
     }
+    // F-1 (2026-06-30): don't promote a repost of a HELD post (defense-in-depth;
+    // the rule now blocks this at write time). An author reposting their own
+    // report-hidden/held post must not republish it live.
+    if ((originalData.moderationStatus || "live") === "pending_review") {
+      console.warn(`Deleting repost ${postId} — original ${originalPostId} is held for review`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
     // originalHandle is intentionally not equality-checked: the original
     // author may have rotated their handle between when the reposter
     // fetched the original and when this trigger fires. The display would
@@ -2702,6 +2710,63 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (ev
   }
 });
 
+// Shared admin crisis-paging (PAGE-then-CLAIM, neutral push body, no content on
+// the lock screen). Used by the reply-crisis alert below; the post one predates
+// it and is left inline. `claimRef` dedups per artifact id; `dataPayload` deep-
+// links the admin into the right surface.
+async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabel }) {
+  try {
+    if ((await claimRef.get()).exists) return; // already paged
+  } catch (err) {
+    console.warn(`${logLabel}: claim read failed, proceeding:`, err.message);
+  }
+  const FALLBACK_ADMIN_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
+  try {
+    const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
+    const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
+    const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
+    if (adminUids.length === 0) return;
+    const tokens = [];
+    for (const uid of adminUids) {
+      const privSnap = await db.collection("users").doc(uid).collection("private").doc("data").get();
+      const token = privSnap.data()?.fcmToken;
+      if (typeof token === "string" && token.length > 0) tokens.push(token);
+    }
+    if (tokens.length === 0) return;
+    const resp = await getMessaging().sendEachForMulticast({
+      notification: { title, body }, data: dataPayload, tokens,
+    });
+    console.log(`${logLabel}: sent to ${resp.successCount}/${tokens.length} admin devices`);
+    if (resp.successCount > 0) {
+      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+      await claimRef.set({ processedAt: FieldValue.serverTimestamp(), expiresAt })
+        .catch((err) => console.warn(`${logLabel}: claim write failed:`, err.message));
+    }
+  } catch (err) {
+    console.warn(`${logLabel}: failed to alert admins: ${err.message}`);
+  }
+}
+
+// Crisis disclosures posted as REPLIES previously got no admin page at all
+// (onPostCreatedAlertAdmins is posts-only). Page admins on an explicit-crisis
+// reply, deep-linking to the parent post so it can be reviewed. Dedup keyed on
+// the reply id.
+exports.onReplyCreatedAlertAdmins = onDocumentCreated(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const data = event.data?.data();
+    if (!data || typeof data.text !== "string") return;
+    if (!isPostExplicitCrisis(data.text)) return;
+    await pageAdminsForCrisis({
+      claimRef: db.collection("processedTriggerEvents").doc(`crisisAlertReply_${event.params.replyId}`),
+      title: "crisis reply",
+      body: "a reply needs review in the crisis queue",
+      dataPayload: { type: "admin_crisis_alert", postId: event.params.postId, replyId: event.params.replyId },
+      logLabel: `crisis-alert-reply(${event.params.replyId})`,
+    });
+  }
+);
+
 // ============================================================
 // Content moderation — flag replies with prohibited content
 //
@@ -2740,6 +2805,16 @@ exports.onReplyCreatedModerate = onDocumentCreated(
   async (event) => {
     const data = event.data.data();
     if (!data) return;
+    // Crisis/concerning text in a reply: mark it concerning (for the record +
+    // future admin visibility) but do NOT hide it — in a peer-support thread a
+    // reach-out shouldn't be censored, and onReplyCreatedAlertAdmins pages a
+    // human on explicit crisis. The author sees crisis resources client-side at
+    // send time. This runs independently of the abuse/PII flag below.
+    if (isPostConcerning(data.text)) {
+      await event.data.ref
+        .set({ concerningContent: true, concerningDetectedAt: FieldValue.serverTimestamp() }, { merge: true })
+        .catch((err) => console.warn(`reply concerning-flag failed for ${event.params.replyId}:`, err.message));
+    }
     const flagReason = computeReplyFlagReason(data.text);
     if (flagReason) {
       await applyReplyModeration(event.params.postId, event.params.replyId, flagReason);

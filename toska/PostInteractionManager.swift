@@ -258,6 +258,13 @@ class PostInteractionManager {
                // settle before a second tap can land, so we don't fire two
                // optimistic increments per rapid double-tap on the same post.
                RateLimiter.shared.recordRepost(for: postId)
+               // In-flight guard: the optimistic +1 only fires after two network
+               // round-trips (dedup query + post fetch), so a second tap arriving
+               // slower than the 2s rate window would otherwise re-enter and stack
+               // a second +1. Serialize on the shared repost key (same one unrepost
+               // uses) and clear it on EVERY exit below.
+               guard !RateLimiter.shared.isRepostInFlight(postId) else { return }
+               RateLimiter.shared.markRepostInFlight(postId)
 
                let db = Firestore.firestore()
 
@@ -274,11 +281,13 @@ class PostInteractionManager {
                     // check pass with stale cached data. Correct check: any error → fail safe.
                     if let error = error {
                         print("⚠️ repost dedup check failed: \(error)")
+                        RateLimiter.shared.markRepostComplete(postId)
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                         return
                     }
                     if let docs = existingSnap?.documents, !docs.isEmpty {
                         // Already reposted — reflect that in the UI.
+                        RateLimiter.shared.markRepostComplete(postId)
                         onUpdate(RepostResult(isReposted: true, newCount: currentCount))
                         return
                     }
@@ -294,16 +303,19 @@ class PostInteractionManager {
                             snapshot = try await db.collection("posts").document(postId).getDocumentAsync()
                         } catch {
                             print("⚠️ repost post fetch failed: \(error)")
+                            RateLimiter.shared.markRepostComplete(postId)
                             onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                             return
                         }
                             guard let data = snapshot?.data() else {
                                 // Post was deleted.
+                                RateLimiter.shared.markRepostComplete(postId)
                                 onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                                 return
                             }
                             if data["isRepost"] as? Bool == true {
                                 // Cannot repost a repost — no change.
+                                RateLimiter.shared.markRepostComplete(postId)
                                 onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                                 return
                             }
@@ -444,6 +456,7 @@ class PostInteractionManager {
 
                             }, completion: { _, txError in
                                 Task { @MainActor in
+                                    RateLimiter.shared.markRepostComplete(postId)
                                     if let txError = txError {
                                         print("⚠️ repost transaction failed: \(txError)")
                                         // Roll back the optimistic update (locally and
@@ -584,6 +597,9 @@ class PostInteractionManager {
         onUpdate: @escaping (RepostResult) -> Void
     ) {
         DispatchQueue.main.asyncAfter(deadline: .now() + afterSeconds) {
+            // Bail if the account switched during the delay — otherwise this
+            // pushes account A's reconciled repost state into account B's UI.
+            guard Auth.auth().currentUser?.uid == uid else { return }
             let db = Firestore.firestore()
             db.collection("posts").document(postId).getDocument { snap, _ in
                 guard let count = snap?.data()?["repostCount"] as? Int else { return }
@@ -595,6 +611,8 @@ class PostInteractionManager {
                     .getDocuments { rsnap, _ in
                         let stillReposted = !(rsnap?.documents.isEmpty ?? true)
                         Task { @MainActor in
+                            // Re-check again after the async reads.
+                            guard Auth.auth().currentUser?.uid == uid else { return }
                             onUpdate(RepostResult(isReposted: stillReposted, newCount: max(0, count)))
                         }
                     }

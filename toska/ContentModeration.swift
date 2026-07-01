@@ -253,11 +253,23 @@ private func stripInvisibleSeparators(_ text: String) -> String {
     out.reserveCapacity(text.count)
     for scalar in text.unicodeScalars {
         let v = scalar.value
-        if (v >= 0x200B && v <= 0x200D) { continue }
-        if v == 0x2060 { continue }
-        if (v >= 0x202A && v <= 0x202E) { continue }
-        if (v >= 0x2066 && v <= 0x2069) { continue }
-        if v == 0xFEFF { continue }
+        // Kept byte-identical to the JS STRIP_INVISIBLE_CODEPOINTS set
+        // (functions/moderation.js) so client + server fold the SAME render-as-
+        // nothing separators — otherwise the client under-detects a name/crisis
+        // phrase the server holds (a vulnerable user sees "posted normally").
+        if (v >= 0x200B && v <= 0x200F) { continue }   // ZWSP..RLM (incl LRM/RLM)
+        if (v >= 0x202A && v <= 0x202E) { continue }   // bidi embed/override
+        if v == 0x2060 { continue }                    // word joiner
+        if (v >= 0x2066 && v <= 0x2069) { continue }   // bidi isolates
+        if v == 0xFEFF { continue }                    // ZWNBSP / BOM
+        if v == 0x00AD { continue }                    // soft hyphen
+        if v == 0x034F { continue }                    // combining grapheme joiner
+        if v == 0x061C { continue }                    // arabic letter mark
+        if (v == 0x115F || v == 0x1160) { continue }   // Hangul choseong/jungseong fillers
+        if (v == 0x17B4 || v == 0x17B5) { continue }   // Khmer invisible inherent vowels
+        if v == 0x180E { continue }                    // Mongolian vowel separator
+        if v == 0x3164 { continue }                    // Hangul filler
+        if v == 0xFFA0 { continue }                    // halfwidth Hangul filler
         out.unicodeScalars.append(scalar)
     }
     return out

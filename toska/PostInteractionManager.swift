@@ -560,14 +560,46 @@ class PostInteractionManager {
                     // onRepostDeletedUpdateCount — but it fires once PER deleted
                     // doc. We optimistically decremented by exactly 1, so if more
                     // than one repost doc matched (legacy random-id + the
-                    // deterministic id), the server drops by N while the UI
-                    // dropped by 1 — a permanent local over-count until a
-                    // listener refresh. Correct the count to match.
+                    // deterministic id), the server drops by N while the UI dropped
+                    // by 1. Show the best estimate immediately, then reconcile to
+                    // the AUTHORITATIVE server state once the counter CF settles —
+                    // that read is the source of truth, so it corrects any drift
+                    // (including from a stale base) for any number of matched docs.
                     if refs.count > 1 {
                         onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - refs.count)))
+                        Self.reconcileRepostState(postId: postId, uid: uid, afterSeconds: 3, onUpdate: onUpdate)
                     }
                 }
             }
+    }
+
+    /// After the delete-triggered counter Cloud Function settles, read the
+    /// AUTHORITATIVE repostCount for the post AND whether the caller's repost doc
+    /// still exists, then push both truths to the UI. Used to converge the count
+    /// after a multi-doc (legacy-dupe) unrepost without guessing from a possibly-
+    /// stale base — and it re-derives isReposted from actual doc existence, so it
+    /// stays correct even if the user re-reposted in the interim.
+    private static func reconcileRepostState(
+        postId: String, uid: String, afterSeconds: Double,
+        onUpdate: @escaping (RepostResult) -> Void
+    ) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + afterSeconds) {
+            let db = Firestore.firestore()
+            db.collection("posts").document(postId).getDocument { snap, _ in
+                guard let count = snap?.data()?["repostCount"] as? Int else { return }
+                db.collection("posts")
+                    .whereField("authorId", isEqualTo: uid)
+                    .whereField("isRepost", isEqualTo: true)
+                    .whereField("originalPostId", isEqualTo: postId)
+                    .limit(to: 1)
+                    .getDocuments { rsnap, _ in
+                        let stillReposted = !(rsnap?.documents.isEmpty ?? true)
+                        Task { @MainActor in
+                            onUpdate(RepostResult(isReposted: stillReposted, newCount: max(0, count)))
+                        }
+                    }
+            }
+        }
     }
 
     // MARK: - Notification

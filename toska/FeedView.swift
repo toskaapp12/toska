@@ -1545,22 +1545,80 @@ struct FeedColumn: View {
                                 }
     }
 
+    @ViewBuilder
+    private func feedRow(for post: FeedPost) -> some View {
+                                                                                                                                                if post.id.hasPrefix("sample_") {
+                                                                                                                                                    FeedPostRow(
+                                                                                                                                                        handle: post.handle,
+                                                                                                                                                        text: post.text,
+                                                                                                                                                        tag: post.tag,
+                                                                                                                                                        likes: post.likes,
+                                                                                                                                                        reposts: post.reposts,
+                                                                                                                                                        replies: post.replies,
+                                                                                                                                                        time: post.time
+                                                                                                                                                    )
+                                                                                                                                                    .equatable()
+                                                                                                                                                } else {
+                                                                                                                                                    FeedPostRow(
+                                                                                                                                                        handle: post.originalHandle ?? post.handle,
+                                                                                                                                                        text: post.text,
+                                                                                                                                                        tag: post.tag,
+                                                                                                                                                        likes: post.likes,
+                                                                                                                                                        reposts: post.reposts,
+                                                                                                                                                        replies: post.replies,
+                                                                                                                                                        time: post.time,
+                                                                                                                                                        postId: post.id,
+                                                                                                                                                        authorId: post.authorId,
+                                                                                                                                                        isAlreadyReposted: vm.repostedPostIds.contains(post.id),
+                                                                                                                                                        isAlreadyLiked: vm.likedPostIds.contains(post.id),
+                                                                                                                                                        isAlreadySaved: vm.savedPostIds.contains(post.id),
+                                                                                                                                                        isShareable: post.isShareable,
+                                                                                                                                                        gifUrl: vm.postGifUrls[post.id],
+                                                                                                                                                        isMidnightPost: vm.midnightPostIds.contains(post.id),
+                                                                                                                                                        isLetter: vm.letterPostIds.contains(post.id),
+                                                                                                                                                        isRepostPost: vm.repostPostIds.contains(post.id),
+                                                                                                                                                        isWhisperPost: vm.whisperPostIds.contains(post.id),
+                                                                                                                                                        isLetterExpanded: vm.expandedLetterIds.contains(post.id),
+                                                                                                                                                        onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
+                                                                                                                                                        reposterHandle: post.originalHandle != nil ? post.handle : nil,
+                                                                                                                                                        promptText: FeedView.promptText(for: post.promptDate)
+                                                                                                                                                                                                                                                                                                    )
+                                                                                                                                                                                                                                                                                                    .equatable()
+                                                                                                                                                                                                                                                                                                    .id(post.id)
+                                                                                                                                                                                                                                                                                                    .onAppear {
+                                                                                                                                                                                                                                                                                                        // Prefetch the next page when this row is
+                                                                                                                                                                                                                                                                                                        // ~5 posts from the end. By the time the
+                                                                                                                                                                                                                                                                                                        // user reaches the bottom, the next page
+                                                                                                                                                                                                                                                                                                        // is usually already loaded — no visible
+                                                                                                                                                                                                                                                                                                        // spinner, smoother feed.
+                                                                                                                                                                                                                                                                                                        // Only prefetch during normal browsing — while searching, the
+                                                                                                                                                                                                                                                                                                        // rendered rows are a filtered subset so the 5th-from-last of the
+                                                                                                                                                                                                                                                                                                        // full array rarely appears; the bottom ProgressView still pages.
+                                                                                                                                                                                                                                                                                                        guard tab == 0,
+                                                                                                                                                                                                                                                                                                              searchText.isEmpty,
+                                                                                                                                                                                                                                                                                                              vm.hasMorePosts,
+                                                                                                                                                                                                                                                                                                              !vm.isLoadingMore,
+                                                                                                                                                                                                                                                                                                              post.id == vm.posts.dropLast(4).last?.id else { return }
+                                                                                                                                                                                                                                                                                                        vm.loadMorePosts()
+                                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                                                }
+    }
+
     var body: some View {
                 GeometryReader { geo in
                             ScrollViewReader { proxy in
                                 ScrollView(showsIndicators: false) {
-                            // VStack, not LazyVStack. LazyVStack inside this
-                            // ScrollView produces a blank feed on cold launch:
-                            // posts arrive in vm.posts and the body recomputes
-                            // into the loaded ForEach branch, but the LazyVStack
-                            // reports near-zero measured height and never
-                            // materialises the rows until pull-to-refresh
-                            // re-triggers layout. The earlier perf concern
-                            // (eager render of 60+ posts firing the 5-from-end
-                            // prefetch immediately) is acceptable in exchange
-                            // for the feed actually appearing on launch — the
-                            // user-visible bug here is far worse than the
-                            // wasted prefetch.
+                            // Outer VStack (not LazyVStack): a fully-lazy feed here
+                            // reports near-zero measured height on cold launch and
+                            // never materialises the rows until pull-to-refresh
+                            // re-triggers layout (the blank-feed bug). We keep the
+                            // container eager, but the post list itself is split
+                            // into an EAGER prefix (first 14 — fills the screen so
+                            // the ScrollView gets a real height on launch) plus a
+                            // LazyVStack TAIL (remaining scored posts, built only as
+                            // they scroll in). That gives us both: the feed always
+                            // appears on launch AND we don't construct all ~60
+                            // scored rows up front. See feedRow(for:).
                                     VStack(spacing: 0) {
                                                                                 Color.clear.frame(height: 0).id("feedTop")
                                 // Pull-to-refresh is handled entirely by the native
@@ -1701,63 +1759,22 @@ struct FeedColumn: View {
                                     .padding(.top, 60)
                                     .padding(.bottom, 40)
                                                                 } else {
-                                                                                                                                    ForEach(vm.postsForTab(tab).filter(matchesSearch)) { post in
-                                                                                                                                        if post.id.hasPrefix("sample_") {
-                                                                                                                                            FeedPostRow(
-                                                                                                                                                handle: post.handle,
-                                                                                                                                                text: post.text,
-                                                                                                                                                tag: post.tag,
-                                                                                                                                                likes: post.likes,
-                                                                                                                                                reposts: post.reposts,
-                                                                                                                                                replies: post.replies,
-                                                                                                                                                time: post.time
-                                                                                                                                            )
-                                                                                                                                            .equatable()
-                                                                                                                                        } else {
-                                                                                                                                            FeedPostRow(
-                                                                                                                                                handle: post.originalHandle ?? post.handle,
-                                                                                                                                                text: post.text,
-                                                                                                                                                tag: post.tag,
-                                                                                                                                                likes: post.likes,
-                                                                                                                                                reposts: post.reposts,
-                                                                                                                                                replies: post.replies,
-                                                                                                                                                time: post.time,
-                                                                                                                                                postId: post.id,
-                                                                                                                                                authorId: post.authorId,
-                                                                                                                                                isAlreadyReposted: vm.repostedPostIds.contains(post.id),
-                                                                                                                                                isAlreadyLiked: vm.likedPostIds.contains(post.id),
-                                                                                                                                                isAlreadySaved: vm.savedPostIds.contains(post.id),
-                                                                                                                                                isShareable: post.isShareable,
-                                                                                                                                                gifUrl: vm.postGifUrls[post.id],
-                                                                                                                                                isMidnightPost: vm.midnightPostIds.contains(post.id),
-                                                                                                                                                isLetter: vm.letterPostIds.contains(post.id),
-                                                                                                                                                isRepostPost: vm.repostPostIds.contains(post.id),
-                                                                                                                                                isWhisperPost: vm.whisperPostIds.contains(post.id),
-                                                                                                                                                isLetterExpanded: vm.expandedLetterIds.contains(post.id),
-                                                                                                                                                onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
-                                                                                                                                                reposterHandle: post.originalHandle != nil ? post.handle : nil,
-                                                                                                                                                promptText: FeedView.promptText(for: post.promptDate)
-                                                                                                                                                                                                                                                                                            )
-                                                                                                                                                                                                                                                                                            .equatable()
-                                                                                                                                                                                                                                                                                            .id(post.id)
-                                                                                                                                                                                                                                                                                            .onAppear {
-                                                                                                                                                                                                                                                                                                // Prefetch the next page when this row is
-                                                                                                                                                                                                                                                                                                // ~5 posts from the end. By the time the
-                                                                                                                                                                                                                                                                                                // user reaches the bottom, the next page
-                                                                                                                                                                                                                                                                                                // is usually already loaded — no visible
-                                                                                                                                                                                                                                                                                                // spinner, smoother feed.
-                                                                                                                                                                                                                                                                                                // Only prefetch during normal browsing — while searching, the
-                                                                                                                                                                                                                                                                                                // rendered rows are a filtered subset so the 5th-from-last of the
-                                                                                                                                                                                                                                                                                                // full array rarely appears; the bottom ProgressView still pages.
-                                                                                                                                                                                                                                                                                                guard tab == 0,
-                                                                                                                                                                                                                                                                                                      searchText.isEmpty,
-                                                                                                                                                                                                                                                                                                      vm.hasMorePosts,
-                                                                                                                                                                                                                                                                                                      !vm.isLoadingMore,
-                                                                                                                                                                                                                                                                                                      post.id == vm.posts.dropLast(4).last?.id else { return }
-                                                                                                                                                                                                                                                                                                vm.loadMorePosts()
-                                                                                                                                                                                                                                                                                            }
-                                                                                                                                                                                                                                                                                        }
-                                                                                                                                                                                                                                                                                    }
+                                                                                                                                    let visible = vm.postsForTab(tab).filter(matchesSearch)
+                                                                                                                                    // Eager prefix fills the screen so the ScrollView measures a real height
+                                                                                                                                    // on cold launch (a fully-lazy feed here reports ~0 height and never
+                                                                                                                                    // materialises — the blank-feed bug). The tail is a LazyVStack so we
+                                                                                                                                    // don't build all ~60 scored rows up front; the 5-from-end prefetch now
+                                                                                                                                    // fires only as a tail row scrolls in.
+                                                                                                                                    ForEach(Array(visible.prefix(14))) { post in
+                                                                                                                                        feedRow(for: post)
+                                                                                                                                    }
+                                                                                                                                    if visible.count > 14 {
+                                                                                                                                        LazyVStack(spacing: 0) {
+                                                                                                                                            ForEach(Array(visible.dropFirst(14))) { post in
+                                                                                                                                                feedRow(for: post)
+                                                                                                                                            }
+                                                                                                                                        }
+                                                                                                                                    }
                                                                                                                                                                                                                                                         } // end else hasLoadedOnce
 
                                                                                                                                                                                                             if tab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {

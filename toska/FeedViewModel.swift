@@ -1101,7 +1101,15 @@ class FeedViewModel: ObservableObject {
                     }
 
                     let ranked = scored.sorted { $0.score > $1.score }
-                    let topDocs = Array(ranked.prefix(20))
+                    // Render ALL scored docs from this page, not just the top 20.
+                    // Previously we displayed prefix(20) but set the pagination
+                    // cursor to documents.last (the 60th by createdAt), so the 40
+                    // docs that were fetched-but-ranked-21..60 were never shown
+                    // AND `start(afterDocument:)` skipped past them — permanent
+                    // holes in the feed for the session. Showing the whole scored
+                    // page keeps the cursor honest: everything before documents.last
+                    // is on screen, and loadMore continues strictly after it.
+                    let topDocs = ranked
 
                     var newPosts: [FeedPost] = []
                     for item in topDocs {

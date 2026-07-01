@@ -1441,7 +1441,11 @@ struct PostDetailView: View {
     // single composite query — keeps us from needing a new index on
     // (authorId, originalReplyId) for this v1.0 path. If repost-state
     // checks ever become a hot path, swap to the indexed query.
-    private static func stampReplyInteractionState(
+    // Internal (not private) so ReplyDetailView can reuse the same stamping to
+    // seed its children's like/save/repost state — otherwise children render as
+    // un-interacted and a like on an already-liked reply is a server no-op that
+    // leaves the optimistic +1 stuck.
+    static func stampReplyInteractionState(
         replies: [ThreadedReply],
         replyIds: [String],
         uid: String,

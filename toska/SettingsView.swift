@@ -475,10 +475,12 @@ struct SettingsView: View {
         }
         .alert("sign in again to delete", isPresented: $showReauthAlert) {
             Button("sign out") {
-                            PushNotificationManager.shared.clearFCMToken()
-                            try? Auth.auth().signOut()
-                            NotificationCenter.default.post(name: .userDidSignOut, object: nil)
-                            dismiss()
+                            Task { @MainActor in
+                                await PushNotificationManager.shared.clearFCMTokenAndWait()
+                                try? Auth.auth().signOut()
+                                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                                dismiss()
+                            }
                         }
                         Button("cancel", role: .cancel) {}
                     } message: {
@@ -487,10 +489,12 @@ struct SettingsView: View {
                     .alert("sign out?", isPresented: $showSignOutAlert) {
                         Button("cancel", role: .cancel) {}
                         Button("sign out") {
-                            PushNotificationManager.shared.clearFCMToken()
-                            try? Auth.auth().signOut()
-                            NotificationCenter.default.post(name: .userDidSignOut, object: nil)
-                            dismiss()
+                            Task { @MainActor in
+                                await PushNotificationManager.shared.clearFCMTokenAndWait()
+                                try? Auth.auth().signOut()
+                                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                                dismiss()
+                            }
                         }
                     }
 
@@ -1077,10 +1081,12 @@ struct ChangeEmailView: View {
         }
         .alert("sign in again to update", isPresented: $showReauthAlert) {
             Button("sign out") {
-                PushNotificationManager.shared.clearFCMToken()
-                try? Auth.auth().signOut()
-                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
-                dismiss()
+                Task { @MainActor in
+                    await PushNotificationManager.shared.clearFCMTokenAndWait()
+                    try? Auth.auth().signOut()
+                    NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                    dismiss()
+                }
             }
             Button("cancel", role: .cancel) {}
         } message: {
@@ -1208,10 +1214,12 @@ struct ChangePasswordView: View {
         }
         .alert("sign in again to update", isPresented: $showReauthAlert) {
             Button("sign out") {
-                PushNotificationManager.shared.clearFCMToken()
-                try? Auth.auth().signOut()
-                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
-                dismiss()
+                Task { @MainActor in
+                    await PushNotificationManager.shared.clearFCMTokenAndWait()
+                    try? Auth.auth().signOut()
+                    NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                    dismiss()
+                }
             }
             Button("cancel", role: .cancel) {}
         } message: {

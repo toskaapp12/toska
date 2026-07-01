@@ -131,17 +131,25 @@ const MOD_HATE = [
   /c[o0][o0]n/i, /towelhead/i, /raghead/i, /beaner/i, /zipperhead/i,
 ];
 
+// Kept in parity with the client threatPhrases (ContentModeration.swift). Bare
+// "blow up"/"beat you"/"burn down"/"shoot up" were removed: they substring-match
+// grief/venting ("blow up at him", "don't beat yourself up", "life is burning
+// down", "growth shot up") and were silently HOLDING those posts server-side
+// while the (narrowed) client passed them with no "under review" notice. The
+// targeted forms below catch real threats and are mirrored on the client so the
+// user is warned on exactly what the server holds.
 const MOD_THREAT = [
   "kill you", "kill him", "kill her", "kill them",
-  "shoot you", "shoot him", "shoot her", "shoot them", "shoot up",
+  "shoot you", "shoot him", "shoot her", "shoot them", "shoot up the",
   "stab you", "stab him", "stab her", "stab them",
-  "shoot up the", "blow up", "burn down",
+  "bomb you", "bomb your", "blow you up", "blow up your", "burn your house",
   "rape you", "rape her", "rape him",
   "find you and", "find where you live", "know where you live",
   "hunt you down", "come for you",
   "gonna hurt you", "going to hurt you",
-  "beat you", "beat the shit",
-  "slit your throat", "put a bullet",
+  "beat you up", "beat the shit",
+  "curb stomp", "slit your throat", "bash your head",
+  "put a bullet", "put you in the ground",
 ];
 
 const MOD_SEXUAL = [

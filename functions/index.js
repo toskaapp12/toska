@@ -2798,15 +2798,19 @@ async function applyReplyModeration(postId, replyId, flagReason) {
     // mirrors the admin.html label keys ("pii" / "abuse_link").
     await setReplyPendingReview(replyRef, flagReason === "contains_link" ? "abuse_link" : "pii");
     console.log(`Reply ${replyId} on post ${postId} held for review: ${flagReason}`);
-  } else if (flagReason === "harassment" || flagReason === "threat") {
-    // HOLD (recoverable) instead of hard-delete. MOD_HARASSMENT/threat lists
-    // substring-match supportive NEGATED reach-outs — "please don't kill
+  } else if (flagReason === "harassment" || flagReason === "targeted_threat") {
+    // HOLD (recoverable) instead of hard-delete. MOD_HARASSMENT/MOD_THREAT
+    // lists substring-match supportive NEGATED reach-outs — "please don't kill
     // yourself, call 988, you matter" contains "kill yourself" — which are the
     // exact replies a breakup peer-support thread exists to protect. Hard-
     // deleting them destroys the support with no recovery. Holding hides a
     // genuine attack from its target just the same, but is reviewable and
-    // releasable by an admin instead of silently gone.
-    await setReplyPendingReview(replyRef, "abuse");
+    // releasable by an admin instead of silently gone. NOTE: the reason string
+    // is "targeted_threat" (from computeReplyFlagReason), NOT "threat" — the
+    // earlier guard used "threat" and silently fell through to hard-delete.
+    // Use flagReasonToPendingReason so admin.html shows the real category
+    // ("abuse_harassment" / "abuse_threat") instead of a generic label.
+    await setReplyPendingReview(replyRef, flagReasonToPendingReason(flagReason));
     console.log(`Reply ${replyId} on post ${postId} held for review: ${flagReason}`);
   } else {
     // hate / sexual: low false-positive, genuinely removable — keep the hard

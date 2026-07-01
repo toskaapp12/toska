@@ -267,7 +267,12 @@ describe("#1 crisis detection — isPostExplicitCrisis (pages admins)", () => {
     "i keep thinking about ending my life",
     "honestly i just want to die",
     "i've been cutting myself again",
-    "i want to k1ll myself",            // leetspeak evasion
+    "i want to k1ll myself",            // leetspeak evasion (1→i)
+    "i want to ki11 myself",            // 1→l leet (the actual bug string)
+    "i want to k!ll myself",            // !→i leet
+    "i want to ki|| myself",            // |→l leet
+    "i think about su1c1de a lot",      // 1→i inside a word
+    "thinking about su!c!de tonight",   // !→i inside a word
     "i feel s u i c i d a l",           // spaced-letter evasion
   ];
   mustPage.forEach((t) => it(`flags: ${JSON.stringify(t)}`, () => {
@@ -280,6 +285,8 @@ describe("#1 crisis detection — isPostExplicitCrisis (pages admins)", () => {
     "i'm so done with him",             // venting
     "i can't do this anymore",          // soft distress, not EXPLICIT (still concerning)
     "we broke up and i'm finally okay",
+    "1 more day of this and then i'm free!",  // benign digit/! — must not FP from the leet expansion
+    "he broke my heart!!! i hate this",       // benign ! run — must not FP
   ];
   mustNotPage.forEach((t) => it(`does NOT page: ${JSON.stringify(t)}`, () => {
     assert.strictEqual(isPostExplicitCrisis(t), false);

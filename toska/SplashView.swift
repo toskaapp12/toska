@@ -284,6 +284,10 @@ struct SplashView: View {
                 // the user-doc write failed, delete the orphaned auth account.
                 // Fall back to signOut if delete fails.
                 if Auth.auth().currentUser != nil {
+                    // Clear any FCM token first, for parity with the other
+                    // sign-out/deletion paths (harmless here — a brand-new account
+                    // that never persisted one).
+                    PushNotificationManager.shared.clearFCMToken()
                     do {
                         try await Auth.auth().currentUser?.delete()
                     } catch {

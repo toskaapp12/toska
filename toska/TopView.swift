@@ -271,6 +271,10 @@ struct TopView: View {
                     }
 
                     let ranked = engaged
+                        // "Most felt" should have at least one felt — otherwise a
+                        // sparse board fills slots with 0-like posts ranked by
+                        // recency. Honest empty state until posts earn engagement.
+                        .filter { $0.likes > 0 }
                         .sorted { $0.score > $1.score }
                         .prefix(10)
                         .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId, replies: $0.replies, reposts: $0.reposts, time: $0.time) }

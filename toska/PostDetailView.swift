@@ -1289,20 +1289,46 @@ struct PostDetailView: View {
         var byId: [String: ThreadedReply] = [:]
         for r in rawLiveReplies { byId[r.id] = r }
         for r in rawHeldReplies where byId[r.id] == nil { byId[r.id] = r }
-        let flat = byId.values.sorted { $0.createdAt < $1.createdAt }
+        var flat = byId.values.sorted { $0.createdAt < $1.createdAt }
+
+        // Carry forward interaction state we've already resolved (INCLUDING
+        // in-flight optimistic toggles) for replies already on screen, so a
+        // snapshot delta (e.g. another user's reply arriving) can't re-stamp a
+        // reply you just liked back to un-liked and strand the optimistic +1.
+        // Mirrors ReplyDetailView's build-42 carry-forward; only genuinely-new
+        // replies get re-stamped from the server below.
+        var priorState: [String: (Bool, Bool, Bool)] = [:]
+        func collect(_ replies: [ThreadedReply]) {
+            for r in replies { priorState[r.id] = (r.isLiked, r.isSaved, r.isReposted); collect(r.children) }
+        }
+        collect(replyList)
+        for i in flat.indices {
+            if let s = priorState[flat[i].id] {
+                flat[i].isLiked = s.0; flat[i].isSaved = s.1; flat[i].isReposted = s.2
+            }
+        }
 
         print("ℹ️ fetchReplies recombine for post \(postId): \(rawLiveReplies.count) live + \(rawHeldReplies.count) held → \(flat.count)")
         withAnimation(.easeInOut(duration: 0.2)) {
             replyList = buildThreadedReplies(from: flat)
             hasLoadedReplies = true
         }
-        if let uid = Auth.auth().currentUser?.uid, !flat.isEmpty {
-            let replyIds = flat.map { $0.id }
+        let unresolved = flat.filter { priorState[$0.id] == nil }
+        if let uid = Auth.auth().currentUser?.uid, !unresolved.isEmpty {
             let db = Firestore.firestore()
             let stamped = await Self.stampReplyInteractionState(
-                replies: flat, replyIds: replyIds, uid: uid, db: db
+                replies: unresolved, replyIds: unresolved.map { $0.id }, uid: uid, db: db
             )
-            replyList = buildThreadedReplies(from: stamped)
+            let stampedMap = Dictionary(
+                stamped.map { ($0.id, ($0.isLiked, $0.isSaved, $0.isReposted)) },
+                uniquingKeysWith: { a, _ in a }
+            )
+            for i in flat.indices {
+                if let s = stampedMap[flat[i].id] {
+                    flat[i].isLiked = s.0; flat[i].isSaved = s.1; flat[i].isReposted = s.2
+                }
+            }
+            replyList = buildThreadedReplies(from: flat)
         }
     }
 

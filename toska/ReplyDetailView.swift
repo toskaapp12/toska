@@ -435,8 +435,16 @@ struct ReplyDetailView: View {
                     // longer "still pending", so there's no duplicate.
                     let liveIds = Set(newChildren.map { $0.id })
                     let myUid = Auth.auth().currentUser?.uid
+                    // Self-heal: preserve the optimistic own-reply only for a
+                    // bounded window. If it hasn't been promoted to `live` within
+                    // ~2 min it was HELD for review (or rejected) — the single
+                    // live-listener here never sees it, so keeping it forever made
+                    // a held reply read as live with no "under review" banner. The
+                    // held copy already surfaces in the main PostDetailView thread
+                    // (with the banner), so drop the ghost here instead of leaking it.
                     let stillPending = children.filter {
                         $0.authorId == myUid && !liveIds.contains($0.id)
+                            && Date().timeIntervalSince($0.createdAt) < 120
                     }
                     children = (newChildren + stillPending).sorted { $0.createdAt < $1.createdAt }
                     hasLoadedChildren = true

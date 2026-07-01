@@ -83,7 +83,7 @@ struct NotificationsView: View {
                 grouped.append(n)
             }
         }
-        // 2) Attach the referenced post text (quote) from the batch fetch.
+        // 2) Attach the referenced post text (quote) from the per-document fetch.
         grouped = grouped.map { item in
             guard item.quote == nil, !item.postId.isEmpty, let t = postTexts[item.postId] else { return item }
             var x = item
@@ -96,9 +96,10 @@ struct NotificationsView: View {
         earlierNotifs = grouped.filter { !calendar.isDateInToday($0.createdAt) }
     }
 
-    // Batch-fetch the text of every post referenced by a notification so each row
-    // can quote the moment it's about. Chunked by 30 (Firestore `in` cap);
-    // results cached in postTexts, then groups recompute to show the quotes.
+    // Fetch the text of every post referenced by a notification (per-document,
+    // NOT an `in` batch — one moderation-held post would fail the whole batch) so
+    // each row can quote the moment it's about. Results cached in postTexts, then
+    // groups recompute once all have returned to show the quotes.
     private func fetchPostTexts() {
         let ids = Array(Set(notifications.map { $0.postId }.filter { !$0.isEmpty && postTexts[$0] == nil }))
         guard !ids.isEmpty else { return }

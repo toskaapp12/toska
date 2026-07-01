@@ -277,17 +277,26 @@ function matchesCrisisPhrase(rawText, list) {
   // crisis/threat/harassment phrase past the hold and the crisis admin page.
   // We keep both candidates (i-form catches "su1c1dal", l-form catches
   // "ki11"), and over-detection is the accepted-safe direction for crisis.
-  const altNormalized = aggressiveNormalizeForNameMatch(raw.replace(/1/g, "l"));
-  const altNoSpace = altNormalized.replace(/[^a-z0-9]/g, "");
+  // Extend the ambiguous-glyph set beyond "1": "!" and "|" also commonly stand
+  // in for "i"/"l" (k!ll, su!c!de, ki||). Build an i-form and an l-form over the
+  // whole [1!|] set and OR their matches, so the l-position AND the punctuation
+  // leet forms can't slip the crisis/threat/harassment hold. Crisis-only (kept
+  // OUT of the name/PII path, where !/| would false-positive); over-detection is
+  // the accepted-safe direction for crisis.
+  const iForm = aggressiveNormalizeForNameMatch(raw.replace(/[1!|]/g, "i"));
+  const lForm = aggressiveNormalizeForNameMatch(raw.replace(/[1!|]/g, "l"));
+  const iNoSpace = iForm.replace(/[^a-z0-9]/g, "");
+  const lNoSpace = lForm.replace(/[^a-z0-9]/g, "");
   return list.some((phrase) => {
     if (lowered.includes(phrase) ||
         normalized.includes(phrase) ||
-        altNormalized.includes(phrase)) return true;
+        iForm.includes(phrase) ||
+        lForm.includes(phrase)) return true;
     // Space/punct-insensitive fallback, length-guarded so short tokens
     // (e.g. "kms") don't false-positive against arbitrary letter runs.
     const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
     return pNoSpace.length >= 6 &&
-      (noSpace.includes(pNoSpace) || altNoSpace.includes(pNoSpace));
+      (noSpace.includes(pNoSpace) || iNoSpace.includes(pNoSpace) || lNoSpace.includes(pNoSpace));
   });
 }
 

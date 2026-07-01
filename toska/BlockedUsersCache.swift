@@ -126,24 +126,14 @@ class BlockedUsersCache {
         // so the user-perceived block has happened by this point.
         Telemetry.userBlocked()
 
-        // 1. Optimistic local update.
+        // 1. Optimistic local update. Capture prior membership so a failed write
+        //    doesn't unblock a user whose earlier block genuinely persisted
+        //    (double-tap, or blocked from another surface while this write is in
+        //    flight). insertLocal hides the user immediately from every
+        //    isBlocked-filtered surface, so the perceived block is instant even
+        //    though the feed-strip broadcast waits for the write below.
+        let wasBlocked = isBlocked(userId)
         insertLocal(userId)
-
-        // Broadcast to ViewModels so they can strip the blocked user's
-        // posts from in-memory state. Without this, FeedViewModel.posts
-        // (already populated) kept rendering the blocked author's content
-        // until the next refresh. Handle is included when available so
-        // MainTabView's undo-toast can address the blocked user by name
-        // ("blocked sarah_evening_42 · undo") instead of a generic message.
-        var userInfo: [String: Any] = ["userId": userId]
-        if let handle = handle, !handle.isEmpty {
-            userInfo["handle"] = handle
-        }
-        NotificationCenter.default.post(
-            name: .userBlocked,
-            object: nil,
-            userInfo: userInfo
-        )
 
         // 2. Persist to Firestore. Include the handle when the caller has it
         //    so the Settings "blocked users" list can show recognizable rows
@@ -166,11 +156,22 @@ class BlockedUsersCache {
                 .collection("users").document(uid)
                 .collection("blocked").document(userId)
                 .setData(data)
+            // Broadcast AFTER the write commits — so a failed block can't strip
+            // the feed / flash a "blocked · undo" toast while the caller (e.g.
+            // OtherProfileView) shows a "couldn't block" error. This strips
+            // already-loaded FeedViewModel.posts and drives MainTabView's undo
+            // toast (the fetch-time isBlocked filter doesn't touch loaded posts).
+            var userInfo: [String: Any] = ["userId": userId]
+            if let handle = handle, !handle.isEmpty {
+                userInfo["handle"] = handle
+            }
+            NotificationCenter.default.post(name: .userBlocked, object: nil, userInfo: userInfo)
             return true
         } catch {
-            // 3. Revert if the write failed.
+            // 3. Revert if the write failed — but only if THIS call added the
+            //    block; don't clear a block that already persisted.
             print("⚠️ BlockedUsersCache.block failed: \(error)")
-            removeLocal(userId)
+            if !wasBlocked { removeLocal(userId) }
             return false
         }
     }

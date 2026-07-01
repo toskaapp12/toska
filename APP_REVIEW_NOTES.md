@@ -16,8 +16,8 @@ no DMs/chat, no dating/matching, and no public metrics that turn support into
 a popularity contest. The product is intentionally low-stakes and anonymous.
 
 **Demo account (sign-in required to see content)**
-- Email: `<<FILL IN — production demo account email>>`
-- Password: `<<FILL IN — password>>`
+- Email: `appreview@toskaapp.com`
+- Password: `ToskaAppReview!2026`
 - This account is pre-seeded with posts so the feed, profile, reactions,
   reporting, and blocking flows are all immediately exercisable.
 - Sign in with Apple is also offered on the first screen if you prefer.
@@ -72,7 +72,7 @@ Sign in with Apple is presented as a first-class option per Guideline 4.8.
 4. Settings → Blocked Users, Privacy Policy, Terms of Service, Delete Account.
 
 **Contact for review questions**
-`<<FILL IN — support/review contact email>>`
+`salinarotess@gmail.com`
 
 ---
 

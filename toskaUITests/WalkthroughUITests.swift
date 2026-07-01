@@ -197,6 +197,44 @@ final class WalkthroughUITests: XCTestCase {
         snap("02c-logged-in-feed")
     }
 
+    // MARK: 02z — cold-launch feed renders (build 44 eager-prefix + lazy-tail)
+
+    /// Verifies the feed appears with real post content on a COLD LAUNCH — the
+    /// exact path the eager-prefix + lazy-tail render must survive. A blank-feed
+    /// regression would show the header + tabs but no post rows.
+    func test02z_coldLaunchFeedRenders() throws {
+        // Ensure we're logged in (log in if we're sitting at the splash).
+        if waitFor(app.buttons["sign in"], 5) {
+            app.buttons["sign in"].tap()
+            let email = app.textFields["emailField"]
+            XCTAssertTrue(waitFor(email, 8), "Email field missing")
+            email.tap(); email.typeText("salinarotess+nice@gmail.com")
+            let pw = app.secureTextFields["passwordField"]
+            pw.tap(); pw.typeText("crazy1234")
+            app.buttons["signInButton"].tap()
+        }
+        XCTAssertTrue(waitFor(feedView, 30), "Feed didn't load initially")
+        func hasPosts(_ t: TimeInterval) -> Bool {
+            waitFor(app.buttons["Repost"].firstMatch, t)
+                || app.buttons["Already reposted"].firstMatch.exists
+        }
+        XCTAssertTrue(hasPosts(20), "No post rows before cold launch (unexpected)")
+
+        // COLD LAUNCH — terminate + relaunch fresh. The session persists, so the
+        // app boots through isLoading → verify → feed, materialising the eager
+        // prefix rows immediately.
+        app.terminate()
+        app.launch()
+
+        XCTAssertTrue(waitFor(feedView, 30), "Feed header didn't render on cold launch")
+        // The critical assertion: real post content materialised, not a blank
+        // scroll area (which is what the old fully-lazy feed produced on launch).
+        let rendered = hasPosts(25)
+        snap("02z-cold-launch-feed")
+        print("✅ COLD LAUNCH feed content rendered = \(rendered)")
+        XCTAssertTrue(rendered, "COLD-LAUNCH BLANK FEED: header rendered but no post rows materialised")
+    }
+
     // MARK: 03 — feed: tabs + prompt
 
     func test03_feedTabs() throws {

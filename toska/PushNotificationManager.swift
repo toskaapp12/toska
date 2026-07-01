@@ -68,16 +68,27 @@ class PushNotificationManager: NSObject {
         }
     }
 
+    /// Fire-and-forget token clear. Use ONLY where the user doc is being
+    /// deleted server-side anyway (account deletion / gate-decline) — there the
+    /// Firestore wipe racing sign-out is harmless because the whole private/data
+    /// doc is removed by the cascade. For a plain sign-out use
+    /// `clearFCMTokenAndWait()` so the wipe commits while still authenticated.
     func clearFCMToken() {
-        // 1. Invalidate the token at the FCM service level first. This is
-        //    the load-bearing step for cross-account safety on shared
-        //    devices: it forces FCM to issue a fresh token on the next
-        //    saveFCMToken call, so a different user signing in on this
-        //    device can't receive pushes destined for the previous user's
-        //    (now stale) token entry. Even if the Firestore wipe below
-        //    fails, the server-side self-healing in sendPushNotification
-        //    will reap the stale entry the first time it tries to use it
-        //    and gets an invalid-token error from FCM.
+        Task { await clearFCMTokenAndWait() }
+    }
+
+    /// Awaitable token clear. Invalidates the FCM token, then awaits the
+    /// Firestore wipe (bounded by a short timeout) so it commits BEFORE the
+    /// caller signs out. A fire-and-forget wipe races signOut(): auth clears
+    /// first and the write is rejected (request.auth.uid != uid), leaving a
+    /// stale fcmToken that — if deleteToken also failed — could route the next
+    /// user's pushes to this device.
+    func clearFCMTokenAndWait() async {
+        // 1. Invalidate the token at the FCM service level. This is the
+        //    load-bearing step for cross-account safety: it forces FCM to
+        //    issue a fresh token on the next saveFCMToken call. It doesn't need
+        //    the Firestore auth session, so keep it fire-and-forget — awaiting
+        //    it would let a flaky network stall sign-out.
         Messaging.messaging().deleteToken { error in
             if let error = error {
                 print("⚠️ FCM deleteToken failed: \(error)")
@@ -86,20 +97,22 @@ class PushNotificationManager: NSObject {
         }
 
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        // 2. Wipe our copy of the token from the user's private doc.
-        //    Surface failures via Telemetry so we notice if the cleanup
-        //    contract is silently regressing.
-        Firestore.firestore()
-            .collection("users").document(uid)
-            .collection("private").document("data")
-            .updateData([
-                "fcmToken": FieldValue.delete()
-            ]) { error in
-                if let error = error {
-                    print("⚠️ clearFCMToken Firestore wipe failed: \(error)")
-                    Telemetry.recordError(error, context: "PushNotificationManager.clearFCMToken")
-                }
+        // 2. Wipe our copy of the token from the user's private doc, AWAITED so
+        //    it lands before sign-out. Bounded by a 3s timeout so an offline /
+        //    stalled write can't hang the sign-out UI — the FCM-level
+        //    invalidation above plus server self-heal are the backstop if it
+        //    doesn't land.
+        do {
+            try await withTimeout(seconds: 3) {
+                try await Firestore.firestore()
+                    .collection("users").document(uid)
+                    .collection("private").document("data")
+                    .updateData(["fcmToken": FieldValue.delete()])
             }
+        } catch {
+            print("⚠️ clearFCMToken Firestore wipe failed/timed out: \(error)")
+            Telemetry.recordError(error, context: "PushNotificationManager.clearFCMToken")
+        }
         // Stale legacy fcmToken on the main user doc is cleaned up server-side:
         // sendPushNotification deletes it from both locations the first time
         // it sees an invalid-token error from FCM. We can't delete it from the

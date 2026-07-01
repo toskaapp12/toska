@@ -150,9 +150,13 @@ struct ContentView: View {
                 onDecline: {
                     Telemetry.policyDeclined(version: currentPolicyVersion, atSignup: false)
                     showPolicyUpdate = false
-                    PushNotificationManager.shared.clearFCMToken()
-                    try? Auth.auth().signOut()
-                    NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                    // Await the token wipe before signing out so it commits
+                    // while still authenticated (see clearFCMTokenAndWait).
+                    Task { @MainActor in
+                        await PushNotificationManager.shared.clearFCMTokenAndWait()
+                        try? Auth.auth().signOut()
+                        NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                    }
                 }
             )
             }

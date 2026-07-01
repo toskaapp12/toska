@@ -61,12 +61,17 @@ struct ComposeView: View {
     @State private var gentleCheckLevel: CrisisLevel = .soft
     @State private var showNameWarning = false
     @State private var showContentWarning = false
-    // Set when the user posts past the name/PII warning ("post anyway"). Those
-    // posts are held for review server-side (pending_review), so after the write
-    // lands we tell the user instead of leaving them wondering why it isn't in
-    // the feed. (Crisis-only content is NOT held, so it doesn't set this.)
+    // Set when a post will be held for review server-side (pending_review), so
+    // after the write lands we tell the user instead of leaving them wondering
+    // why it isn't in the feed. Set by: the name/PII "post anyway", the
+    // content-violation "post anyway", AND crisis/concerning content (which the
+    // server ALWAYS holds — the previous "crisis is not held" note was wrong).
     @State private var postWillBeHeld = false
     @State private var showUnderReview = false
+    // The content-violation category from the last contentViolation() check,
+    // so the warning dialog can decide whether to offer a "post anyway" override
+    // (lower-severity categories only — slurs/sexual/harassment stay hard-blocked).
+    @State private var contentViolationType: ContentViolationType?
     @State private var contentWarningMessage = ""
     @State private var userHandle = "anonymous"
     @State private var showRateLimitWarning = false
@@ -582,7 +587,9 @@ struct ComposeView: View {
                 CrisisCheckInView(
                     isPresented: $showGentleCheck,
                     level: gentleCheckLevel,
-                    onProceed: { postNow() }
+                    // Crisis/concerning content is held for review server-side, so
+                    // flag it before posting to surface the "under review" notice.
+                    onProceed: { postWillBeHeld = true; postNow() }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
@@ -607,16 +614,39 @@ struct ComposeView: View {
                         .multilineTextAlignment(.center)
                         .lineSpacing(2)
 
-                    Button { showContentWarning = false } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "pencil").font(.system(size: 13))
-                            Text("edit my post").font(ToskaFont.sans(13, weight: .medium))
+                    VStack(spacing: 8) {
+                        Button { showContentWarning = false } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "pencil").font(.system(size: 13))
+                                Text("edit my post").font(ToskaFont.sans(13, weight: .medium))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.toskaBlue)
+                            .cornerRadius(12)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.toskaBlue)
-                        .cornerRadius(12)
+                        // Lower-severity categories offer "post anyway" → the post
+                        // is held for review (recoverable), so a false-positive
+                        // can't hard-lock a grieving user out of posting.
+                        if contentViolationAllowsOverride {
+                            Button {
+                                showContentWarning = false
+                                postWillBeHeld = true
+                                if let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
+                                    gentleCheckLevel = level
+                                    showGentleCheck = true
+                                } else {
+                                    postNow()
+                                }
+                            } label: {
+                                Text("post anyway — it'll be reviewed")
+                                    .font(ToskaFont.sans(13, weight: .medium))
+                                    .foregroundColor(LateNightTheme.secondaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                        }
                     }
                     .padding(.top, 4)
                 }
@@ -876,7 +906,12 @@ struct ComposeView: View {
             }
             return
         }
+        // Reset the hold flag for this attempt; the paths below set it true when
+        // the post will be held for review (PII / content-violation overrides,
+        // or crisis content the server holds).
+        postWillBeHeld = false
         if !trimmedText.isEmpty, let violation = contentViolation(in: trimmedText) {
+            contentViolationType = violation
             contentWarningMessage = contentViolationMessage(for: violation)
             showContentWarning = true
             return
@@ -886,7 +921,25 @@ struct ComposeView: View {
             gentleCheckLevel = level
             showGentleCheck = true
         } else {
+            // A concerning post is HELD server-side even when the gentle check-in
+            // is suppressed (soft signals with the check-in setting off). Flag it
+            // so the "under review" notice fires — a user in crisis shouldn't
+            // believe peers can see a post the server actually hides.
+            if crisisLevel(for: trimmedText) != nil { postWillBeHeld = true }
             postNow()
+        }
+    }
+
+    /// Lower-severity content-violation categories get a "post anyway" override
+    /// (the post is then HELD for review server-side, recoverable). Slurs,
+    /// sexual, and harassment stay hard-blocked. Threat is included because its
+    /// substring matches ("bomb", "blow up") false-positive on common grief
+    /// phrasing ("she dropped a bomb on me"), and a real threat is still caught
+    /// by the server hold + moderation.
+    private var contentViolationAllowsOverride: Bool {
+        switch contentViolationType {
+        case .spam, .link, .threat: return true
+        default: return false
         }
     }
 

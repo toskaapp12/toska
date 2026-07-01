@@ -388,6 +388,44 @@ struct ReplyDetailView: View {
                             newChildren.append(item)
                         }
                     }
+                    // Carry forward interaction state we've already resolved for
+                    // existing children (including optimistic toggles) so we
+                    // don't re-read likedReplies/savedReplies on every delta.
+                    let priorState = Dictionary(
+                        children.map { ($0.id, ($0.isLiked, $0.isSaved, $0.isReposted)) },
+                        uniquingKeysWith: { a, _ in a }
+                    )
+                    for i in newChildren.indices {
+                        if let s = priorState[newChildren[i].id] {
+                            newChildren[i].isLiked = s.0
+                            newChildren[i].isSaved = s.1
+                            newChildren[i].isReposted = s.2
+                        }
+                    }
+                    // Stamp children we haven't resolved yet (first load / newly
+                    // arrived). Without this, children seed isLiked/isSaved=false,
+                    // so a reply you already liked renders un-liked and tapping
+                    // like is a server no-op that leaves the optimistic +1 stuck.
+                    let unresolved = newChildren.filter { priorState[$0.id] == nil }
+                    if let uid = Auth.auth().currentUser?.uid, !unresolved.isEmpty {
+                        let stamped = await PostDetailView.stampReplyInteractionState(
+                            replies: unresolved,
+                            replyIds: unresolved.map { $0.id },
+                            uid: uid,
+                            db: Firestore.firestore()
+                        )
+                        let stampedMap = Dictionary(
+                            stamped.map { ($0.id, ($0.isLiked, $0.isSaved, $0.isReposted)) },
+                            uniquingKeysWith: { a, _ in a }
+                        )
+                        for i in newChildren.indices {
+                            if let s = stampedMap[newChildren[i].id] {
+                                newChildren[i].isLiked = s.0
+                                newChildren[i].isSaved = s.1
+                                newChildren[i].isReposted = s.2
+                            }
+                        }
+                    }
                     // Preserve my own just-sent reply that hasn't been promoted
                     // to `live` yet. The listener only sees live replies, so a
                     // snapshot delta triggered by ANOTHER user's reply would

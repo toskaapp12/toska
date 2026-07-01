@@ -270,7 +270,12 @@ struct DailyMomentView: View {
                         // too. Legacy posts predate the flag and default to
                         // shareable (matches FeedView/ProfileView).
                         let notShareable = (postData["isShareable"] as? Bool ?? true) == false
-                        if isFlagged || isConcerning || isExpired || blockedAuthor || notShareable {
+                        // Fall back if authorId is missing — otherwise a real UGC
+                        // post renders here with report/block disabled (no authorId
+                        // to act on), the exact unreportable-content gap App Store
+                        // 1.2 cares about.
+                        let noAuthor = (postData["authorId"] as? String ?? "").isEmpty
+                        if isFlagged || isConcerning || isExpired || blockedAuthor || notShareable || noAuthor {
                             setFallbackPost()
                         } else {
                             postText      = postData["text"]         as? String ?? ""

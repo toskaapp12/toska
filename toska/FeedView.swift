@@ -1001,14 +1001,18 @@ struct FeedPostRow: View, Equatable {
                                     likePulseTask?.cancel()
                                     repostPulseTask?.cancel()
                                 }
+                // Gate the boolean flips behind the same suppression window as the
+                // counts — otherwise a listener echo (repostedPostIds updating just
+                // after an optimistic tap) re-flips the heart/repost icon back for a
+                // beat before settling, the exact flicker the count suppression kills.
                 .onChange(of: isAlreadyLiked) { _, newValue in
-                    if !postId.isEmpty { isLiked = newValue }
+                    if !postId.isEmpty && Date() > suppressLikeListenerUntil { isLiked = newValue }
                 }
                 .onChange(of: isAlreadySaved) { _, newValue in
                     if !postId.isEmpty { isSaved = newValue }
                 }
                 .onChange(of: isAlreadyReposted) { _, newValue in
-                    if !postId.isEmpty { isReposted = newValue }
+                    if !postId.isEmpty && Date() > suppressRepostListenerUntil { isReposted = newValue }
                 }
                 // Adopt the latest server counts when the same post id is
                 // re-delivered by a feed refresh — without these, the row keeps
@@ -1546,7 +1550,7 @@ struct FeedColumn: View {
     }
 
     @ViewBuilder
-    private func feedRow(for post: FeedPost) -> some View {
+    private func feedRow(for post: FeedPost, prefetchTriggerId: String?) -> some View {
                                                                                                                                                 if post.id.hasPrefix("sample_") {
                                                                                                                                                     FeedPostRow(
                                                                                                                                                         handle: post.handle,
@@ -1591,14 +1595,16 @@ struct FeedColumn: View {
                                                                                                                                                                                                                                                                                                         // user reaches the bottom, the next page
                                                                                                                                                                                                                                                                                                         // is usually already loaded — no visible
                                                                                                                                                                                                                                                                                                         // spinner, smoother feed.
-                                                                                                                                                                                                                                                                                                        // Only prefetch during normal browsing — while searching, the
-                                                                                                                                                                                                                                                                                                        // rendered rows are a filtered subset so the 5th-from-last of the
-                                                                                                                                                                                                                                                                                                        // full array rarely appears; the bottom ProgressView still pages.
+                                                                                                                                                                                                                                                                                                        // Prefetch when the 5-from-end row of the RENDERED list scrolls
+                                                                                                                                                                                                                                                                                                        // in. prefetchTriggerId is computed off `visible` (the filtered
+                                                                                                                                                                                                                                                                                                        // set actually shown) and is nil when searching or on a short
+                                                                                                                                                                                                                                                                                                        // feed — so the trigger row is always in the lazy tail and fires
+                                                                                                                                                                                                                                                                                                        // on scroll, not immediately on a small-feed launch.
                                                                                                                                                                                                                                                                                                         guard tab == 0,
-                                                                                                                                                                                                                                                                                                              searchText.isEmpty,
                                                                                                                                                                                                                                                                                                               vm.hasMorePosts,
                                                                                                                                                                                                                                                                                                               !vm.isLoadingMore,
-                                                                                                                                                                                                                                                                                                              post.id == vm.posts.dropLast(4).last?.id else { return }
+                                                                                                                                                                                                                                                                                                              let triggerId = prefetchTriggerId,
+                                                                                                                                                                                                                                                                                                              post.id == triggerId else { return }
                                                                                                                                                                                                                                                                                                         vm.loadMorePosts()
                                                                                                                                                                                                                                                                                                     }
                                                                                                                                                                                                                                                                                                 }
@@ -1760,18 +1766,22 @@ struct FeedColumn: View {
                                     .padding(.bottom, 40)
                                                                 } else {
                                                                                                                                     let visible = vm.postsForTab(tab).filter(matchesSearch)
+                                                                                                                                    // Prefetch trigger = 5-from-end of the RENDERED list, only when
+                                                                                                                                    // not searching and the list is long enough that the trigger row
+                                                                                                                                    // sits in the lazy tail (so it fires on scroll, not on launch).
+                                                                                                                                    let prefetchTriggerId: String? = (searchText.isEmpty && visible.count > 14)
+                                                                                                                                        ? visible.dropLast(4).last?.id : nil
                                                                                                                                     // Eager prefix fills the screen so the ScrollView measures a real height
                                                                                                                                     // on cold launch (a fully-lazy feed here reports ~0 height and never
                                                                                                                                     // materialises — the blank-feed bug). The tail is a LazyVStack so we
-                                                                                                                                    // don't build all ~60 scored rows up front; the 5-from-end prefetch now
-                                                                                                                                    // fires only as a tail row scrolls in.
+                                                                                                                                    // don't build all ~60 scored rows up front.
                                                                                                                                     ForEach(Array(visible.prefix(14))) { post in
-                                                                                                                                        feedRow(for: post)
+                                                                                                                                        feedRow(for: post, prefetchTriggerId: prefetchTriggerId)
                                                                                                                                     }
                                                                                                                                     if visible.count > 14 {
                                                                                                                                         LazyVStack(spacing: 0) {
                                                                                                                                             ForEach(Array(visible.dropFirst(14))) { post in
-                                                                                                                                                feedRow(for: post)
+                                                                                                                                                feedRow(for: post, prefetchTriggerId: prefetchTriggerId)
                                                                                                                                             }
                                                                                                                                         }
                                                                                                                                     }

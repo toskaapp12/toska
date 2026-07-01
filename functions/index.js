@@ -3656,7 +3656,10 @@ exports.giphyProxy = onCall(
 
     const data = request.data || {};
     const mode = data.mode === "search" ? "search" : "trending";
-    const limit = Math.min(parseInt(data.limit, 10) || 30, 50);
+    // Clamp both ends: a negative limit (e.g. "-100") is truthy so `|| 30`
+    // wouldn't fire and a negative value would be forwarded to Giphy.
+    const parsedLimit = parseInt(data.limit, 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 30;
     const rating = "pg-13";
 
     let upstream;

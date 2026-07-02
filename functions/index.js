@@ -813,7 +813,22 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     // resumePostDeletion sweep picks it up on the next run and continues
     // draining until empty.
     const POST_CLEANUP_MAX_ITERATIONS = 500;
-    const postCleanup = await cleanupPostsForUid(uid, POST_CLEANUP_MAX_ITERATIONS);
+    // cleanupPostsForUid is the first and heaviest cascade step. A transient
+    // Firestore error here (an un-wrapped .get()/delete() inside the helper)
+    // must NOT abort the whole cascade: every sibling cleanup below runs after
+    // this line, and the outer catch only logs (doesn't re-throw), so a bare
+    // throw would strand follows/likes/subs/replies/reposts/etc. AND write no
+    // resume marker. The user doc is already deleted by the time this trigger
+    // runs, so monitorPendingDeletions won't re-run the cascade either —
+    // orphaning data + permanently inflating third-party counts. Catch the
+    // throw, queue a resume marker (via the capHit path below), and continue.
+    let postCleanup;
+    try {
+      postCleanup = await cleanupPostsForUid(uid, POST_CLEANUP_MAX_ITERATIONS);
+    } catch (err) {
+      console.error(`cleanupPostsForUid threw for ${uid}, queuing resume:`, err.message);
+      postCleanup = { capHit: true, totalDeleted: 0 };
+    }
     if (postCleanup.capHit) {
       console.warn(
         `Post cleanup cap hit for user ${uid}: deleted ${postCleanup.totalDeleted} posts this pass. ` +
@@ -1856,14 +1871,27 @@ exports.onBlockCreatedCleanupFollows = onDocumentCreated(
       db.collection("users").doc(blockedId).collection("following").doc(uid),        // they follow me
       db.collection("users").doc(uid).collection("followers").doc(blockedId),        //   (mirror)
     ];
+    // Collect per-delete failures and re-throw at the end so the trigger's
+    // retry:true actually redelivers. Previously every failure was swallowed,
+    // so a transient error left a follow edge alive — a block bypass (the
+    // blocked user keeps following the blocker) and an inflated follower/
+    // following count with no self-healing path. All four deletes are
+    // idempotent (get()+if-exists), so a retry re-runs cleanly.
+    const failures = [];
     await Promise.all(refs.map(async (ref) => {
       try {
         const s = await ref.get();
         if (s.exists) await ref.delete();
       } catch (e) {
         console.warn(`onBlockCreatedCleanupFollows: failed to delete ${ref.path}:`, e.message);
+        failures.push(ref.path);
       }
     }));
+    if (failures.length > 0) {
+      throw new Error(
+        `onBlockCreatedCleanupFollows incomplete for ${uid}->${blockedId}; ` +
+        `retrying deletes: ${failures.join(", ")}`);
+    }
     console.log(`Block follow-graph teardown: ${uid} blocked ${blockedId}`);
   }
 );
@@ -1938,6 +1966,21 @@ const ALLOWED_BREAKUP_STAGES = new Set([
   "i left",
 ]);
 
+// Mirror of sharedTags (FeedView.swift). Bounds meta/tagCounts to the fixed
+// tag set so an unrecognized tag can never become a new key on the shared doc
+// (defense-in-depth behind the firestore.rules tag enum-lock).
+const ALLOWED_POST_TAGS = new Set([
+  "longing",
+  "numb",
+  "anger",
+  "regret",
+  "acceptance",
+  "confusion",
+  "unsent",
+  "moving on",
+  "still love you",
+]);
+
 exports.onBreakupStageChanged = onDocumentWritten(
   { document: "users/{userId}/private/{docId}", retry: true },
   async (event) => {
@@ -1981,6 +2024,11 @@ exports.onPostCreatedUpdateTagCounts = onDocumentCreated(
     if (!postData) return;
     const tag = postData.tag;
     if (!tag || typeof tag !== "string") return;
+    // Allowlist guard (defense-in-depth, mirrors ALLOWED_BREAKUP_STAGES): the
+    // firestore.rules tag enum-lock is the primary boundary. Applied to BOTH
+    // the create and delete triggers so counts stay symmetric — an unrecognized
+    // tag that somehow exists is neither incremented nor decremented.
+    if (!ALLOWED_POST_TAGS.has(tag)) return;
     if (postData.isRepost === true) return;
 
     // Atomic claim+set (F-1); non-tag-bearing posts short-circuit above
@@ -2008,6 +2056,12 @@ exports.onPostDeletedUpdateTagCounts = onDocumentDeleted(
     if (!postData) return;
     const tag = postData.tag;
     if (!tag || typeof tag !== "string") return;
+    // NOTE: intentionally NO allowlist guard here (unlike the create trigger).
+    // Legacy posts created before the tag enum-lock could carry any string tag
+    // that WAS incremented at create time; their deletion must still decrement
+    // so those stale keys clean up. Post-fix the rules block any non-allowlisted
+    // tag at create, so this looser gate can never decrement something that was
+    // never incremented (no negative drift).
     if (postData.isRepost === true) return;
 
     const ref = db.collection("meta").doc("tagCounts");

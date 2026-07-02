@@ -35,6 +35,12 @@ struct ReplyDetailView: View {
     // captured value is stale after its stamp await bails instead of writing a
     // list that predates a newer snapshot (which would drop a just-arrived reply).
     @State private var attachGeneration = 0
+    // Seeds the focal reply's interaction state (likeCount/isLiked/isSaved) from
+    // the prop only on first appear. onAppear re-fires when a child reply push
+    // pops; re-seeding would reset an optimistic like the user just made (the
+    // listener refreshes likeCount but NOT isLiked/isSaved), and a follow-up
+    // no-op like would then stick a phantom +1.
+    @State private var didSeedReplyState = false
     @State private var replyListener: ListenerRegistration? = nil
 
     // Composer
@@ -291,9 +297,15 @@ struct ReplyDetailView: View {
             replyHandle = reply.handle
             replyTime = reply.time
             replyAuthorId = reply.authorId
-            likeCount = reply.likes
-            isLiked = reply.isLiked
-            isSaved = reply.isSaved
+            // Interaction state seeded once; onAppear re-fires on pop-return and
+            // must not clobber the user's optimistic like/save. The listener
+            // keeps likeCount live thereafter.
+            if !didSeedReplyState {
+                didSeedReplyState = true
+                likeCount = reply.likes
+                isLiked = reply.isLiked
+                isSaved = reply.isSaved
+            }
             attachListener()
         }
         .onDisappear {
@@ -539,6 +551,15 @@ struct ReplyDetailView: View {
 
     private func performReplyPost(_ trimmed: String) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Offline guard: Firestore's setData completion never fires while
+        // offline, so without this `isPosting` would stick true forever — the
+        // send button spins and the composer locks for the whole offline window,
+        // with a ghost optimistic reply showing. Every PostInteractionManager
+        // write path already guards this; the drill-down composer regressed it.
+        guard NetworkMonitor.shared.isConnected else {
+            postError = "you're offline — try again when you're connected"
+            return
+        }
         crisisConfirmed = false
         nameConfirmed = false
         isPosting = true
@@ -605,6 +626,10 @@ struct ReplyDetailView: View {
                     isPosting = false
                     if let err = err {
                         // Roll back the optimistic insert and restore the text.
+                        // Release the rate-limit stamp so the failed send doesn't
+                        // block the retry for the remaining 5s window (parity with
+                        // PostDetailView.postReplyNow).
+                        RateLimiter.shared.lastReplyTime = nil
                         children.removeAll { $0.id == newDocRef.documentID }
                         composerText = trimmed
                         let nsErr = err as NSError

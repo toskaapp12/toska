@@ -36,6 +36,9 @@ struct TopView: View {
     @State private var cache: [Period: [RankedPost]] = [:]
     @State private var loadingPeriods: Set<Period> = []
     @State private var fetchedPeriods: Set<Period> = []
+    // Periods whose last fetch errored — so an empty board reads as "couldn't
+    // load" (with pull-to-retry) instead of a false "everyone's being quiet".
+    @State private var loadFailedPeriods: Set<Period> = []
     @State private var period: Period = .today
 
     var body: some View {
@@ -84,7 +87,11 @@ struct TopView: View {
             GeometryReader { geo in
                 ScrollView {
                     VStack {
-                        emptyState
+                        if loadFailedPeriods.contains(p) {
+                            loadFailedState
+                        } else {
+                            emptyState
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: geo.size.height)
                 }
@@ -181,6 +188,22 @@ struct TopView: View {
         .padding(.vertical, 80)
     }
 
+    private var loadFailedState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 24, weight: .light))
+                .foregroundColor(ToskaColor.text3)
+            Text("couldnt load")
+                .font(ToskaFont.sans(13))
+                .foregroundColor(ToskaColor.text2)
+            Text("pull down to try again.")
+                .font(ToskaFont.sans(11))
+                .foregroundColor(ToskaColor.text3)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 80)
+    }
+
     // MARK: - Aggregation
 
     /// Two most-frequent tags among the ranked posts, most-felt first.
@@ -225,15 +248,19 @@ struct TopView: View {
                         print("❌ TopView query error: \(error)")
                         loadingPeriods.remove(fetchPeriod)
                         fetchedPeriods.insert(fetchPeriod)
+                        loadFailedPeriods.insert(fetchPeriod)
                         onComplete?()
                         return
                     }
                     guard let documents = snapshot?.documents else {
                         loadingPeriods.remove(fetchPeriod)
                         fetchedPeriods.insert(fetchPeriod)
+                        loadFailedPeriods.insert(fetchPeriod)
                         onComplete?()
                         return
                     }
+                    // Reached the server successfully — clear any prior failure.
+                    loadFailedPeriods.remove(fetchPeriod)
                     print("📊 TopView got \(documents.count) docs")
                     var engaged: [(handle: String, text: String, tag: String?, likes: Int, replies: Int, reposts: Int, time: String, id: String, authorId: String, score: Double)] = []
 

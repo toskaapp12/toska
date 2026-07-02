@@ -786,6 +786,15 @@ struct ComposeView: View {
                     loadHandle()
                     if text.isEmpty && !initialText.isEmpty {
                         text = initialText
+                        // Drafts persist only `text`, not `isLetter`; an
+                        // edit-draft (DraftsView) or prompt seed over the normal
+                        // 500 cap could only have been a letter. Restore letter
+                        // mode so the onChange truncation below doesn't silently
+                        // clip a long letter draft to 500 chars (data loss).
+                        // Mirrors the force-quit draftText branch below.
+                        if text.utf16.count > charLimit {
+                            isLetter = true
+                        }
                     } else if text.isEmpty && !draftText.isEmpty {
                         // Restore draft from a prior session that was killed
                         // before the user could post. Only when we have no

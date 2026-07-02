@@ -309,8 +309,16 @@ extension ToskaHeader where Trailing == EmptyView {
 // MARK: - Shared Share Sheet Helper
 
 @MainActor
-func presentShareSheet(with items: [Any]) {
+func presentShareSheet(with items: [Any], onComplete: ((Bool) -> Void)? = nil) {
     let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+    // Forward the real outcome so callers only celebrate on an actual share.
+    // `completed` is false when the user cancels the sheet. UIKit invokes this
+    // on the main thread; callers that touch @MainActor state hop themselves.
+    if let onComplete {
+        activityVC.completionWithItemsHandler = { _, completed, _, _ in
+            onComplete(completed)
+        }
+    }
     guard let windowScene = UIApplication.shared.connectedScenes
                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
              let window = windowScene.keyWindow,

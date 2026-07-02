@@ -127,8 +127,14 @@ function containsPII(text) {
 
 const MOD_HATE = [
   /n[i1!]gg/i, /f[a@]gg/i, /r[e3]t[a@]rd/i, /tr[a@]nny/i, /d[yi1]ke/i,
-  /ch[i1]nk/i, /sp[i1]ck?/i, /k[i1]ke/i, /w[e3]tb[a@]ck/i, /g[o0][o0]k/i,
-  /c[o0][o0]n/i, /towelhead/i, /raghead/i, /beaner/i, /zipperhead/i,
+  // Word-boundary-anchored so a slur substring inside an innocent word no
+  // longer flags: unanchored these matched "suspicious"/"auspicious" (spic),
+  // "cocoon"/"raccoon"/"tycoon" (coon), "scum on" (cum on) — routing routine
+  // grief writing to hate_speech/sexual_content, which HARD-DELETES a reply
+  // (irrecoverable). The narrow (?!... armor) exclusion spares the common
+  // idiom "a chink in the/his/her armor" while still catching the slur.
+  /\bch[i1]nks?\b(?!\s+in\s+\w+\s+armou?r)/i, /\bsp[i1]ck?s?\b/i, /\bk[i1]kes?\b/i, /\bw[e3]tb[a@]cks?\b/i, /\bg[o0][o0]ks?\b/i,
+  /\bc[o0][o0]ns?\b/i, /towelhead/i, /raghead/i, /beaner/i, /zipperhead/i,
 ];
 
 // Kept in parity with the client threatPhrases (ContentModeration.swift). Bare
@@ -156,7 +162,11 @@ const MOD_THREAT = [
   "burn down your", "burn down his", "burn down her", "burn down their",
   "rape you", "rape her", "rape him",
   "find you and", "find where you live", "know where you live",
-  "hunt you down", "come for you",
+  // "coming for you" instead of bare "come for you": the substring matcher
+  // flagged routine breakup logistics ("come for your things/stuff") as a
+  // targeted_threat. The present-continuous form keeps the threat coverage
+  // without colliding with "come for your…".
+  "hunt you down", "coming for you",
   "gonna hurt you", "going to hurt you",
   "beat you up", "beat the shit",
   "curb stomp", "slit your throat", "bash your head",
@@ -167,17 +177,34 @@ const MOD_SEXUAL = [
   /porn/i, /hentai/i, /\bxxx\b/i,
   /\bnudes\b/i, /send nudes/i, /dick pic/i, /pussy pic/i,
   /jerk off/i, /jack off/i, /masturbat/i,
-  /cum on/i, /cum in/i, /creampie/i,
+  /\bcum on\b/i, /\bcum in\b/i, /creampie/i,
   /blowjob/i, /blow job/i, /handjob/i, /hand job/i,
   /anal sex/i, /oral sex/i,
   /sex tape/i, /sextape/i, /sext me/i, /sexting/i,
-  /onlyfans/i, /nsfw/i,
+  /onlyfans/i, /only fans/i, /nsfw/i,
+  // Parity with client sexualPatterns (ContentModeration.swift): these were
+  // client-only, so the abuse they name published live past the server gate.
+  /choke me/i, /f[u*]ck me daddy/i,
+  /\br34\b/i, /rule ?34/i,
+  /hook ?up/i, /booty ?call/i,
 ];
 
+// Kept a SUPERSET of the client harassmentPhrases (ContentModeration.swift).
+// The server is the real trust boundary (the client is bypassable and posts
+// can be edited after publish); a server list narrower than the client let
+// directed abuse ("everyone hates you", "no one will miss you", "jump off a
+// bridge") pass auto-detection while the client merely warned. Now at parity.
 const MOD_HARASSMENT = [
   "kill yourself", "kys", "go die", "you should die",
-  "hope you die", "drink bleach", "neck yourself",
-  "nobody likes you", "youre worthless", "you deserve to die",
+  "hope you die", "go hang yourself", "neck yourself",
+  "drink bleach", "jump off a bridge",
+  "nobody likes you", "everyone hates you",
+  "the world is better without you",
+  "youre worthless", "you're worthless",
+  "youre pathetic", "you're pathetic",
+  "you deserve to suffer", "you deserve to die",
+  "go away and never come back",
+  "no one will miss you", "noone will miss you",
 ];
 
 // Explicit, high-urgency crisis statements — held AND page admins

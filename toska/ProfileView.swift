@@ -965,9 +965,13 @@ struct ProfileView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
         Task {
+            // On a transient read failure, keep the existing rows rather than
+            // blanking the tab to the "nothing felt yet" empty state (the reverse
+            // index is the user's own subcollection — only the network can fail).
+            // Matches loadSavedPosts, which already preserves on error.
             guard let likedSnap = try? await db.collection("users").document(uid).collection("liked")
                 .order(by: "createdAt", descending: true).limit(to: 50)
-                .getDocumentsAsync() else { likedPosts = []; return }
+                .getDocumentsAsync() else { return }
             // Auth recheck after the await — sign-out/sign-in race protection.
             guard Auth.auth().currentUser?.uid == uid else { return }
             let postIds = likedSnap.documents.map { $0.documentID }

@@ -789,10 +789,11 @@ struct SettingsView: View {
         isDeleting = true
         deleteError = ""
 
-        // Clear FCM token before triggering deletion. Without this, the
-        // server can keep pushing to the now-orphaned device until the
-        // token rotates or the OS reaps it on next app uninstall.
-        PushNotificationManager.shared.clearFCMToken()
+        // NOTE: FCM token teardown moved to phase 3 (after auth.delete()
+        // succeeds). auth.delete() almost always first throws requiresRecentLogin
+        // → reauth alert; if the user cancels there, the account is fully intact
+        // — clearing the token beforehand would have silently killed their push
+        // notifications on a live account until the FCM delegate reissued one.
 
         Task { @MainActor in
             // Apple token revocation can take up to ~30 seconds with retries.
@@ -845,7 +846,11 @@ struct SettingsView: View {
 
             // 3. Auth is gone. The Cloud Function will cascade cleanup within
             //    ~10 seconds; if anything fails mid-cascade, monitorPendingDeletions
-            //    (scheduled hourly) retries.
+            //    (scheduled hourly) retries. Now invalidate the FCM token (local
+            //    deleteToken forces a reissue; the server-side token doc is wiped
+            //    by the deletion cascade) — only reached on a real deletion, so a
+            //    cancelled reauth never touches it.
+            PushNotificationManager.shared.clearFCMToken()
             isDeleting = false
             NotificationCenter.default.post(name: .userDidSignOut, object: nil)
             dismiss()
@@ -890,81 +895,113 @@ struct SettingsView: View {
                 "policyVersionAccepted": currentPolicyVersion
             ]
 
-            // Account doc (handle, counts, settings, acceptance fields)
-            if let userSnap = try? await db.collection("users").document(uid).getDocumentAsync(),
-               let data = userSnap.data() {
-                // Strip fcmToken (device-specific, not useful in an export)
-                var account = data
-                account.removeValue(forKey: "fcmToken")
-                account.removeValue(forKey: "fcmTokenUpdatedAt")
-                // Merge in the private subcollection (email, etc.) since
-                // post-migration those fields no longer live on the main
-                // user doc but are still the user's own data.
-                if let privateSnap = try? await db.collection("users").document(uid)
-                    .collection("private").document("data").getDocumentAsync(),
-                   var privateData = privateSnap.data() {
-                    privateData.removeValue(forKey: "fcmToken")
-                    privateData.removeValue(forKey: "fcmTokenUpdatedAt")
-                    for (k, v) in privateData { account[k] = v }
+            // Gather every section with `try` (not `try?`): if ANY query fails
+            // mid-export (connection drops, a collectionGroup index/permission
+            // error), abort with an error rather than silently omitting that
+            // section and handing over a file that misrepresents itself as a
+            // complete GDPR copy. The start-of-export connectivity check can't
+            // catch a drop partway through.
+            do {
+                // Account doc (handle, counts, settings, acceptance fields)
+                let userSnap = try await db.collection("users").document(uid).getDocumentAsync()
+                if let data = userSnap.data() {
+                    // Strip fcmToken (device-specific, not useful in an export)
+                    var account = data
+                    account.removeValue(forKey: "fcmToken")
+                    account.removeValue(forKey: "fcmTokenUpdatedAt")
+                    // Moderation metadata isn't the user's to see: restrictedBy is
+                    // an admin's uid (deanonymizes the moderator). Strip the family.
+                    for k in ["restricted", "restrictedBy", "restrictedAt", "restrictedUntil"] {
+                        account.removeValue(forKey: k)
+                    }
+                    // Merge in the private subcollection (email, etc.) since
+                    // post-migration those fields no longer live on the main
+                    // user doc but are still the user's own data.
+                    let privateSnap = try await db.collection("users").document(uid)
+                        .collection("private").document("data").getDocumentAsync()
+                    if var privateData = privateSnap.data() {
+                        privateData.removeValue(forKey: "fcmToken")
+                        privateData.removeValue(forKey: "fcmTokenUpdatedAt")
+                        for (k, v) in privateData { account[k] = v }
+                    }
+                    // Email source of truth is Firebase Auth. change-email updates
+                    // Auth out-of-band (via the verification link) but never the
+                    // Firestore copy, so the stored value can be stale — use the
+                    // live Auth email so the export reflects the real address.
+                    if let liveEmail = Auth.auth().currentUser?.email, !liveEmail.isEmpty {
+                        account["email"] = liveEmail
+                    }
+                    payload["account"] = sanitizeForJSON(account)
                 }
-                payload["account"] = sanitizeForJSON(account)
-            }
 
-            // Posts authored
-            if let postsSnap = try? await db.collection("posts")
-                .whereField("authorId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 5000)
-                .getDocumentsAsync() {
+                // Posts authored
+                let postsSnap = try await db.collection("posts")
+                    .whereField("authorId", isEqualTo: uid)
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: 5000)
+                    .getDocumentsAsync()
                 payload["posts"] = postsSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
                     return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
-            }
 
-            // Replies authored (collection group across all posts)
-            if let repliesSnap = try? await db.collectionGroup("replies")
-                .whereField("authorId", isEqualTo: uid)
-                .order(by: "createdAt", descending: true)
-                .limit(to: 5000)
-                .getDocumentsAsync() {
+                // Replies authored (collection group across all posts)
+                let repliesSnap = try await db.collectionGroup("replies")
+                    .whereField("authorId", isEqualTo: uid)
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: 5000)
+                    .getDocumentsAsync()
                 payload["replies"] = repliesSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
                     item["postId"] = doc.reference.parent.parent?.documentID ?? ""
                     return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
-            }
 
-            // Liked + saved post IDs (just IDs — full post content belongs
-            // to the original author)
-            if let likedSnap = try? await db.collection("users").document(uid).collection("liked").limit(to: 5000).getDocumentsAsync() {
-                payload["likedPostIds"] = likedSnap.documents.map { $0.documentID }
-            }
-            if let savedSnap = try? await db.collection("users").document(uid).collection("saved").limit(to: 5000).getDocumentsAsync() {
-                payload["savedPostIds"] = savedSnap.documents.map { $0.documentID }
-            }
-
-            // Following + followers (handles only — never user IDs of others,
-            // which would let the export be cross-referenced with leaked data)
-            if let followingSnap = try? await db.collection("users").document(uid).collection("following").limit(to: 5000).getDocumentsAsync() {
-                payload["followingHandles"] = followingSnap.documents.compactMap { $0.data()["handle"] as? String }
-            }
-            if let followersSnap = try? await db.collection("users").document(uid).collection("followers").limit(to: 5000).getDocumentsAsync() {
-                payload["followerHandles"] = followersSnap.documents.compactMap { $0.data()["handle"] as? String }
-            }
-
-            // Notifications history (own inbox)
-            if let notifSnap = try? await db.collection("users").document(uid).collection("notifications")
-                .order(by: "createdAt", descending: true)
-                .limit(to: 5000)
-                .getDocumentsAsync() {
-                payload["notifications"] = notifSnap.documents.map { doc -> [String: Any] in
+                // Drafts — the user's own unpublished writing (their most private
+                // authored content). Previously omitted from the export entirely.
+                let draftsSnap = try await db.collection("users").document(uid)
+                    .collection("drafts")
+                    .limit(to: 5000)
+                    .getDocumentsAsync()
+                payload["drafts"] = draftsSnap.documents.map { doc -> [String: Any] in
                     var item = doc.data()
                     item["id"] = doc.documentID
                     return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
+
+                // Liked + saved post IDs (just IDs — full post content belongs
+                // to the original author)
+                let likedSnap = try await db.collection("users").document(uid).collection("liked").limit(to: 5000).getDocumentsAsync()
+                payload["likedPostIds"] = likedSnap.documents.map { $0.documentID }
+                let savedSnap = try await db.collection("users").document(uid).collection("saved").limit(to: 5000).getDocumentsAsync()
+                payload["savedPostIds"] = savedSnap.documents.map { $0.documentID }
+
+                // Following + followers (handles only — never user IDs of others,
+                // which would let the export be cross-referenced with leaked data)
+                let followingSnap = try await db.collection("users").document(uid).collection("following").limit(to: 5000).getDocumentsAsync()
+                payload["followingHandles"] = followingSnap.documents.compactMap { $0.data()["handle"] as? String }
+                let followersSnap = try await db.collection("users").document(uid).collection("followers").limit(to: 5000).getDocumentsAsync()
+                payload["followerHandles"] = followersSnap.documents.compactMap { $0.data()["handle"] as? String }
+
+                // Notifications history (own inbox). Drop fromUserId — exporting
+                // other users' raw uids contradicts the handles-only rule applied
+                // to following/followers above (fromHandle is retained).
+                let notifSnap = try await db.collection("users").document(uid).collection("notifications")
+                    .order(by: "createdAt", descending: true)
+                    .limit(to: 5000)
+                    .getDocumentsAsync()
+                payload["notifications"] = notifSnap.documents.map { doc -> [String: Any] in
+                    var item = doc.data()
+                    item["id"] = doc.documentID
+                    item.removeValue(forKey: "fromUserId")
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
+                }
+            } catch {
+                exportError = "couldn't export all your data — check your connection and try again."
+                print("⚠️ exportData incomplete, not presenting partial file: \(error)")
+                return
             }
 
             // Serialize and present share sheet

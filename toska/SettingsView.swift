@@ -653,6 +653,22 @@ struct SettingsView: View {
                    gentleCheckIn: boolPref("gentleCheckIn", default: true)
                )
                isLoaded = true
+
+               // Reconcile the displayed push toggle with the ACTUAL iOS
+               // permission. pushEnabled defaults ON and only re-checks iOS on an
+               // explicit off→on flip, so a user who declined at the OS level (or
+               // never granted) saw the toggle stuck ON while iOS silently dropped
+               // every push — and the server kept sending them. Reflect reality:
+               // if iOS won't deliver, the toggle reads OFF (and persists OFF, so
+               // the backend stops sending). Flipping it back on runs the existing
+               // requestPushPermissionIfNeeded → "enable in iOS settings" flow.
+               if settings.pushEnabled {
+                   let osSettings = await UNUserNotificationCenter.current().notificationSettings()
+                   let authorized: [UNAuthorizationStatus] = [.authorized, .provisional, .ephemeral]
+                   if !authorized.contains(osSettings.authorizationStatus) {
+                       settings.pushEnabled = false
+                   }
+               }
            }
        }
     func debounceSave() {
@@ -855,6 +871,13 @@ struct SettingsView: View {
 
     func exportData() {
         guard let uid = Auth.auth().currentUser?.uid, !isExporting else { return }
+        // Offline, every try? query returns cached (often empty) data and the
+        // failures are swallowed, so the export would be handed to the share sheet
+        // as if complete — a GDPR-completeness problem. Require connectivity.
+        guard NetworkMonitor.shared.isConnected else {
+            exportError = "you're offline — connect to the internet to export a complete copy of your data."
+            return
+        }
         isExporting = true
         exportError = nil
 

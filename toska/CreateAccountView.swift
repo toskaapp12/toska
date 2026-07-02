@@ -371,9 +371,10 @@ struct CreateAccountView: View {
 
                 let db = Firestore.firestore()
                 do {
-                    try await db.collection("users").document(uid).setData([
-                                            "handle": resolvedHandle,
-                                            "followerCount": 0,
+                    // Batched with the handle-registry claim (firestore.rules
+                    // requires the pair; see commitUserDocClaimingHandle).
+                    _ = try await commitUserDocClaimingHandle(uid: uid, initialHandle: resolvedHandle, baseData: [
+                        "followerCount": 0,
                         "followingCount": 0,
                         "totalLikes": 0,
                         "allowSharing": true,

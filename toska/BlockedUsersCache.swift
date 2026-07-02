@@ -151,29 +151,68 @@ class BlockedUsersCache {
         if let handle = handle, !handle.isEmpty {
             data["handle"] = handle
         }
-        do {
-            try await Firestore.firestore()
-                .collection("users").document(uid)
-                .collection("blocked").document(userId)
-                .setData(data)
-            // Broadcast AFTER the write commits — so a failed block can't strip
-            // the feed / flash a "blocked · undo" toast while the caller (e.g.
-            // OtherProfileView) shows a "couldn't block" error. This strips
-            // already-loaded FeedViewModel.posts and drives MainTabView's undo
-            // toast (the fetch-time isBlocked filter doesn't touch loaded posts).
-            var userInfo: [String: Any] = ["userId": userId]
-            if let handle = handle, !handle.isEmpty {
-                userInfo["handle"] = handle
+        let docRef = Firestore.firestore()
+            .collection("users").document(uid)
+            .collection("blocked").document(userId)
+
+        // Offline / dead-connection handling: setData's continuation resumes
+        // only on SERVER ack, which never arrives offline — but with disk
+        // persistence (the iOS default; nothing in this app overrides
+        // cacheSettings) the write is durably queued and syncs on reconnect,
+        // even across a relaunch. Waiting for the ack therefore meant an
+        // offline block closed its confirm dialog with zero feedback: no feed
+        // strip, no toast, the author's posts still on screen. Queued IS
+        // durable here, so broadcast immediately when offline; the timeout
+        // race below catches the stale-isConnected case the same way. A real
+        // failure (permission-denied) still returns promptly through the
+        // error path online.
+        if !NetworkMonitor.shared.isConnected {
+            docRef.setData(data) { error in
+                if let error = error { print("⚠️ BlockedUsersCache.block (queued offline) failed: \(error)") }
             }
-            NotificationCenter.default.post(name: .userBlocked, object: nil, userInfo: userInfo)
+            postUserBlockedBroadcast(userId: userId, handle: handle)
             return true
-        } catch {
+        }
+
+        let writeTask = Task { try await docRef.setData(data) }
+        let outcome = await withTaskGroup(of: Result<Void, Error>?.self) { group -> Result<Void, Error>? in
+            group.addTask { do { try await writeTask.value; return .success(()) } catch { return .failure(error) } }
+            group.addTask { try? await Task.sleep(nanoseconds: 8_000_000_000); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+
+        switch outcome {
+        case .success, .none:
+            // .none = timed out waiting for the ack (connection flaky enough
+            // that NWPathMonitor hasn't noticed). The write stays queued in
+            // the persistent cache exactly like the offline branch — treat as
+            // durable rather than leaving the user with no feedback.
+            //
+            // Broadcast AFTER the write commits (or is durably queued) — so a
+            // failed block can't strip the feed / flash a "blocked · undo"
+            // toast while the caller (e.g. OtherProfileView) shows a
+            // "couldn't block" error. This strips already-loaded
+            // FeedViewModel.posts and drives MainTabView's undo toast (the
+            // fetch-time isBlocked filter doesn't touch loaded posts).
+            postUserBlockedBroadcast(userId: userId, handle: handle)
+            return true
+        case .failure(let error):
             // 3. Revert if the write failed — but only if THIS call added the
             //    block; don't clear a block that already persisted.
             print("⚠️ BlockedUsersCache.block failed: \(error)")
             if !wasBlocked { removeLocal(userId) }
             return false
         }
+    }
+
+    private func postUserBlockedBroadcast(userId: String, handle: String?) {
+        var userInfo: [String: Any] = ["userId": userId]
+        if let handle = handle, !handle.isEmpty {
+            userInfo["handle"] = handle
+        }
+        NotificationCenter.default.post(name: .userBlocked, object: nil, userInfo: userInfo)
     }
 
     /// Returns true on successful Firestore write, false if it failed (in
@@ -191,7 +230,19 @@ class BlockedUsersCache {
         // 1. Optimistic local update.
         removeLocal(userId)
 
-        // 2. Persist to Firestore.
+        // 2. Persist to Firestore. Offline: same queued-is-durable reasoning
+        //    as block() above — the delete syncs on reconnect; awaiting an
+        //    ack that can't arrive would hang the caller (BlockedUsersListView)
+        //    forever with the row already optimistically removed.
+        if !NetworkMonitor.shared.isConnected {
+            Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("blocked").document(userId)
+                .delete { error in
+                    if let error = error { print("⚠️ BlockedUsersCache.unblock (queued offline) failed: \(error)") }
+                }
+            return true
+        }
         do {
             try await Firestore.firestore()
                 .collection("users").document(uid)

@@ -17,7 +17,9 @@ a popularity contest. The product is intentionally low-stakes and anonymous.
 
 **Demo account (sign-in required to see content)**
 - Email: `appreview@toskaapp.com`
-- Password: `ToskaAppReview!2026`
+- Password: (NOT in this repo — the repo is public and serves GitHub Pages.
+  The old committed password is burned and must be rotated; keep the live
+  one only in App Store Connect's review-notes field and a password manager.)
 - This account is pre-seeded with posts so the feed, profile, reactions,
   reporting, and blocking flows are all immediately exercisable.
 - Sign in with Apple is also offered on the first screen if you prefer.

@@ -244,6 +244,17 @@ service cloud.firestore {
         // (generateUniqueHandle) only produces strings in this character class
         // so existing accounts are unaffected.
         && validHandle(request.resource.data.handle)
+        // Handle uniqueness (2026-07-01): every anti-spoofing pin in this
+        // ruleset (authorHandle/originalHandle/fromHandle) verifies the
+        // written handle against the AUTHOR'S OWN user doc — which is
+        // meaningless if two user docs can carry the same handle. Require the
+        // signup batch to also create handles/{handle.lower()} (rules below):
+        // getAfter errors (→ deny) if the registry row isn't part of this
+        // write, and the registry row's create is impossible when the handle
+        // is already taken (a second create is an update, which no rule
+        // allows). Deploy note: clients older than build 49 create user docs
+        // WITHOUT the registry row and fail this rule — ship the client first.
+        && getAfter(/databases/$(database)/documents/handles/$(request.resource.data.handle.lower())).data.uid == request.auth.uid
         // Prevent storing email on documents belonging to anonymous users.
         // Apple/Google/email auth all have a non-empty email; anonymous sign-in does not.
         && (request.resource.data.keys().hasAll(['email'])
@@ -280,10 +291,16 @@ service cloud.firestore {
       //     could flip `restricted: false` to self-unrestrict after hitting the
       //     repeat-offender threshold.
       allow update: if (isOwner(userId)
-            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['handle'])
-                || validHandle(request.resource.data.handle))
+            // Handle is IMMUTABLE post-create (2026-07-01). No client surface
+            // changes handles, and an owner update that swapped `handle` to a
+            // copy of someone else's bypassed the uniqueness registry the
+            // create rule enforces — re-enabling the impersonation this whole
+            // scheme closes. If a rename feature is ever built, allow the
+            // change only with the same registry claim/release batch the
+            // create rule requires (claim new row via getAfter, release old
+            // via !existsAfter).
             && !request.resource.data.diff(resource.data).affectedKeys()
-                .hasAny(['fcmToken', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil',
+                .hasAny(['fcmToken', 'handle', 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil',
                          'confirmedAdult', 'confirmedAdultAt',
                          // Aggregate counters are server-owned: only the Cloud
                          // Functions (onFollow*/onLike*/onPost* via Admin SDK,
@@ -659,6 +676,34 @@ service cloud.firestore {
           && request.resource.data.text.size() <= 2000;
         allow delete: if isOwner(userId);
       }
+    }
+
+    // Handle uniqueness registry (2026-07-01). One doc per taken handle,
+    // keyed by the LOWERCASED handle, carrying the owner's uid. The users
+    // create rule above requires the signup batch to create this row
+    // (getAfter), and creating it is only possible while the id is free —
+    // a second "create" on an existing doc is an update, which no rule here
+    // allows. This is what makes the authorHandle/originalHandle/fromHandle
+    // pins meaningful: without uniqueness, a tampered client could set its
+    // own users.handle to a verbatim copy of a victim's and every pin would
+    // happily verify the forged byline. Backfill for pre-registry accounts:
+    // functions/backfillHandles.js. The account-deletion cascade
+    // (onUserDocDeleted) releases the row server-side.
+    match /handles/{handleLower} {
+      // Readable so signup flows can pre-check availability; handles are
+      // public on every post byline anyway, and the row holds nothing else.
+      allow read: if isAuth();
+      allow create: if isAuth()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        // Bind the row to the user doc in the SAME batch: the claimed id
+        // must equal the lowercased handle the caller's user doc carries
+        // after this write. Stops squatting rows that don't match any real
+        // account state (getAfter errors → deny when the user doc is absent).
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle.lower() == handleLower;
+      // Owners may release their own row (future rename support); nobody
+      // may update one — ownership never transfers in place.
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
     }
 
     match /posts/{postId} {

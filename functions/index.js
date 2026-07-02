@@ -345,6 +345,16 @@ async function cleanupBlockedByForUid(uid, maxIterations) {
     .limit(pageSize), maxIterations);
 }
 
+// Release the deleted user's handle-uniqueness registry row(s)
+// (handles/{handleLower}, uid field — see firestore.rules). Queried by uid
+// rather than derived from the deleted doc's handle so stray rows from any
+// earlier state are swept too. Frees the handle for future signups.
+async function cleanupHandleRegistryForUid(uid, maxIterations) {
+  return paginatedBatchDelete((pageSize) => db.collection("handles")
+    .where("uid", "==", uid)
+    .limit(pageSize), maxIterations);
+}
+
 // F-2 (2026-06-08 audit): a deleted user's LIKE docs on OTHER users' posts and
 // replies are keyed by the liker's uid (posts/{p}/likes/{uid},
 // posts/{p}/replies/{r}/likes/{uid}) and carry no authorId field, so a
@@ -910,6 +920,7 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     await runWithResume(uid, "circleMessages", cleanupCircleMessagesForUid, "feeling-circle messages");
     await runWithResume(uid, "reports", cleanupSubmittedReportsForUid, "pending reports filed");
     await runWithResume(uid, "blockedBy", cleanupBlockedByForUid, "others' block entries");
+    await runWithResume(uid, "handleRegistry", cleanupHandleRegistryForUid, "handle registry rows");
 
     console.log("Cleanup complete for user:", uid);
   } catch (error) {
@@ -2356,7 +2367,15 @@ exports.rateLimitPosts = onDocumentCreated("posts/{postId}", async (event) => {
 
   if (recentSnap.size > 5) {
     console.log("Rate limit exceeded for user:", authorId, "— flagging post:", postId);
-    await db.collection("posts").doc(postId).update({
+    // setPendingReview, not a bare flagged:true: every other flag path pairs
+    // the flag with a pending_review hold. A flag-only write leaves
+    // moderationStatus "live", so any surface that filters solely on
+    // moderationStatus (the future web portal, admin "pending" queries)
+    // would still serve the spam — hiding relied entirely on clients also
+    // filtering `flagged`. checkRepeatOffenderPosts excludes
+    // rate_limit_exceeded from the auto-restrict count, so this adds no
+    // double-jeopardy.
+    await setPendingReview(db.collection("posts").doc(postId), "rate_limit", {
       flagged: true,
       flaggedAt: FieldValue.serverTimestamp(),
       flagReason: "rate_limit_exceeded",
@@ -2530,7 +2549,13 @@ function flagReasonToPendingReason(flagReason) {
 // every update, but bails fast unless `text` actually changed (this also
 // breaks the recursion loop with the trigger's own flagged/flagReason
 // writes, which don't touch text).
-exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
+exports.onPostUpdated = onDocumentUpdated(
+  // retry:true (2026-07-01): every write below is idempotent (setPendingReview
+  // no-ops when already pending, checkRepeatOffenderPosts recounts + guards
+  // the restriction window, the crisis page dedups on its claim doc), and the
+  // before.text === after.text guard makes redelivery cheap.
+  { document: "posts/{postId}", retry: true },
+  async (event) => {
   const postId = event.params.postId;
   const before = (event.data && event.data.before && event.data.before.data()) || {};
   const after = (event.data && event.data.after && event.data.after.data()) || {};
@@ -2552,17 +2577,24 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
   // introduces crisis text alongside PII/abuse still sets concerningContent
   // and reaches the crisis tab instead of being masked as a "pii" takedown.
   if (concerning) {
+    // A crisisReviewedAt stamp covers the OLD text: the admin reviewed what
+    // the post said then, not the crisis text this edit just introduced.
+    // Without clearing it, the admin crisis queue (which filters
+    // !crisisReviewedAt) never resurfaces the post — a fresh disclosure edited
+    // into an already-reviewed post was shown NOWHERE.
+    const needsReReview = Boolean(after.crisisReviewedAt);
     // Skip the rewrite only when nothing material would change — already on
-    // the crisis tab AND the flag state is already correct. flaggedAt stays
-    // pinned to the original detection time in that case.
+    // the crisis tab, not yet reviewed, AND the flag state is already correct.
+    // flaggedAt stays pinned to the original detection time in that case.
     const flagAlreadyCorrect = flagReason
       ? after.flagged === true && after.flagReason === flagReason
       : true;
-    if (after.concerningContent === true && flagAlreadyCorrect) return;
+    if (after.concerningContent === true && flagAlreadyCorrect && !needsReReview) return;
     const extra = {
       concerningContent: true,
       flaggedAt: FieldValue.serverTimestamp(),
     };
+    if (needsReReview) extra.crisisReviewedAt = FieldValue.delete();
     if (flagReason) {
       extra.flagged = true;
       extra.flagReason = flagReason;
@@ -2572,6 +2604,19 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
       `Post ${postId} concerning + pending_review after edit` +
         (flagReason ? ` (also ${flagReason})` : "")
     );
+    // Page on explicit crisis introduced by edit — create-only paging left
+    // the edit path silent. The per-post claim (`crisisAlert_<id>`) dedups
+    // against the create-time page, so a post that already paged won't
+    // re-page on later edits.
+    if (isPostExplicitCrisis(after.text)) {
+      await pageAdminsForCrisis({
+        claimRef: db.collection("processedTriggerEvents").doc(`crisisAlert_${postId}`),
+        title: "crisis post",
+        body: "a post needs review in the crisis queue",
+        dataPayload: { type: "admin_crisis_alert", postId },
+        logLabel: `crisis-alert-edit(${postId})`,
+      });
+    }
     if (flagReason) await checkRepeatOffenderPosts(after.authorId);
     return;
   }
@@ -2622,108 +2667,59 @@ exports.onPostUpdated = onDocumentUpdated("posts/{postId}", async (event) => {
 // post id, but since the dashboard is a web page, a regular URL works).
 // ============================================================
 
-exports.onPostCreatedAlertAdmins = onDocumentCreated("posts/{postId}", async (event) => {
-  const data = event.data?.data();
-  if (!data || data.isRepost === true || typeof data.text !== "string") return;
-  if (!isPostExplicitCrisis(data.text)) return;
-
-  const postId = event.params.postId;
-
-  // Idempotency (2026-06-01 audit; P-1 fix 2026-06-16): Eventarc is
-  // at-least-once, so a redelivery of this create event could page admins
-  // twice. The dedup unit is the POST id (`crisisAlert_<id>`), not `event.id`:
-  // four other triggers share this `posts/{postId}` create path and
-  // onPostCreatedUpdateTagCounts already claims `event.id`, so reusing it here
-  // could let the tag-count claim starve the crisis page. One post = one page.
-  //
-  // P-1: this is PAGE-then-CLAIM, not claim-then-page. The old claim-first
-  // guard had a partial-failure trap — if the claim was written but the FCM
-  // send then failed, every redelivery saw the claim and returned, DROPPING the
-  // crisis page forever. Now we only skip if we've already SUCCESSFULLY paged;
-  // a failed send leaves no claim so Eventarc retries until it lands. A dropped
-  // crisis page is far worse than a rare duplicate, so this errs toward
-  // delivering. The read below fails OPEN (proceed to send) on a Firestore
-  // hiccup — worst case one duplicate page.
-  const crisisClaimRef = db.collection("processedTriggerEvents").doc(`crisisAlert_${postId}`);
-  try {
-    if ((await crisisClaimRef.get()).exists) return; // already paged for this post
-  } catch (err) {
-    console.warn(`crisis-alert: claim read failed for post ${postId}, proceeding to send:`, err.message);
+// Idempotency (2026-06-01 audit; P-1 fix 2026-06-16): Eventarc is
+// at-least-once, so a redelivery of this create event could page admins
+// twice. The dedup unit is the POST id (`crisisAlert_<id>`), not `event.id`:
+// four other triggers share this `posts/{postId}` create path and
+// onPostCreatedUpdateTagCounts already claims `event.id`, so reusing it here
+// could let the tag-count claim starve the crisis page. One post = one page.
+//
+// P-1: PAGE-then-CLAIM (see pageAdminsForCrisis). A failed page throws and
+// `retry: true` makes Eventarc redeliver — without that flag v2 Firestore
+// triggers default to no retry and a single transient FCM failure would drop
+// the crisis page forever. A dropped crisis page is far worse than a rare
+// duplicate, so this errs toward delivering.
+//
+// L-1 (2026-06-08 audit): do NOT put raw post text (or the author handle)
+// in the push — it lands on the admin's lock screen / notification mirror,
+// exactly the leak the user-facing pushes were hardened against. Send a
+// neutral body; the admin taps through to the crisis tab in admin.html
+// (gated by App Check + the admins/{uid} check) to read the content. Only
+// the non-identifying postId rides in the data payload for deep-linking.
+//
+// The FALLBACK_ADMIN_UIDS literal inside pageAdminsForCrisis alerts the owner
+// even before `system/crisisAlertRecipients` is seeded (A-1 2026-06-09: the
+// uid is the real prod admin, salinarotess@gmail.com — an earlier literal was
+// a TEST account and pages were dropped). Seed the doc so the literal is moot.
+exports.onPostCreatedAlertAdmins = onDocumentCreated(
+  { document: "posts/{postId}", retry: true },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data || data.isRepost === true || typeof data.text !== "string") return;
+    if (!isPostExplicitCrisis(data.text)) return;
+    const postId = event.params.postId;
+    await pageAdminsForCrisis({
+      claimRef: db.collection("processedTriggerEvents").doc(`crisisAlert_${postId}`),
+      title: "crisis post",
+      body: "a post needs review in the crisis queue",
+      dataPayload: { type: "admin_crisis_alert", postId },
+      logLabel: `crisis-alert(${postId})`,
+    });
   }
-
-  // Fallback admin uid baked in so the function alerts you even before
-  // `system/crisisAlertRecipients` is seeded in Firestore. To add or
-  // change admins later without redeploying, write `{ uids: [...] }` to
-  // that doc — Firestore values override this fallback.
-  //
-  // A-1 (2026-06-09 audit): corrected from fKcz0r7wYih8ePNg5019ZEOhSWB2 (which
-  // is a TEST account, not an admin — confirmed via checkAdminUid.js) to the
-  // real prod admin uid (salinarotess@gmail.com). With the wrong uid, crisis
-  // pages routed to a non-admin's (possibly absent) FCM token and were dropped.
-  // Best practice: seed system/crisisAlertRecipients so this literal is moot.
-  const FALLBACK_ADMIN_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
-  try {
-    const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
-    const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
-    const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
-    if (adminUids.length === 0) {
-      console.log(`crisis-alert: post ${postId} tripped explicit-crisis but no admin uids configured`);
-      return;
-    }
-
-    const tokens = [];
-    for (const uid of adminUids) {
-      const privSnap = await db.collection("users").doc(uid).collection("private").doc("data").get();
-      const token = privSnap.data()?.fcmToken;
-      if (typeof token === "string" && token.length > 0) tokens.push(token);
-    }
-    if (tokens.length === 0) {
-      console.log(`crisis-alert: post ${postId} tripped explicit-crisis but no FCM tokens for ${adminUids.length} admins`);
-      return;
-    }
-
-    // L-1 (2026-06-08 audit): do NOT put raw post text (or the author handle)
-    // in the push — it lands on the admin's lock screen / notification mirror,
-    // exactly the leak the user-facing pushes were hardened against. Send a
-    // neutral body; the admin taps through to the crisis tab in admin.html
-    // (gated by App Check + the admins/{uid} check) to read the content. Only
-    // the non-identifying postId rides in the data payload for deep-linking.
-    const message = {
-      notification: {
-        title: "crisis post",
-        body: "a post needs review in the crisis queue",
-      },
-      data: {
-        type: "admin_crisis_alert",
-        postId,
-      },
-      tokens,
-    };
-
-    const messaging = getMessaging();
-    const resp = await messaging.sendEachForMulticast(message);
-    console.log(`crisis-alert: post ${postId} sent to ${resp.successCount}/${tokens.length} admin devices`);
-
-    // P-1 (2026-06-16): claim ONLY after a successful page. If every device
-    // failed (successCount === 0) we leave no claim so Eventarc redelivers and
-    // we try again — better a retried/duplicate page than a silently dropped
-    // one. The claim write itself fails open (a duplicate page on the next
-    // redelivery is acceptable).
-    if (resp.successCount > 0) {
-      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-      await crisisClaimRef
-        .set({ processedAt: FieldValue.serverTimestamp(), expiresAt })
-        .catch((err) => console.warn(`crisis-alert: claim write failed for post ${postId}:`, err.message));
-    }
-  } catch (err) {
-    console.warn(`crisis-alert: failed to alert admins for post ${postId}: ${err.message}`);
-  }
-});
+);
 
 // Shared admin crisis-paging (PAGE-then-CLAIM, neutral push body, no content on
-// the lock screen). Used by the reply-crisis alert below; the post one predates
-// it and is left inline. `claimRef` dedups per artifact id; `dataPayload` deep-
-// links the admin into the right surface.
+// the lock screen). Used by both crisis alerts below. `claimRef` dedups per
+// artifact id; `dataPayload` deep-links the admin into the right surface.
+//
+// THROWS on any failure to page (config/token read error, send error, zero
+// successful deliveries). Callers MUST be declared `{ retry: true }` — the
+// PAGE-then-CLAIM design only delivers its "a failed send is retried until it
+// lands" guarantee if the trigger fails and Eventarc redelivers; a swallowed
+// error here completes the function "successfully" and drops the page forever.
+// Exponential backoff bounds the retry cost; the claim doc bounds duplicates.
+// Only the claim read (fail open → worst case a duplicate page) and the claim
+// write (fail open → duplicate on next redelivery) are non-fatal.
 async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabel }) {
   try {
     if ((await claimRef.get()).exists) return; // already paged
@@ -2731,30 +2727,44 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
     console.warn(`${logLabel}: claim read failed, proceeding:`, err.message);
   }
   const FALLBACK_ADMIN_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
-  try {
-    const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
-    const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
-    const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
-    if (adminUids.length === 0) return;
-    const tokens = [];
-    for (const uid of adminUids) {
-      const privSnap = await db.collection("users").doc(uid).collection("private").doc("data").get();
-      const token = privSnap.data()?.fcmToken;
-      if (typeof token === "string" && token.length > 0) tokens.push(token);
-    }
-    if (tokens.length === 0) return;
-    const resp = await getMessaging().sendEachForMulticast({
-      notification: { title, body }, data: dataPayload, tokens,
-    });
-    console.log(`${logLabel}: sent to ${resp.successCount}/${tokens.length} admin devices`);
-    if (resp.successCount > 0) {
-      const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-      await claimRef.set({ processedAt: FieldValue.serverTimestamp(), expiresAt })
-        .catch((err) => console.warn(`${logLabel}: claim write failed:`, err.message));
-    }
-  } catch (err) {
-    console.warn(`${logLabel}: failed to alert admins: ${err.message}`);
+  const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
+  const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
+  const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
+  if (adminUids.length === 0) {
+    console.log(`${logLabel}: tripped explicit-crisis but no admin uids configured`);
+    return;
   }
+  const tokens = [];
+  for (const uid of adminUids) {
+    // Same legacy fallback as sendPushNotification: tokens moved to the
+    // owner-only private subcollection, but pre-migration users still carry
+    // fcmToken on the main doc. Without the fallback those admins are
+    // silently unpageable while their normal pushes keep working.
+    const privSnap = await db.collection("users").doc(uid).collection("private").doc("data").get();
+    let token = privSnap.data()?.fcmToken;
+    if (!token) {
+      const userSnap = await db.collection("users").doc(uid).get();
+      token = userSnap.data()?.fcmToken;
+    }
+    if (typeof token === "string" && token.length > 0) tokens.push(token);
+  }
+  if (tokens.length === 0) {
+    // A crisis page with no deliverable token is exactly the dropped-page
+    // scenario: fail so redelivery retries — the admin's device may refresh
+    // its token between attempts. The admin.html crisis queue is the durable
+    // backstop either way.
+    throw new Error(`${logLabel}: no FCM tokens for ${adminUids.length} admins`);
+  }
+  const resp = await getMessaging().sendEachForMulticast({
+    notification: { title, body }, data: dataPayload, tokens,
+  });
+  console.log(`${logLabel}: sent to ${resp.successCount}/${tokens.length} admin devices`);
+  if (resp.successCount === 0) {
+    throw new Error(`${logLabel}: all ${tokens.length} sends failed`);
+  }
+  const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  await claimRef.set({ processedAt: FieldValue.serverTimestamp(), expiresAt })
+    .catch((err) => console.warn(`${logLabel}: claim write failed:`, err.message));
 }
 
 // Crisis disclosures posted as REPLIES previously got no admin page at all
@@ -2762,7 +2772,7 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
 // reply, deep-linking to the parent post so it can be reviewed. Dedup keyed on
 // the reply id.
 exports.onReplyCreatedAlertAdmins = onDocumentCreated(
-  "posts/{postId}/replies/{replyId}",
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
     const data = event.data?.data();
     if (!data || typeof data.text !== "string") return;
@@ -2834,10 +2844,23 @@ exports.onReplyCreatedModerate = onDocumentCreated(
     // reach-out shouldn't be censored, and onReplyCreatedAlertAdmins pages a
     // human on explicit crisis. The author sees crisis resources client-side at
     // send time. This runs independently of the abuse/PII flag below.
+    //
+    // update(), NOT set({merge:true}): a merge-set re-creates a reply that was
+    // concurrently deleted (rateLimitReplies, admin/author delete), leaving a
+    // text-less ghost in the admin crisis queue. A deleted reply needs no
+    // flag — swallow only NOT_FOUND (grpc code 5); any other failure must
+    // throw so retry:true redelivers, otherwise a transient error silently
+    // drops the reply from the durable crisis review queue.
     if (isPostConcerning(data.text)) {
-      await event.data.ref
-        .set({ concerningContent: true, concerningDetectedAt: FieldValue.serverTimestamp() }, { merge: true })
-        .catch((err) => console.warn(`reply concerning-flag failed for ${event.params.replyId}:`, err.message));
+      try {
+        await event.data.ref.update({
+          concerningContent: true,
+          concerningDetectedAt: FieldValue.serverTimestamp(),
+        });
+      } catch (err) {
+        if (err.code !== 5) throw err;
+        console.log(`reply ${event.params.replyId} deleted before concerning-flag; skipping`);
+      }
     }
     const flagReason = computeReplyFlagReason(data.text);
     if (flagReason) {
@@ -2868,6 +2891,37 @@ exports.onReplyUpdated = onDocumentUpdated(
 
     const replyRef = db.collection("posts").doc(event.params.postId)
       .collection("replies").doc(event.params.replyId);
+
+    // Crisis text introduced by edit — the create path tags concerningContent
+    // and pages, but this handler previously checked only PII/abuse, so a
+    // clean reply edited into crisis language produced ZERO moderation signal
+    // (no queue entry, no page). Same policy as create: tag, don't hide, page
+    // on explicit. A crisisReviewedAt stamp covers the OLD text, so clear it —
+    // the admin queue filters !crisisReviewedAt and would never resurface the
+    // new disclosure otherwise.
+    if (isPostConcerning(after.text)) {
+      const update = {
+        concerningContent: true,
+        concerningDetectedAt: FieldValue.serverTimestamp(),
+      };
+      if (after.crisisReviewedAt) update.crisisReviewedAt = FieldValue.delete();
+      try {
+        await replyRef.update(update);
+      } catch (err) {
+        if (err.code !== 5) throw err; // NOT_FOUND: deleted concurrently, nothing to flag
+      }
+      if (isPostExplicitCrisis(after.text)) {
+        // Same per-reply claim as onReplyCreatedAlertAdmins: a reply that
+        // already paged at create won't re-page on edit.
+        await pageAdminsForCrisis({
+          claimRef: db.collection("processedTriggerEvents").doc(`crisisAlertReply_${event.params.replyId}`),
+          title: "crisis reply",
+          body: "a reply needs review in the crisis queue",
+          dataPayload: { type: "admin_crisis_alert", postId: event.params.postId, replyId: event.params.replyId },
+          logLabel: `crisis-alert-reply-edit(${event.params.replyId})`,
+        });
+      }
+    }
 
     // PII introduced on edit → recoverable HOLD (M-1), not delete.
     // #2: label a URL-bearing edit "abuse_link" rather than "pii".

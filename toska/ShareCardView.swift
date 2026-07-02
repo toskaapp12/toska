@@ -30,7 +30,6 @@ struct ShareCardView: View {
     @State private var showFeltCount = true
     @State private var showCopied = false
     @State private var showSharedConfirmation = false
-    @State private var sharedPlatform = ""
     @State private var savedToPhotos = false
     @State private var showSaveError = false
     // Gates the share-button row while ImageRenderer does its work. The
@@ -208,7 +207,6 @@ struct ShareCardView: View {
                             }
                             sharePill(name: "Share", icon: "square.and.arrow.up",
                                       colors: [Color.toskaMidnightPurple, Color(hex: "6E5FB0")]) {
-                                sharedPlatform = ""
                                 shareImage()
                             }
                         }
@@ -635,6 +633,11 @@ struct ShareCardView: View {
                         .font(ToskaFont.sans(11, weight: .semibold))
                         .tracking(1)
                         .foregroundColor(accentColor.opacity(0.5))
+                        // Single line: the layout reserves a fixed height for
+                        // everything but the quote, so a wrapping tag would eat
+                        // un-budgeted vertical space and could push the footer off.
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
                 .padding(.bottom, 14)
             }
@@ -1025,18 +1028,15 @@ struct ShareCardView: View {
     func shareImage() {
         withRenderIndicator {
             guard let image = renderCardImage() else { return }
-            presentShareSheet(with: [image])
-            showPostShareConfirmation()
-        }
-    }
-
-    func shareToTwitter() {
-        withRenderIndicator {
-            let tweetText = "\"\(text)\"\n\n— someone on toska"
-            guard let image = renderCardImage() else { return }
-            presentShareSheet(with: [tweetText, image])
-            sharedPlatform = "X"
-            showPostShareConfirmation()
+            // Only show the "you shared" affirmation if the user actually shared.
+            // Previously it fired unconditionally, so cancelling the system share
+            // sheet still declared success — jarring on a grief app. Mirrors the
+            // save-to-Photos success gate.
+            presentShareSheet(with: [image]) { completed in
+                if completed {
+                    Task { @MainActor in showPostShareConfirmation() }
+                }
+            }
         }
     }
 

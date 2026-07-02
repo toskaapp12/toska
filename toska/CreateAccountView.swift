@@ -337,21 +337,33 @@ struct CreateAccountView: View {
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         isLoading = true
 
-        Auth.auth().createUser(withEmail: trimmedEmail, password: password) { result, error in
-            Task { @MainActor in
-                if let error = error {
+        Task { @MainActor in
+                // 30s ceiling so a stalled/half-open connection (captive portal,
+                // cellular handoff) can't leave the spinner spinning forever with
+                // the button disabled and no error — mirrors SignInView.signIn.
+                // CreateAccountView was the one auth entry point missing it.
+                let uid: String
+                do {
+                    // AuthDataResult isn't Sendable; extract the uid (String is)
+                    // inside the timeout closure.
+                    uid = try await withTimeout(seconds: 30) {
+                        let result = try await Auth.auth().createUser(withEmail: trimmedEmail, password: password)
+                        return result.user.uid
+                    }
+                } catch is TimeoutError {
+                    // createUser isn't cancellation-aware, so it may have landed
+                    // just after the timer fired. If auth actually exists, proceed
+                    // to the doc write; otherwise surface the timeout.
+                    if let landedUid = Auth.auth().currentUser?.uid {
+                        uid = landedUid
+                    } else {
+                        isLoading = false
+                        errorMessage = "request timed out — please try again"
+                        return
+                    }
+                } catch {
                     isLoading = false
                     errorMessage = friendlyAuthErrorMessage(error)
-                    return
-                }
-
-                guard let uid = result?.user.uid else {
-                    // createUser returned no error but also no user — this
-                    // shouldn't happen per Firebase's contract, but without
-                    // an error message the button just becomes usable again
-                    // with no explanation and the user is stuck.
-                    isLoading = false
-                    errorMessage = "account creation failed — please try again"
                     return
                 }
 
@@ -455,7 +467,6 @@ struct CreateAccountView: View {
                         NotificationCenter.default.post(name: .userDidSignOut, object: nil)
                     }
                 }
-            }
         }
     }
 }

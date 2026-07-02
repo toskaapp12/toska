@@ -723,6 +723,13 @@ class FeedViewModel: ObservableObject {
             if let last = lastForegroundFetch, Date().timeIntervalSince(last) < 60 { return }
             lastForegroundFetch = Date()
             fetchError = nil
+            // Don't wholesale-refetch when the user has paginated past the first
+            // page (60): fetchPosts rebuilds `posts` as just the newest 60,
+            // discarding the deeper pages they loaded — including the post they
+            // were reading — which collapses their scroll position on return.
+            // Pull-to-refresh and the "new posts" banner still surface fresh
+            // content on demand; only auto-refresh while they're on page one.
+            guard posts.count <= 60 else { return }
             fetchPosts()
             fetchFollowingPosts()
         }
@@ -1155,6 +1162,15 @@ class FeedViewModel: ObservableObject {
             return
         }
         isLoadingMore = true
+        // Capture the session + cursor at dispatch so a stale completion can't
+        // corrupt a newer state: a pull-to-refresh (which replaces `posts` and
+        // resets `lastDocument`) or a sign-out + sign-in as another account can
+        // land between dispatch and callback. Without these guards the stale
+        // page appends out-of-order and rewinds `lastDocument`, making
+        // pagination re-walk pages already on screen (or leak into the next
+        // user's feed). Every other async fetch in this file re-checks the uid.
+        let capturedUid = Auth.auth().currentUser?.uid
+        let cursorAtStart = last
 
         let db = Firestore.firestore()
         db.collection("posts")
@@ -1167,6 +1183,16 @@ class FeedViewModel: ObservableObject {
                     .getDocuments { [weak self] snapshot, error in
                         Task { @MainActor [weak self] in
                             guard let self else { return }
+                    // Drop the page if the account changed or a refresh replaced
+                    // the cursor while this request was in flight.
+                    guard Auth.auth().currentUser?.uid == capturedUid else {
+                        self.isLoadingMore = false
+                        return
+                    }
+                    guard let currentCursor = self.lastDocument, currentCursor === cursorAtStart else {
+                        self.isLoadingMore = false
+                        return
+                    }
                     if let error = error {
                         print("⚠️ loadMorePosts error: \(error)")
                         self.isLoadingMore = false
@@ -1468,6 +1494,10 @@ class FeedViewModel: ObservableObject {
                 // can still match if this one's hit was flagged.
                 if data["flagged"] as? Bool == true { continue }
                 if data["concerningContent"] as? Bool == true { continue }
+                // Also skip a post that's held/removed by moderation without the
+                // legacy `flagged` bool set (moderationStatus is the current
+                // signal). Legacy posts with no field default to visible.
+                if (data["moderationStatus"] as? String ?? "live") != "live" { continue }
                 let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 self.anniversaryPost = AnniversaryPostData(
                     postId: doc.documentID,

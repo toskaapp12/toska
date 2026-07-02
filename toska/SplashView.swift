@@ -17,6 +17,10 @@ struct SplashView: View {
     @StateObject private var appleHelper = AppleSignInHelper()
     @State private var errorMessage = ""
     @State private var isSigningIn = false
+    // Distinct from isSigningIn (which disables BOTH buttons during any sign-in):
+    // drives only the Google button's spinner, so it doesn't spin while an Apple
+    // sign-in is in progress.
+    @State private var googleSigningIn = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -115,7 +119,7 @@ struct SplashView: View {
                         signInWithGoogle()
                     } label: {
                         HStack(spacing: 8) {
-                            if isSigningIn {
+                            if googleSigningIn {
                                 ProgressView()
                                     .progressViewStyle(.circular)
                                     .tint(Color(hex: "3C4043"))
@@ -264,21 +268,31 @@ struct SplashView: View {
         guard !isSigningIn else { return }
         errorMessage = ""   // clear any stale error from a prior attempt
         isSigningIn = true
+        googleSigningIn = true
 
         guard let windowScene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
               let rootVC = windowScene.keyWindow?.rootViewController else {
             isSigningIn = false
+            googleSigningIn = false
             return
         }
 
         Task { @MainActor in
+            // Tracks whether THIS sign-in minted a brand-new Firebase Auth
+            // account. The rollback below may only delete() when this is true —
+            // deleting a returning user's account on a transient post-auth
+            // Firestore error (e.g. the user-doc read failing on a fresh
+            // reinstall with no cache) would orphan their handle/posts/followers.
+            // Mirrors AppleSignInHelper's isNewUser gate.
+            var isNewAuthUser = false
             do {
                 let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
 
                 guard let idToken = result.user.idToken?.tokenString else {
                     errorMessage = "unable to get google credentials"
                     isSigningIn = false
+                    googleSigningIn = false
                     return
                 }
 
@@ -290,6 +304,7 @@ struct SplashView: View {
                 let authResult = try await Auth.auth().signIn(with: credential)
                 let uid = authResult.user.uid
                 let email = authResult.user.email ?? ""
+                isNewAuthUser = authResult.additionalUserInfo?.isNewUser ?? false
 
                 try await createUserDocumentIfNeeded(uid: uid, email: email, method: .google)
             } catch {
@@ -299,21 +314,29 @@ struct SplashView: View {
                     errorMessage = friendlyAuthErrorMessage(error)
                 }
                 // Rollback: if Google credentialed us into Firebase Auth but
-                // the user-doc write failed, delete the orphaned auth account.
-                // Fall back to signOut if delete fails.
+                // the NEW-account user-doc write failed, delete the orphaned auth
+                // account. For a RETURNING user (isNewAuthUser == false) the error
+                // came from something other than account creation (e.g. a
+                // transient user-doc read) — never delete their account; just sign
+                // out so they can retry. Fall back to signOut if delete fails.
                 if Auth.auth().currentUser != nil {
                     // Clear any FCM token first, for parity with the other
                     // sign-out/deletion paths (harmless here — a brand-new account
                     // that never persisted one).
                     PushNotificationManager.shared.clearFCMToken()
-                    do {
-                        try await Auth.auth().currentUser?.delete()
-                    } catch {
+                    if isNewAuthUser {
+                        do {
+                            try await Auth.auth().currentUser?.delete()
+                        } catch {
+                            try? Auth.auth().signOut()
+                        }
+                    } else {
                         try? Auth.auth().signOut()
                     }
                 }
             }
             isSigningIn = false
+            googleSigningIn = false
         }
     }
 }

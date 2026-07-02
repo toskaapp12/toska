@@ -24,6 +24,9 @@ struct NotificationsView: View {
     @State private var selectedFollowUser: NotifFollowUser? = nil
     @State private var lastFetchTime: Date? = nil
     @State private var showDeletedPostAlert = false
+    // Shown when a follow notification's actor no longer exists, instead of
+    // navigating to an empty/broken profile.
+    @State private var showDeletedUserAlert = false
     @State private var markAsReadTask: Task<Void, Never>? = nil
     // Real-time listener for the notification feed. Replaces the earlier
     // one-shot loadNotifications/pull-to-refresh model so likes, replies,
@@ -363,6 +366,11 @@ struct NotificationsView: View {
         } message: {
             Text("this post is gone. some things dont last.")
         }
+        .alert("theyre gone", isPresented: $showDeletedUserAlert) {
+            Button("ok") {}
+        } message: {
+            Text("this person isnt here anymore.")
+        }
     }
 
     // MARK: - Section Header
@@ -483,9 +491,18 @@ struct NotificationsView: View {
 
     func handleNotifTap(_ notif: NotificationItem) {
         if notif.type == "follow" && !notif.fromUserId.isEmpty {
-            Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, _ in
+            Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, error in
                 Task { @MainActor in
-                    let handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
+                    // Only navigate if the actor still exists. On a genuine
+                    // missing doc (deleted account), show a "they're gone" note
+                    // instead of pushing an empty/broken profile. A transient
+                    // error is left alone (don't claim they're gone on a blip).
+                    if error != nil { return }
+                    guard let data = snapshot?.data() else {
+                        showDeletedUserAlert = true
+                        return
+                    }
+                    let handle = data["handle"] as? String ?? "anonymous"
                     selectedFollowUser = NotifFollowUser(id: notif.fromUserId, handle: handle)
                 }
             }

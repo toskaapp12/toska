@@ -154,6 +154,11 @@ class PostInteractionManager {
                     print("⚠️ toggleSave — offline, skipping")
                     return
                 }
+                // In-flight guard (parity with toggleLike): the 1s rate window
+                // can't stop a save→unsave interleave slower than the window —
+                // the second toggle reads the not-yet-committed doc and no-ops,
+                // leaving server and UI disagreeing. Serialize on the post id.
+                guard !RateLimiter.shared.isSaveInFlight(postId) else { return }
                 // Record on attempt, not success — same rationale as
                 // toggleLike. With a 1-second gate, this also serializes
                 // the save↔unsave order: a rapid save→unsave→save sequence
@@ -162,6 +167,7 @@ class PostInteractionManager {
                 // arriving out of order and leaving the user in the
                 // opposite state from what they intended.
                 RateLimiter.shared.recordSave(for: postId)
+                RateLimiter.shared.markSaveInFlight(postId)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let db = Firestore.firestore()
         let saveRef = db.collection("users").document(uid).collection("saved").document(postId)
@@ -206,6 +212,7 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
+                RateLimiter.shared.markSaveComplete(postId)
                 if let error = error {
                     print("⚠️ toggleSave transaction failed: \(error)")
                     // Roll back optimistic update.
@@ -795,6 +802,15 @@ class PostInteractionManager {
             print("⚠️ toggleReplySave — offline, skipping")
             return
         }
+        // Rate-limit + in-flight guard (previously toggleReplySave had NEITHER,
+        // so rapid taps fired N unthrottled transactions and a save→unsave
+        // interleave could leave the bookmark opposite the server). Keyed
+        // "reply_{id}" so it never collides with post-save state.
+        let rlKey = "reply_\(replyId)"
+        if let last = RateLimiter.shared.lastSaveTime(for: rlKey), Date().timeIntervalSince(last) < 1 { return }
+        guard !RateLimiter.shared.isSaveInFlight(rlKey) else { return }
+        RateLimiter.shared.recordSave(for: rlKey)
+        RateLimiter.shared.markSaveInFlight(rlKey)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
         let db = Firestore.firestore()
@@ -834,6 +850,7 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
+                RateLimiter.shared.markSaveComplete(rlKey)
                 if let error = error {
                     print("⚠️ toggleReplySave transaction failed: \(error)")
                     onUpdate(currentlySaved)
@@ -941,16 +958,24 @@ class PostInteractionManager {
                 do { existing = try transaction.getDocument(newRepostRef) }
                 catch let e as NSError { errorPointer?.pointee = e; return nil }
 
-                if existing.exists { return nil } // idempotent
+                // Return whether this was an idempotent no-op (the repost already
+                // existed) so the completion can undo the optimistic +1 — the
+                // count already includes this repost, so leaving +1 drifts it up.
+                if existing.exists { return true }
                 transaction.setData(repostData, forDocument: newRepostRef)
-                return nil
-            }, completion: { _, error in
+                return false
+            }, completion: { object, error in
                 Task { @MainActor in
                     RateLimiter.shared.markRepostComplete(flightKey)
                     if let error = error {
                         print("⚠️ repostReply transaction failed: \(error)")
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                         return
+                    }
+                    // Already reposted (stamping missed it): keep it reposted but
+                    // correct the count back to currentCount (mirrors repost()).
+                    if let wasNoOp = object as? Bool, wasNoOp {
+                        onUpdate(RepostResult(isReposted: true, newCount: currentCount))
                     }
                     // Counter increment + reply-author notification handled by
                     // Cloud Function (onReplyRepostCreatedUpdateCount). The

@@ -1078,10 +1078,15 @@ func contentViolation(in text: String) -> ContentViolationType? {
     let forms = [normalized, collapsed, noSpaces, collapsedNoSpaces]
 
     // --- Slurs and hate speech ---
+    // Word-boundary-anchored slurs mirror the server MOD_HATE fix: unanchored,
+    // "sp[i1]ck?" matched "suspicious"/"auspicious", "c[o0][o0]n" matched
+    // "cocoon"/"raccoon"/"tycoon", "g[o0][o0]k" matched "gobbledygook" — all
+    // routing routine writing to .slur (blocks compose; server hard-deletes the
+    // reply). The (?!... armor) exclusion spares "a chink in the/his armor".
     let slurPatterns = [
         "n[i1!*]gg", "f[a@*]gg", "r[e3]t[a@]rd", "tr[a@]nny", "d[yi1]ke",
-        "ch[i1]nk", "sp[i1]ck?", "k[i1]ke", "w[e3]tb[a@]ck", "g[o0][o0]k",
-        "c[o0][o0]n", "towelhead", "raghead", "beaner", "zipperhead",
+        "\\bch[i1]nks?\\b(?!\\s+in\\s+\\w+\\s+armou?r)", "\\bsp[i1]ck?s?\\b", "\\bk[i1]kes?\\b", "\\bw[e3]tb[a@]cks?\\b", "\\bg[o0][o0]ks?\\b",
+        "\\bc[o0][o0]ns?\\b", "towelhead", "raghead", "beaner", "zipperhead",
     ]
     for form in forms {
         for pattern in slurPatterns {
@@ -1112,7 +1117,7 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "burn down your", "burn down his", "burn down her", "burn down their",
         "rape you", "rape her", "rape him",
         "find you and", "find where you live", "know where you live",
-        "hunt you down", "come for you",
+        "hunt you down", "coming for you",
         "gonna hurt you", "going to hurt you",
         "beat you up", "beat the shit",
         "curb stomp", "slit your throat", "bash your head",
@@ -1147,7 +1152,7 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "porn", "hentai", "xxx", "onlyfans", "only fans",
         "nudes", "send nudes", "dick pic", "pussy pic",
         "jerk off", "jack off", "masturbat",
-        "cum on", "cum in", "creampie",
+        "\\bcum on\\b", "\\bcum in\\b", "creampie",
         "blowjob", "blow job", "handjob", "hand job",
         "anal sex", "oral sex",
         "f[u\\*]ck me daddy", "choke me",

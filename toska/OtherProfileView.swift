@@ -504,12 +504,26 @@ struct OtherProfileView: View {
                     }
                 }
             } else {
-                // Follow: batch subcollection writes + atomic count increments
-                let myHandle = UserHandleCache.shared.handle
-                let batch = db.batch()
-                batch.setData(["handle": handle, "createdAt": FieldValue.serverTimestamp()], forDocument: followingRef)
-                batch.setData(["handle": myHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followerRef)
-                batch.commit { error in
+                // Follow: batch subcollection writes + atomic count increments.
+                // Resolve the handle async first: a cold UserHandleCache returns
+                // the "anonymous" sentinel until its first snapshot lands, and
+                // writing that into their /followers doc + follow notification
+                // PERSISTS ("anonymous followed you" / "anonymous" in their
+                // followers list) — the reverse-index re-fetch only refreshes
+                // EMPTY handles. Same user-doc fallback the reply/repost paths use.
+                Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == uid else { return }
+                    var myHandle = UserHandleCache.shared.handle
+                    if myHandle == "anonymous" {
+                        if let snap = try? await db.collection("users").document(uid).getDocumentAsync(),
+                           let h = snap.data()?["handle"] as? String, !h.isEmpty {
+                            myHandle = h
+                        }
+                    }
+                    let batch = db.batch()
+                    batch.setData(["handle": handle, "createdAt": FieldValue.serverTimestamp()], forDocument: followingRef)
+                    batch.setData(["handle": myHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followerRef)
+                    batch.commit { error in
                     if error != nil {
                         // Roll back optimistic update — same uid recheck as
                         // the unfollow path above.
@@ -532,10 +546,11 @@ struct OtherProfileView: View {
                             "postId": "", "isRead": false,
                             "createdAt": FieldValue.serverTimestamp()
                         ], merge: false)
+                    }
                 }
             }
         }
-    
+
     // MARK: - Block User
     
     func blockUser() {

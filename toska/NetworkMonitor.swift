@@ -115,6 +115,21 @@ class RateLimiter {
     func markRepostInFlight(_ id: String) { inFlightReposts[id] = Date() }
     func markRepostComplete(_ id: String) { inFlightReposts[id] = nil }
 
+    // Same in-flight pattern for save/unsave, keyed by the post (or "reply_{id}")
+    // id. The lastSaveTime rate window alone can't stop a save→unsave interleave
+    // slower than the window: the second toggle reads a not-yet-committed doc,
+    // no-ops, and leaves server and UI disagreeing (bookmark sticks opposite in
+    // Post/Reply detail, which only check once on appear). check+mark here
+    // serializes the two so they converge to the latest intent.
+    private var inFlightSaves: [String: Date] = [:]
+    func isSaveInFlight(_ id: String) -> Bool {
+        guard let startedAt = inFlightSaves[id] else { return false }
+        if Date().timeIntervalSince(startedAt) > Self.inFlightTimeout { inFlightSaves[id] = nil; return false }
+        return true
+    }
+    func markSaveInFlight(_ id: String) { inFlightSaves[id] = Date() }
+    func markSaveComplete(_ id: String) { inFlightSaves[id] = nil }
+
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
     func recordSave(for postId: String) {
         prune(&lastSaveByPost)

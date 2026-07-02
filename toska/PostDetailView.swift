@@ -111,6 +111,9 @@ struct PostDetailView: View {
     @State private var isDeleting = false
     @State private var deleteError = ""
     @State private var didOpenHaptic = false
+    // Seeds postText/likeCount/localRepostCount from init params only on first
+    // appear; onAppear re-fires on pop-return and must not clobber an edit.
+    @State private var didSeedContent = false
     @State private var replyDraftSaveTask: Task<Void, Never>? = nil   // debounces the encrypted reply-draft write
     @State private var postText: String = ""
     // GIF URL attached to the post. Populated by the live snapshot listener
@@ -137,6 +140,9 @@ struct PostDetailView: View {
     @State private var deleteReplyId = ""
     @State private var showDeleteReplyAlert = false
     @State private var deleteReplyError: String? = nil
+    // Surfaced when a reply can't be sent (e.g. offline) so the user gets
+    // feedback instead of a silent no-op + a duplicate on reconnect.
+    @State private var replyPostError: String? = nil
     @State private var isLetter = false
     @State private var isWhisper = false
 
@@ -163,9 +169,20 @@ struct PostDetailView: View {
                                 didOpenHaptic = true
                                 HapticManager.play(.tabSwitch)
                             }
-                            postText = text
-                            likeCount = likes
-                            localRepostCount = reposts
+                            // Seed the mutable display state from the init
+                            // params ONCE, on first open. onAppear re-fires when a
+                            // pushed destination (EditPostView, share card, reply
+                            // drill-down, author profile) pops; re-seeding here
+                            // would clobber an edit the user just saved (the init
+                            // `text` is immutable and stale). The live listener
+                            // keeps postText/likeCount/localRepostCount in sync
+                            // with server truth thereafter.
+                            if !didSeedContent {
+                                didSeedContent = true
+                                postText = text
+                                likeCount = likes
+                                localRepostCount = reposts
+                            }
                             if !postId.isEmpty {
                                 Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
                                     Task { @MainActor in
@@ -261,6 +278,12 @@ struct PostDetailView: View {
             .alert("hold on", isPresented: $showReplyContentWarning) {
                 Button("edit") {}
             } message: { Text(replyContentWarningMessage) }
+            .alert("couldn't reply", isPresented: Binding(
+                get: { replyPostError != nil },
+                set: { if !$0 { replyPostError = nil } }
+            )) {
+                Button("ok", role: .cancel) {}
+            } message: { Text(replyPostError ?? "") }
             .alert("keep it anonymous", isPresented: $showReplyNameWarning) {
                 Button("edit") {}
                 Button("reply anyway", role: .destructive) {
@@ -879,6 +902,21 @@ struct PostDetailView: View {
                     guard let data = snapshot?.data() else { return }
                     if data["isLetter"] as? Bool == true { isLetter = true }
                     if data["isWhisper"] as? Bool == true { isWhisper = true }
+                    // Mirror the post body from server truth so an edit (this
+                    // user's via EditPostView, or a remote edit) is reflected.
+                    // The view's onAppear seeds postText from the immutable init
+                    // param and re-fires on pop-return from EditPostView; without
+                    // this, saving an edit would revert the visible text to the
+                    // pre-edit value with no self-heal.
+                    if let snapText = data["text"] as? String, snapText != postText {
+                        postText = snapText
+                    }
+                    // repostCount isn't rendered here but seeds unrepost math;
+                    // keep it live so an unrepost after a push-pop decrements from
+                    // the current base rather than the stale init param.
+                    if let snapReposts = data["repostCount"] as? Int, snapReposts != localRepostCount {
+                        localRepostCount = max(0, snapReposts)
+                    }
                     // Pull the attached GIF URL so postHeaderSection can render
                     // it. nil/empty string both clear the preview cleanly.
                     let snapGif = data["gifUrl"] as? String
@@ -1652,6 +1690,15 @@ struct PostDetailView: View {
 
     func postReplyNow(_ trimmed: String) {
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+        // Offline guard: batch.commit() never resolves offline, so the catch
+        // rollback (which releases lastReplyTime and restores the text) never
+        // runs. The user sees the send haptic, nothing appears, and after the 5s
+        // window a retry queues a SECOND write — both land on reconnect as
+        // duplicate replies. Fail fast with feedback instead.
+        guard NetworkMonitor.shared.isConnected else {
+            replyPostError = "you're offline — try again when you're connected"
+            return
+        }
         RateLimiter.shared.lastReplyTime = Date()
         HapticManager.play(.send)
         let db = Firestore.firestore()

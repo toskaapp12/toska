@@ -508,12 +508,20 @@ service cloud.firestore {
             // The explicit !exists(blocked) clause is defense-in-depth: if the
             // like-create check is ever loosened, we don't want the notification
             // path to silently become a block-bypass.
+            // notifId pin (2026-07-02): like/save/follow lacked the
+            // deterministic-notifId constraint that reply/repost already carry,
+            // so one real like/save/follow let a tampered client write N notif
+            // docs with distinct ids — each firing sendPushNotification before
+            // rateLimitNotifications can prune, a targeted push-spam vector. The
+            // legitimate client writes exactly this shape (PostInteractionManager
+            // sendNotification: '{type}_{postId}_{uid}'), so pinning is transparent.
             (request.resource.data.type == 'like'
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
               && notBlockedBy(userId)
-              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId)/likes/$(request.auth.uid)))
+              && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId)/likes/$(request.auth.uid))
+              && notifId == 'like_' + request.resource.data.postId + '_' + request.auth.uid)
             // save: actor has a save doc AND the post author is the recipient.
             // The /users/{uid}/saved/{postId} create rule is owner-only (no
             // block check there), so unlike `like` this branch has no
@@ -530,12 +538,14 @@ service cloud.firestore {
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
               && notBlockedBy(userId)
-              && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved/$(request.resource.data.postId)))
+              && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved/$(request.resource.data.postId))
+              && notifId == 'save_' + request.resource.data.postId + '_' + request.auth.uid)
             // follow: actor is in the recipient's followers subcollection.
             // /users/{uid}/followers/{followerId} create already enforces the
             // block check, so the exists() below is transitively safe.
             || (request.resource.data.type == 'follow'
-              && exists(/databases/$(database)/documents/users/$(userId)/followers/$(request.auth.uid)))
+              && exists(/databases/$(database)/documents/users/$(userId)/followers/$(request.auth.uid))
+              && notifId == 'follow_' + request.auth.uid)
             // 'message' notification branch removed when DMs were cut
             // (2026-06-07): conversations are denied, so no message notification
             // can legitimately be created.
@@ -714,9 +724,15 @@ service cloud.firestore {
         // after this write. Stops squatting rows that don't match any real
         // account state (getAfter errors → deny when the user doc is absent).
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle.lower() == handleLower;
-      // Owners may release their own row (future rename support); nobody
-      // may update one — ownership never transfers in place.
-      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+      // No client may delete a handle row. Handle is immutable on the user doc
+      // and no client path renames/releases handles, so a self-delete only
+      // breaks the one-doc-per-handle invariant: a user could delete their own
+      // row while still carrying the handle, freeing the id to register a SECOND
+      // account on the same handle (sockpuppet duplication). The Admin-SDK
+      // deletion cascade (onUserDocDeleted) releases rows and bypasses rules, so
+      // legitimate release still works. (Was: owner-only delete for a future
+      // rename feature that was never built.)
+      allow delete: if false;
     }
 
     match /posts/{postId} {
@@ -801,6 +817,17 @@ service cloud.firestore {
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
         && request.resource.data.replyCount == 0
+        // Tag enum-lock (2026-07-02): `tag` is optional, but when present it
+        // must be one of the fixed sharedTags values. Without this, a tampered
+        // client could set `tag` to any string; onPostCreatedUpdateTagCounts
+        // then writes it as a new field key on the single shared meta/tagCounts
+        // doc (rendered as Explore chips for everyone) — injecting offensive
+        // labels and bloating that doc toward the 1MB limit (a DoS that breaks
+        // Explore for all users). Mirrors the ALLOWED_BREAKUP_STAGES guard.
+        && (!('tag' in request.resource.data.keys())
+            || request.resource.data.tag in [
+                 'longing', 'numb', 'anger', 'regret', 'acceptance',
+                 'confusion', 'unsent', 'moving on', 'still love you'])
         // createdAt pinned to server time. Drafts/circles/reports already
         // enforce this; the three highest-volume write paths (posts/replies/
         // messages) didn't, which let a tampered client backdate posts to
@@ -902,6 +929,13 @@ service cloud.firestore {
               || request.resource.data.originalHandle ==
                    get(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)).data.handle
             )
+            // isShareable pin (2026-07-02): a reposted copy must honor the
+            // original author's share opt-out (allowSharing=false → isShareable=
+            // false on their post). Without this a tampered client could write
+            // isShareable:true on the repost and hand the victim's words a live
+            // share button. Reuses the already-cached original-post get().
+            && request.resource.data.get('isShareable', true) ==
+                 get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isShareable', true)
           )
         ));
       // Post author can edit text/editedAt etc., but cannot directly write

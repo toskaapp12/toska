@@ -198,7 +198,13 @@ struct WeeklyRecapView: View {
             Task { @MainActor in
                 // Run all four queries concurrently, wait for all to finish
                 async let postCountResult: Int = {
-                    let snap = try? await userWeekQuery.count.getAggregation(source: .server)
+                    // Exclude reposts so "posts this week" counts the user's own
+                    // words, consistent with the top-post stat (which skips
+                    // reposts) and the totalLikes sum below. Covered by the
+                    // [authorId, isRepost, createdAt] composite index.
+                    let snap = try? await userWeekQuery
+                        .whereField("isRepost", isEqualTo: false)
+                        .count.getAggregation(source: .server)
                     return Int(truncating: snap?.count ?? 0)
                 }()
                 
@@ -267,6 +273,11 @@ struct WeeklyRecapView: View {
                     var tagCounts: [String: Int] = [:]
                     for doc in docs {
                         let data = doc.data()
+                        // Skip reposts: their likeCount and tag belong to the
+                        // original author, so counting them would attribute other
+                        // people's engagement to this user's week (and disagree
+                        // with the repost-excluded post count + top post).
+                        if data["isRepost"] as? Bool == true { continue }
                         likes += data["likeCount"] as? Int ?? 0
                         if let tag = data["tag"] as? String {
                             tagCounts[tag, default: 0] += 1

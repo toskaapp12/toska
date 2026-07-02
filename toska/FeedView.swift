@@ -655,7 +655,12 @@ struct FeedPostRow: View, Equatable {
                         authorId: authorId,
                         isAlreadyLiked: isLiked,
                         isAlreadySaved: isSaved,
-                        isAlreadyReposted: isReposted
+                        isAlreadyReposted: isReposted,
+                        // Pass GIF/letter/whisper so the detail view's first frame
+                        // matches the row — no pop-in reflow on open.
+                        gifUrl: gifUrl,
+                        isLetter: isLetter,
+                        isWhisper: isWhisperPost
                     )
                     .navigationBarHidden(true)
                 } label: {
@@ -858,7 +863,10 @@ struct FeedPostRow: View, Equatable {
                                                     authorId: authorId,
                                                     isAlreadyLiked: isLiked,
                                                     isAlreadySaved: isSaved,
-                                                    isAlreadyReposted: isReposted
+                                                    isAlreadyReposted: isReposted,
+                                                    gifUrl: gifUrl,
+                                                    isLetter: isLetter,
+                                                    isWhisper: isWhisperPost
                                                 )
                                                 .navigationBarHidden(true)
                                             } label: {

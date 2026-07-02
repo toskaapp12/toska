@@ -1,0 +1,38 @@
+#!/bin/sh
+# Toska pre-commit regression net.
+#
+# Runs the FAST pins (seconds) so a client/server moderation drift or a Cloud
+# Functions syntax error can't be committed in the first place. The slow
+# emulator rules tests + full suites run in CI (.github/workflows/ci.yml).
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+#
+# Historically each fix round introduced a smaller regression in the prior fix
+# (e.g. a k-required typo that reopened a slur to the server gate). These pins
+# turn "run when someone remembers" into "can't commit a regression".
+set -e
+repo_root="$(git rev-parse --show-toplevel)"
+staged="$(git diff --cached --name-only)"
+
+# Cloud Functions syntax — cheap; run whenever any functions JS is staged.
+if echo "$staged" | grep -q '^functions/.*\.js$'; then
+  for f in functions/index.js functions/cleanup.js functions/scrubLegacyPII.js functions/backfillReplyModerationStatus.js; do
+    [ -f "$repo_root/$f" ] && node --check "$repo_root/$f"
+  done
+fi
+
+# Moderation pins — run when EITHER side of a hand-synced detector changes.
+if echo "$staged" | grep -qE 'functions/moderation(Logic)?\.js|toska/ContentModeration\.swift|firestore-tests/moderation-corpus\.mjs'; then
+  echo "pre-commit: moderation changed — running pins…"
+  ( cd "$repo_root/firestore-tests" && node moderation-corpus.mjs && node crisis-parity.mjs )
+  # Client/server detector parity compiles the Swift, so it needs swiftc (macOS).
+  # Skip gracefully on a machine without it — CI's macOS lane / the dev machine
+  # covers it.
+  if command -v swiftc >/dev/null 2>&1; then
+    ( cd "$repo_root/firestore-tests" && node detector-parity.mjs )
+  else
+    echo "pre-commit: swiftc not found — skipping client/server parity (covered on macOS/CI)."
+  fi
+fi
+
+echo "pre-commit: checks passed."

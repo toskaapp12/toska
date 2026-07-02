@@ -3809,6 +3809,73 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
 });
 
 // ============================================================
+// Counter drift detector (alert-only)
+// ============================================================
+// like/reply/repost/totalLikes/tagCounts counters have NO self-healing path
+// (only follower counts get reconcileMyCounts), so any drift from an optimistic-
+// UI race, a dropped trigger, or a partial cascade is PERMANENT and invisible.
+// This daily sweep samples recent posts, recomputes the two UNAMBIGUOUS counters
+// (likeCount = size of the likes subcollection; repostCount = count of reposts
+// pointing at the post) directly from source, and records any mismatch to
+// system/counterDriftReport + logs it. It deliberately does NOT auto-correct: a
+// recompute that disagrees with the trigger's exact semantics could overwrite a
+// CORRECT counter, so a human reviews the report first. replyCount/totalLikes/
+// tagCounts need bespoke recompute (the replyCount gate excludes pending_review
+// and legacy docs) and are intentionally out of this v1.
+exports.detectCounterDrift = onSchedule("every 24 hours", async () => {
+  const SAMPLE = 300;
+  const MAX_REPORTED = 100;
+  const snap = await db.collection("posts")
+    .orderBy("createdAt", "desc")
+    .limit(SAMPLE)
+    .get();
+
+  const drifts = [];
+  for (const postDoc of snap.docs) {
+    const data = postDoc.data();
+    if (data.isRepost === true) continue; // reposts don't own like/repost counts
+    const id = postDoc.id;
+    try {
+      const likeAgg = await postDoc.ref.collection("likes").count().get();
+      const actualLikes = likeAgg.data().count;
+      const storedLikes = typeof data.likeCount === "number" ? data.likeCount : 0;
+
+      const repostAgg = await db.collection("posts")
+        .where("originalPostId", "==", id)
+        .where("isRepost", "==", true)
+        .count().get();
+      const actualReposts = repostAgg.data().count;
+      const storedReposts = typeof data.repostCount === "number" ? data.repostCount : 0;
+
+      if (actualLikes !== storedLikes || actualReposts !== storedReposts) {
+        drifts.push({
+          postId: id,
+          likeCount: { stored: storedLikes, actual: actualLikes },
+          repostCount: { stored: storedReposts, actual: actualReposts },
+        });
+      }
+    } catch (err) {
+      console.warn(`detectCounterDrift: recompute failed for post ${id}:`, err.message);
+    }
+    if (drifts.length >= MAX_REPORTED) break;
+  }
+
+  if (drifts.length > 0) {
+    console.error(
+      `detectCounterDrift: ${drifts.length} post(s) with drifted like/repost ` +
+      `counts (of ${snap.size} sampled). See system/counterDriftReport.`);
+    await db.collection("system").doc("counterDriftReport").set({
+      generatedAt: FieldValue.serverTimestamp(),
+      sampled: snap.size,
+      driftCount: drifts.length,
+      drifts: drifts.slice(0, MAX_REPORTED),
+    });
+  } else {
+    console.log(`detectCounterDrift: no like/repost drift in ${snap.size} sampled posts.`);
+  }
+});
+
+// ============================================================
 // Giphy proxy — keeps the API key off the client.
 //
 // Replaces the previous pattern where the Giphy API key was hardcoded in

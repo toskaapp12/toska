@@ -619,7 +619,7 @@ struct ShareCardView: View {
             // Vertically CENTERED (equal spacers) — quote dead-center, footer below.
             Spacer(minLength: 0).frame(maxHeight: .infinity)
 
-            if let tag = tag, selectedRatio != 2 {
+            if let tag, !tag.isEmpty, selectedRatio != 2 {
                 HStack(spacing: 4) {
                     Circle()
                         .fill(accentColor.opacity(0.4))

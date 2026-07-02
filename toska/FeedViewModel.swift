@@ -673,7 +673,6 @@ class FeedViewModel: ObservableObject {
 
     func handleNewPostCreated() {
         fetchPosts()
-        fetchMostUnsaidAndDailyMoment()
         // Refresh the prompt-response state — if the new post WAS today's
         // prompt response, the header card needs to flip from "respond" to
         // the response card with edit/delete.
@@ -737,9 +736,9 @@ class FeedViewModel: ObservableObject {
                 fetchSavedPostIds()
                 fetchPosts()
                 fetchFollowingPosts()
-                fetchWitnessPost()
-                fetchEmotionalWeather()
-                fetchMostUnsaidAndDailyMoment()
+                // fetchWitnessPost / fetchEmotionalWeather / fetchMostUnsaidAndDailyMoment
+                // removed: the Daily Moment / witness / emotional-weather surfaces
+                // have no entry point (dead), so these were ~3 wasted queries/launch.
                 fetchAnniversaryPost()
                 fetchTodaysPromptResponse()
             }

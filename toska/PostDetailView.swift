@@ -231,6 +231,12 @@ struct PostDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                           dismiss()
                       }
+            .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { _ in
+                // Blocking a reply author from within the thread must clear their
+                // replies immediately. The reply listener only re-runs the blocked
+                // filter on a server delta (which won't fire), so rebuild now.
+                Task { await recombineReplies() }
+            }
             // confirmationDialog removed — the ⋯ button is now a Menu (popover
             // anchored under the dots), so edit/delete/report/block are
             // rendered inline by SwiftUI without needing a separate sheet.
@@ -704,7 +710,11 @@ struct PostDetailView: View {
                                     .font(ToskaFont.sans(11, weight: .medium))
                                     .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextLight)
                             }
-                            statLabel(count: replyList.isEmpty ? replies : replyList.count, label: "replies")
+                            // replyList.count is ROOT replies only (nested live in
+                            // .children), so it undercounted threaded posts. Count the
+                            // whole tree; fall back to (and never drop below) the server
+                            // `replies` value we opened with.
+                            statLabel(count: replyList.isEmpty ? replies : max(replies, countAllReplies(replyList)), label: "replies")
                             Spacer()
                         }
                         .padding(.bottom, 8)
@@ -794,6 +804,12 @@ struct PostDetailView: View {
         // collapsed deep-thread subtree, not a real reply. The render
         // branches on this to surface a tappable expansion affordance.
         var hiddenChildren: Int = 0
+    }
+
+    /// Total number of replies in the threaded tree (root + all nested), for the
+    /// "N replies" stat — replyList.count is root-only and undercounts.
+    func countAllReplies(_ replies: [ThreadedReply]) -> Int {
+        replies.reduce(0) { $0 + 1 + countAllReplies($1.children) }
     }
 
     func flattenReplies(_ replies: [ThreadedReply], depth: Int = 0, maxDepth: Int = 3) -> [FlatReply] {

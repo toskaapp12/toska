@@ -203,7 +203,13 @@ struct WeeklyRecapView: View {
                 }()
                 
                 async let communityCountResult: Int = {
+                                    // Must pin moderationStatus == "live": without it a
+                                    // pending_review post by another author COULD match, so
+                                    // Firestore can't prove the cross-author query safe and
+                                    // DENIES the aggregation → the community stat silently
+                                    // stayed 0 and the line never rendered.
                                     let snap = try? await db.collection("posts")
+                                        .whereField("moderationStatus", isEqualTo: "live")
                                         .whereField("createdAt", isGreaterThan: Timestamp(date: weekAgo))
                                         .whereField("isRepost", isEqualTo: false)
                                         .count

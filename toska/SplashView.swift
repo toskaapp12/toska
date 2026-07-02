@@ -83,12 +83,17 @@ struct SplashView: View {
                     SignInWithAppleButton(.signIn, onRequest: { request in
                         appleHelper.prepareRequest(request)
                     }, onCompletion: { result in
+                        errorMessage = ""   // clear any stale error from a prior attempt
                         isSigningIn = true
                         Task {
                             do {
                                 try await appleHelper.handleAuthorization(result)
                             } catch {
-                                errorMessage = friendlyAuthErrorMessage(error)
+                                // A user tapping Cancel is NOT an error — don't show
+                                // a scary "something went wrong" line.
+                                if !isUserCancellation(error) {
+                                    errorMessage = friendlyAuthErrorMessage(error)
+                                }
                             }
                             isSigningIn = false
                         }
@@ -247,8 +252,17 @@ struct SplashView: View {
     // instead of being silently discarded. The user document creation logic
     // is handled by createUserDocumentIfNeeded() above.
 
+    /// A user tapping Cancel on the Apple/Google sheet is not an error — don't
+    /// show a message or log it to Crashlytics.
+    private func isUserCancellation(_ error: Error) -> Bool {
+        if let asError = error as? ASAuthorizationError, asError.code == .canceled { return true }
+        if let gidError = error as? GIDSignInError, gidError.code == .canceled { return true }
+        return false
+    }
+
     func signInWithGoogle() {
         guard !isSigningIn else { return }
+        errorMessage = ""   // clear any stale error from a prior attempt
         isSigningIn = true
 
         guard let windowScene = UIApplication.shared.connectedScenes
@@ -279,8 +293,11 @@ struct SplashView: View {
 
                 try await createUserDocumentIfNeeded(uid: uid, email: email, method: .google)
             } catch {
-                Telemetry.recordError(error, context: "SplashView.signInWithGoogle")
-                errorMessage = friendlyAuthErrorMessage(error)
+                // User cancelled the Google sheet — not an error; don't log or alarm.
+                if !isUserCancellation(error) {
+                    Telemetry.recordError(error, context: "SplashView.signInWithGoogle")
+                    errorMessage = friendlyAuthErrorMessage(error)
+                }
                 // Rollback: if Google credentialed us into Firebase Auth but
                 // the user-doc write failed, delete the orphaned auth account.
                 // Fall back to signOut if delete fails.

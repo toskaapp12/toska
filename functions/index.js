@@ -1386,6 +1386,13 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
     // otherwise a held-then-deleted reply drives the count one too low.
     const deletedData = event.data?.data();
     if (deletedData?.moderationStatus === "pending_review") return;
+    // Mirror the create trigger's gate (onReplyCreatedUpdateCount only +1's a
+    // reply with real text AND an authorId). A blank/authorless reply was never
+    // counted, so decrementing it on delete drives replyCount permanently
+    // negative — a blank reply written then deleted by validateReply nets -1
+    // with no matching +1, repeatable and non-self-correcting.
+    if (typeof deletedData?.text !== "string" || deletedData.text.trim().length === 0) return;
+    if (!deletedData.authorId) return;
     const postRef = db.collection("posts").doc(postId);
     await claimedTransaction(event.id, "replyCount", async (tx) => {
       const snap = await tx.get(postRef);
@@ -1822,6 +1829,42 @@ exports.onFollowDeletedUpdateCounts = onDocumentDeleted(
       if (!snap.exists) return;
       tx.update(ref, { followerCount: FieldValue.increment(-1) });
     });
+  }
+);
+
+// ============================================================
+// Block → tear down the follow graph in BOTH directions.
+//
+// The client (OtherProfileView.blockUser) can only legally delete follow docs
+// under ITS OWN tree; firestore.rules forbids it from deleting the blocked
+// user's `following/{me}` doc, so its atomic batch FAILS entirely whenever the
+// blocked user follows the blocker (the single most common block trigger) —
+// leaving the blocker's posts visible in the blocked user's following feed and
+// followerCount inflated. The Admin SDK bypasses rules, so do the teardown here.
+// Deleting each `following/{x}` doc fires onFollowDeletedUpdateCounts to fix
+// both counts; the `followers` mirror docs have no trigger, so delete them here.
+// ============================================================
+exports.onBlockCreatedCleanupFollows = onDocumentCreated(
+  { document: "users/{uid}/blocked/{blockedId}", retry: true },
+  async (event) => {
+    const uid = event.params.uid;             // the blocker
+    const blockedId = event.params.blockedId; // the blocked user
+    if (!uid || !blockedId || uid === blockedId) return;
+    const refs = [
+      db.collection("users").doc(uid).collection("following").doc(blockedId),        // I follow them
+      db.collection("users").doc(blockedId).collection("followers").doc(uid),        //   (mirror)
+      db.collection("users").doc(blockedId).collection("following").doc(uid),        // they follow me
+      db.collection("users").doc(uid).collection("followers").doc(blockedId),        //   (mirror)
+    ];
+    await Promise.all(refs.map(async (ref) => {
+      try {
+        const s = await ref.get();
+        if (s.exists) await ref.delete();
+      } catch (e) {
+        console.warn(`onBlockCreatedCleanupFollows: failed to delete ${ref.path}:`, e.message);
+      }
+    }));
+    console.log(`Block follow-graph teardown: ${uid} blocked ${blockedId}`);
   }
 );
 
@@ -3674,6 +3717,27 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
 
     const uid = doc.id;
     console.log("Retrying stale pending deletion for user:", uid);
+
+    // Mirror onPendingDeletionCreated: only cascade once the AUTH user is
+    // confirmed GONE. auth.delete() commonly fails with requiresRecentLogin; if
+    // the user then can't write the `cancelled` marker within 10 min (app killed,
+    // offline), this backstop would otherwise erase a legit, still-usable
+    // account's data while their auth account lives on. Leave it queued instead.
+    let authUserGone = false;
+    try {
+      await getAuth().getUser(uid);
+    } catch (e) {
+      if (e.code === "auth/user-not-found") {
+        authUserGone = true;
+      } else {
+        console.warn("Retry: auth lookup failed (transient); leaving queued for:", uid, e.message);
+        continue;
+      }
+    }
+    if (!authUserGone) {
+      console.log("Retry: auth user still exists; leaving pending deletion queued for:", uid);
+      continue;
+    }
 
     try {
       const userSnap = await db.collection("users").doc(uid).get();

@@ -377,7 +377,13 @@ service cloud.firestore {
         // self-follow doc can still be cleaned up.
         // Schema lockdown to match /followers — a following doc is exactly
         // { handle, createdAt } (2026-06-01 audit).
+        // Block enforcement, mirroring the /followers rule below: a user the
+        // target has blocked must not be able to follow them. Without this, a
+        // blocked user could write following/{victim} (the /followers side is
+        // block-denied, so it's omitted) and still trip onFollowCreatedUpdateCounts
+        // to inflate the victim's followerCount — a block bypass + count desync.
         allow create: if isOwner(userId) && followedId != userId
+          && notBlockedBy(followedId)
           && request.resource.data.keys().hasOnly(['handle', 'createdAt']);
         allow delete: if isOwner(userId);
       }

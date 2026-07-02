@@ -1791,6 +1791,20 @@ struct FeedColumn: View {
                                                                                                                                     // on cold launch (a fully-lazy feed here reports ~0 height and never
                                                                                                                                     // materialises — the blank-feed bug). The tail is a LazyVStack so we
                                                                                                                                     // don't build all ~60 scored rows up front.
+                                                                                                                                    if !searchText.isEmpty && visible.isEmpty {
+                                                                                                                                        // Searching with zero matches: explicit empty state instead of a
+                                                                                                                                        // blank column (which also used to drive runaway pagination).
+                                                                                                                                        VStack(spacing: 8) {
+                                                                                                                                            Text("nothing found")
+                                                                                                                                                .font(.custom("Georgia-Italic", size: 17))
+                                                                                                                                                .foregroundColor(.primary)
+                                                                                                                                            Text("no posts match your search")
+                                                                                                                                                .font(ToskaFont.sans(13))
+                                                                                                                                                .foregroundColor(Color.toskaTextLight)
+                                                                                                                                        }
+                                                                                                                                        .frame(maxWidth: .infinity)
+                                                                                                                                        .padding(.top, 70)
+                                                                                                                                    }
                                                                                                                                     ForEach(Array(visible.prefix(14))) { post in
                                                                                                                                         feedRow(for: post, prefetchTriggerId: prefetchTriggerId)
                                                                                                                                     }
@@ -1803,11 +1817,14 @@ struct FeedColumn: View {
                                                                                                                                     }
                                                                                                                                                                                                                                                         } // end else hasLoadedOnce
 
-                                                                                                                                                                                                            if tab == 0 && vm.hasMorePosts && !vm.posts.isEmpty {
+                                                                                                                                                                                                            if tab == 0 && searchText.isEmpty && vm.hasMorePosts && !vm.posts.isEmpty {
                                             // Visible loading spinner remains as the fallback for
                                             // slow networks where the prefetch (attached to each
                                             // post row 5-from-end via .onAppear) hasn't finished
                                             // by the time the user reaches the bottom.
+                                            // searchText.isEmpty gate: a search that matches nothing
+                                            // must NOT drive pagination through the whole feed (the
+                                            // spinner would .onAppear-loop while showing zero results).
                                             ProgressView()
                                                 .tint(Color.toskaBlue)
                                                 .padding(.vertical, 20)

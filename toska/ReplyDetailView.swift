@@ -44,6 +44,10 @@ struct ReplyDetailView: View {
     @State private var showGentleCheck = false
     @State private var gentleCheckLevel: CrisisLevel = .soft
     @State private var crisisConfirmed = false
+    @State private var showContentWarning = false
+    @State private var contentWarningMessage = ""
+    @State private var showNameWarning = false
+    @State private var nameConfirmed = false
     @FocusState private var composerFocused: Bool
 
     // Edit / delete / report / share sheets
@@ -308,6 +312,16 @@ struct ReplyDetailView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: showGentleCheck)
+        .alert("hold on", isPresented: $showContentWarning) {
+            Button("edit") {}
+        } message: { Text(contentWarningMessage) }
+        .alert("keep it anonymous", isPresented: $showNameWarning) {
+            Button("edit") {}
+            Button("reply anyway", role: .destructive) {
+                nameConfirmed = true
+                sendReply()
+            }
+        } message: { Text("your reply may include a name or identifying info. toska is anonymous for everyone.") }
     }
 
     private var composerBar: some View {
@@ -482,7 +496,7 @@ struct ReplyDetailView: View {
     private func sendReply() {
         let trimmed = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !postId.isEmpty else { return }
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard Auth.auth().currentUser?.uid != nil else { return }
         guard !isPosting else { return }
         // T-8 (2026-06-11): restricted users can't reply (the reply-create rule
         // enforces notRestricted() server-side; this gives a clear message
@@ -490,6 +504,22 @@ struct ReplyDetailView: View {
         // PostDetailView).
         guard !UserHandleCache.shared.isRestricted else {
             postError = "your account is restricted and can't reply right now."
+            return
+        }
+        // Rate-limit (5s) — parity with PostDetailView.sendReply.
+        if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
+        // Content-violation gate (profanity/slurs/harassment/threats/spam/links).
+        // This was MISSING on the drill-down composer, so those bypassed the
+        // client guard here even though the main reply composer (PostDetailView)
+        // runs it. Edit-only, matching PostDetailView (no "reply anyway").
+        if let violation = contentViolation(in: trimmed) {
+            contentWarningMessage = contentViolationMessage(for: violation)
+            showContentWarning = true
+            return
+        }
+        // Name / identifying-info gate — "reply anyway" override, like PostDetailView.
+        if !nameConfirmed, containsNameOrIdentifyingInfo(trimmed) {
+            showNameWarning = true
             return
         }
         // Crisis check-in — surface support resources to the author before the
@@ -501,9 +531,16 @@ struct ReplyDetailView: View {
             showGentleCheck = true
             return
         }
+        performReplyPost(trimmed)
+    }
+
+    private func performReplyPost(_ trimmed: String) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
         crisisConfirmed = false
+        nameConfirmed = false
         isPosting = true
         postError = nil
+        RateLimiter.shared.lastReplyTime = Date()
         // Pre-generate the doc id so the optimistic child and the real write
         // share an identity — when the reply is promoted to live the listener
         // replaces the optimistic copy with the same-id server doc, no dupe.

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Photos
 import FirebaseAuth
 
 @MainActor
@@ -31,6 +32,7 @@ struct ShareCardView: View {
     @State private var showSharedConfirmation = false
     @State private var sharedPlatform = ""
     @State private var savedToPhotos = false
+    @State private var showSaveError = false
     // Gates the share-button row while ImageRenderer does its work. The
     // renderer is @MainActor, so it blocks the UI for ~200-500ms on a full-
     // size card rasterize — without this flag, the user tapping a button saw
@@ -308,6 +310,11 @@ struct ShareCardView: View {
             }
         }
         .preferredColorScheme(.light)
+        .alert("couldn't save", isPresented: $showSaveError) {
+            Button("ok", role: .cancel) {}
+        } message: {
+            Text("toska needs permission to add to your photos. you can enable it in Settings › Privacy › Photos.")
+        }
     }
 
     // MARK: - Composer Controls
@@ -995,10 +1002,23 @@ struct ShareCardView: View {
     func saveToPhotos() {
         withRenderIndicator {
             guard let image = renderCardImage() else { return }
-            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            HapticManager.play(.milestone)
-            savedToPhotos = true
-            showPostShareConfirmation()
+            // Save via PHPhotoLibrary so we can confirm ONLY on success. The old
+            // UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil) passed a nil
+            // completion target, so "saved to your photos" showed even when the
+            // add-to-library permission was denied and nothing was actually saved.
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            } completionHandler: { success, _ in
+                Task { @MainActor in
+                    if success {
+                        HapticManager.play(.milestone)
+                        savedToPhotos = true
+                        showPostShareConfirmation()
+                    } else {
+                        showSaveError = true
+                    }
+                }
+            }
         }
     }
 

@@ -227,6 +227,9 @@ struct ReplyDetailView: View {
                                         indent: 0,
                                         onReply: { composerFocused = true },
                                         postId: postId,
+                                        onToggleLike: { toggleChildLike(child) },
+                                        onToggleSave: { toggleChildSave(child) },
+                                        onRepost: { repostChild(child) },
                                         onComment: { composerFocused = true }
                                     )
                                     if index < children.count - 1 {
@@ -613,6 +616,57 @@ struct ReplyDetailView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Child-reply interactions
+    // The child rows in this thread were previously wired only for reply/comment,
+    // so nested replies couldn't be liked/saved/reposted and their like count was
+    // hidden (SwipeToReplyRow gates the heart on onToggleLike != nil). Mirror the
+    // PostDetailView child wiring, mutating our local `children` array.
+
+    private func mutateChild(_ id: String, _ mutate: (inout ThreadedReply) -> Void) {
+        if let i = children.firstIndex(where: { $0.id == id }) {
+            mutate(&children[i])
+        }
+    }
+
+    private func toggleChildLike(_ child: ThreadedReply) {
+        PostInteractionManager.toggleReplyLike(
+            postId: postId, replyId: child.id,
+            replyText: child.text, replyHandle: child.handle,
+            replyAuthorId: child.authorId,
+            currentlyLiked: child.isLiked, currentCount: child.likes
+        ) { result in
+            mutateChild(child.id) { $0.isLiked = result.isLiked; $0.likes = result.newCount }
+        }
+    }
+
+    private func toggleChildSave(_ child: ThreadedReply) {
+        HapticManager.play(.feltThis)
+        PostInteractionManager.toggleReplySave(
+            postId: postId, replyId: child.id,
+            replyText: child.text, replyHandle: child.handle,
+            currentlySaved: child.isSaved
+        ) { newSaved in
+            mutateChild(child.id) { $0.isSaved = newSaved }
+        }
+    }
+
+    private func repostChild(_ child: ThreadedReply) {
+        let currentCount = child.repostCount
+        if child.isReposted {
+            PostInteractionManager.unrepostReply(replyId: child.id, currentCount: currentCount) { result in
+                mutateChild(child.id) { $0.isReposted = result.isReposted; $0.repostCount = result.newCount }
+            }
+            return
+        }
+        PostInteractionManager.repostReply(
+            postId: postId, replyId: child.id,
+            replyText: child.text, replyAuthorId: child.authorId,
+            replyAuthorHandle: child.handle, currentCount: currentCount
+        ) { result in
+            mutateChild(child.id) { $0.isReposted = result.isReposted; $0.repostCount = result.newCount }
         }
     }
 

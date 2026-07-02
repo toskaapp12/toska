@@ -439,9 +439,16 @@ struct ComposeView: View {
                                     if showOfflineWarning { showOfflineWarning = false }
                                     if !postError.isEmpty { postError = "" }
                                     // Persist draft on each keystroke so a
-                                    // force-quit doesn't lose the user's
-                                    // words. Cleared when the post succeeds.
-                                    draftText = newValue
+                                    // force-quit doesn't lose the user's words.
+                                    // Cleared when the post succeeds. Only for the
+                                    // NEW-post composer: when editing a saved draft
+                                    // (editingDraftId != nil) this shared buffer must
+                                    // not be touched, or it clobbers an in-progress
+                                    // new post and resurrects the edited draft into
+                                    // the next fresh compose.
+                                    if editingDraftId == nil {
+                                        draftText = newValue
+                                    }
                                 }
                             // Char counter — shows remaining chars as the user
                             // types, switches to a soft warning color at <100
@@ -827,7 +834,9 @@ struct ComposeView: View {
                     // empty-clear on a successful post (draftText is "" by then).
                     draftSaveTask?.cancel()
                     draftSaveTask = nil
-                    if !draftText.isEmpty {
+                    // Same guard as the keystroke write: an edit-draft session must
+                    // not flush into the new-post buffer (would resurrect on cancel).
+                    if editingDraftId == nil, !draftText.isEmpty {
                         DraftStore.set(draftText, forKey: UserDefaultsKeys.composeDraftText)
                     }
                 }

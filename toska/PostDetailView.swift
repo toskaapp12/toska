@@ -55,7 +55,7 @@ struct PostDetailView: View {
     let initialIsSaved: Bool
     let initialIsReposted: Bool
 
-    init(postId: String, handle: String, text: String, tag: String?, likes: Int, reposts: Int, replies: Int, time: String, authorId: String = "", isAlreadyLiked: Bool = false, isAlreadySaved: Bool = false, isAlreadyReposted: Bool = false) {
+    init(postId: String, handle: String, text: String, tag: String?, likes: Int, reposts: Int, replies: Int, time: String, authorId: String = "", isAlreadyLiked: Bool = false, isAlreadySaved: Bool = false, isAlreadyReposted: Bool = false, gifUrl: String? = nil, isLetter: Bool = false, isWhisper: Bool = false) {
         self.postId = postId
         self.handle = handle
         self.text = text
@@ -68,6 +68,19 @@ struct PostDetailView: View {
         self.initialIsLiked = isAlreadyLiked
         self.initialIsSaved = isAlreadySaved
         self.initialIsReposted = isAlreadyReposted
+        // Seed the display @State from the init params so the FIRST rendered
+        // frame is complete. Otherwise the body/counts render empty/"0" and pop
+        // to full size one frame later — mid-push — which reads as a glitchy,
+        // non-seamless open (a vertical reflow while the view slides in).
+        // State(initialValue:) runs ONLY at first identity creation, so onAppear
+        // re-fires and edits are preserved automatically (this replaces the old
+        // didSeedContent guard); the live listener keeps them synced afterward.
+        _postText = State(initialValue: text)
+        _likeCount = State(initialValue: likes)
+        _localRepostCount = State(initialValue: reposts)
+        _postGifUrl = State(initialValue: gifUrl)
+        _isLetter = State(initialValue: isLetter)
+        _isWhisper = State(initialValue: isWhisper)
     }
 
     @Environment(\.dismiss) var dismiss
@@ -111,9 +124,6 @@ struct PostDetailView: View {
     @State private var isDeleting = false
     @State private var deleteError = ""
     @State private var didOpenHaptic = false
-    // Seeds postText/likeCount/localRepostCount from init params only on first
-    // appear; onAppear re-fires on pop-return and must not clobber an edit.
-    @State private var didSeedContent = false
     @State private var replyDraftSaveTask: Task<Void, Never>? = nil   // debounces the encrypted reply-draft write
     @State private var postText: String = ""
     // GIF URL attached to the post. Populated by the live snapshot listener
@@ -169,20 +179,12 @@ struct PostDetailView: View {
                                 didOpenHaptic = true
                                 HapticManager.play(.tabSwitch)
                             }
-                            // Seed the mutable display state from the init
-                            // params ONCE, on first open. onAppear re-fires when a
-                            // pushed destination (EditPostView, share card, reply
-                            // drill-down, author profile) pops; re-seeding here
-                            // would clobber an edit the user just saved (the init
-                            // `text` is immutable and stale). The live listener
-                            // keeps postText/likeCount/localRepostCount in sync
-                            // with server truth thereafter.
-                            if !didSeedContent {
-                                didSeedContent = true
-                                postText = text
-                                likeCount = likes
-                                localRepostCount = reposts
-                            }
+                            // postText/likeCount/localRepostCount/postGifUrl/
+                            // isLetter/isWhisper are now seeded from the init
+                            // params in init() (via State(initialValue:)) so the
+                            // first frame is complete and the open is seamless.
+                            // The live listener keeps them synced with server
+                            // truth (incl. edits) thereafter.
                             if !postId.isEmpty {
                                 Firestore.firestore().collection("posts").document(postId).getDocument { snapshot, error in
                                     Task { @MainActor in

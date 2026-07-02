@@ -23,10 +23,22 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, connectAuthEmulator } from "firebase/auth";
 import {
-  getFirestore, doc, setDoc, deleteDoc, serverTimestamp,
+  getFirestore, doc, setDoc, deleteDoc, serverTimestamp, connectFirestoreEmulator,
 } from "firebase/firestore";
+
+// The modular web SDK does NOT auto-read FIREBASE_AUTH_EMULATOR_HOST /
+// FIRESTORE_EMULATOR_HOST (only firebase-admin does), so without these explicit
+// connects the client hit REAL Firebase and failed with auth/invalid-credential
+// — which is why these rules probes never actually ran. Wire each client app to
+// the emulator the `firebase emulators:exec` run provides.
+function connectClientToEmulators(app) {
+  const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (authHost) connectAuthEmulator(getAuth(app), `http://${authHost}`, { disableWarnings: true });
+  const fsHost = process.env.FIRESTORE_EMULATOR_HOST;
+  if (fsHost) { const [h, p] = fsHost.split(":"); connectFirestoreEmulator(getFirestore(app), h, Number(p)); }
+}
 
 const PROJECT_ID = "toskastaging";
 const N = 6;
@@ -93,6 +105,7 @@ try {
       apiKey: WEB_API_KEY, authDomain: `${PROJECT_ID}.firebaseapp.com`,
       projectId: PROJECT_ID, appId: WEB_APP_ID, messagingSenderId: WEB_SENDER_ID,
     }, `conc${i}`);
+    connectClientToEmulators(app);
     await signInWithEmailAndPassword(getAuth(app), email, pw);
     users.push({ uid: u.uid, handle, db: getFirestore(app) });
     trash.uids.push(u.uid);

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import FirebaseAuth
 
 @MainActor
@@ -606,78 +607,86 @@ struct ShareCardView: View {
 
     // MARK: - Card Preview
 
+    // The card's inner content (tag · quote mark · quote · attribution footer),
+    // laid out in the fixed 390-wide card coordinate space. This is the SINGLE
+    // source of truth used by BOTH the live preview and the exported image, so
+    // they can never drift apart again (the old code duplicated this with
+    // slightly different font/padding/lineSpacing, which is why text that fit the
+    // preview clipped in the shared image).
+    @ViewBuilder
+    var cardBody: some View {
+        VStack(spacing: 0) {
+            // Vertically CENTERED (equal spacers) — quote dead-center, footer below.
+            Spacer(minLength: 0).frame(maxHeight: .infinity)
+
+            if let tag = tag, selectedRatio != 2 {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(accentColor.opacity(0.4))
+                        .frame(width: 4, height: 4)
+                    Text(tag)
+                        .font(ToskaFont.sans(11, weight: .semibold))
+                        .tracking(1)
+                        .foregroundColor(accentColor.opacity(0.5))
+                }
+                .padding(.bottom, 14)
+            }
+
+            Text(quoteMark)
+                .font(.custom("Georgia", size: selectedRatio == 2 ? 24 : 34))
+                .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
+                .padding(.bottom, 2)
+
+            Text(text)
+                .font(quoteFont(size: fittedFontSize))
+                .foregroundColor(textColor)
+                .lineSpacing(lineSpacing)
+                .multilineTextAlignment(textAlignment)
+                // fittedFontSize already MEASURED that the text fits within
+                // quoteMaxHeight (to 96%); the minimumScaleFactor is a final
+                // belt-and-suspenders against any SwiftUI-vs-UIKit rounding so a
+                // long message can NEVER clip — the whole point of this rewrite.
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, textPadding)
+                .frame(maxHeight: quoteMaxHeight)
+
+            Spacer(minLength: 0).frame(maxHeight: .infinity)
+
+            VStack(spacing: 6) {
+                if feltCount > 0 && showFeltCount {
+                    Text("\(formatCount(feltCount)) felt this")
+                        .font(ToskaFont.sans(11, weight: .medium))
+                        .foregroundColor(accentColor.opacity(0.35))
+                }
+
+                Rectangle()
+                    .fill(accentColor.opacity(isDarkStyle ? 0.1 : 0.08))
+                    .frame(width: 24, height: 0.5)
+                    .padding(.vertical, 3)
+
+                HStack(spacing: 4) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(accentColor.opacity(isDarkStyle ? 0.12 : 0.08))
+                        .frame(width: 14, height: 14)
+                        .overlay(
+                            Text("t")
+                                .font(.custom("Georgia-Italic", size: 10))
+                                .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
+                        )
+                    Text("toska")
+                        .font(.custom("Georgia-Italic", size: 12))
+                        .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
+                }
+            }
+            .padding(.bottom, selectedRatio == 2 ? 10 : 20)
+        }
+    }
+
     var cardPreview: some View {
         ZStack {
             cardBackground
             cardDecorations
-
-            VStack(spacing: 0) {
-                // Vertically CENTERED in the card (equal spacers) — the quote
-                // sits dead-center, the attribution pinned below.
-                Spacer(minLength: 0).frame(maxHeight: .infinity)
-
-                if let tag = tag, selectedRatio != 2 {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(accentColor.opacity(0.4))
-                            .frame(width: 4, height: 4)
-                        Text(tag)
-                            .font(ToskaFont.sans(11, weight: .semibold))
-                            .tracking(1)
-                            .foregroundColor(accentColor.opacity(0.5))
-                    }
-                    .padding(.bottom, 14)
-                }
-
-                Text(quoteMark)
-                    .font(.custom("Georgia", size: selectedRatio == 2 ? 24 : 34))
-                    .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
-                    .padding(.bottom, 2)
-
-                Text(text)
-                    .font(quoteFont(size: fontSize))
-                    .foregroundColor(textColor)
-                    .lineSpacing(lineSpacing)
-                    .multilineTextAlignment(textAlignment)
-                    // Scale down to fit if the message is long — never clip.
-                    .minimumScaleFactor(0.35)
-                    .padding(.horizontal, textPadding)
-                    .frame(maxHeight: quoteMaxHeight)
-
-                Spacer(minLength: 0).frame(maxHeight: .infinity)
-
-                VStack(spacing: 6) {
-                    if feltCount > 0 && showFeltCount {
-                        Text("\(formatCount(feltCount)) felt this")
-                            .font(ToskaFont.sans(11, weight: .medium))
-                            .foregroundColor(accentColor.opacity(0.35))
-                    }
-
-                    Rectangle()
-                        .fill(accentColor.opacity(isDarkStyle ? 0.1 : 0.08))
-                        .frame(width: 24, height: 0.5)
-                        .padding(.vertical, 3)
-
-                    HStack(spacing: 4) {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(accentColor.opacity(isDarkStyle ? 0.12 : 0.08))
-                            .frame(width: 14, height: 14)
-                            .overlay(
-                                Text("t")
-                                    .font(.custom("Georgia-Italic", size: 10))
-                                    .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
-                            )
-                        Text("toska")
-                            .font(.custom("Georgia-Italic", size: 12))
-                            .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
-                    }
-                    // Website URL removed from the share card — felt out of
-                    // place under the brand mark for a screenshot people post
-                    // to IG / Twitter / TikTok. The "toska" wordmark above is
-                    // enough attribution.
-                }
-                .padding(.bottom, selectedRatio == 2 ? 10 : 20)
-            }
+            cardBody
         }
     }
 
@@ -713,21 +722,65 @@ struct ShareCardView: View {
         cardSize.height - (selectedRatio == 2 ? 120 : 215)
     }
 
-    var fontSize: CGFloat {
-        let length = text.count
-        let base: CGFloat
-        if selectedRatio == 2 {                       // wide — least vertical room
-            base = length > 350 ? 9 : (length > 200 ? 11 : 13)
-        } else if length > 400 {
-            base = 13
-        } else if length > 300 {
-            base = 14
-        } else if length > 150 {
-            base = 16
-        } else {
-            base = 18
+    /// Largest font the card would ever use (short posts). The fit search below
+    /// scales DOWN from here for longer text. Wide cards get a smaller ceiling
+    /// (least vertical room). `sizeMultiplier` applies the user's size control.
+    var maxFontSize: CGFloat { (selectedRatio == 2 ? 20 : 24) * sizeMultiplier }
+
+    /// The font size the quote is ACTUALLY drawn at — computed by MEASURING the
+    /// text (UIKit boundingRect) and binary-searching the largest point size at
+    /// which it fits within the quote box (width = card − 2·padding, height =
+    /// quoteMaxHeight). This replaces the old coarse length-bucket heuristic +
+    /// minimumScaleFactor, which could still CLIP a long message (the scale
+    /// factor bottoms out for multiline height-fitting). The SAME value drives
+    /// the live preview AND the exported image, so they're byte-for-byte WYSIWYG.
+    var fittedFontSize: CGFloat {
+        guard !text.isEmpty else { return maxFontSize }
+        let maxW = cardSize.width - 2 * textPadding
+        // Fit to 96% of the box: a small safety margin so any SwiftUI-vs-UIKit
+        // sub-pixel layout difference can't tip a fitted size into a clip.
+        let maxH = quoteMaxHeight * 0.96
+        var lo: CGFloat = 8, hi = maxFontSize, best: CGFloat = 8
+        // 14 iterations resolves to <0.01pt over the [8, 24] range.
+        for _ in 0..<14 {
+            let mid = (lo + hi) / 2
+            if measuredQuoteHeight(fontSize: mid, width: maxW) <= maxH {
+                best = mid; lo = mid
+            } else {
+                hi = mid
+            }
         }
-        return base * sizeMultiplier
+        return best
+    }
+
+    private func measuringUIFont(size: CGFloat) -> UIFont {
+        switch selectedFont {
+        case 1: return .systemFont(ofSize: size, weight: .light)
+        case 2: return .monospacedSystemFont(ofSize: size, weight: .regular)
+        case 3: return UIFont(name: "Georgia-Italic", size: size) ?? .italicSystemFont(ofSize: size)
+        default: return UIFont(name: "Georgia", size: size) ?? .systemFont(ofSize: size)
+        }
+    }
+
+    private var nsAlignment: NSTextAlignment {
+        switch selectedAlignment {
+        case 0: return .left
+        case 2: return .right
+        default: return .center
+        }
+    }
+
+    private func measuredQuoteHeight(fontSize: CGFloat, width: CGFloat) -> CGFloat {
+        let para = NSMutableParagraphStyle()
+        para.lineSpacing = lineSpacing
+        para.alignment = nsAlignment
+        let rect = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: measuringUIFont(size: fontSize), .paragraphStyle: para],
+            context: nil
+        )
+        return ceil(rect.height)
     }
 
     var lineSpacing: CGFloat {
@@ -905,74 +958,13 @@ struct ShareCardView: View {
     // MARK: - Render Full-Size Card
 
     @MainActor func renderCardImage() -> UIImage? {
+        // Exact same content as the live preview (cardBody) at the full card
+        // size — the exported image is byte-for-byte what the user previewed,
+        // and cardBody's fittedFontSize guarantees the quote never clips.
         let fullCard = ZStack {
             cardBackground
             cardDecorations
-
-            VStack(spacing: 0) {
-                Spacer(minLength: 0).frame(maxHeight: .infinity)
-
-                if let tag = tag, selectedRatio != 2 {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(accentColor.opacity(0.4))
-                            .frame(width: 5, height: 5)
-                        Text(tag)
-                            .font(ToskaFont.sans(11, weight: .semibold))
-                            .tracking(1)
-                            .foregroundColor(accentColor.opacity(0.5))
-                    }
-                    .padding(.bottom, 16)
-                }
-
-                Text(quoteMark)
-                    .font(.custom("Georgia", size: selectedRatio == 2 ? 28 : 40))
-                    .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
-                    .padding(.bottom, 2)
-
-                Text(text)
-                    .font(quoteFont(size: renderFontSize))
-                    .foregroundColor(textColor)
-                    .lineSpacing(lineSpacing + 1)
-                    .multilineTextAlignment(textAlignment)
-                    // Same scale-to-fit guarantee as the live preview so the
-                    // EXPORTED image never clips a long (up to 500-char) message.
-                    .minimumScaleFactor(0.35)
-                    .padding(.horizontal, selectedRatio == 2 ? 26 : 38)
-                    .frame(maxHeight: quoteMaxHeight)
-
-                Spacer(minLength: 0).frame(maxHeight: .infinity)
-
-                VStack(spacing: 7) {
-                    if feltCount > 0 && showFeltCount {
-                        Text("\(formatCount(feltCount)) felt this")
-                            .font(ToskaFont.sans(11, weight: .medium))
-                            .foregroundColor(accentColor.opacity(0.35))
-                    }
-
-                    Rectangle()
-                        .fill(accentColor.opacity(isDarkStyle ? 0.1 : 0.08))
-                        .frame(width: 28, height: 0.5)
-                        .padding(.vertical, 3)
-
-                    HStack(spacing: 5) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(accentColor.opacity(isDarkStyle ? 0.12 : 0.08))
-                            .frame(width: 18, height: 18)
-                            .overlay(
-                                Text("t")
-                                    .font(.custom("Georgia-Italic", size: 13))
-                                    .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
-                            )
-                        Text("toska")
-                            .font(.custom("Georgia-Italic", size: 14))
-                            .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
-                    }
-                    // Website URL removed from the rendered share image —
-                    // see the preview layout above.
-                }
-                .padding(.bottom, selectedRatio == 2 ? 14 : 26)
-            }
+            cardBody
         }
         .frame(width: cardSize.width, height: cardSize.height)
         .environment(\.colorScheme, isDarkStyle ? .dark : .light)
@@ -980,23 +972,6 @@ struct ShareCardView: View {
         let renderer = ImageRenderer(content: fullCard)
         renderer.scale = 3.0
         return renderer.uiImage
-    }
-
-    var renderFontSize: CGFloat {
-        let length = text.count
-        let base: CGFloat
-        if selectedRatio == 2 {                       // wide — least vertical room
-            base = length > 350 ? 11 : (length > 200 ? 13 : 16)
-        } else if length > 400 {
-            base = 15
-        } else if length > 300 {
-            base = 16
-        } else if length > 150 {
-            base = 18
-        } else {
-            base = 22
-        }
-        return base * sizeMultiplier
     }
 
     // MARK: - Share Functions

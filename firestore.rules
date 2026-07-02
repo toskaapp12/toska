@@ -25,7 +25,14 @@ service cloud.firestore {
     function postVisibleToCaller(postId) {
       return isAuth()
         && (
-          get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', 'live') == 'live'
+          // Existence short-circuit: if the parent post is GONE (deleted, cleanup
+          // of its replies still pending), `get(...).data` is null and evaluating
+          // it ERRORS — which fails the ENTIRE collection-group replies query, so
+          // one deleted-parent reply blanked a user's whole "replies" tab. Treat a
+          // missing parent as visible (the orphan reply is the caller's own words
+          // and is about to be cleaned up) instead of erroring.
+          !exists(/databases/$(database)/documents/posts/$(postId))
+          || get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', 'live') == 'live'
           || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
           || isAdmin()
         );

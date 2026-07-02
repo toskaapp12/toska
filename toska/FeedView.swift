@@ -371,27 +371,9 @@ struct FeedView: View {
                                 .onAppear { HapticManager.play(.compose) }
                             }
         }
-        .fullScreenCover(isPresented: $vm.showDailyMoment) {
-                    EdgeSwipeDismissWrapper {
-                        DailyMomentView()
-                            .onAppear { HapticManager.play(.postAppear) }
-                    }
-                }
-        .navigationDestination(isPresented: $vm.showWitnessPost) {
-                    if let witness = vm.witnessPost {
-                        PostDetailView(
-                            postId: witness.postId,
-                            handle: witness.handle,
-                            text: witness.text,
-                            tag: witness.tag,
-                            likes: witness.likeCount,
-                            reposts: witness.repostCount,
-                            replies: 0,
-                            time: witness.timeString
-                        )
-                        .navigationBarHidden(true)
-                    }
-                }
+        // Daily Moment + witness-post surfaces removed — they had no entry point
+        // (showDailyMoment / showWitnessPost were only ever set false), so the
+        // covers were dead. DailyMomentView.swift is now orphaned (safe to delete).
         .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { notif in
             // Refresh the feed so the just-created content lands in real time
             // (a composed post OR a repost). Re-baseline the new-posts banner so

@@ -786,6 +786,14 @@ struct ComposeView: View {
                         // from the empty feed shouldn't pre-fill an old
                         // anniversary reflection draft).
                         text = draftText
+                        // The draft buffer persists text+tag but NOT isLetter. A
+                        // restored draft over the normal 500 cap could only have
+                        // been a letter — restore letter mode so the first
+                        // keystroke doesn't truncate the body to 500 (silent data
+                        // loss of up to 1500 chars).
+                        if text.utf16.count > charLimit {
+                            isLetter = true
+                        }
                     }
                     if selectedTag == nil, let tag = initialTag {
                         selectedTag = tag
@@ -996,6 +1004,23 @@ struct ComposeView: View {
 
     func postNow() {
         guard !isPosting else { return }
+        // Network guard, mirroring attemptPost. postNow is ALSO reached directly
+        // from the override/confirm paths (crisis onProceed, name "post anyway",
+        // content-violation "post anyway") which skip attemptPost's guard —
+        // without this, addDocument's completion never fires offline and the
+        // button is stuck on "posting…" with no escape.
+        guard NetworkMonitor.shared.isConnected else {
+            showOfflineWarning = true
+            offlineMonitorTask?.cancel()
+            offlineMonitorTask = Task {
+                while !NetworkMonitor.shared.isConnected {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    guard !Task.isCancelled else { return }
+                }
+                showOfflineWarning = false
+            }
+            return
+        }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         // Start the 30s rate-limit window at attempt time, not after success.
         // Previously lastPostTime was only set on the success branch below,

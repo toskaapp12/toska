@@ -457,6 +457,20 @@ struct FeedView: View {
             }
             previousHeadId = newHeadId
         }
+        .onChange(of: vm.posts.first?.id) { _, newHead in
+            // A refresh can re-score and reorder the feed WITHOUT changing the
+            // count — the count-based handler above never fires, previousHeadId
+            // goes stale, and the next pagination append (count grows, head
+            // still the post-refresh one) read as "new posts at the head" and
+            // false-fired the banner mid-scroll. Re-baseline on count-neutral
+            // head moves only; when count changed too, the handler above owns
+            // the transition (this check is order-independent with it: it
+            // compares against the CURRENT count, so whichever handler runs
+            // second is a no-op).
+            if vm.posts.count == previousPostCount {
+                previousHeadId = newHead
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
                     if let info = notif.userInfo {
                         vm.handleInteractionChanged(info)

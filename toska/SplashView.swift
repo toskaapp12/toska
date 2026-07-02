@@ -217,8 +217,9 @@ struct SplashView: View {
             handle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
         }
 
-        try await db.collection("users").document(uid).setData([
-            "handle": handle,
+        // Batched with the handle-registry claim (firestore.rules requires
+        // the pair; see commitUserDocClaimingHandle).
+        _ = try await commitUserDocClaimingHandle(uid: uid, initialHandle: handle, baseData: [
             "followerCount": 0,
             "followingCount": 0,
             "totalLikes": 0,

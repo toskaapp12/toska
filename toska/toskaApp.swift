@@ -147,15 +147,30 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // having ~50–100 ms cold-start latency.
         HapticManager.prepareAll()
 
+        // Distinguish the listener's INITIAL callback from a real signed-in →
+        // signed-out transition. Firing the full scrub on every signed-out
+        // cold launch ran sign-out side effects with nothing to sign out of —
+        // including an FCM token delete/rotation per launch. The persisted
+        // wasSignedInAtLastRun flag keeps the one initial-callback case that
+        // DOES need the scrub: the session was invalidated while the app
+        // wasn't running, and the previous account's local state (drafts,
+        // admin gate, push primer, FCM token) is still on disk.
+        var isInitialAuthCallback = true
         authStateListener = Auth.auth().addStateDidChangeListener { _, user in
             let isSignedIn = user != nil
             Task { @MainActor in
+                let wasInitial = isInitialAuthCallback
+                isInitialAuthCallback = false
                 if isSignedIn {
+                    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.wasSignedInAtLastRun)
                     BlockedUsersCache.shared.startListening()
                     UserHandleCache.shared.startListening()
                 } else {
                     BlockedUsersCache.shared.stopListening()
                     UserHandleCache.shared.stopListening()
+                    let endedSignedInLastRun = UserDefaults.standard.bool(forKey: UserDefaultsKeys.wasSignedInAtLastRun)
+                    UserDefaults.standard.set(false, forKey: UserDefaultsKeys.wasSignedInAtLastRun)
+                    guard !wasInitial || endedSignedInLastRun else { return }
                     // Out-of-band sign-outs (token revoked server-side, account
                     // deleted elsewhere, credential invalidated) don't go through
                     // the in-app buttons, so the per-user local scrub (drafts,

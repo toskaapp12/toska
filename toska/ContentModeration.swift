@@ -117,28 +117,33 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
     func noSpaceOf(_ s: String) -> String {
         String(s.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }).lowercased()
     }
-    // Map every ambiguous glyph (the whole [1!|] set) to a single target — "1",
-    // "!", and "|" all stand in for BOTH "i" and "l" (ki11 / k!ll / ki|| → kill;
-    // su1c1de / su!c!de → suicide). Build an i-form and an l-form and OR their
-    // matches. Mirrors the server-side matchesCrisisPhrase; crisis-only (kept OUT
-    // of the name/PII path, where !/| would false-positive); over-detection is
-    // the accepted-safe direction for crisis.
-    func mapAmbiguous(_ s: String, to r: Character) -> String {
-        String(s.map { "1!|".contains($0) ? r : $0 })
+    // Ambiguous-glyph fold: "1", "!", "|" stand in for BOTH "i" and "l"
+    // (ki11 / k!ll / ki|| → kill), and real text mixes positions freely
+    // ("k1ll myse1f" has an i-position AND an l-position "1"). Uniform
+    // substitution (an all-i form and an all-l form, the previous approach)
+    // misses every mixed-position case, so collapse the entire ambiguous
+    // class — including literal "i" and "l" — to one symbol in BOTH the text
+    // and the phrase, making the match position-independent. Mirrors the
+    // server matchesCrisisPhrase (moderationLogic.js); crisis-only (kept OUT
+    // of the name/PII path, where !/| and i↔l collapsing would
+    // false-positive); over-detection is the accepted-safe direction here.
+    func foldAmbiguousIL(_ s: String) -> String {
+        String(s.map { "1!|il".contains($0) ? "l" : $0 })
     }
     let lowered = text.lowercased()
     let normalized = aggressiveNormalizeForNameMatch(text)
     let noSpace = noSpaceOf(normalized)
-    let iForm = aggressiveNormalizeForNameMatch(mapAmbiguous(text, to: "i"))
-    let lForm = aggressiveNormalizeForNameMatch(mapAmbiguous(text, to: "l"))
-    let iNoSpace = noSpaceOf(iForm)
-    let lNoSpace = noSpaceOf(lForm)
+    // Fold the raw text too (not just the normalized form): normalization's
+    // leet map already committed "1"->"i" before we could fold, so both
+    // inputs go through foldAmbiguousIL from their own starting points.
+    let folded = foldAmbiguousIL(aggressiveNormalizeForNameMatch(foldAmbiguousIL(text)))
+    let foldedNoSpace = noSpaceOf(folded)
     for phrase in list {
-        if lowered.contains(phrase) || normalized.contains(phrase)
-            || iForm.contains(phrase) || lForm.contains(phrase) { return true }
+        if lowered.contains(phrase) || normalized.contains(phrase) { return true }
+        if folded.contains(foldAmbiguousIL(phrase)) { return true }
         let pNoSpace = phrase.filter { $0.isLetter || $0.isNumber }
         if pNoSpace.count >= 6 &&
-            (noSpace.contains(pNoSpace) || iNoSpace.contains(pNoSpace) || lNoSpace.contains(pNoSpace)) { return true }
+            (noSpace.contains(pNoSpace) || foldedNoSpace.contains(foldAmbiguousIL(pNoSpace))) { return true }
     }
     return false
 }
@@ -165,9 +170,14 @@ private let nameConfusableMap: [Character: Character] = [
     // Cyrillic uppercase
     "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
     "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "І": "I", "Ј": "J",
-    // Cyrillic lowercase
+    "Ѕ": "S", "Ԁ": "D", "Һ": "H",
+    // Cyrillic lowercase (ѕ U+0455 is the perfect "s" lookalike; mirror of
+    // NAME_CONFUSABLE_MAP in functions/moderation.js)
     "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o",
     "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "і": "i", "ј": "j",
+    "ѕ": "s", "ԁ": "d", "һ": "h",
+    // Latin script g (U+0261), the standard "g" confusable outside Cyrillic
+    "ɡ": "g",
     // Greek uppercase
     "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
     "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
@@ -946,6 +956,38 @@ func generateUniqueHandleAsync(attempt: Int = 0) async -> String {
     return candidate
 }
 
+/// Commits a new users/{uid} doc TOGETHER with its handles/{handle.lowercased()}
+/// uniqueness-registry row in one batch — firestore.rules requires the pair
+/// (users create checks the registry row via getAfter; the registry create is
+/// only possible while the handle is unclaimed). On a batch failure — almost
+/// always the candidate being claimed between generation and commit — retries
+/// with fresh candidates, ending on a UUID handle (collision-proof in
+/// practice). Returns the handle that actually committed. Throws only when
+/// even the UUID attempt fails (backend down / rules mismatch), in which case
+/// the caller's existing user-doc-write error path applies.
+func commitUserDocClaimingHandle(uid: String, initialHandle: String, baseData: [String: Any]) async throws -> String {
+    let db = Firestore.firestore()
+    var candidate = initialHandle
+    var lastError: Error = NSError(domain: "toska", code: -1)
+    for attempt in 0..<4 {
+        var data = baseData
+        data["handle"] = candidate
+        let batch = db.batch()
+        batch.setData(data, forDocument: db.collection("users").document(uid))
+        batch.setData(["uid": uid], forDocument: db.collection("handles").document(candidate.lowercased()))
+        do {
+            try await batch.commit()
+            return candidate
+        } catch {
+            lastError = error
+            candidate = attempt < 2
+                ? await generateUniqueHandleAsync()
+                : "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+        }
+    }
+    throw lastError
+}
+
 func containsConcerningContent(_ text: String) -> Bool {
     let lowered = text.lowercased()
     return concerningPhrases.contains(where: { lowered.contains($0) })
@@ -1047,6 +1089,39 @@ func contentViolation(in text: String) -> ContentViolationType? {
         }
     }
 
+    // --- Threats and violence (targeted at others) ---
+    // Checked BEFORE harassment, same as the server's computePost/ReplyFlagReason:
+    // text containing both ("kys, i'll kill you") must triage to the more
+    // severe category on every surface.
+    let threatPhrases = [
+        "kill you", "kill him", "kill her", "kill them",
+        "shoot you", "shoot him", "shoot her", "shoot them",
+        // 2026-07-01: mirror of the server MOD_THREAT re-expansion — the
+        // narrowing to single fixed strings dropped determiner/possessive
+        // phrasings ("burn down your house", "shoot up her school").
+        "shoot up the", "shoot up your", "shoot up his", "shoot up her",
+        "shoot up their", "shoot up my", "shoot up a school",
+        "stab you", "stab him", "stab her", "stab them",
+        // Bare "bomb"/"blow up" hard-blocked grief language ("she dropped a bomb
+        // on me", "bath bomb", "before I blow up at him") that the server's
+        // MOD_THREAT does NOT flag — so the client was blocking posts the backend
+        // publishes live, with no override (threat is edit-only). Use targeted
+        // forms instead. Same for "beat you" inside "beat yourself up".
+        "bomb you", "bomb your", "blow you up", "blow up your",
+        "burn your house", "burn his house", "burn her house", "burn their house",
+        "burn down your", "burn down his", "burn down her", "burn down their",
+        "rape you", "rape her", "rape him",
+        "find you and", "find where you live", "know where you live",
+        "hunt you down", "come for you",
+        "gonna hurt you", "going to hurt you",
+        "beat you up", "beat the shit",
+        "curb stomp", "slit your throat", "bash your head",
+        "put a bullet", "put you in the ground",
+    ]
+    for phrase in threatPhrases {
+        if normalized.contains(phrase) { return .threat }
+    }
+
     // --- Directed self-harm encouragement (not emotional venting) ---
     let harassmentPhrases = [
         "kill yourself", "kys", "go die", "you should die",
@@ -1065,29 +1140,6 @@ func contentViolation(in text: String) -> ContentViolationType? {
     }
     for phrase in harassmentPhrases {
         if noSpaces.contains(phrase.replacingOccurrences(of: " ", with: "")) { return .harassment }
-    }
-
-    // --- Threats and violence (targeted at others) ---
-    let threatPhrases = [
-        "kill you", "kill him", "kill her", "kill them",
-        "shoot you", "shoot him", "shoot her", "shoot them", "shoot up the",
-        "stab you", "stab him", "stab her", "stab them",
-        // Bare "bomb"/"blow up" hard-blocked grief language ("she dropped a bomb
-        // on me", "bath bomb", "before I blow up at him") that the server's
-        // MOD_THREAT does NOT flag — so the client was blocking posts the backend
-        // publishes live, with no override (threat is edit-only). Use targeted
-        // forms instead. Same for "beat you" inside "beat yourself up".
-        "bomb you", "bomb your", "blow you up", "blow up your", "burn your house",
-        "rape you", "rape her", "rape him",
-        "find you and", "find where you live", "know where you live",
-        "hunt you down", "come for you",
-        "gonna hurt you", "going to hurt you",
-        "beat you up", "beat the shit",
-        "curb stomp", "slit your throat", "bash your head",
-        "put a bullet", "put you in the ground",
-    ]
-    for phrase in threatPhrases {
-        if normalized.contains(phrase) { return .threat }
     }
 
     // --- Sexual content ---

@@ -140,9 +140,20 @@ const MOD_HATE = [
 // user is warned on exactly what the server holds.
 const MOD_THREAT = [
   "kill you", "kill him", "kill her", "kill them",
-  "shoot you", "shoot him", "shoot her", "shoot them", "shoot up the",
+  "shoot you", "shoot him", "shoot her", "shoot them",
+  // 2026-07-01: the bare-phrase removal above over-narrowed to single fixed
+  // strings ("shoot up the", "burn your house") and dropped classic
+  // determiner/possessive phrasings — "burn down your house", "shoot up her
+  // school" published live with no hold. Enumerate the determiner/possessive
+  // continuations instead: still immune to the venting false-positives the
+  // narrowing targeted ("life is burning down", "growth shot up" match none
+  // of these), but no longer blind to who/whose.
+  "shoot up the", "shoot up your", "shoot up his", "shoot up her",
+  "shoot up their", "shoot up my", "shoot up a school",
   "stab you", "stab him", "stab her", "stab them",
-  "bomb you", "bomb your", "blow you up", "blow up your", "burn your house",
+  "bomb you", "bomb your", "blow you up", "blow up your",
+  "burn your house", "burn his house", "burn her house", "burn their house",
+  "burn down your", "burn down his", "burn down her", "burn down their",
   "rape you", "rape her", "rape him",
   "find you and", "find where you live", "know where you live",
   "hunt you down", "come for you",
@@ -273,38 +284,38 @@ const MOD_CONCERNING = [...MOD_CRISIS_EXPLICIT, ...MOD_CRISIS_SOFT];
 // stripped form so "kill myself" matches "k i l l m y s e l f" → "killmyself".
 // Crisis posts are HELD for review (not deleted), so leaning toward
 // over-detection is the intended, safe direction.
+// Ambiguous-glyph fold: "1", "!", "|" commonly stand in for BOTH "i" and "l"
+// ("k1ll", "ki11", "su1c1dal", "ki||"), and real text mixes positions freely
+// ("k1ll myse1f" has an i-position AND an l-position "1"). Substituting the
+// whole class uniformly (an all-i form and an all-l form, the previous
+// approach) misses every mixed-position case, so instead we collapse the
+// entire ambiguous class — including literal "i" and "l" — to one symbol in
+// BOTH the text and the phrase, making the match position-independent.
+// Crisis-only (kept OUT of the name/PII path, where !/| and i↔l collapsing
+// would false-positive); over-detection is the accepted-safe direction here.
+function foldAmbiguousIL(s) {
+  return s.replace(/[1!|il]/g, "l");
+}
+
 function matchesCrisisPhrase(rawText, list) {
   const raw = rawText || "";
   const lowered = raw.toLowerCase();
   const normalized = aggressiveNormalizeForNameMatch(raw);
   const noSpace = normalized.replace(/[^a-z0-9]/g, "");
-  // Ambiguous-digit expansion: aggressiveNormalizeForNameMatch's NAME_LEET_MAP
-  // folds "1" -> "i", but "1" is just as commonly an "l" ("ki11 myself" ->
-  // "kiii myself", which never matches "kill myself"). Test a SECOND
-  // normalization where "1" -> "l" so the L-position leet evasion can't slip a
-  // crisis/threat/harassment phrase past the hold and the crisis admin page.
-  // We keep both candidates (i-form catches "su1c1dal", l-form catches
-  // "ki11"), and over-detection is the accepted-safe direction for crisis.
-  // Extend the ambiguous-glyph set beyond "1": "!" and "|" also commonly stand
-  // in for "i"/"l" (k!ll, su!c!de, ki||). Build an i-form and an l-form over the
-  // whole [1!|] set and OR their matches, so the l-position AND the punctuation
-  // leet forms can't slip the crisis/threat/harassment hold. Crisis-only (kept
-  // OUT of the name/PII path, where !/| would false-positive); over-detection is
-  // the accepted-safe direction for crisis.
-  const iForm = aggressiveNormalizeForNameMatch(raw.replace(/[1!|]/g, "i"));
-  const lForm = aggressiveNormalizeForNameMatch(raw.replace(/[1!|]/g, "l"));
-  const iNoSpace = iForm.replace(/[^a-z0-9]/g, "");
-  const lNoSpace = lForm.replace(/[^a-z0-9]/g, "");
+  // Fold the raw text too (not just the normalized form): normalization's
+  // NAME_LEET_MAP already committed "1"->"i" before we can fold, which is why
+  // both inputs go through foldAmbiguousIL from their own starting points.
+  const folded = foldAmbiguousIL(aggressiveNormalizeForNameMatch(foldAmbiguousIL(raw)));
+  const foldedNoSpace = folded.replace(/[^a-z0-9]/g, "");
   return list.some((phrase) => {
-    if (lowered.includes(phrase) ||
-        normalized.includes(phrase) ||
-        iForm.includes(phrase) ||
-        lForm.includes(phrase)) return true;
+    if (lowered.includes(phrase) || normalized.includes(phrase)) return true;
+    if (folded.includes(foldAmbiguousIL(phrase))) return true;
     // Space/punct-insensitive fallback, length-guarded so short tokens
     // (e.g. "kms") don't false-positive against arbitrary letter runs.
     const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
-    return pNoSpace.length >= 6 &&
-      (noSpace.includes(pNoSpace) || iNoSpace.includes(pNoSpace) || lNoSpace.includes(pNoSpace));
+    if (pNoSpace.length < 6) return false;
+    return noSpace.includes(pNoSpace) ||
+      foldedNoSpace.includes(foldAmbiguousIL(pNoSpace));
   });
 }
 
@@ -353,8 +364,10 @@ function isPostConcerning(rawText) {
 function computeReplyFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
   if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
-  if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
+  // Threat BEFORE harassment, same as computePostFlagReason: identical text
+  // must triage to the same (more severe) category on both surfaces.
   if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
+  if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
   if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";

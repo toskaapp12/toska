@@ -371,6 +371,14 @@
                 card.appendChild(textDiv);
             }
 
+            // Secondary, visually-muted line under the main text (e.g. the
+            // reporter's unverified note under the real reported content).
+            if (opts.subText) {
+                const subDiv = el("div", "card-reason");
+                subDiv.textContent = opts.subText;
+                card.appendChild(subDiv);
+            }
+
             if (opts.meta) card.appendChild(metaRow(opts.meta));
 
             const actions = el("div", "card-actions");
@@ -544,6 +552,7 @@
             abuse_link: "contains link",
             abuse_spam: "spam / commercial",
             user_reports: "user reports (3+)",
+            rate_limit: "posting too fast (rate limit)",
         };
 
         async function loadPending(container) {
@@ -593,7 +602,7 @@
                     if (!ids.length) return;
                     if (!confirm(`approve and publish ${ids.length} post(s)?`)) return;
                     approveSelBtn.disabled = true;
-                    for (const id of ids) { await approvePending(id); }
+                    for (const id of ids) { await approvePending(id, true); }
                     selectAll.checked = false;
                     updateBulkCount();
                 });
@@ -647,7 +656,13 @@
             }
         }
 
-        async function approvePending(postId) {
+        // `confirmed` is true only from the bulk-approve path, which has
+        // already shown its own count-confirm — everything else gets a
+        // per-item confirm: a misclick here publishes PII/crisis-held
+        // content live to public feeds, the most consequential one-click
+        // on the dashboard.
+        async function approvePending(postId, confirmed = false) {
+            if (!confirmed && !confirm("approve and publish this post to public feeds?")) return;
             try {
                 // Flip back to "live" + null out the pending markers so the
                 // post stops appearing on this tab and starts appearing in
@@ -732,6 +747,7 @@
         }
 
         async function approvePendingReply(replyRef, cardKey) {
+            if (!confirm("approve and publish this reply back into its thread?")) return;
             try {
                 const uid = auth.currentUser?.uid || "";
                 await updateDoc(replyRef, {
@@ -809,28 +825,56 @@
                 // concerningContent (NOT hidden — a peer reach-out isn't
                 // censored) and pages an admin, but that FCM page is best-effort.
                 // Without this list a reply whose page didn't deliver was
-                // surfaced NOWHERE. Newest first, filter out already-reviewed
-                // (crisisReviewedAt present) exactly like the posts above. Index:
-                // replies(concerningContent, concerningDetectedAt DESC).
+                // surfaced NOWHERE. Same startAfter pagination as the posts
+                // above — a single limit(50) page + client-side reviewed
+                // filter reintroduced for replies exactly the hiding bug the
+                // posts loop's comment describes (50 reviewed-but-still-
+                // concerning replies permanently masking an older unreviewed
+                // one). Index: replies(concerningContent, concerningDetectedAt DESC).
                 let replyDocs = [];
+                let replyMoreRemain = false;
+                let repliesError = null;
                 try {
-                    const rsnap = await getDocs(query(
-                        collectionGroup(db, "replies"),
-                        where("concerningContent", "==", true),
-                        orderBy("concerningDetectedAt", "desc"),
-                        limit(50)
-                    ));
-                    replyDocs = rsnap.docs.filter(d => !d.data().crisisReviewedAt);
+                    let rCursor = null;
+                    let rPagesScanned = 0;
+                    while (replyDocs.length < TARGET && rPagesScanned < MAX_PAGES) {
+                        const parts = [
+                            collectionGroup(db, "replies"),
+                            where("concerningContent", "==", true),
+                            orderBy("concerningDetectedAt", "desc"),
+                        ];
+                        if (rCursor) parts.push(startAfter(rCursor));
+                        parts.push(limit(PAGE));
+                        const rsnap = await getDocs(query(...parts));
+                        rPagesScanned++;
+                        if (rsnap.empty) break;
+                        for (const d of rsnap.docs) {
+                            if (!d.data().crisisReviewedAt) replyDocs.push(d);
+                        }
+                        rCursor = rsnap.docs[rsnap.docs.length - 1];
+                        if (rsnap.docs.length < PAGE) break;          // last page
+                        if (rPagesScanned >= MAX_PAGES) replyMoreRemain = true; // cap, not exhaustion
+                    }
                 } catch (e) {
-                    // Index still building / missing — don't break the posts list.
-                    console.warn("concerning-replies query failed:", e.message);
+                    // A silently-swallowed failure here previously left the
+                    // crisis tab looking healthy ("no unreviewed crisis
+                    // content") while crisis REPLIES were invisible
+                    // indefinitely. Keep the posts list, but say so loudly.
+                    repliesError = e;
                 }
 
-                if (docs.length === 0 && replyDocs.length === 0) {
+                if (docs.length === 0 && replyDocs.length === 0 && !repliesError) {
                     emptyState(container, "no unreviewed crisis content", "everything flagged has been reviewed");
                     return;
                 }
                 container.replaceChildren();
+
+                if (repliesError) {
+                    const errCard = el("div", "card");
+                    errCard.style.borderColor = "#c45c5c";
+                    errCard.textContent = `⚠ crisis REPLIES failed to load (${repliesError.message}) — unreviewed crisis replies may exist that are not shown here. Fix the query/index and reload.`;
+                    container.appendChild(errCard);
+                }
 
                 if (docs.length > 0) {
                     container.appendChild(queueHeading("posts with concerning content"));
@@ -870,6 +914,12 @@
 
                 if (replyDocs.length > 0) {
                     container.appendChild(queueHeading("replies with concerning content"));
+                    if (replyMoreRemain) {
+                        const note = el("div", "card");
+                        note.style.borderColor = "#c45c5c";
+                        note.textContent = `showing ${replyDocs.length} oldest-reachable unreviewed replies (scan cap hit — clear some and reload to reveal more).`;
+                        container.appendChild(note);
+                    }
                     replyDocs.forEach(d => {
                         const r = d.data();
                         const detectedAt = r.concerningDetectedAt?.toDate?.() ?? r.createdAt?.toDate?.();
@@ -909,6 +959,9 @@
         }
 
         async function markCrisisReviewed(postId) {
+            // One-way door with no un-review anywhere in the UI: a misclick
+            // silently drops an unhandled crisis item out of the safety queue.
+            if (!confirm("mark reviewed? this removes the item from the crisis queue (no undo in this UI).")) return;
             try {
                 const uid = auth.currentUser?.uid || "";
                 await updateDoc(doc(db, "posts", postId), {
@@ -928,6 +981,7 @@
         // which drops it from the loader's unreviewed filter. Does NOT hide or
         // delete the reply — a peer reach-out stays live in its thread.
         async function markReplyCrisisReviewed(replyRef, id) {
+            if (!confirm("mark reviewed? this removes the item from the crisis queue (no undo in this UI).")) return;
             try {
                 const uid = auth.currentUser?.uid || "";
                 await updateDoc(replyRef, {
@@ -964,58 +1018,117 @@
                 const snap = await getDocs(q);
                 document.getElementById("pendingCount").textContent = snap.size;
 
+                // SLA counter over the FULL pending set, not the newest-50
+                // page: with a >50 backlog the OLDEST (most overdue) reports
+                // are exactly the ones the page excludes, so a page-local
+                // count read "0 overdue" while the promise was already
+                // broken. Aggregate count uses the same reports
+                // (status, createdAt) index as the list query.
+                try {
+                    const cutoff = new Date(Date.now() - 24 * 3600 * 1000);
+                    const overdueAgg = await getCountFromServer(query(
+                        collection(db, "reports"),
+                        where("status", "==", "pending"),
+                        where("createdAt", "<", cutoff)
+                    ));
+                    document.getElementById("overdueCount").textContent = overdueAgg.data().count;
+                } catch (aggErr) {
+                    document.getElementById("overdueCount").textContent = "?";
+                    console.warn("overdue aggregate failed:", aggErr.message);
+                }
+
                 if (snap.empty) {
-                    document.getElementById("overdueCount").textContent = 0;
                     emptyState(container, "nothing to review", "no pending reports right now");
                     return;
                 }
 
+                // Reports carry reporter-authored `text` and reporter-chosen
+                // postId/replyId/reportedUserId — none of which the create
+                // rule binds to any real document. Rendering that text as
+                // "the content" next to one-click remove/restrict let a
+                // fabricated report frame an innocent post/user. Fetch the
+                // ACTUAL reported content and act on ITS author; the
+                // reporter's text is shown clearly labeled as an unverified
+                // note.
+                const reportDocs = snap.docs;
+                const contents = await Promise.all(reportDocs.map(async (d) => {
+                    const r = d.data();
+                    try {
+                        if (r.postId && r.replyId) {
+                            const s = await getDoc(doc(db, "posts", r.postId, "replies", r.replyId));
+                            return s.exists() ? s.data() : null;
+                        }
+                        if (r.postId) {
+                            const s = await getDoc(doc(db, "posts", r.postId));
+                            return s.exists() ? s.data() : null;
+                        }
+                    } catch (e) {
+                        console.warn(`report ${d.id}: content fetch failed:`, e.message);
+                    }
+                    return null;
+                }));
+
                 container.replaceChildren();
                 container.appendChild(queueHeading("pending reports"));
-                let overdueCount = 0;
                 const now = Date.now();
                 const TWELVE_HOURS_MS = 12 * 3600 * 1000;
                 const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1000;
-                snap.forEach(d => {
+                reportDocs.forEach((d, i) => {
                     const r = d.data();
+                    const content = contents[i];
                     const reportDate = r.createdAt?.toDate?.() || null;
                     const time = reportDate ? timeAgo(reportDate) : "unknown";
                     // H-1: classify each pending report against the
                     // 24-hour review SLA the in-app ReportSheet promises.
-                    // Overdue (>24h) → red border + count badge. Aging
-                    // (>12h) → amber so the admin sees what's about to
-                    // miss SLA before it does.
+                    // Overdue (>24h) → red border + badge. Aging (>12h) →
+                    // amber so the admin sees what's about to miss SLA.
                     const ageMs = reportDate ? now - reportDate.getTime() : 0;
                     let slaClass = "";
                     let slaBadge = null;
                     if (ageMs > TWENTY_FOUR_HOURS_MS) {
                         slaClass = "overdue";
                         slaBadge = span("sla-badge sla-overdue", "overdue");
-                        overdueCount += 1;
                     } else if (ageMs > TWELVE_HOURS_MS) {
                         slaClass = "aging";
                         slaBadge = span("sla-badge sla-aging", "aging");
                     }
 
                     const reasonText = r.reasonLabel || r.reason || "";
+                    const isReplyReport = Boolean(r.postId && r.replyId);
 
                     const dismissBtn = el("button", "btn-dismiss");
                     dismissBtn.textContent = "dismiss";
                     dismissBtn.addEventListener("click", () => dismissReport(d.id));
 
+                    // Destructive actions only exist when the reported content
+                    // was actually found — and a reply report removes the
+                    // REPLY, never the parent post (r.replyId used to be
+                    // ignored entirely, so the only button on an abusive-reply
+                    // report deleted the innocent parent thread).
                     let removeBtn = null;
-                    if (r.postId) {
+                    if (content && isReplyReport) {
+                        removeBtn = el("button", "btn-remove");
+                        removeBtn.textContent = "remove reply";
+                        removeBtn.addEventListener("click", () => removeReportedReply(d.id, r.postId, r.replyId));
+                    } else if (content && r.postId) {
                         removeBtn = el("button", "btn-remove");
                         removeBtn.textContent = "remove post";
                         removeBtn.addEventListener("click", () => removePost(d.id, r.postId));
                     }
 
+                    // Restrict binds to the CONTENT's author when content was
+                    // fetched (the verified offender), never the reporter-
+                    // chosen reportedUserId. Pure user reports (no postId)
+                    // have no content doc to verify against — keep the
+                    // action but the card labels the note as unverified.
                     let restrictBtn = null;
-                    if (r.reportedUserId) {
+                    const restrictTargetId = content ? content.authorId : (r.postId ? null : r.reportedUserId);
+                    const restrictTargetHandle = content ? content.authorHandle : r.reportedHandle;
+                    if (restrictTargetId) {
                         restrictBtn = el("button", "btn-restrict");
                         restrictBtn.textContent = "restrict user";
-                        restrictBtn.setAttribute("aria-label", `restrict user ${r.reportedHandle || r.reportedUserId}`);
-                        restrictBtn.addEventListener("click", () => restrictUser(d.id, r.reportedUserId, r.reportedHandle));
+                        restrictBtn.setAttribute("aria-label", `restrict user ${restrictTargetHandle || restrictTargetId}`);
+                        restrictBtn.addEventListener("click", () => restrictUser(d.id, restrictTargetId, restrictTargetHandle));
                     }
 
                     // .slice(0,8) on the post id is a display nicety; the full
@@ -1028,19 +1141,37 @@
                         headerLeft: [typeBadge(r.type), slaBadge],
                         time,
                         reason: `reason: ${reasonText}`,
-                        text: r.text || "",
+                        text: content
+                            ? (content.text || "(no text)")
+                            : (r.postId ? "(reported content not found — it may already be deleted)" : ""),
+                        subText: r.text ? `reporter's note (unverified): ${r.text}` : null,
                         meta: [
-                            `reported: ${r.reportedHandle || "unknown"}`,
-                            r.postId ? `post: ${String(r.postId).slice(0, 8)}...` : null,
+                            content
+                                ? `author: ${content.authorHandle || "unknown"}`
+                                : `reported: ${r.reportedHandle || "unknown"} (unverified)`,
+                            r.postId ? `${isReplyReport ? "reply on post" : "post"}: ${String(r.postId).slice(0, 8)}...` : null,
                         ],
                         actions: [dismissBtn, removeBtn, restrictBtn],
                     });
                     container.appendChild(card);
                 });
-                document.getElementById("overdueCount").textContent = overdueCount;
             } catch (e) {
                 emptyState(container, "error loading reports", e.message);
             }
+        }
+
+        // Delete the actual reported REPLY and resolve its report. deleteDoc
+        // is idempotent, so an already-deleted reply still resolves cleanly.
+        async function removeReportedReply(reportId, postId, replyId) {
+            if (!confirm("delete this reply permanently?")) return;
+            try {
+                const uid = auth.currentUser.uid;
+                await deleteDoc(doc(db, "posts", postId, "replies", replyId));
+                await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "reply_deleted" });
+                document.getElementById(`report-${reportId}`)?.remove();
+                refreshCounts();
+                showToast("reply deleted, report resolved");
+            } catch (e) { showToast("error: " + e.message); }
         }
 
         // --- Flagged posts ---
@@ -1132,9 +1263,14 @@
         // No `window.X = ...` exports because we no longer use inline onclick.
         // All buttons are wired via addEventListener inside the render loops.
 
+        // NOTE: `auth.currentUser.uid` reads live INSIDE each try block — with
+        // an expired/absent session currentUser is null and the TypeError must
+        // surface as the visible error toast, not an unhandled rejection that
+        // makes the button silently do nothing.
+
         async function dismissReport(reportId) {
-            const uid = auth.currentUser.uid;
             try {
+                const uid = auth.currentUser.uid;
                 await updateDoc(doc(db, "reports", reportId), { status: "dismissed", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "dismissed" });
                 document.getElementById(`report-${reportId}`)?.remove();
                 refreshCounts();
@@ -1144,13 +1280,22 @@
 
         async function removePost(reportId, postId) {
             if (!confirm("delete this post permanently?")) return;
-            const uid = auth.currentUser.uid;
             try {
-                // Stamp the acting admin BEFORE deleting so auditPostDeletion
-                // (functions/index.js) reads deletedBy off the doc's last state
-                // and attributes the removal to this admin rather than "author".
-                await updateDoc(doc(db, "posts", postId), { deletedBy: uid, deletedAt: serverTimestamp() });
-                await deleteDoc(doc(db, "posts", postId));
+                const uid = auth.currentUser.uid;
+                try {
+                    // Stamp the acting admin BEFORE deleting so auditPostDeletion
+                    // (functions/index.js) reads deletedBy off the doc's last state
+                    // and attributes the removal to this admin rather than "author".
+                    await updateDoc(doc(db, "posts", postId), { deletedBy: uid, deletedAt: serverTimestamp() });
+                    await deleteDoc(doc(db, "posts", postId));
+                } catch (e) {
+                    // Post already gone (earlier retry got through the delete but
+                    // died before resolving the report): the stamp updateDoc
+                    // throws not-found forever, which previously left the report
+                    // permanently unresolvable via this button. Fall through and
+                    // resolve the report; anything else is a real failure.
+                    if (e.code !== "not-found") throw e;
+                }
                 await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "post_deleted" });
                 document.getElementById(`report-${reportId}`)?.remove();
                 refreshCounts();
@@ -1162,8 +1307,8 @@
             // confirm() renders the message as plain text — no XSS risk
             // even if `handle` contains markup. Same for showToast below.
             if (!confirm(`restrict ${handle || userId}? they won't be able to post.`)) return;
-            const uid = auth.currentUser.uid;
             try {
+                const uid = auth.currentUser.uid;
                 await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
                 await updateDoc(doc(db, "reports", reportId), { status: "resolved", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "user_restricted" });
                 document.getElementById(`report-${reportId}`)?.remove();
@@ -1174,8 +1319,8 @@
 
         async function restrictUserDirect(userId, handle) {
             if (!confirm(`restrict ${handle || userId}?`)) return;
-            const uid = auth.currentUser.uid;
             try {
+                const uid = auth.currentUser.uid;
                 await updateDoc(doc(db, "users", userId), { restricted: true, restrictedAt: serverTimestamp(), restrictedBy: uid });
                 refreshCounts();
                 showToast(`${handle || "user"} restricted`);
@@ -1217,7 +1362,13 @@
                 // rather than falling back to "author".
                 await updateDoc(doc(db, "posts", postId), { deletedBy: auth.currentUser.uid, deletedAt: serverTimestamp() });
                 await deleteDoc(doc(db, "posts", postId));
-                document.getElementById(`flagged-${postId}`)?.remove();
+                // deletePost is wired from the flagged, pending, AND crisis
+                // tabs, each with its own card-id prefix — removing only the
+                // flagged variant left a live-looking card (re-clickable
+                // buttons, bulk-selectable checkbox) on the other two tabs
+                // after a successful delete.
+                [`flagged-${postId}`, `pending-${postId}`, `crisis-${postId}`]
+                    .forEach(id => document.getElementById(id)?.remove());
                 refreshCounts();
                 showToast("post deleted");
             } catch (e) { showToast("error: " + e.message); }

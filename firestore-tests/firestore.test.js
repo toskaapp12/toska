@@ -112,9 +112,25 @@ beforeEach(async () => {
 });
 
 describe("baseline sanity", () => {
-  it("authenticated user can create their own user doc with valid handle", async () => {
+  it("authenticated user can create their own user doc with valid handle (batched with registry row)", async () => {
     const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
+    // 2026-07-01: signup must claim handles/{handle.lower()} in the same
+    // batch — see the "handle uniqueness registry" tests below.
+    const batch = a.batch();
+    batch.set(a.collection("users").doc("alice"), {
+      handle: "alice123",
+      followerCount: 0,
+      followingCount: 0,
+      totalLikes: 0,
+      createdAt: new Date(),
+    });
+    batch.set(a.collection("handles").doc("alice123"), { uid: "alice" });
+    await assertSucceeds(batch.commit());
+  });
+
+  it("rejects user doc create WITHOUT the registry row (pre-registry client shape)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
       a.collection("users").doc("alice").set({
         handle: "alice123",
         followerCount: 0,
@@ -136,6 +152,82 @@ describe("baseline sanity", () => {
         createdAt: new Date(),
       })
     );
+  });
+
+  // 2026-07-01: handle uniqueness registry. The authorHandle/originalHandle/
+  // fromHandle pins all verify against the caller's OWN user doc, which is
+  // meaningless if two user docs can carry the same handle — a tampered
+  // client could sign up with a verbatim copy of a victim's handle and
+  // publish under their byline. The registry (handles/{handle.lower()},
+  // claimed in the signup batch) is what makes those pins real.
+  describe("handle uniqueness registry", () => {
+    async function seedRegistryRow(handleLower, uid) {
+      await env.withSecurityRulesDisabled(async (ctx) => {
+        await ctx.firestore().collection("handles").doc(handleLower).set({ uid });
+      });
+    }
+
+    function signupBatch(db, uid, handle, registryId = null) {
+      const batch = db.batch();
+      batch.set(db.collection("users").doc(uid), {
+        handle,
+        followerCount: 0,
+        followingCount: 0,
+        totalLikes: 0,
+        createdAt: new Date(),
+      });
+      batch.set(db.collection("handles").doc(registryId ?? handle.toLowerCase()), { uid });
+      return batch;
+    }
+
+    it("DENIED: signing up with a handle already registered to another user (impersonation)", async () => {
+      await seedRegistryRow("victim_handle_42", "victim");
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(signupBatch(m, "mallory", "victim_handle_42").commit());
+    });
+
+    it("DENIED: case-variant of a taken handle maps to the same registry row", async () => {
+      await seedRegistryRow("victim_handle_42", "victim");
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(signupBatch(m, "mallory", "Victim_Handle_42").commit());
+    });
+
+    it("DENIED: registry row claiming an id that doesn't match the user doc's handle (squat)", async () => {
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(signupBatch(m, "mallory", "mallory_own_1", "someone_elses_handle").commit());
+    });
+
+    it("DENIED: registry row with uid pointing at another user", async () => {
+      const m = env.authenticatedContext("mallory").firestore();
+      const batch = m.batch();
+      batch.set(m.collection("users").doc("mallory"), {
+        handle: "mallory_own_1", followerCount: 0, followingCount: 0, totalLikes: 0, createdAt: new Date(),
+      });
+      batch.set(m.collection("handles").doc("mallory_own_1"), { uid: "victim" });
+      await assertFails(batch.commit());
+    });
+
+    it("DENIED: owner update changing handle (immutable post-create; bypasses the registry)", async () => {
+      await setUserDoc("mallory", { handle: "mallory_own_1" });
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(
+        m.collection("users").doc("mallory").update({ handle: "victim_handle_42" })
+      );
+    });
+
+    it("owner can release their own registry row; others cannot", async () => {
+      await seedRegistryRow("alice123", "alice");
+      const a = env.authenticatedContext("alice").firestore();
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(m.collection("handles").doc("alice123").delete());
+      await assertSucceeds(a.collection("handles").doc("alice123").delete());
+    });
+
+    it("registry rows are readable by any authenticated user (availability pre-check)", async () => {
+      await seedRegistryRow("alice123", "alice");
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertSucceeds(m.collection("handles").doc("alice123").get());
+    });
   });
 
   // S-1 (2026-06-16): the create path must reject a forged non-zero counter.

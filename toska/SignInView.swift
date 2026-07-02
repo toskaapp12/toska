@@ -232,6 +232,27 @@ struct SignInView: View {
                     dismiss()
                 } else {
                     errorMessage = "request timed out — please try again"
+                    // The one-shot check above still leaves a window: signIn is
+                    // not cancellation-aware and can land seconds after it. Keep
+                    // sweeping briefly and complete the sign-in if it does —
+                    // otherwise the device is authenticated while the UI shows
+                    // "timed out" and .userDidSignIn (which the caches and feed
+                    // key off) never fires until a retry or relaunch.
+                    Task { @MainActor in
+                        for _ in 0..<15 {
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                            if let uid = Auth.auth().currentUser?.uid {
+                                errorMessage = ""
+                                Telemetry.signInCompleted(method: .email)
+                                UserHandleCache.shared.startListening()
+                                NotificationCenter.default.post(
+                                    name: .userDidSignIn, object: nil, userInfo: ["uid": uid]
+                                )
+                                dismiss()
+                                return
+                            }
+                        }
+                    }
                 }
             } catch {
                 isLoading = false

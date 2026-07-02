@@ -274,6 +274,11 @@ describe("#1 crisis detection — isPostExplicitCrisis (pages admins)", () => {
     "i think about su1c1de a lot",      // 1→i inside a word
     "thinking about su!c!de tonight",   // !→i inside a word
     "i feel s u i c i d a l",           // spaced-letter evasion
+    // 2026-07-01: mixed-position ambiguous glyphs — one "1" in an i-position
+    // AND one in an l-position defeated the old uniform i-form/l-form pair.
+    "i want to k1ll myse1f",
+    "im su1cida1",
+    "im ѕuicidal",                      // Cyrillic ѕ (U+0455) confusable
   ];
   mustPage.forEach((t) => it(`flags: ${JSON.stringify(t)}`, () => {
     assert.strictEqual(isPostExplicitCrisis(t), true);
@@ -320,6 +325,13 @@ describe("#1 abuse mapping — computePostFlagReason", () => {
     ["buy bitcoin now, limited time","spam_or_commercial"],
     ["my number is 5551234567",      "personal_information"],
     ["i miss the way things were between us", null],
+    // 2026-07-01: the MOD_THREAT narrowing to single fixed strings dropped
+    // determiner/possessive phrasings — these published live with no hold.
+    ["im going to burn down your house", "targeted_threat"],
+    ["ill shoot up her school",          "targeted_threat"],
+    // ...while the venting false-positives the narrowing targeted must stay null
+    ["my whole life is burning down",    null],
+    ["i always blow up at him",          null],
   ];
   cases.forEach(([t, reason]) => it(`${JSON.stringify(t)} → ${reason}`, () => {
     assert.strictEqual(computePostFlagReason(t), reason);
@@ -359,6 +371,11 @@ describe("#1 abuse mapping — computeReplyFlagReason (post/reply asymmetry sour
   it("clean reply → null", () => {
     assert.strictEqual(computeReplyFlagReason("i'm so sorry you're going through this"), null);
   });
+  it("threat+harassment text → same (more severe) category as posts", () => {
+    const t = "kys, i will kill you";
+    assert.strictEqual(computeReplyFlagReason(t), "targeted_threat");
+    assert.strictEqual(computeReplyFlagReason(t), computePostFlagReason(t));
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────
@@ -366,6 +383,60 @@ describe("#1 abuse mapping — computeReplyFlagReason (post/reply asymmetry sour
 // v2 functions expose .run(cloudEvent); we pass { id, data: <snapshot>, params }.
 // ─────────────────────────────────────────────────────────────────────
 async function snapOf(path) { return db.doc(path).get(); }
+
+// 2026-07-01: crisis text introduced by EDIT. Soft-concerning phrases are used
+// so the explicit-crisis paging branch (FCM, unmockable here) stays cold —
+// the durable-queue writes are the behavior under test.
+describe("crisis on edit — onPostUpdated / onReplyUpdated", () => {
+  const change = (b, a) => ({ before: { data: () => b }, after: { data: () => a } });
+
+  it("post edit with new crisis text clears crisisReviewedAt (resurfaces in queue)", async () => {
+    await db.doc("posts/pce").set({
+      authorId: "u", text: "i cant go on anymore", moderationStatus: "live",
+      concerningContent: true, crisisReviewedAt: new Date(),
+    });
+    await fns.onPostUpdated.run({
+      id: "ce1",
+      data: change(
+        { text: "old reviewed text" },
+        (await snapOf("posts/pce")).data()
+      ),
+      params: { postId: "pce" },
+    });
+    const snap = await db.doc("posts/pce").get();
+    assert.strictEqual(snap.get("concerningContent"), true);
+    assert.strictEqual(snap.get("crisisReviewedAt"), undefined,
+      "reviewed stamp covers the OLD text; new crisis text must re-enter the unreviewed queue");
+  });
+
+  it("reply edited into crisis text gets concerningContent + reviewed stamp cleared", async () => {
+    await db.doc("posts/pce/replies/rce").set({
+      authorId: "u", text: "i cant do this anymore", moderationStatus: "live",
+      crisisReviewedAt: new Date(),
+    });
+    await fns.onReplyUpdated.run({
+      id: "ce2",
+      data: change(
+        { text: "totally fine reply" },
+        (await snapOf("posts/pce/replies/rce")).data()
+      ),
+      params: { postId: "pce", replyId: "rce" },
+    });
+    const snap = await db.doc("posts/pce/replies/rce").get();
+    assert.strictEqual(snap.get("concerningContent"), true);
+    assert.ok(snap.get("concerningDetectedAt"));
+    assert.strictEqual(snap.get("crisisReviewedAt"), undefined);
+  });
+
+  it("reply edit on a deleted reply is a no-op (no ghost doc)", async () => {
+    await fns.onReplyUpdated.run({
+      id: "ce3",
+      data: change({ text: "old" }, { text: "i cant go on anymore" }),
+      params: { postId: "pce", replyId: "ghost-edit" },
+    });
+    assert.strictEqual((await db.doc("posts/pce/replies/ghost-edit").get()).exists, false);
+  });
+});
 
 describe("#2 trigger orchestration — validateReply (M-1)", () => {
   it("clean reply → promoted to live", async () => {

@@ -716,7 +716,10 @@ struct ProfileView: View {
             // Auth recheck after the await — sign-out/sign-in race protection.
             guard Auth.auth().currentUser?.uid == uid else { return }
             let postIds = savedSnap.documents.map { $0.documentID }
-            guard !postIds.isEmpty else { return }
+            // Clear, don't early-return: after the last save is removed, an
+            // empty reverse index must empty the tab (mirrors loadLikedPosts;
+            // returning left the unsaved post rendered until remount).
+            guard !postIds.isEmpty else { savedPosts = []; return }
             let chunks = stride(from: 0, to: postIds.count, by: 30).map { Array(postIds[$0..<min($0 + 30, postIds.count)]) }
             var allResults: [SavedPost] = []
             await withTaskGroup(of: (found: [SavedPost], requested: [String], ok: Bool).self) { group in
@@ -724,12 +727,18 @@ struct ProfileView: View {
                     group.addTask {
                         guard let postSnap = try? await db.collection("posts")
                             .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else { return (found: [], requested: chunk, ok: false) }
+                            .getDocumentsAsync() else {
+                            // One moderation-held post permission-denies the
+                            // ENTIRE `in` chunk — without a fallback, up to 29
+                            // valid saves vanished from the tab for as long as
+                            // that one post stayed held. Per-doc reads let the
+                            // held post fail alone. ok:false still skips the
+                            // reverse-index cleanup: a denied doc is a HELD
+                            // post, not a deleted one.
+                            return (found: await fetchProfilePostsIndividually(db: db, ids: chunk), requested: chunk, ok: false)
+                        }
                         let results: [SavedPost] = postSnap.documents.compactMap { doc in
-                            let data = doc.data()
-                            guard data["text"] != nil else { return nil }
-                            let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                            return SavedPost(id: doc.documentID, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
+                            profileSavedPost(id: doc.documentID, data: doc.data())
                         }
                         return (found: results, requested: chunk, ok: true)
                     }
@@ -970,12 +979,14 @@ struct ProfileView: View {
                     group.addTask {
                         guard let postSnap = try? await db.collection("posts")
                             .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else { return (found: [], requested: chunk, ok: false) }
+                            .getDocumentsAsync() else {
+                            // Same held-post chunk-denial fallback as
+                            // loadSavedPosts — render the valid likes, skip
+                            // cleanup (ok:false).
+                            return (found: await fetchProfilePostsIndividually(db: db, ids: chunk), requested: chunk, ok: false)
+                        }
                         let results: [SavedPost] = postSnap.documents.compactMap { doc in
-                            let data = doc.data()
-                            guard data["text"] != nil else { return nil }
-                            let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                            return SavedPost(id: doc.documentID, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
+                            profileSavedPost(id: doc.documentID, data: doc.data())
                         }
                         return (found: results, requested: chunk, ok: true)
                     }
@@ -1862,6 +1873,28 @@ struct PendingReviewBanner: View {
     }
 }
 
+// Shared row-mapper for the saved/liked loaders (both the chunk query and the
+// per-doc fallback build the same SavedPost shape).
+fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost? {
+    guard data["text"] != nil else { return nil }
+    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+    return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
+}
+
+// Per-doc fallback for a permission-denied `in` chunk: a single held post
+// fails alone (its read rule checks resource data), valid posts still load.
+// Deleted posts read as exists == false (the posts read rule allows
+// resource == null) and are skipped — but cleanup is the caller's call.
+fileprivate func fetchProfilePostsIndividually(db: Firestore, ids: [String]) async -> [SavedPost] {
+    var results: [SavedPost] = []
+    for id in ids {
+        guard let doc = try? await db.collection("posts").document(id).getDocument(),
+              doc.exists, let data = doc.data() else { continue }
+        if let post = profileSavedPost(id: id, data: data) { results.append(post) }
+    }
+    return results
+}
+
 // Maps the server-side pendingReason taxonomy onto short author-facing
 // labels. Stays generic enough not to give an evasion-tuner a precise
 // "this exact word tripped it" signal — the reason hints at the
@@ -1877,6 +1910,7 @@ func pendingReasonLabelFor(_ reason: String?) -> String? {
     case "abuse_link":       return "contains a link — held for review"
     case "abuse_spam":       return "flagged as possible spam"
     case "user_reports":     return "multiple reports — held for review"
+    case "rate_limit":       return "posting too fast — held for review"
     case nil:                return nil
     default:                 return "held for review"
     }

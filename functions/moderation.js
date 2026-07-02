@@ -285,9 +285,14 @@ const NAME_CONFUSABLE_MAP = {
   // Cyrillic uppercase
   "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
   "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "І": "I", "Ј": "J",
-  // Cyrillic lowercase
+  "Ѕ": "S", "Ԁ": "D", "Һ": "H",
+  // Cyrillic lowercase (ѕ U+0455 is the perfect "s" lookalike — its absence
+  // let a single substituted letter defeat the whole crisis/threat matcher)
   "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "o",
   "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "і": "i", "ј": "j",
+  "ѕ": "s", "ԁ": "d", "һ": "h",
+  // Latin script g (U+0261), the standard "g" confusable outside Cyrillic
+  "ɡ": "g",
   // Greek uppercase
   "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
   "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",

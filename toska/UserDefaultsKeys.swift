@@ -29,6 +29,13 @@ enum UserDefaultsKeys {
     // on the same device gets their own primer.
     static let pushPrimerShown = "toska_pushPrimerShown"
 
+    // Whether the previous run ended signed-in. Lets the auth-state
+    // listener's INITIAL callback tell "ordinary signed-out launch" (no
+    // scrub — running it rotated the FCM token on every cold start) apart
+    // from "session invalidated while the app wasn't running" (per-user
+    // state from the last account still on disk — scrub needed).
+    static let wasSignedInAtLastRun = "toska_wasSignedInAtLastRun"
+
     // Analytics opt-out. Default true; flipped off via Settings → Privacy.
     // Read by the Telemetry namespace (non-View context) and written by
     // SettingsView via @AppStorage — same key string must match on both sides.

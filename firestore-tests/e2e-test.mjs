@@ -35,12 +35,13 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, connectAuthEmulator } from "firebase/auth";
 import {
   getFirestore,
   doc,
   setDoc,
   serverTimestamp,
+  connectFirestoreEmulator,
 } from "firebase/firestore";
 
 const PROJECT_ID = "toskastaging";
@@ -91,6 +92,18 @@ const webApp = initializeApp({
 });
 const webAuth = getAuth(webApp);
 const webDb = getFirestore(webApp);
+
+// The modular web SDK does NOT auto-read FIREBASE_AUTH_EMULATOR_HOST /
+// FIRESTORE_EMULATOR_HOST (only firebase-admin does) — without these explicit
+// connects the client hits REAL Firebase under `emulators:exec`. Mirrors
+// concurrency-test.mjs. No-op when the env vars are absent (live-staging run).
+if (process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+  connectAuthEmulator(webAuth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
+}
+if (process.env.FIRESTORE_EMULATOR_HOST) {
+  const [h, p] = process.env.FIRESTORE_EMULATOR_HOST.split(":");
+  connectFirestoreEmulator(webDb, h, Number(p));
+}
 
 let testUid = null;
 let scratchPostId = null;

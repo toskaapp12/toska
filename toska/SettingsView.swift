@@ -1171,7 +1171,9 @@ struct ChangeEmailView: View {
                     if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
                         showReauthAlert = true
                     } else {
-                        message = error.localizedDescription
+                        // Lowercase-voice prefix; Firebase's message capitalizes
+                        // and reads technical on its own.
+                        message = "couldn't update email — \(error.localizedDescription)"
                         isError = true
                     }
                 } else {
@@ -1308,7 +1310,9 @@ struct ChangePasswordView: View {
                     if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
                         showReauthAlert = true
                     } else {
-                        message = error.localizedDescription
+                        // Lowercase-voice prefix; Firebase's message capitalizes
+                        // and reads technical on its own.
+                        message = "couldn't change password — \(error.localizedDescription)"
                         isError = true
                     }
                 } else {

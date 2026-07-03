@@ -388,19 +388,20 @@ struct PostDetailView: View {
                     Menu {
                         if isOwnPost {
                             Button {
-                                // postText can still be empty on the push/deep-link
-                                // path (init seeds text:"" and the live listener
-                                // hasn't delivered yet — authorUserId arrives via a
-                                // separate fetch, so the menu can unlock first).
-                                // Editing from an empty buffer would let a save
-                                // replace the whole post with the typed fragment;
-                                // posts are never legitimately empty (rules: size>0).
-                                guard !postText.isEmpty else { return }
                                 editText = postText
                                 showEditSheet = true
                             } label: {
                                 Label("edit post", systemImage: "pencil")
                             }
+                            // postText can still be empty on the push/deep-link
+                            // path (init seeds text:"" and the live listener
+                            // hasn't delivered yet — authorUserId arrives via a
+                            // separate fetch, so the menu can unlock first).
+                            // Editing from an empty buffer would let a save
+                            // replace the whole post with the typed fragment;
+                            // posts are never legitimately empty (rules: size>0).
+                            // Disabled (not a silent no-op) until the text lands.
+                            .disabled(postText.isEmpty)
                             Button(role: .destructive) {
                                 showDeleteAlert = true
                             } label: {

@@ -288,24 +288,36 @@ final class WalkthroughUITests: XCTestCase {
     }
 
     // Reproduce the repost bug against staging: tap repost, confirm it STICKS
-    // (button stays "Already reposted") rather than reverting (green→grey).
+    // (button flips to "Undo repost") rather than reverting (green→grey).
+    // NOTE: repost-attribution cards carry a DISABLED icon that is ALSO
+    // labelled "Repost" (value "N reposts"), and .firstMatch happily returns
+    // it — scope every query to enabled == true so we only touch live controls.
     func test05z_repost() throws {
         try requireFeed()
-        let repost = app.buttons["Repost"].firstMatch
-        XCTAssertTrue(waitFor(repost, 10), "No un-reposted post found (all already reposted?)")
+        let enabledRepost = app.buttons.matching(
+            NSPredicate(format: "label == 'Repost' AND enabled == true")).firstMatch
+        let enabledUndo = app.buttons.matching(
+            NSPredicate(format: "label == 'Undo repost' AND enabled == true")).firstMatch
+        // Already-reposted rows show "Undo repost" — reset any visible ones
+        // first, so the post-tap assertion below can only be satisfied by OUR
+        // repost sticking, not by leftover state from a previous run.
+        for _ in 0..<3 where enabledUndo.exists {
+            forceTap(enabledUndo)
+            sleep(3) // let the un-repost transaction settle
+        }
+        XCTAssertTrue(waitFor(enabledRepost, 10), "No enabled un-reposted post found in feed")
         snap("05z1-before-repost")
         // forceTap: the repost glyph sits under the floating glass tab bar, so a
         // plain .tap() fails XCUITest's hittability check (not a repost bug).
-        forceTap(repost)
+        forceTap(enabledRepost)
         sleep(1)
-        snap("05z2-just-after-tap")   // should be green / "Already reposted"
+        snap("05z2-just-after-tap")   // should be green / "Undo repost"
         sleep(5)                      // let transaction + validatePost settle
         snap("05z3-after-settle")
         // If the write was denied, the button reverts to "Repost".
-        let stuck = app.buttons["Already reposted"].firstMatch.exists
-        let reverted = app.buttons["Repost"].firstMatch.exists
-        print("🔁 REPOST RESULT — stuck(Already reposted)=\(stuck)  reverted(Repost)=\(reverted)")
-        XCTAssertTrue(stuck, "Repost did NOT stick — reverted to 'Repost' (green→grey reproduced)")
+        let stuck = enabledUndo.exists
+        print("🔁 REPOST RESULT — stuck(Undo repost)=\(stuck)")
+        XCTAssertTrue(stuck, "Repost did NOT stick — no enabled 'Undo repost' after settle (green→grey reproduced)")
     }
 
     func test05_postDetailInteractions() throws {
@@ -418,10 +430,15 @@ final class WalkthroughUITests: XCTestCase {
         app.swipeUp(); app.swipeUp()
         snap("09c-settings-bottom")
         XCTAssertTrue(waitFor(app.staticTexts["why this exists"], 3) || true)
-        // back out without touching sign out / delete (custom header — edge swipe)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
-        app.buttons["Home"].tap()
+        // back out without touching sign out / delete. Settings hides the
+        // floating tab bar entirely (by design), so no "Home" element exists
+        // here — leave via the header's Back chevron first.
+        let back = app.buttons["Back"]
+        XCTAssertTrue(waitFor(back, 5), "Back chevron missing on settings header")
+        forceTap(back)
+        let home = app.buttons["Home"]
+        XCTAssertTrue(waitFor(home, 8), "Home tab didn't reappear after leaving settings")
+        home.tap()
     }
 
     // MARK: 10 — compose & post (clean content, real moderation round-trip)
@@ -518,7 +535,16 @@ final class WalkthroughUITests: XCTestCase {
         let share = app.buttons["Share post"].firstMatch
         XCTAssertTrue(waitFor(share, 12), "Share button not found on profile")
         forceTap(share)
-        _ = waitFor(app.staticTexts["share this"], 8)
+        // The screenshot only guards the card if the sheet is actually up —
+        // forceTap's coordinate fallback can land on the row and push post
+        // DETAIL instead. Recover via the detail's own share button, then
+        // hard-require the card before snapping.
+        if !waitFor(app.staticTexts["share this"], 8) {
+            let detailShare = app.buttons["Share post"].firstMatch
+            XCTAssertTrue(waitFor(detailShare, 5), "Share sheet didn't present and no recovery share button found")
+            forceTap(detailShare)
+        }
+        XCTAssertTrue(waitFor(app.staticTexts["share this"], 8), "Share card never presented — nothing to screenshot")
         sleep(1)
         snap("13b-long-share-card")   // inspect: the full message must be visible, not clipped
         app.swipeDown(velocity: .fast)
@@ -529,10 +555,21 @@ final class WalkthroughUITests: XCTestCase {
 
     func test14_reportSheet() throws {
         try requireFeed()
-        // Each row has a "More options for <handle>'s post" ellipsis menu.
-        let more = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'More options'")).firstMatch
-        XCTAssertTrue(waitFor(more, 10), "More-options button not found on feed row")
+        // The ••• menu lives on the post DETAIL header, not on feed rows —
+        // open a post first (mirrors test05_postDetailInteractions).
+        let firstPost = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'first light, honestly'")).firstMatch
+        XCTAssertTrue(waitFor(firstPost, 10), "No post row found in feed")
+        forceTap(firstPost)
+        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open (header 'post' missing)")
+        sleep(1)
+        snap("14a-post-detail")
+        // PostDetailView's header ellipsis exposes "Report or block" on others'
+        // posts and "Edit or delete post" on our own (it also starts at opacity
+        // 0 while the author id loads — hence the generous wait).
+        let more = app.buttons.matching(NSPredicate(
+            format: "label == 'Report or block' OR label == 'Edit or delete post'")).firstMatch
+        XCTAssertTrue(waitFor(more, 10), "Detail-header ••• menu not found")
         forceTap(more)
         let report = app.buttons["report"]
         if waitFor(report, 5) {
@@ -545,7 +582,7 @@ final class WalkthroughUITests: XCTestCase {
         } else {
             snap("14-more-menu")
             app.tap()
-            throw XCTSkip("report not in the ••• menu on this surface")
+            throw XCTSkip("report not in the ••• menu (own post — menu shows edit/delete instead)")
         }
     }
 

@@ -197,10 +197,17 @@ struct ComposeView: View {
 
             VStack(spacing: 0) {
                 // MARK: - Top bar
+                // lineLimit(1) + minimumScaleFactor on the chrome labels: at
+                // accessibility Dynamic Type sizes the scaled 15pt sans wraps
+                // mid-word ("cance/l", "pos/t" inside the capsule). Content
+                // scales freely; fixed chrome shrinks-to-fit instead (HIG-
+                // sanctioned for controls).
                 HStack(spacing: 8) {
                     Button { dismiss() } label: {
                         Text("cancel")
                             .font(ToskaFont.sans(15))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
                             .foregroundColor(LateNightTheme.secondaryText)
                     }
 
@@ -214,6 +221,8 @@ struct ComposeView: View {
                     Button { saveAsDraft() } label: {
                         Text(editingDraftId == nil ? "save draft" : "update")
                             .font(ToskaFont.sans(15, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
                             .foregroundColor(canSave ? ToskaColor.accent : ToskaColor.text3)
                     }
                     .disabled(!canSave)
@@ -222,6 +231,8 @@ struct ComposeView: View {
                     Button { attemptPost() } label: {
                         Text(isPosting ? "posting..." : "post")
                             .font(ToskaFont.sans(15, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
                             .foregroundColor(canPost ? .white : ToskaColor.text2)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 8)
@@ -467,8 +478,18 @@ struct ComposeView: View {
                                                 : ToskaColor.text3)
                                     )
                                     .monospacedDigit()
+                                    // Backing chip: the counter floats over the
+                                    // editor's top-right, and a long first line
+                                    // (any size — glaring at accessibility type
+                                    // sizes) runs beneath it into an unreadable
+                                    // collision. The chip keeps the count legible;
+                                    // hit testing stays off so the text underneath
+                                    // remains editable.
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(LateNightTheme.feedBackground.opacity(0.92)))
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 12)
                             .padding(.top, 12)
                             .allowsHitTesting(false)
                         }
@@ -630,7 +651,9 @@ struct ComposeView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color.toskaBlue)
+                            // Accent fill, not toskaBlue — the muted slate grey
+                            // reads as a DISABLED button on a primary CTA.
+                            .background(ToskaColor.accent)
                             .cornerRadius(12)
                         }
                         // Lower-severity categories offer "post anyway" → the post
@@ -699,7 +722,9 @@ struct ComposeView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color.toskaBlue)
+                            // Accent fill, not toskaBlue — the muted slate grey
+                            // reads as a DISABLED button on a primary CTA.
+                            .background(ToskaColor.accent)
                             .cornerRadius(12)
                         }
 

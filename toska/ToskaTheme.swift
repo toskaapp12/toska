@@ -287,6 +287,11 @@ struct ToskaHeader<Trailing: View>: View {
             }
             Text(title)
                 .toskaScreenTitle()
+                // Screen titles are single words ("post", "settings"); at
+                // accessibility type sizes the scaled serif wraps mid-word.
+                // Shrink-to-fit is HIG-sanctioned for chrome.
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             trailing()
@@ -864,13 +869,23 @@ struct CrisisCheckInView: View {
                         onProceed()
                         isPresented = false
                     } label: {
+                        // Deliberately NOT the accent-filled primary treatment
+                        // used elsewhere: the crisis resources above must stay
+                        // the visual priority on this sheet, and "share it"
+                        // must never be its loudest element. Accent text + a
+                        // visible accent stroke over a quiet tint keeps it
+                        // clearly tappable without competing with the hotlines.
                         Text(proceedLabel)
                             .font(ToskaFont.sans(13, weight: .medium))
-                            .foregroundColor(.white)
+                            .foregroundColor(ToskaColor.accent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
-                            .background(Color.toskaBlue)
+                            .background(ToskaColor.accent.opacity(0.06))
                             .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(ToskaColor.accent.opacity(0.5), lineWidth: 1)
+                            )
                     }
 
                     Button {

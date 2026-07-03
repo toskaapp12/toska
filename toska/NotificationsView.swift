@@ -807,7 +807,9 @@ struct NotificationsView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
-                            .background(Color.toskaBlue)
+                            // Accent fill, not toskaBlue — the muted slate grey
+                            // reads as a DISABLED button on a primary CTA.
+                            .background(ToskaColor.accent)
                             .cornerRadius(12)
                     }
 

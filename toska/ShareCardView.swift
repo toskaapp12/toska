@@ -189,36 +189,6 @@ struct ShareCardView: View {
                         }
                         .padding(.horizontal, 20)
 
-                        // MARK: - Share Buttons
-                        // Solid, vibrant, recognizable destination buttons — the
-                        // whole point of this screen is getting cards OUT into the
-                        // world, so the share row is the loudest thing here.
-                        // Instagram Stories (the biggest driver) gets the real IG
-                        // gradient; the rest use their platform colors.
-                        // Just two destinations: Save to Photos, or Share via the
-                        // iOS system sheet — which already lists whatever the user
-                        // has installed (Instagram, TikTok, X, Messages, …). No
-                        // app-specific buttons or Facebook App ID; we hand the
-                        // image to the OS and let the user pick.
-                        HStack(spacing: 12) {
-                            sharePill(name: "Save", icon: "arrow.down.to.line",
-                                      colors: [Color.toskaAccentGold, Color(hex: "b8893f")]) {
-                                saveToPhotos()
-                            }
-                            sharePill(name: "Share", icon: "square.and.arrow.up",
-                                      colors: [Color.toskaMidnightPurple, Color(hex: "6E5FB0")]) {
-                                shareImage()
-                            }
-                        }
-                        .disabled(isRendering)
-                        .opacity(isRendering ? 0.5 : 1)
-                        .overlay(alignment: .center) {
-                            if isRendering {
-                                ProgressView().tint(Color(hex: "1a1720").opacity(0.6))
-                            }
-                        }
-                        .padding(.horizontal, 16)
-
                         // MARK: - Copy Text
                         Button {
                             // N-6 (2026-06-09 re-review): grief text copied to the
@@ -255,6 +225,51 @@ struct ShareCardView: View {
                         .padding(.horizontal, 24)
 
                         Color.clear.frame(height: 30)
+                    }
+                }
+                // MARK: - Share Buttons
+                // Solid, vibrant, recognizable destination buttons — the
+                // whole point of this screen is getting cards OUT into the
+                // world, so the share row is the loudest thing here.
+                // Just two destinations: Save to Photos, or Share via the
+                // iOS system sheet — which already lists whatever the user
+                // has installed (Instagram, TikTok, X, Messages, …). No
+                // app-specific buttons or Facebook App ID; we hand the
+                // image to the OS and let the user pick.
+                // These live OUTSIDE the scroll content: the card preview +
+                // controls run past the fold on most screens, so pills placed
+                // inside the ScrollView sit below the screen edge and get
+                // clipped. Anchoring them as a safe-area inset keeps the
+                // primary actions fully visible at every scroll position.
+                .safeAreaInset(edge: .bottom) {
+                    HStack(spacing: 12) {
+                        sharePill(name: "save", icon: "arrow.down.to.line",
+                                  colors: [Color.toskaAccentGold, Color(hex: "b8893f")]) {
+                            saveToPhotos()
+                        }
+                        .accessibilityLabel("Save to Photos")
+                        sharePill(name: "share", icon: "square.and.arrow.up",
+                                  colors: [Color.toskaMidnightPurple, Color(hex: "6E5FB0")]) {
+                            shareImage()
+                        }
+                        .accessibilityLabel("Share")
+                    }
+                    .disabled(isRendering)
+                    .opacity(isRendering ? 0.5 : 1)
+                    .overlay(alignment: .center) {
+                        if isRendering {
+                            ProgressView().tint(Color(hex: "1a1720").opacity(0.6))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+                    // Opaque bar ground (same fixed sheet surface) extended under
+                    // the home indicator so scrolled content can't show through
+                    // beneath the pills; hairline mirrors the header divider.
+                    .background(Color(hex: "F4F2F6").ignoresSafeArea(edges: .bottom))
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(Color.black.opacity(0.05)).frame(height: 0.5)
                     }
                 }
             }

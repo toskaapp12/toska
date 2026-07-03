@@ -22,7 +22,9 @@ if echo "$staged" | grep -q '^functions/.*\.js$'; then
 fi
 
 # Moderation pins — run when EITHER side of a hand-synced detector changes.
-if echo "$staged" | grep -qE 'functions/moderation(Logic)?\.js|toska/ContentModeration\.swift|firestore-tests/moderation-corpus\.mjs'; then
+# index.js is included because the crisis lists (crisis-parity's server side)
+# live there — without it a crisis-list edit commits unchecked.
+if echo "$staged" | grep -qE 'functions/(index|moderation(Logic)?)\.js|toska/ContentModeration\.swift|firestore-tests/moderation-corpus\.mjs'; then
   echo "pre-commit: moderation changed — running pins…"
   ( cd "$repo_root/firestore-tests" && node moderation-corpus.mjs && node crisis-parity.mjs )
   # Client/server detector parity compiles the Swift, so it needs swiftc (macOS).

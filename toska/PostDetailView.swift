@@ -388,6 +388,14 @@ struct PostDetailView: View {
                     Menu {
                         if isOwnPost {
                             Button {
+                                // postText can still be empty on the push/deep-link
+                                // path (init seeds text:"" and the live listener
+                                // hasn't delivered yet — authorUserId arrives via a
+                                // separate fetch, so the menu can unlock first).
+                                // Editing from an empty buffer would let a save
+                                // replace the whole post with the typed fragment;
+                                // posts are never legitimately empty (rules: size>0).
+                                guard !postText.isEmpty else { return }
                                 editText = postText
                                 showEditSheet = true
                             } label: {
@@ -1815,7 +1823,12 @@ struct EditPostView: View {
     @State private var isSaving = false
     @State private var saveError = ""
 
-    private var charLimit: Int { isLetter ? 2000 : 500 }
+    // isLetter can lag behind truth: unseeded call sites (profile, notifications,
+    // top, push deep-link) resolve it via an async fetch, and a failed fetch
+    // leaves it false forever. Floor the limit at the existing text length so an
+    // edit begun before it resolves can never truncate a 2000-char letter to 500
+    // — the server rule enforces the real cap on save regardless.
+    private var charLimit: Int { max(isLetter ? 2000 : 500, currentText.utf16.count) }
 
     var body: some View {
         ZStack {

@@ -3822,9 +3822,14 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
 // CORRECT counter, so a human reviews the report first. replyCount/totalLikes/
 // tagCounts need bespoke recompute (the replyCount gate excludes pending_review
 // and legacy docs) and are intentionally out of this v1.
-exports.detectCounterDrift = onSchedule("every 24 hours", async () => {
+// timeoutSeconds: up to ~600 sequential count() round-trips; the default 60s
+// can be exceeded on a slow day, silently killing the scan.
+exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeconds: 540}, async () => {
   const SAMPLE = 300;
   const MAX_REPORTED = 100;
+  // Skip posts younger than this: a like/repost landing mid-scan (subcollection
+  // written, trigger not yet fired) reads as one-off phantom drift.
+  const FRESH_MS = 10 * 60 * 1000;
   const snap = await db.collection("posts")
     .orderBy("createdAt", "desc")
     .limit(SAMPLE)
@@ -3834,6 +3839,7 @@ exports.detectCounterDrift = onSchedule("every 24 hours", async () => {
   for (const postDoc of snap.docs) {
     const data = postDoc.data();
     if (data.isRepost === true) continue; // reposts don't own like/repost counts
+    if (data.createdAt?.toMillis && Date.now() - data.createdAt.toMillis() < FRESH_MS) continue;
     const id = postDoc.id;
     try {
       const likeAgg = await postDoc.ref.collection("likes").count().get();
@@ -3864,15 +3870,17 @@ exports.detectCounterDrift = onSchedule("every 24 hours", async () => {
     console.error(
       `detectCounterDrift: ${drifts.length} post(s) with drifted like/repost ` +
       `counts (of ${snap.size} sampled). See system/counterDriftReport.`);
-    await db.collection("system").doc("counterDriftReport").set({
-      generatedAt: FieldValue.serverTimestamp(),
-      sampled: snap.size,
-      driftCount: drifts.length,
-      drifts: drifts.slice(0, MAX_REPORTED),
-    });
   } else {
     console.log(`detectCounterDrift: no like/repost drift in ${snap.size} sampled posts.`);
   }
+  // Written on clean runs too — otherwise one bad day's report lingers forever
+  // and reads as current drift.
+  await db.collection("system").doc("counterDriftReport").set({
+    generatedAt: FieldValue.serverTimestamp(),
+    sampled: snap.size,
+    driftCount: drifts.length,
+    drifts: drifts.slice(0, MAX_REPORTED),
+  });
 });
 
 // ============================================================

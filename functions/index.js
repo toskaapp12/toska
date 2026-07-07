@@ -3870,17 +3870,26 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
     console.error(
       `detectCounterDrift: ${drifts.length} post(s) with drifted like/repost ` +
       `counts (of ${snap.size} sampled). See system/counterDriftReport.`);
+    // Full report ONLY when drift is found: a clean run must not clobber
+    // `drifts` — the sample is the newest 300 posts, so day-N drift slides
+    // out of the window and a clean day-N+1 write would zero the unreviewed
+    // evidence a human still needs to act on.
+    await db.collection("system").doc("counterDriftReport").set({
+      generatedAt: FieldValue.serverTimestamp(),
+      sampled: snap.size,
+      driftCount: drifts.length,
+      drifts: drifts.slice(0, MAX_REPORTED),
+    }, { merge: true });
   } else {
     console.log(`detectCounterDrift: no like/repost drift in ${snap.size} sampled posts.`);
+    // Freshness stamp on clean runs (merge — preserves any prior drift
+    // evidence) so a stale report is distinguishable from current drift:
+    // lastCleanRunAt > generatedAt ⇒ the listed drift predates a clean scan.
+    await db.collection("system").doc("counterDriftReport").set({
+      lastCleanRunAt: FieldValue.serverTimestamp(),
+      lastCleanSampled: snap.size,
+    }, { merge: true });
   }
-  // Written on clean runs too — otherwise one bad day's report lingers forever
-  // and reads as current drift.
-  await db.collection("system").doc("counterDriftReport").set({
-    generatedAt: FieldValue.serverTimestamp(),
-    sampled: snap.size,
-    driftCount: drifts.length,
-    drifts: drifts.slice(0, MAX_REPORTED),
-  });
 });
 
 // ============================================================

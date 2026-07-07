@@ -274,7 +274,7 @@ struct SettingsView: View {
                                                             exportData()
                                                         }
                                                     }
-                                                    .background(Color.white)
+                                                    .background(LateNightTheme.cardBackground)
                                                     .cornerRadius(12)
                                                 }
 
@@ -316,7 +316,7 @@ struct SettingsView: View {
                                                             actionRow("add a backup sign-in", icon: "key.fill", iconColor: Color.toskaBlue) { showLinkBackup = true }
                                                         }
                                                     }
-                                                    .background(Color.white)
+                                                    .background(LateNightTheme.cardBackground)
                                                     .cornerRadius(12)
                                                     if Auth.auth().currentUser?.providerData.count == 1 {
                                                         Text("if you lose access to your only sign-in method, you can't get back in. add a backup so you always have a way home.")
@@ -582,7 +582,7 @@ struct SettingsView: View {
         HStack {
             Text(title)
                 .font(ToskaFont.sans(13))
-                .foregroundColor(Color(hex: "555555"))
+                .foregroundColor(ToskaColor.text2)
             Spacer()
             Toggle("", isOn: isOn)
                 .labelsHidden()
@@ -1119,7 +1119,7 @@ struct ChangeEmailView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .padding(12)
-                        .background(Color.white)
+                        .background(LateNightTheme.cardBackground)
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.toskaBorderLight, lineWidth: 0.5))
                     
@@ -1237,7 +1237,7 @@ struct ChangePasswordView: View {
                     SecureField("at least 8 characters", text: $newPassword)
                         .font(ToskaFont.sans(13))
                         .padding(12)
-                        .background(Color.white)
+                        .background(LateNightTheme.cardBackground)
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.toskaBorderLight, lineWidth: 0.5))
                         // `.newPassword` enables Keychain strong-password suggestions and
@@ -1253,7 +1253,7 @@ struct ChangePasswordView: View {
                     SecureField("type it again", text: $confirmPassword)
                         .font(ToskaFont.sans(13))
                         .padding(12)
-                        .background(Color.white)
+                        .background(LateNightTheme.cardBackground)
                         .cornerRadius(10)
                         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.toskaBorderLight, lineWidth: 0.5))
                         .textContentType(.newPassword)
@@ -1419,7 +1419,7 @@ struct BlockedUsersListView: View {
                                 Divider().padding(.leading, 68)
                             }
                         }
-                        .background(Color.white)
+                        .background(LateNightTheme.cardBackground)
                         .cornerRadius(12)
                         .padding(.horizontal, 16)
                         .padding(.top, 16)
@@ -1607,7 +1607,7 @@ struct LinkBackupAuthView: View {
                 .padding(.bottom, 24)
             }
         }
-        .background(Color.white.ignoresSafeArea())
+        .background(LateNightTheme.feedBackground.ignoresSafeArea())
     }
 
     private var canSubmit: Bool {

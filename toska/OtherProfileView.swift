@@ -174,7 +174,7 @@ struct OtherProfileView: View {
                                         .foregroundColor(Color.toskaBlue.opacity(0.4))
                                         .padding(.bottom, 4)
                                     Text("nothing here yet")
-                                        .font(.custom("Georgia-Italic", size: 18))
+                                        .font(ToskaFont.serifItalic(18))
                                         .foregroundColor(Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -194,7 +194,7 @@ struct OtherProfileView: View {
                                         .foregroundColor(Color.toskaBlue.opacity(0.4))
                                         .padding(.bottom, 4)
                                     Text("quiet so far")
-                                        .font(.custom("Georgia-Italic", size: 18))
+                                        .font(ToskaFont.serifItalic(18))
                                         .foregroundColor(Color.toskaTextLight)
                                 }
                                 .frame(maxWidth: .infinity)
@@ -224,7 +224,7 @@ struct OtherProfileView: View {
                                                 
                                                 VStack(alignment: .leading, spacing: 4) {
                                                     Text(reply.replyText)
-                                                        .font(.custom("Georgia", size: 13))
+                                                        .font(ToskaFont.serif(13))
                                                         .foregroundColor(Color.toskaTextDark)
                                                         .lineSpacing(3)
                                                     
@@ -237,7 +237,7 @@ struct OtherProfileView: View {
                                         }
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 12)
-                                        .background(Color.white)
+                                        .background(LateNightTheme.cardBackground)
                                         .overlay(
                                             Rectangle()
                                                 .fill(Color.toskaBorderLight)

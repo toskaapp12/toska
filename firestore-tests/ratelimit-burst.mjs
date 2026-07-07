@@ -13,8 +13,8 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, doc, setDoc, serverTimestamp, connectFirestoreEmulator } from "firebase/firestore";
 
 const PROJECT_ID = "toskastaging";
 const env = process.env.GCLOUD_PROJECT;
@@ -37,8 +37,12 @@ try {
   const U = (await aAuth.createUser({ email, password: pw, emailVerified: true })).uid;
   await aDb.doc(`users/${U}`).set({ handle: "burst_user", followerCount: 0, followingCount: 0, totalLikes: 0, postCount: 0, confirmedAdult: true, createdAt: FV.serverTimestamp() });
   const app = initializeApp({ apiKey: KEY, authDomain: `${PROJECT_ID}.firebaseapp.com`, projectId: PROJECT_ID, appId: APP, messagingSenderId: SND }, "burst");
-  await signInWithEmailAndPassword(getAuth(app), email, pw);
-  const db = getFirestore(app);
+  const auth = getAuth(app), db = getFirestore(app);
+  // Web SDK doesn't auto-read emulator env vars (only firebase-admin does) —
+  // without these the burst hits REAL staging. No-op on live-staging runs.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
+  if (process.env.FIRESTORE_EMULATOR_HOST) { const [h, p] = process.env.FIRESTORE_EMULATOR_HOST.split(":"); connectFirestoreEmulator(db, h, Number(p)); }
+  await signInWithEmailAndPassword(auth, email, pw);
 
   console.log("=== A) POST-FLOOD: 8 posts in a burst → overflow flagged by rateLimitPosts ===");
   const ids = [];
@@ -57,8 +61,19 @@ try {
   rec(flagged >= 2, `overflow posts flagged rate_limit_exceeded`, `${flagged} of 8 flagged (expect the >5 overflow)`);
 
   console.log("\n=== B) checkRateLimit sliding window (the callable limiter) ===");
+  // checkRateLimit throws on endpoints outside RATE_LIMIT_ALLOWED_ENDPOINTS
+  // (fail-closed hardening — an unknown name must not mint a fresh unlimited
+  // bucket), so the rig must use REAL endpoint names. Isolation between the
+  // two sub-tests comes from the bucket key being `${uid}_${endpoint}`: same
+  // user, two different allowlisted endpoints = independent windows.
+  // First confirm the fail-closed rejection itself:
+  let unknownThrew = false;
+  try { await __test.checkRateLimit(U, `burst_test_${Date.now()}`, 5, 3600); }
+  catch { unknownThrew = true; }
+  rec(unknownThrew, `unknown endpoint rejected (fail-closed allowlist)`);
+
   // confirmAdult-style: 5 per 3600s. 6th must be denied.
-  const ep = `burst_test_${Date.now()}`;
+  const ep = "confirmAdult";
   let allowedCount = 0, deniedAt = -1;
   for (let i = 0; i < 7; i++) {
     const ok = await __test.checkRateLimit(U, ep, 5, 3600);
@@ -70,7 +85,7 @@ try {
   // fail-closed variant (giphyProxy uses failClosed=true): if the limiter errors
   // it should deny. We can't easily force an error, but confirm a clean
   // sub-limit call still allows under failClosed.
-  const ep2 = `burst_fc_${Date.now()}`;
+  const ep2 = "giphyProxy";
   const fcOk = await __test.checkRateLimit(U, ep2, 60, 60, true);
   rec(fcOk === true, `fail-closed limiter allows a request under the limit`);
 

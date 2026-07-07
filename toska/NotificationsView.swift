@@ -202,7 +202,9 @@ struct NotificationsView: View {
                                     .padding(.bottom, 4)
                                 Text(notifTab == 1 ? "\"no replies yet.\"" : "\"someone will feel\nwhat you wrote.\"")
                                     .font(ToskaFont.serifItalic(20))
-                                    .foregroundColor(Color.toskaTimestamp)
+                                    // text2, not toskaTimestamp (#c0c0c0 ≈ 1.6:1 on
+                                    // white) — the empty-state headline must be readable.
+                                    .foregroundColor(ToskaColor.text2)
                                     .multilineTextAlignment(.center)
                                     .lineSpacing(4)
                                 Text(notifTab == 1 ? "when someone replies to your moments, it lands here" : timeAwareNotifEmpty())

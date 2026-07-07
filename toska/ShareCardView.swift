@@ -968,7 +968,7 @@ struct ShareCardView: View {
         case 6: return Color(hex: "e0d0b8").opacity(0.7) // alone
         case 7: return .white.opacity(0.35)              // hollow
         case 8: return Color(hex: "4a4035")              // dawn
-        case 9: return Color.toskaTextDark.opacity(0.7)  // paper
+        case 9: return Color.toskaShareCardInk.opacity(0.7)  // paper — fixed card art; must NOT follow the adaptive theme
         case 10: return Color(hex: "5a3040")             // blush
         case 11: return Color(hex: "2a4038")             // sage
         case 12: return Color(hex: "2a3548")             // frost

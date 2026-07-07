@@ -1707,7 +1707,7 @@ struct EditReplyView: View {
                             .padding(.horizontal, 16).padding(.top, 16)
                     }
                     TextEditor(text: $replyText)
-                        .font(ToskaFont.serif(16)).foregroundColor(Color(hex: "1a1a1a"))
+                        .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text)
                         .lineSpacing(4).scrollContentBackground(.hidden)
                         .padding(.horizontal, 16).padding(.top, 8)
                         .onChange(of: replyText) { _, newValue in

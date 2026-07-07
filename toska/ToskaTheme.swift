@@ -769,7 +769,15 @@ extension Color {
     // and either fail to compile or recurse infinitely at runtime.
     static let toskaBlue       = Color(hex: "9198a8")  // brand muted blue
     static let toskaTextLight  = Color(hex: "b0b0b0")  // secondary light text
-    static let toskaTextDark   = Color(hex: "2a2a2a")  // primary dark text
+    // ADAPTIVE: this predates the LateNightTheme system and is used as
+    // "primary dark text" on themed backgrounds all over Settings/profile/
+    // edit sheets — #2a2a2a on the late-night #0B0A10 ground is invisible,
+    // and late-night (device hour < 5) is this app's core use case. Day
+    // value byte-identical to the original; night matches primaryText.
+    static var toskaTextDark: Color { LateNightTheme.isLateNight ? Color(hex: "E6E7EA") : Color(hex: "2a2a2a") }
+    // Fixed ink for share-card art (the "paper" style) — card palettes are
+    // deliberately theme-independent, so this must never adapt.
+    static let toskaShareCardInk = Color(hex: "2a2a2a")
     static let toskaDivider    = Color(hex: "d0d0d0")  // light dividers
     static let toskaTimestamp  = Color(hex: "c0c0c0")  // timestamp gray
 

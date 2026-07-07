@@ -10,8 +10,8 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp, connectFirestoreEmulator } from "firebase/firestore";
 
 const PROJECT_ID = "toskastaging";
 const env = process.env.GCLOUD_PROJECT;
@@ -36,7 +36,13 @@ async function allowed(name, fn) {
 
 function webApp(n) {
   const app = initializeApp({ apiKey: KEY, authDomain: `${PROJECT_ID}.firebaseapp.com`, projectId: PROJECT_ID, appId: APP, messagingSenderId: SND }, n);
-  return { auth: getAuth(app), db: getFirestore(app) };
+  const auth = getAuth(app), db = getFirestore(app);
+  // The modular web SDK doesn't auto-read the emulator host env vars (only
+  // firebase-admin does) — without these the sweep silently attacks REAL
+  // staging instead of the emulator. No-op on live-staging runs.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
+  if (process.env.FIRESTORE_EMULATOR_HOST) { const [h, p] = process.env.FIRESTORE_EMULATOR_HOST.split(":"); connectFirestoreEmulator(db, h, Number(p)); }
+  return { auth, db };
 }
 async function mkUser(email, pw, handle) {
   try { const u = await aAuth.getUserByEmail(email); await aAuth.deleteUser(u.uid); } catch {}

@@ -216,7 +216,7 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertTrue(waitFor(feedView, 30), "Feed didn't load initially")
         func hasPosts(_ t: TimeInterval) -> Bool {
             waitFor(app.buttons["Repost"].firstMatch, t)
-                || app.buttons["Already reposted"].firstMatch.exists
+                || app.buttons["Undo repost"].firstMatch.exists  // real label for the self-reposted state (FeedView); "Already reposted" exists nowhere
         }
         XCTAssertTrue(hasPosts(20), "No post rows before cold launch (unexpected)")
 

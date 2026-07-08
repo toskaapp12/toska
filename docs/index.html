@@ -219,6 +219,16 @@
         </section>
 
 
+        <!-- Live read-only slice of the real feed. Populated by publicFeed
+             (words only — no handles, no ids; isShareable posts only). The
+             section stays hidden unless the fetch succeeds. -->
+        <section id="from-the-feed" style="display:none">
+            <h2>from the feed</h2>
+            <p class="muted">real words, posted anonymously in the app — shown here only when their
+               writers allowed sharing. no names attached, in the app or anywhere else.</p>
+            <div id="live-posts"></div>
+        </section>
+
         <section id="why">
             <h2>why it exists</h2>
             <p>from the letter inside the app, written by toska's founder:</p>
@@ -347,5 +357,43 @@
         </div>
         © 2026 SALTE DEVELOPMENT LLC · Dallas, Texas · toska is a product of SALTE DEVELOPMENT LLC
     </footer>
+
+    <script>
+    (function () {
+        var tagColors = {
+            "longing": "#7a6fc0", "anger": "#c0736f", "acceptance": "#6f9c8a",
+            "regret": "#a58a6f", "confusion": "#8a8a9c", "still love you": "#b07a8a",
+            "moving on": "#6f9cb0", "unsent": "#7a97b5"
+        };
+        fetch("https://us-central1-toska-4ebf4.cloudfunctions.net/publicFeed")
+            .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+            .then(function (data) {
+                var posts = (data.posts || []).slice(0, 6);
+                if (!posts.length) return;
+                var wrap = document.getElementById("live-posts");
+                posts.forEach(function (p) {
+                    var card = document.createElement("div");
+                    card.style.cssText = "padding:18px 0;border-bottom:1px solid #e2e4e8;";
+                    var text = document.createElement("p");
+                    text.style.cssText = "font-size:17px;margin-bottom:8px;";
+                    text.textContent = p.text;
+                    var meta = document.createElement("div");
+                    meta.className = "sans";
+                    meta.style.cssText = "font-size:12px;color:#91949c;";
+                    var bits = [];
+                    if (p.tag) bits.push(p.tag);
+                    bits.push(p.felt === 1 ? "1 felt this" : p.felt + " felt this");
+                    if (p.ageHours) bits.push(p.ageHours < 24 ? p.ageHours + "h ago" : Math.round(p.ageHours / 24) + "d ago");
+                    meta.textContent = bits.join(" · ");
+                    if (p.tag && tagColors[p.tag]) meta.style.color = tagColors[p.tag];
+                    card.appendChild(text); card.appendChild(meta);
+                    wrap.appendChild(card);
+                });
+                if (wrap.lastChild) wrap.lastChild.style.borderBottom = "none";
+                document.getElementById("from-the-feed").style.display = "";
+            })
+            .catch(function () { /* section stays hidden */ });
+    })();
+    </script>
 </body>
 </html>

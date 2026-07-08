@@ -3,65 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>toska</title>
+    <title>toska — an anonymous space for heartbreak | SALTE DEVELOPMENT LLC</title>
+    <meta name="description" content="toska is an anonymous peer-support app for people going through breakups — short written reflections shared without names, photos, or follower counts. Built by SALTE DEVELOPMENT LLC.">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --ink: #14130f;
+            --paper: #ffffff;
+            --ground: #eeeff1;
+            --soft: #72757e;
+            --faint: #91949c;
+            --plum: #6d55c9;
+            --night: #0b0a10;
+            --hairline: #e2e4e8;
+        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #0a0908;
-            color: #e0e2e6;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-family: Georgia, 'Times New Roman', serif;
+            background: var(--ground);
+            color: var(--ink);
+            line-height: 1.7;
         }
-        .container {
+        .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        header {
+            background: var(--night);
+            color: #e6e7ea;
             text-align: center;
-            padding: 40px 24px;
+            padding: 96px 24px 88px;
         }
-        .logo {
-            font-family: Georgia, serif;
-            font-style: italic;
-            font-size: 48px;
-            color: #fff;
-            margin-bottom: 8px;
-        }
+        .logo { font-style: italic; font-size: 56px; color: #fff; }
         .tagline {
-            font-family: Georgia, serif;
             font-style: italic;
-            font-size: 14px;
-            color: rgba(255,255,255,0.3);
-            margin-bottom: 48px;
+            font-size: 17px;
+            color: rgba(230,231,234,0.55);
+            margin-top: 10px;
         }
-        .links {
-            display: flex;
-            gap: 24px;
-            justify-content: center;
-        }
-        .links a {
-            color: rgba(255,255,255,0.5);
-            text-decoration: none;
+        .badge {
+            display: inline-block;
+            margin-top: 36px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             font-size: 13px;
+            color: #cfc8ee;
+            border: 1px solid rgba(147,135,192,0.5);
+            border-radius: 999px;
+            padding: 8px 18px;
         }
-        .links a:hover {
-            color: rgba(255,255,255,0.8);
+        main { max-width: 680px; margin: 0 auto; padding: 24px; }
+        section { background: var(--paper); border-radius: 14px; padding: 40px 36px; margin: 24px 0; }
+        h2 {
+            font-size: 24px;
+            font-weight: normal;
+            font-style: italic;
+            margin-bottom: 16px;
         }
-        .copyright {
-            margin-top: 32px;
-            font-size: 11px;
-            color: rgba(255,255,255,0.3);
+        p { margin-bottom: 14px; font-size: 16.5px; }
+        p:last-child { margin-bottom: 0; }
+        .muted { color: var(--soft); }
+        ul.features { list-style: none; margin-top: 8px; }
+        ul.features li {
+            padding: 14px 0;
+            border-bottom: 1px solid var(--hairline);
+            font-size: 16px;
+        }
+        ul.features li:last-child { border-bottom: none; }
+        ul.features b {
+            font-style: italic;
+            font-weight: normal;
+            color: var(--plum);
+        }
+        a { color: var(--plum); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .contact-line { font-size: 16px; margin-top: 4px; }
+        footer {
+            text-align: center;
+            padding: 40px 24px 56px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            color: var(--faint);
+        }
+        footer .links { margin-bottom: 14px; }
+        footer .links a { color: var(--soft); margin: 0 12px; }
+        @media (max-width: 480px) {
+            header { padding: 72px 20px 64px; }
+            .logo { font-size: 44px; }
+            section { padding: 30px 22px; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <header>
         <div class="logo">toska</div>
-        <div class="tagline">say what you never said</div>
+        <div class="tagline">for the things you couldnt say to your ex</div>
+        <div class="badge">coming soon to the App Store — currently in private beta</div>
+    </header>
+
+    <main>
+        <section>
+            <h2>what toska is</h2>
+            <p>toska is an anonymous space for heartbreak — a quiet app where people going through
+               breakups write the things they never got to say, and read the words of others who are
+               in it too.</p>
+            <p>there are no real names, no profile photos, and no follower counts to perform for.
+               posts are short written reflections — grief, anger, longing, relief — shared under an
+               anonymous handle with the people who understand them best: strangers going through
+               the same thing.</p>
+            <p class="muted">the name comes from the russian word <i>тоска</i> — a dull ache of the
+               soul, a longing with nothing to long for.</p>
+        </section>
+
+        <section>
+            <h2>how it works</h2>
+            <ul class="features">
+                <li><b>write it down.</b> short posts, tagged by feeling — longing, anger, regret,
+                    still love you, moving on. a daily prompt asks the question you've been avoiding.</li>
+                <li><b>letters.</b> longer-form mode for the message you'll never send — up to 2,000
+                    characters of everything they never heard.</li>
+                <li><b>whispers &amp; midnight posts.</b> words that quietly disappear — after an hour,
+                    or at midnight — for the thoughts you need to say out loud but not keep.</li>
+                <li><b>feel it, don't perform it.</b> readers can mark that they <i>felt</i> a post.
+                    no clout, no virality mechanics, no follower leaderboards.</li>
+                <li><b>share a card.</b> turn a post into a quiet, beautiful image — with your
+                    anonymity intact.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>safety &amp; care</h2>
+            <p>heartbreak is a vulnerable place, so toska is built defensively: every post and reply
+               passes through layered content moderation for harassment, slurs, and personal
+               information, on the device and again on the server.</p>
+            <p>when someone's words sound like more than heartbreak, the app responds gently —
+               a private check-in with crisis resources (call or text 988, or text HOME to 741741 in
+               the US) shown before anything is shared. content that signals real crisis is reviewed
+               by a human.</p>
+            <p>we collect as little as possible, sell nothing, and export or delete everything on
+               request. the details live in our <a href="privacy.html">privacy policy</a> and
+               <a href="terms.html">terms of service</a>.</p>
+        </section>
+
+        <section>
+            <h2>about SALTE DEVELOPMENT LLC</h2>
+            <p>toska is designed and built by <b>SALTE DEVELOPMENT LLC</b>, an independent software
+               company based in Dallas, Texas. we build small, careful consumer software with an
+               editorial sensibility — products that treat their users like readers, not metrics.</p>
+            <p>toska is our first title, currently in private beta on TestFlight ahead of its public
+               App Store release.</p>
+            <p class="contact-line sans"><b class="sans">contact:</b>
+               <a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a>
+               &nbsp;·&nbsp; <a href="support.html">app support</a></p>
+        </section>
+    </main>
+
+    <footer>
         <div class="links">
-            <a href="/terms">terms of service</a>
-            <a href="/privacy">privacy policy</a>
+            <a href="privacy.html">privacy</a>
+            <a href="terms.html">terms</a>
+            <a href="support.html">support</a>
+            <a href="mailto:salte@saltedevelopments.com">contact</a>
         </div>
-        <div class="copyright">© 2026 SALTE DEVELOPMENT LLC</div>
-    </div>
+        © 2026 SALTE DEVELOPMENT LLC · Dallas, Texas · toska is a product of SALTE DEVELOPMENT LLC
+    </footer>
 </body>
 </html>

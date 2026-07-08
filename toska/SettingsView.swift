@@ -721,6 +721,21 @@ struct SettingsView: View {
     
     func saveSettings() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Offline, batch.commit() below never resolves — no error, no revert:
+        // the toggle looked saved while the write sat queued. For allowSharing
+        // that meant the UI said "sharing off" while posts stayed shareable
+        // until reconnect. Fail fast with the same banner + revert the error
+        // path uses.
+        guard NetworkMonitor.shared.isConnected else {
+            saveErrorBanner = "you're offline — that change didn't save."
+            loadSettings()
+            Task {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                guard !Task.isCancelled else { return }
+                saveErrorBanner = nil
+            }
+            return
+        }
         Task { @MainActor in
                     do {
                         // Public-projection fields stay on the main user doc so
@@ -793,6 +808,14 @@ struct SettingsView: View {
     // flight at the grace-window boundary.
     func deleteAccount() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Offline guard: the pendingDeletions writes below hang forever
+        // offline (no error, no timeout) — the row froze at "deleting..."
+        // permanently and the queued intent doc landed on reconnect. Same
+        // fail-fast as exportData; deletion is a flow that must never lie.
+        guard NetworkMonitor.shared.isConnected else {
+            deleteError = "you're offline — connect to the internet to delete your account."
+            return
+        }
         isDeleting = true
         deleteError = ""
 

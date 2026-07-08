@@ -326,6 +326,18 @@ class PostInteractionManager {
                                 onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                                 return
                             }
+                            if data["isWhisper"] as? Bool == true || data["isMidnightPost"] as? Bool == true {
+                                // Ephemeral originals can't be reposted: the repost
+                                // doc carries neither the whisper/midnight flags nor
+                                // expiresAt, so it would outlive the original as a
+                                // permanent, unbadged copy of content its author was
+                                // promised disappears. Rules + validatePost enforce
+                                // this server-side; bailing here keeps the button
+                                // from flashing a doomed optimistic state.
+                                RateLimiter.shared.markRepostComplete(postId)
+                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                return
+                            }
 
                             // Optimistic update — only issued after post existence confirmed.
                             onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))

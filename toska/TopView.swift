@@ -65,6 +65,16 @@ struct TopView: View {
         .onChange(of: period) { _, newPeriod in
             ensureFetched(newPeriod)
         }
+        // The per-period caches live all session (fetchedPeriods guards
+        // refetch), so without this a just-blocked author's posts stay on
+        // the trending board until app restart. Strip in place — same
+        // rationale as FeedViewModel.handleUserBlocked.
+        .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+            guard let blockedId = notif.userInfo?["userId"] as? String, !blockedId.isEmpty else { return }
+            for key in cache.keys {
+                cache[key]?.removeAll { $0.authorId == blockedId }
+            }
+        }
     }
 
     // One page of the pager for a given period.

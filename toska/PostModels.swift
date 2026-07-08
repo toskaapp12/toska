@@ -21,6 +21,11 @@ struct FeedPost: Identifiable, Equatable {
     // reader can tell at a glance that the visible handle is the
     // reposter, not the original author. nil for non-repost posts.
     var originalHandle: String? = nil
+    // Original author's uid when this post is a repost. Carried so the feed's
+    // .userBlocked live-strip can also drop reposts OF a just-blocked author —
+    // their words otherwise persist via other people's reposts until the next
+    // refresh, right after the block confirmation. nil for non-reposts.
+    var originalAuthorId: String? = nil
     // Set (yyyy-MM-dd) when this post was written as a response to that day's
     // daily prompt. The feed renders such posts with the prompt shown in plum
     // above the person's reply, so prompt answers read as "prompt → reply".

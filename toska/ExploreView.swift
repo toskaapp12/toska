@@ -321,7 +321,7 @@ struct ExploreView: View {
                                                 HStack(spacing: 8) {
                                                     Text(person.handle)
                                                         .font(ToskaFont.sans(12, weight: .medium))
-                                                        .foregroundColor(Color.toskaTextDark)
+                                                        .foregroundColor(Color.toskaInkOnLight)
                                                     Spacer()
                                                 }
                                             }

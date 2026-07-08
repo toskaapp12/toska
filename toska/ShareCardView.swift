@@ -2,6 +2,26 @@ import SwiftUI
 import UIKit
 import Photos
 import FirebaseAuth
+import FirebaseFirestore
+
+// Replies carry no denormalized isShareable (posts do, stamped at create and
+// kept current by the onAllowSharingChanged backfill), so reply-share consent
+// is resolved at TAP time from the author's public allowSharing projection on
+// their user doc. Fail CLOSED: a failed read must never publish someone's
+// words. Missing field mirrors the post-side default (isShareable ?? true).
+enum ShareConsent {
+    static func authorAllowsSharing(_ authorId: String) async -> Bool {
+        guard !authorId.isEmpty else { return false }
+        do {
+            let snap = try await Firestore.firestore()
+                .collection("users").document(authorId).getDocumentAsync()
+            guard let data = snap.data() else { return false }
+            return data["allowSharing"] as? Bool ?? true
+        } catch {
+            return false
+        }
+    }
+}
 
 @MainActor
 struct ShareCardView: View {
@@ -156,7 +176,11 @@ struct ShareCardView: View {
                                 // sharing" setting; this is the reader-facing
                                 // half of that transparency.
                                 if !sharingHintSeen {
-                                    sharingHintSeen = true
+                                    // The seen-flag is set in the alert's "got it"
+                                    // action, NOT here: onAppear fires mid-sheet-
+                                    // entrance, and a dropped presentation would
+                                    // otherwise burn the once-only transparency
+                                    // notice without it ever being read.
                                     showSharingHint = true
                                 }
                             }
@@ -348,7 +372,7 @@ struct ShareCardView: View {
             Text("toska needs permission to add to your photos. you can enable it in Settings › Privacy › Photos.")
         }
         .alert("sharing, quietly", isPresented: $showSharingHint) {
-            Button("got it", role: .cancel) {}
+            Button("got it", role: .cancel) { sharingHintSeen = true }
         } message: {
             Text("this card carries the words only — no name, no handle, nothing that points back to the writer. a few shared posts may also be featured, just as anonymously, on toskaapp.com. writers can turn sharing off any time in settings.")
         }

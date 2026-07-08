@@ -33,7 +33,7 @@ struct GifPickerView: View {
                 Spacer()
                 Text("GIFs")
                     .font(ToskaFont.sans(13, weight: .semibold))
-                    .foregroundColor(Color.toskaTextDark)
+                    .foregroundColor(Color.toskaInkOnLight)
                 Spacer()
                 // Spacer placeholder to keep "GIFs" centered. Hidden from
                 // VoiceOver so it doesn't get announced as a phantom button.

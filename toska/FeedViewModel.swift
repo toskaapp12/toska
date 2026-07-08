@@ -684,7 +684,11 @@ class FeedViewModel: ObservableObject {
     // the next refresh to re-run filterBlocked.
     func handleUserBlocked(userId: String) {
         guard !userId.isEmpty else { return }
-        let isBlockedAuthor: (FeedPost) -> Bool = { $0.authorId == userId }
+        // Match reposts OF the blocked author too — a repost row renders the
+        // blocked user's words under someone else's authorId.
+        let isBlockedAuthor: (FeedPost) -> Bool = {
+            $0.authorId == userId || $0.originalAuthorId == userId
+        }
         posts.removeAll(where: isBlockedAuthor)
         followingPosts.removeAll(where: isBlockedAuthor)
         // postGifUrls/midnightPostIds/etc. are keyed by postId, not by

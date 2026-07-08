@@ -39,6 +39,41 @@ final class WalkthroughUITests: XCTestCase {
         else { element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
     }
 
+    /// Scroll-search for a row: LazyVStack rows don't exist in the AX tree
+    /// until they're near the viewport, so a bare firstMatch wait misses any
+    /// row below the fold (feed content on staging drifts as tests seed data).
+    func findRow(matching predicate: NSPredicate, swipes: Int = 4) -> XCUIElement? {
+        let row = app.buttons.matching(predicate).firstMatch
+        for attempt in 0...swipes {
+            if row.waitForExistence(timeout: attempt == 0 ? 10 : 2) {
+                nudgeRowIntoSafeBand(row)
+                return row.exists ? row : nil
+            }
+            app.swipeUp()
+        }
+        return nil
+    }
+
+    /// A row at the bottom viewport edge sits under the floating glass bar —
+    /// taps there get eaten (or open compose). A row materialized ABOVE the
+    /// viewport coordinate-taps into the status bar. Drag until the row sits
+    /// fully in the safe band, then let scroll deceleration settle.
+    func nudgeRowIntoSafeBand(_ row: XCUIElement) {
+        for _ in 0..<3 {
+            guard row.exists else { return }
+            let safeMaxY = app.frame.maxY - 160
+            let safeMinY = app.frame.minY + 160
+            let f = row.frame
+            let delta: CGFloat
+            if f.maxY > safeMaxY { delta = -min(f.maxY - safeMaxY + 40, 400) }
+            else if f.minY < safeMinY { delta = min(safeMinY - f.minY + 40, 400) }
+            else { return }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta)))
+            usleep(700_000)
+        }
+    }
+
     /// Type into the compose editor reliably. The compose sheet auto-focuses the
     /// editor via its own focusTask, which races with a test-driven tap — and a
     /// tap that lands mid-animation reports "no keyboard focus". Re-tap until
@@ -274,9 +309,12 @@ final class WalkthroughUITests: XCTestCase {
     // keyboard is absent.
     func test05y_openPostNoKeyboard() throws {
         try requireFeed()
-        let firstPost = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS 'first light' OR label CONTAINS 'the quiet' OR label CONTAINS 'storm'")).firstMatch
-        XCTAssertTrue(waitFor(firstPost, 10), "No post row found")
+        // Exclude repost rows ("X reposted, …") — they can firstMatch-shadow
+        // the original and sit at the viewport edge where taps get eaten.
+        let firstPost = findRow(matching: NSPredicate(
+            format: "(label CONTAINS 'first light' OR label CONTAINS 'the quiet' OR label CONTAINS 'storm') AND NOT (label CONTAINS 'reposted')"))
+        XCTAssertNotNil(firstPost, "No post row found")
+        guard let firstPost else { return }
         forceTap(firstPost)
         sleep(1)
         snap("05y1-post-just-opened")
@@ -322,12 +360,15 @@ final class WalkthroughUITests: XCTestCase {
 
     func test05_postDetailInteractions() throws {
         try requireFeed()
-        // Post rows are Buttons labelled "handle, age, text, tag" — open the first.
-        let firstPost = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS 'first light, honestly'")).firstMatch
-        XCTAssertTrue(waitFor(firstPost, 10), "No post row found in feed")
+        // Post rows are Buttons labelled "handle, age, text, tag" — open the
+        // first, scroll-searching (the seeded post can sit below the fold).
+        let firstPost = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"))
+        XCTAssertNotNil(firstPost, "No post row found in feed")
+        guard let firstPost else { return }
         forceTap(firstPost)
-        sleep(2)
+        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        sleep(1)
         snap("05a-post-detail")
 
         let like = app.buttons["Like post"].firstMatch

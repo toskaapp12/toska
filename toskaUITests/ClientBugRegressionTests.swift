@@ -154,14 +154,42 @@ final class ClientBugRegressionTests: XCTestCase {
     func findRow(matching predicate: NSPredicate, swipes: Int = 3) -> XCUIElement? {
         let row = app.buttons.matching(predicate).firstMatch
         for attempt in 0...swipes {
-            if row.waitForExistence(timeout: attempt == 0 ? 10 : 2) { return row }
+            if row.waitForExistence(timeout: attempt == 0 ? 10 : 2) {
+                nudgeClearOfBottomBar(row)
+                return row.exists ? row : nil
+            }
             app.swipeUp()
         }
         return nil
     }
 
+    /// A row at the bottom viewport edge sits under the floating glass bar
+    /// (and its action strip is clipped entirely) — taps there get eaten
+    /// silently. A row that exists ABOVE the viewport (LazyVStack keeps a
+    /// margin materialized) coordinate-taps into the status bar. Drag the
+    /// content until the row sits fully in the safe band, then let scroll
+    /// deceleration settle before tapping.
+    func nudgeClearOfBottomBar(_ row: XCUIElement) {
+        for _ in 0..<3 {
+            guard row.exists else { return }
+            let safeMaxY = app.frame.maxY - 160
+            let safeMinY = app.frame.minY + 160
+            let f = row.frame
+            let delta: CGFloat
+            if f.maxY > safeMaxY { delta = -min(f.maxY - safeMaxY + 40, 400) }
+            else if f.minY < safeMinY { delta = min(safeMinY - f.minY + 40, 400) }
+            else { return }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta)))
+            usleep(700_000)
+        }
+    }
+
+    // Match only ORIGINAL seeded rows — repost rows ("X reposted, …") carry
+    // the same text and can firstMatch-shadow the original when test
+    // footprint from a prior run is fresher than the seed.
     var seededPostPredicate: NSPredicate {
-        NSPredicate(format: "label CONTAINS 'first light' OR label CONTAINS 'the quiet' OR label CONTAINS 'storm'")
+        NSPredicate(format: "(label CONTAINS 'first light' OR label CONTAINS 'the quiet' OR label CONTAINS 'storm') AND NOT (label CONTAINS 'reposted')")
     }
 
     /// Feed action buttons (repost/like/save/share) are SIBLINGS of the row's
@@ -233,9 +261,9 @@ final class ClientBugRegressionTests: XCTestCase {
         app.buttons["Profile"].tap()
         sleep(2)
         XCTAssertTrue(waitFor(app.buttons["settings"], 8), "Not on profile (settings gear missing)")
-        var row = findRow(matching: NSPredicate(format: "label CONTAINS 'quiet after the storm'"), swipes: 2)
+        var row = findRow(matching: NSPredicate(format: "label CONTAINS 'quiet after the storm' AND NOT (label CONTAINS 'reposted')"), swipes: 2)
         if row == nil {
-            row = findRow(matching: NSPredicate(format: "label CONTAINS '(walkthrough)'"), swipes: 2)
+            row = findRow(matching: NSPredicate(format: "label CONTAINS '(walkthrough)' AND NOT (label CONTAINS 'reposted')"), swipes: 2)
         }
         guard let ownRow = row else {
             throw XCTSkip("No seeded own post found on profile — run WalkthroughUITests once to seed one")
@@ -267,12 +295,20 @@ final class ClientBugRegressionTests: XCTestCase {
         // the new text (the listener must not resurrect the stale init seed).
         forceTap(app.buttons["Back"].firstMatch)
         XCTAssertTrue(waitFor(app.buttons["settings"], 8), "Didn't pop back to profile")
-        var editedRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
-        if !waitFor(editedRow, 10) {
-            app.swipeDown() // nudge a refresh if the list is stale
-            editedRow = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
+        // LazyVStack: off-screen rows don't exist in the AX tree, so scroll-
+        // search (findRow) rather than a bare existence wait — and return to
+        // the TOP first: the pop restores the pre-push scroll offset, and
+        // findRow only searches downward.
+        for _ in 0..<4 { app.swipeDown() } // to top (first one may pull-to-refresh)
+        usleep(700_000)
+        var editedRow = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 5)
+        if editedRow == nil {
+            for _ in 0..<4 { app.swipeDown() }
+            usleep(700_000)
+            editedRow = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 5)
         }
-        XCTAssertTrue(waitFor(editedRow, 10), "Edited post row not found on profile after edit")
+        XCTAssertNotNil(editedRow, "Edited post row not found on profile after edit")
+        guard let editedRow else { return }
         forceTap(editedRow)
         XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't re-open")
         let newTextOnRepush = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch

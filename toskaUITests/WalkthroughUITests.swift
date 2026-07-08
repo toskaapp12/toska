@@ -507,10 +507,19 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertTrue(waitFor(share, 10), "Share post button not found on feed row")
         forceTap(share)
         _ = waitFor(app.staticTexts["share this"], 8)
+        dismissSharingHintIfPresent()
         sleep(1)
         snap("13-share-card")
         app.swipeDown(velocity: .fast)
         sleep(1)
+    }
+
+    /// The share sheet shows a one-time "sharing, quietly" consent explainer
+    /// on first open per install — dismiss it so share-card tests keep working
+    /// on fresh simulators.
+    func dismissSharingHintIfPresent() {
+        let gotIt = app.buttons["got it"]
+        if gotIt.waitForExistence(timeout: 3) { gotIt.tap(); sleep(1) }
     }
 
     // MARK: 13b — share card must fit a MAX-LENGTH (≈500 char) message
@@ -545,6 +554,7 @@ final class WalkthroughUITests: XCTestCase {
             forceTap(detailShare)
         }
         XCTAssertTrue(waitFor(app.staticTexts["share this"], 8), "Share card never presented — nothing to screenshot")
+        dismissSharingHintIfPresent()
         sleep(1)
         snap("13b-long-share-card")   // inspect: the full message must be visible, not clipped
         app.swipeDown(velocity: .fast)

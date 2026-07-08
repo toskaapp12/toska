@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>toska — an anonymous space for heartbreak | SALTE DEVELOPMENT LLC</title>
-    <meta name="description" content="toska is an anonymous peer-support app for people going through breakups — short written reflections shared without names, photos, or follower counts. Built by SALTE DEVELOPMENT LLC.">
+    <meta name="description" content="toska is an anonymous peer-support app for people going through breakups — short written reflections shared without names, photos, or follower counts. Built by SALTE DEVELOPMENT LLC in Dallas, Texas.">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
@@ -14,9 +14,11 @@
             --soft: #72757e;
             --faint: #91949c;
             --plum: #6d55c9;
+            --plum-soft: #9387c0;
             --night: #0b0a10;
             --hairline: #e2e4e8;
         }
+        html { scroll-behavior: smooth; }
         body {
             font-family: Georgia, 'Times New Roman', serif;
             background: var(--ground);
@@ -28,14 +30,14 @@
             background: var(--night);
             color: #e6e7ea;
             text-align: center;
-            padding: 96px 24px 88px;
+            padding: 100px 24px 72px;
         }
-        .logo { font-style: italic; font-size: 56px; color: #fff; }
+        .logo { font-style: italic; font-size: 60px; color: #fff; line-height: 1.1; }
         .tagline {
             font-style: italic;
-            font-size: 17px;
+            font-size: 18px;
             color: rgba(230,231,234,0.55);
-            margin-top: 10px;
+            margin-top: 12px;
         }
         .badge {
             display: inline-block;
@@ -47,20 +49,49 @@
             border-radius: 999px;
             padding: 8px 18px;
         }
-        main { max-width: 680px; margin: 0 auto; padding: 24px; }
-        section { background: var(--paper); border-radius: 14px; padding: 40px 36px; margin: 24px 0; }
+        nav {
+            margin-top: 44px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 13px;
+        }
+        nav a { color: rgba(230,231,234,0.65); text-decoration: none; margin: 0 12px; }
+        nav a:hover { color: #fff; }
+        main { max-width: 720px; margin: 0 auto; padding: 24px; }
+        section { background: var(--paper); border-radius: 14px; padding: 44px 40px; margin: 24px 0; }
+        section.dark {
+            background: var(--night);
+            color: #e6e7ea;
+        }
+        section.dark h2 { color: #fff; }
+        section.dark .muted { color: rgba(230,231,234,0.55); }
         h2 {
-            font-size: 24px;
+            font-size: 26px;
             font-weight: normal;
             font-style: italic;
-            margin-bottom: 16px;
+            margin-bottom: 18px;
+        }
+        h3 {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--faint);
+            margin: 26px 0 8px;
         }
         p { margin-bottom: 14px; font-size: 16.5px; }
         p:last-child { margin-bottom: 0; }
         .muted { color: var(--soft); }
+        .quote {
+            border-left: 3px solid var(--plum-soft);
+            padding: 4px 0 4px 22px;
+            font-style: italic;
+            color: #3a3c44;
+            margin: 18px 0;
+        }
         ul.features { list-style: none; margin-top: 8px; }
         ul.features li {
-            padding: 14px 0;
+            padding: 16px 0;
             border-bottom: 1px solid var(--hairline);
             font-size: 16px;
         }
@@ -69,7 +100,52 @@
             font-style: italic;
             font-weight: normal;
             color: var(--plum);
+            display: block;
+            font-size: 17px;
+            margin-bottom: 3px;
         }
+        ul.plain { list-style: none; }
+        ul.plain li {
+            padding: 10px 0 10px 26px;
+            position: relative;
+            font-size: 16px;
+        }
+        ul.plain li::before {
+            content: "—";
+            position: absolute;
+            left: 0;
+            color: var(--plum-soft);
+        }
+        .gallery {
+            display: flex;
+            gap: 18px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 26px;
+        }
+        .shot {
+            width: 200px;
+            border-radius: 22px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.14);
+            box-shadow: 0 18px 44px rgba(0,0,0,0.5);
+            background: #16141c;
+        }
+        .shot img { width: 100%; display: block; }
+        .shot-caption {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 12px;
+            color: rgba(230,231,234,0.5);
+            text-align: center;
+            margin-top: 10px;
+        }
+        .faq dt {
+            font-style: italic;
+            font-size: 17px;
+            margin-top: 22px;
+            color: var(--ink);
+        }
+        .faq dd { margin: 6px 0 0; font-size: 16px; color: #3a3c44; }
         a { color: var(--plum); text-decoration: none; }
         a:hover { text-decoration: underline; }
         .contact-line { font-size: 16px; margin-top: 4px; }
@@ -82,10 +158,11 @@
         }
         footer .links { margin-bottom: 14px; }
         footer .links a { color: var(--soft); margin: 0 12px; }
-        @media (max-width: 480px) {
-            header { padding: 72px 20px 64px; }
-            .logo { font-size: 44px; }
-            section { padding: 30px 22px; }
+        @media (max-width: 520px) {
+            header { padding: 72px 20px 56px; }
+            .logo { font-size: 46px; }
+            section { padding: 32px 24px; }
+            .shot { width: 46%; min-width: 150px; }
         }
     </style>
 </head>
@@ -94,10 +171,18 @@
         <div class="logo">toska</div>
         <div class="tagline">for the things you couldnt say to your ex</div>
         <div class="badge">coming soon to the App Store — currently in private beta</div>
+        <nav>
+            <a href="#what">what it is</a>
+            <a href="#why">why it exists</a>
+            <a href="#how">how it works</a>
+            <a href="#safety">safety</a>
+            <a href="#faq">faq</a>
+            <a href="#company">company</a>
+        </nav>
     </header>
 
     <main>
-        <section>
+        <section id="what">
             <h2>what toska is</h2>
             <p>toska is an anonymous space for heartbreak — a quiet app where people going through
                breakups write the things they never got to say, and read the words of others who are
@@ -106,50 +191,150 @@
                posts are short written reflections — grief, anger, longing, relief — shared under an
                anonymous handle with the people who understand them best: strangers going through
                the same thing.</p>
+            <p>it reads less like a social network and more like a shared journal left open on a
+               table at 2am: serif type, soft colors, one continuous stream of things people finally
+               said out loud. after midnight the whole app drifts into a dusk-purple night theme,
+               because that's when heartbreak does its loudest talking.</p>
             <p class="muted">the name comes from the russian word <i>тоска</i> — a dull ache of the
                soul, a longing with nothing to long for.</p>
         </section>
 
-        <section>
+        <section class="dark" id="app">
+            <h2>the app</h2>
+            <p class="muted">toska for iPhone — currently in private beta on TestFlight.</p>
+            <div class="gallery">
+                <div>
+                    <div class="shot"><img src="assets/feed.jpg" alt="the toska feed — anonymous posts about heartbreak, tagged by feeling"></div>
+                    <div class="shot-caption">the feed</div>
+                </div>
+                <div>
+                    <div class="shot"><img src="assets/post.jpg" alt="a post opened in toska with anonymous replies beneath it"></div>
+                    <div class="shot-caption">a post &amp; its replies</div>
+                </div>
+                <div>
+                    <div class="shot"><img src="assets/card.jpg" alt="a toska share card — a post typeset as a quiet image"></div>
+                    <div class="shot-caption">share cards</div>
+                </div>
+            </div>
+        </section>
+
+
+        <section id="why">
+            <h2>why it exists</h2>
+            <p>from the letter inside the app, written by toska's founder:</p>
+            <div class="quote">
+                i went through a breakup. talked to everyone. they ran out of things to say and i
+                ran out of people to say it to. everyone had moved on but i was still sad. i was on
+                reddit at 2am, downloading random apps, watching sad tiktoks. none of it was it.
+                i just wanted somewhere anonymous where people are going through the same thing and
+                nobody's pretending they're not. so i built it.
+            </div>
+            <p>that's the whole thesis. heartbreak is one of the most common painful experiences a
+               person goes through, and almost none of the internet is actually built for it —
+               general social media rewards performing recovery, and advice forums move on faster
+               than grief does. toska is built for the middle part: still sad, still up at 2am,
+               not ready to pretend otherwise.</p>
+        </section>
+
+        <section id="how">
             <h2>how it works</h2>
             <ul class="features">
                 <li><b>write it down.</b> short posts, tagged by feeling — longing, anger, regret,
-                    still love you, moving on. a daily prompt asks the question you've been avoiding.</li>
+                    confusion, still love you, moving on, acceptance. the tag tints the post and lets
+                    readers find the feeling they're in.</li>
+                <li><b>a daily prompt.</b> every day the feed opens with one question you've been
+                    avoiding — "describe the way they said your name. who says it like that now." —
+                    and you can answer it or scroll past it.</li>
                 <li><b>letters.</b> longer-form mode for the message you'll never send — up to 2,000
                     characters of everything they never heard.</li>
                 <li><b>whispers &amp; midnight posts.</b> words that quietly disappear — after an hour,
-                    or at midnight — for the thoughts you need to say out loud but not keep.</li>
+                    or at midnight tonight — for the thoughts you need to say out loud but not keep.</li>
                 <li><b>feel it, don't perform it.</b> readers can mark that they <i>felt</i> a post.
-                    no clout, no virality mechanics, no follower leaderboards.</li>
-                <li><b>share a card.</b> turn a post into a quiet, beautiful image — with your
-                    anonymity intact.</li>
+                    that's the whole vocabulary. no clout, no virality mechanics, no follower
+                    leaderboards, and follower counts are private by default.</li>
+                <li><b>replies that stay gentle.</b> the reply box literally says "say something
+                    gently…" — and layered moderation holds it to that.</li>
+                <li><b>share a card.</b> turn a post into a quiet, typeset image in thirteen moods —
+                    with your anonymity intact.</li>
+                <li><b>drafts &amp; your week.</b> a private space for the things you're not ready to
+                    post, and a weekly recap of what you felt — for you, not for an audience.</li>
             </ul>
         </section>
 
         <section>
-            <h2>safety &amp; care</h2>
-            <p>heartbreak is a vulnerable place, so toska is built defensively: every post and reply
-               passes through layered content moderation for harassment, slurs, and personal
-               information, on the device and again on the server.</p>
-            <p>when someone's words sound like more than heartbreak, the app responds gently —
-               a private check-in with crisis resources (call or text 988, or text HOME to 741741 in
-               the US) shown before anything is shared. content that signals real crisis is reviewed
-               by a human.</p>
-            <p>we collect as little as possible, sell nothing, and export or delete everything on
-               request. the details live in our <a href="privacy.html">privacy policy</a> and
-               <a href="terms.html">terms of service</a>.</p>
+            <h2>what toska deliberately is not</h2>
+            <ul class="plain">
+                <li>no direct messages. heartbreak plus anonymous DMs is a bad combination, so it
+                    doesn't exist here — by design, permanently.</li>
+                <li>no dating or "matching." this is where you put the last relationship down, not
+                    where you pick the next one up.</li>
+                <li>no "days since the breakup" streaks or recovery scoreboards. grief isn't linear
+                    and the app never pretends it is.</li>
+                <li>no ads, no engagement-bait notifications, no selling of anything you wrote.</li>
+            </ul>
         </section>
 
-        <section>
+        <section id="safety">
+            <h2>safety &amp; care</h2>
+            <p>heartbreak is a vulnerable place, so toska is built defensively: every post and reply
+               passes through layered content moderation — for harassment, slurs, sexual content,
+               and personal information like names and phone numbers — on the device and again on
+               the server. content that violates the rules is held before it ever reaches the feed,
+               and every report is reviewed, with action within 24 hours.</p>
+            <p>when someone's words sound like more than heartbreak, the app responds gently — a
+               private check-in with crisis resources (call or text <b>988</b>, or text <b>HOME</b>
+               to <b>741741</b> in the US) shown before anything is shared. words that signal real
+               crisis are reviewed by a human.</p>
+            <p>anonymity is protected off-platform too: share cards carry your words, never your
+               handle. accounts require users to be 17 or older.</p>
+            <p>we collect as little as possible and sell nothing. everything you wrote can be
+               exported or permanently deleted from inside the app. the details live in our
+               <a href="privacy.html">privacy policy</a> and <a href="terms.html">terms of service</a>.</p>
+        </section>
+
+        <section id="faq" class="faq">
+            <h2>questions, answered</h2>
+            <dl>
+                <dt>is it really anonymous?</dt>
+                <dd>yes — posts appear under a generated handle, never your name or photo. no one,
+                    including people who follow your handle, can see who you are. the one limit:
+                    anonymity is not a license to harm others, and we cooperate with law enforcement
+                    where the law requires it.</dd>
+                <dt>does it cost anything?</dt>
+                <dd>no. toska is free, with no ads and nothing sold. it's a small product built to
+                    stay small and careful.</dd>
+                <dt>who is it for?</dt>
+                <dd>anyone 17 or older going through a breakup, a divorce, a situationship that
+                    ended, or the long tail of one that ended years ago. fresh grief and old grief
+                    sit in the same feed.</dd>
+                <dt>is this therapy?</dt>
+                <dd>no. toska is peer support — people in it together — not a substitute for
+                    professional care. if you're in crisis, call or text 988 (US) or text HOME to
+                    741741; the app surfaces the same resources whenever it matters.</dd>
+                <dt>when can i download it?</dt>
+                <dd>toska is in private beta on TestFlight and coming soon to the App Store. want in
+                    early, or want to know when it ships? email
+                    <a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a>.</dd>
+                <dt>what happens to my words if i leave?</dt>
+                <dd>delete your account in settings and your profile, posts, replies, and personal
+                    data are permanently removed. you can also export everything first.</dd>
+            </dl>
+        </section>
+
+        <section id="company">
             <h2>about SALTE DEVELOPMENT LLC</h2>
             <p>toska is designed and built by <b>SALTE DEVELOPMENT LLC</b>, an independent software
-               company based in Dallas, Texas. we build small, careful consumer software with an
-               editorial sensibility — products that treat their users like readers, not metrics.</p>
-            <p>toska is our first title, currently in private beta on TestFlight ahead of its public
-               App Store release.</p>
-            <p class="contact-line sans"><b class="sans">contact:</b>
-               <a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a>
-               &nbsp;·&nbsp; <a href="support.html">app support</a></p>
+               company registered in Texas and based in Dallas. we build small, careful consumer
+               software with an editorial sensibility — products that treat their users like
+               readers, not metrics.</p>
+            <p>toska is our first title. it's currently in private beta on TestFlight ahead of its
+               public App Store release, with a read-only web home for shared posts planned to
+               follow at this domain.</p>
+            <h3>contact</h3>
+            <p class="contact-line">email
+               <a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a> for
+               anything — support, press, partnership, or beta access. app-specific help lives at
+               <a href="support.html">toskaapp.com/support</a>.</p>
         </section>
     </main>
 

@@ -100,6 +100,14 @@ async function cleanupPostsForUid(uid, maxIterations) {
       .get();
     if (batch.empty) break;
     for (const postDoc of batch.docs) {
+      // Reply docs carry a nested likes subcollection; deleteCollection is
+      // non-recursive, so drain each reply's likes first or they persist as
+      // orphaned uid-keyed docs invisible to every later sweep (the post and
+      // reply docs above them are gone).
+      const replySnap = await postDoc.ref.collection("replies").get();
+      for (const replyDoc of replySnap.docs) {
+        await deleteCollection(replyDoc.ref.collection("likes"));
+      }
       await deleteCollection(postDoc.ref.collection("replies"));
       await deleteCollection(postDoc.ref.collection("likes"));
       await deleteCollection(postDoc.ref.collection("reflections"));
@@ -238,6 +246,14 @@ async function cleanupRepostsForUid(uid, maxIterations) {
       .get();
     if (batch.empty) break;
     for (const postDoc of batch.docs) {
+      // Reply docs carry a nested likes subcollection; deleteCollection is
+      // non-recursive, so drain each reply's likes first or they persist as
+      // orphaned uid-keyed docs invisible to every later sweep (the post and
+      // reply docs above them are gone).
+      const replySnap = await postDoc.ref.collection("replies").get();
+      for (const replyDoc of replySnap.docs) {
+        await deleteCollection(replyDoc.ref.collection("likes"));
+      }
       await deleteCollection(postDoc.ref.collection("replies"));
       await deleteCollection(postDoc.ref.collection("likes"));
       await deleteCollection(postDoc.ref.collection("reflections"));
@@ -804,24 +820,60 @@ exports.onAllowSharingChanged = onDocumentUpdated("users/{userId}", async (event
   const after = event.data?.after.data()?.allowSharing;
   if (before === after || typeof after !== "boolean") return;
   const uid = event.params.userId;
-  const apply = async (query, compute) => {
-    const snap = await query.get();
+  // Toggle-race guard: trigger deliveries are not ordered, so a rapid OFF→ON
+  // (two events) can run with the OFF delivery LAST and leave posts shareable
+  // after a revocation (or vice versa). Before every commit, re-read the
+  // user's CURRENT setting and abort if this delivery is stale — the delivery
+  // carrying the current value will (re)apply the right target. Aborting
+  // mid-backfill is safe: partially-applied docs are corrected by that run.
+  const userRef = db.collection("users").doc(uid);
+  const isStale = async () => {
+    const cur = (await userRef.get()).data()?.allowSharing;
+    return typeof cur === "boolean" && cur !== after;
+  };
+  const apply = async (snap, compute) => {
     let batch = db.batch(); let n = 0;
     for (const doc of snap.docs) {
       const target = compute(doc.data());
       if (doc.data().isShareable === target) continue;
       batch.update(doc.ref, { isShareable: target });
-      if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+      if (++n % 400 === 0) {
+        if (await isStale()) return -1;
+        await batch.commit(); batch = db.batch();
+      }
     }
-    if (n % 400 !== 0) await batch.commit();
+    if (n % 400 !== 0) {
+      if (await isStale()) return -1;
+      await batch.commit();
+    }
     return n;
   };
-  const own = await apply(
-    db.collection("posts").where("authorId", "==", uid).where("isRepost", "==", false),
+  const ownSnap = await db.collection("posts")
+    .where("authorId", "==", uid).where("isRepost", "==", false).get();
+  const own = await apply(ownSnap,
     (d) => after && d.isLetter !== true && d.isWhisper !== true);
-  const reposts = await apply(
-    db.collection("posts").where("originalAuthorId", "==", uid).where("isRepost", "==", true),
-    () => after);
+  if (own === -1) {
+    console.log(`onAllowSharingChanged(${uid}): stale delivery (setting changed again) — aborted`);
+    return;
+  }
+  // Reposts must honor the ORIGINAL's letter/whisper unshareability, exactly
+  // like the own-posts leg: a re-enable must not flip a repost-of-a-letter
+  // shareable when the letter itself never is. The repost doc doesn't carry
+  // those flags, but every original is in the own-posts snapshot above —
+  // collect the unshareable ids there instead of paying a get() per repost.
+  const unshareableOriginals = new Set();
+  for (const doc of ownSnap.docs) {
+    const d = doc.data();
+    if (d.isLetter === true || d.isWhisper === true) unshareableOriginals.add(doc.id);
+  }
+  const repostSnap = await db.collection("posts")
+    .where("originalAuthorId", "==", uid).where("isRepost", "==", true).get();
+  const reposts = await apply(repostSnap,
+    (d) => after && !unshareableOriginals.has(d.originalPostId));
+  if (reposts === -1) {
+    console.log(`onAllowSharingChanged(${uid}): stale delivery (setting changed again) — aborted`);
+    return;
+  }
   console.log(`onAllowSharingChanged(${uid}): allowSharing=${after} — updated ${own} posts, ${reposts} reposts`);
 });
 
@@ -1381,6 +1433,36 @@ exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
       const userSnap = await tx.get(userRef);
       if (!userSnap.exists) return;
       tx.update(userRef, { totalLikes: FieldValue.increment(-1) });
+    });
+  }
+);
+
+// totalLikes parity on post deletion (2026-07-08 audit). When a post doc is
+// deleted BEFORE its likes drain — admin dashboard deleteDoc, or the >500-like
+// remainder of a client self-delete — the per-like decrement above bails on
+// the missing post (like docs carry no authorId fallback), permanently
+// inflating the author's totalLikes on every moderation removal. Settle the
+// remainder here from the deleted snapshot's likeCount: any like doc still
+// existing at deletion time never got (and never will get) its per-like
+// user-leg decrement, because that leg reads the now-missing post first.
+// Paths that drain likes BEFORE deleting (client ≤500 self-delete, expiry
+// cleanup) arrive here with likeCount already decremented to whatever their
+// lagging like-triggers hadn't yet applied — the two mechanisms converge on
+// the correct total. Residual known race: a like-trigger that decremented
+// the post-leg but lost its user-leg to the deletion window under-counts by
+// one; strictly smaller than the leak this closes.
+exports.onPostDeletedAdjustTotalLikes = onDocumentDeleted(
+  { document: "posts/{postId}", retry: true },
+  async (event) => {
+    const data = (event.data && event.data.data()) || {};
+    const likeCount = typeof data.likeCount === "number" ? data.likeCount : 0;
+    const authorId = data.authorId;
+    if (likeCount <= 0 || !authorId) return;
+    await claimedTransaction(event.id, "totalLikes", async (tx) => {
+      const userRef = db.collection("users").doc(authorId);
+      const userSnap = await tx.get(userRef);
+      if (!userSnap.exists) return; // account-deletion cascade: nothing to fix
+      tx.update(userRef, { totalLikes: FieldValue.increment(-likeCount) });
     });
   }
 );
@@ -2217,6 +2299,16 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
       await db.collection("posts").doc(postId).delete();
       return;
     }
+    // Ephemeral originals can't be reposted (2026-07-08 audit): the repost doc
+    // copies neither the whisper/midnight flags nor expiresAt, so it would be
+    // a permanent, unbadged, externally-shareable copy of content the author
+    // was promised disappears. Blocked at the rule layer too; this backstops
+    // tampered clients and any pre-rule window.
+    if (originalData.isWhisper === true || originalData.isMidnightPost === true) {
+      console.warn(`Deleting repost ${postId} — original ${originalPostId} is ephemeral (whisper/midnight)`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
     // originalHandle is intentionally not equality-checked: the original
     // author may have rotated their handle between when the reposter
     // fetched the original and when this trigger fires. The display would
@@ -2380,6 +2472,72 @@ exports.reconcilePostVisibility = onSchedule("every 30 minutes", async () => {
 // pending-replies tab in admin.html. Hard-delete is retained only for the
 // low-false-positive abuse categories (hate/threat/sexual/harassment) in
 // applyReplyModeration. Idempotent: first reason wins, like setPendingReview.
+// Reply-notification preview sync (2026-07-08 audit). The `message` preview
+// on a reply notification may only ever contain text of a reply that is
+// currently VISIBLE (live, or legacy with no status field). Two writers keep
+// that invariant:
+//   - setReplyLive → backfill (the reply just became visible)
+//   - setReplyPendingReview → scrub (the reply just got hidden — without
+//     this, held PII/crisis text stayed in the recipient's notification
+//     forever, defeating the M-1 hold)
+// enrichReplyNotification also backfills, but only for already-live/legacy
+// replies: at notification-create time a fresh reply is still
+// pending_validation, so the common path gets its preview from setReplyLive
+// AFTER moderation cleared it — which closes the enrich-vs-hold race.
+async function syncReplyNotifPreview(postRef, replyAuthorId, mode) {
+  if (!replyAuthorId) return;
+  try {
+    const postSnap = await postRef.get();
+    if (!postSnap.exists) return;
+    const recipient = postSnap.data().authorId;
+    if (!recipient || recipient === replyAuthorId) return; // self-reply: no notif
+    const notifSnap = await db.collection("users").doc(recipient)
+      .collection("notifications")
+      .where("type", "==", "reply")
+      .where("fromUserId", "==", replyAuthorId)
+      .where("postId", "==", postRef.id)
+      .limit(10)
+      .get();
+    if (notifSnap.empty) return;
+    const batch = db.batch();
+    let writes = 0;
+    if (mode === "scrub") {
+      // Over-broad by design: every preview from this actor on this post is
+      // dropped, even ones backed by a still-live older reply. The generic
+      // "replied to your post" fallback is the safe direction.
+      for (const doc of notifSnap.docs) {
+        if (doc.data().message !== undefined) {
+          batch.update(doc.ref, { message: FieldValue.delete() });
+          writes++;
+        }
+      }
+    } else {
+      // Backfill from the newest reply by this actor (same semantics as
+      // enrichReplyNotification), but only if that reply is visible, and only
+      // into notifications that don't already carry a preview.
+      const replySnap = await postRef.collection("replies")
+        .where("authorId", "==", replyAuthorId)
+        .orderBy("createdAt", "desc")
+        .limit(1)
+        .get();
+      if (replySnap.empty) return;
+      const reply = replySnap.docs[0].data();
+      if (reply.moderationStatus !== undefined && reply.moderationStatus !== "live") return;
+      const truncated = (reply.text || "").slice(0, 200).trim();
+      if (!truncated) return;
+      for (const doc of notifSnap.docs) {
+        if (doc.data().message === undefined) {
+          batch.update(doc.ref, { message: truncated });
+          writes++;
+        }
+      }
+    }
+    if (writes > 0) await batch.commit();
+  } catch (err) {
+    console.warn(`syncReplyNotifPreview(${mode}) failed:`, err.message);
+  }
+}
+
 async function setReplyPendingReview(replyRef, reason) {
   const snap = await replyRef.get();
   if (!snap.exists) return false;
@@ -2390,6 +2548,7 @@ async function setReplyPendingReview(replyRef, reason) {
     pendingReason: reason,
     pendingDetectedAt: FieldValue.serverTimestamp(),
   });
+  await syncReplyNotifPreview(replyRef.parent.parent, data.authorId, "scrub");
   return true;
 }
 
@@ -2403,13 +2562,21 @@ async function setReplyPendingReview(replyRef, reason) {
 // already-live reply, and promotes from pending_validation OR a missing field.
 async function setReplyLive(replyRef) {
   try {
+    let promotedAuthorId = null;
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(replyRef);
       if (!snap.exists) return;
       const status = snap.data().moderationStatus;
       if (status === "pending_review" || status === "live") return;
+      promotedAuthorId = snap.data().authorId || null;
       tx.update(replyRef, { moderationStatus: "live" });
     });
+    // The reply just became visible — now (and only now) its text may appear
+    // as the recipient's notification preview. enrichReplyNotification saw the
+    // reply at pending_validation and deliberately left the preview generic.
+    if (promotedAuthorId) {
+      await syncReplyNotifPreview(replyRef.parent.parent, promotedAuthorId, "backfill");
+    }
   } catch (err) {
     console.warn(`setReplyLive ${replyRef.id} failed:`, err.message);
   }
@@ -2681,16 +2848,98 @@ function flagReasonToPendingReason(flagReason) {
 // every update, but bails fast unless `text` actually changed (this also
 // breaks the recursion loop with the trigger's own flagged/flagReason
 // writes, which don't touch text).
+// Repost copies are full denormalized snapshots of the original's text with
+// their OWN moderationStatus, so two kinds of original-doc changes must fan
+// out to them or the copies keep serving what the original no longer shows
+// (2026-07-08 audit):
+//   - moderation transitions between live and pending_review — a report-based
+//     or admin hold on the original was otherwise silently ineffective on
+//     every copy, and an approve must symmetrically release them;
+//   - text edits — an author's self-redaction of missed PII stayed live on
+//     every copy forever.
+// Text fan-out lets each copy re-moderate itself (its own onPostUpdated pass
+// fires on the text change); status cascades apply directly, since the admin
+// verdict on the original's text applies verbatim to identical copies.
+// Reply-reposts carry the REPLY's text, so post-level fan-out must skip them
+// (they match the originalPostId query too); onReplyUpdated fans out to them.
+async function fanOutToRepostCopies({ originalPostId, originalReplyId, shouldUpdate, update }) {
+  const query = originalReplyId
+    ? db.collection("posts").where("originalReplyId", "==", originalReplyId).where("isRepost", "==", true)
+    : db.collection("posts").where("originalPostId", "==", originalPostId).where("isRepost", "==", true);
+  const snap = await query.get();
+  let batch = db.batch(); let n = 0;
+  for (const doc of snap.docs) {
+    if (!originalReplyId && doc.data().originalReplyId) continue;
+    if (!shouldUpdate(doc.data())) continue;
+    batch.update(doc.ref, update);
+    if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+  }
+  if (n % 400 !== 0) await batch.commit();
+  return n;
+}
+
+// Shared by onPostUpdated / onReplyUpdated. `id` is the original's doc id;
+// pass `kind: "reply"` to target reply-reposts. Idempotent (status-filtered),
+// so safe under retry redelivery.
+async function cascadeModerationToCopies(kind, id, before, after) {
+  const beforeStatus = before.moderationStatus || "live";
+  const afterStatus = after.moderationStatus || "live";
+  if (beforeStatus === afterStatus) return;
+  const target = kind === "reply" ? { originalReplyId: id } : { originalPostId: id };
+  if (afterStatus === "pending_review") {
+    const n = await fanOutToRepostCopies({
+      ...target,
+      shouldUpdate: (d) => (d.moderationStatus || "live") === "live",
+      update: {
+        moderationStatus: "pending_review",
+        // Fixed provenance stamp (NOT the original's reason): the release
+        // branch below frees ONLY cascade-held copies, so a copy that was
+        // independently held (its own reports, a prior flag) keeps its hold
+        // and its reason when the original bounces held→live.
+        pendingReason: "original_held",
+        pendingDetectedAt: FieldValue.serverTimestamp(),
+      },
+    });
+    if (n) console.log(`cascadeModerationToCopies(${kind} ${id}): held ${n} repost copies`);
+  } else if (afterStatus === "live" && beforeStatus === "pending_review") {
+    const n = await fanOutToRepostCopies({
+      ...target,
+      // Release only what this cascade held, and never a copy that has since
+      // crossed the community-report auto-hide threshold on its own.
+      shouldUpdate: (d) => d.moderationStatus === "pending_review"
+        && d.pendingReason === "original_held"
+        && !(typeof d.autoHiddenReportCount === "number" && d.autoHiddenReportCount >= 3),
+      update: {
+        moderationStatus: "live",
+        pendingReason: FieldValue.delete(),
+        pendingDetectedAt: FieldValue.delete(),
+      },
+    });
+    if (n) console.log(`cascadeModerationToCopies(${kind} ${id}): released ${n} repost copies`);
+  }
+  // pending_validation transitions (every fresh doc's promotion) fall through
+  // both branches without running a query — copies can't exist pre-promotion.
+}
+
 exports.onPostUpdated = onDocumentUpdated(
   // retry:true (2026-07-01): every write below is idempotent (setPendingReview
   // no-ops when already pending, checkRepeatOffenderPosts recounts + guards
-  // the restriction window, the crisis page dedups on its claim doc), and the
-  // before.text === after.text guard makes redelivery cheap.
+  // the restriction window, the crisis page dedups on its claim doc, the
+  // fan-outs are status-filtered/converging), and the before.text ===
+  // after.text guard makes redelivery cheap.
   { document: "posts/{postId}", retry: true },
   async (event) => {
   const postId = event.params.postId;
   const before = (event.data && event.data.before && event.data.before.data()) || {};
   const after = (event.data && event.data.after && event.data.after.data()) || {};
+
+  // Original→copy status cascade runs BEFORE the text guard: a moderation
+  // transition arrives with text unchanged and must still fan out. Copies
+  // themselves never cascade (no repost-of-repost, and their hold/release is
+  // driven from the original).
+  if (after.isRepost !== true) {
+    await cascadeModerationToCopies("post", postId, before, after);
+  }
 
   // Skip when text didn't change. This covers two cases:
   //   - The trigger's own writes (flagged, flaggedAt, flagReason,
@@ -2699,6 +2948,36 @@ exports.onPostUpdated = onDocumentUpdated(
   //   - Any other unrelated field update (editedAt without text, future
   //     metadata fields, etc.) doesn't need a moderation pass.
   if (before.text === after.text) return;
+
+  // Text-change side effects that must run even when the moderation branches
+  // below early-return (crisis path returns, PII path returns, …):
+  if (after.isRepost !== true) {
+    // An edit invalidates the human curation decision — a webFeatured slot
+    // must not silently morph into text no admin reviewed.
+    if (after.webFeatured === true) {
+      try {
+        await db.collection("posts").doc(postId).update({ webFeatured: FieldValue.delete() });
+      } catch (err) {
+        if (err.code !== 5) throw err; // NOT_FOUND: deleted concurrently
+      }
+    }
+    const n = await fanOutToRepostCopies({
+      originalPostId: postId,
+      shouldUpdate: () => true,
+      update: { text: after.text },
+    });
+    if (n) console.log(`onPostUpdated(${postId}): propagated edit to ${n} repost copies`);
+  }
+
+  // Repost copies do NOT re-moderate themselves (2026-07-08 re-review): their
+  // text is owned by the original, whose own moderation pass plus the status
+  // cascade above hold/release every copy with correct provenance. Running the
+  // pipeline below on copies attributed flags to the REPOSTER — feeding
+  // checkRepeatOffenderPosts strikes for words they didn't write (an edit-in-
+  // violation by the original author could auto-restrict innocent reposters)
+  // — and paged admins once per copy (crisisAlert_<copyId> claims are
+  // per-doc, so one crisis edit with N reposts paged N+1 times).
+  if (after.isRepost === true) return;
 
   const flagReason = computePostFlagReason(after.text);
   const concerning = isPostConcerning(after.text);
@@ -3019,7 +3298,21 @@ exports.onReplyUpdated = onDocumentUpdated(
   async (event) => {
     const before = (event.data && event.data.before && event.data.before.data()) || {};
     const after = (event.data && event.data.after && event.data.after.data()) || {};
+
+    // Original→copy fan-out for reply-reposts, mirroring onPostUpdated:
+    // status transitions cascade even when text is unchanged; text edits
+    // propagate so each copy re-moderates itself. Every clean reply's
+    // pending_validation→live promotion falls through without a query.
+    await cascadeModerationToCopies("reply", event.params.replyId, before, after);
+
     if (before.text === after.text) return;
+
+    const editFanOut = await fanOutToRepostCopies({
+      originalReplyId: event.params.replyId,
+      shouldUpdate: () => true,
+      update: { text: after.text },
+    });
+    if (editFanOut) console.log(`onReplyUpdated(${event.params.replyId}): propagated edit to ${editFanOut} repost copies`);
 
     const replyRef = db.collection("posts").doc(event.params.postId)
       .collection("replies").doc(event.params.replyId);
@@ -3214,24 +3507,41 @@ exports.cleanupExpiredPosts = onSchedule("every 60 minutes", async () => {
   console.log("Running expired post cleanup at:", now.toDate());
 
   try {
-    const expiredSnap = await db.collection("posts")
-      .where("expiresAt", "<=", now)
-      .limit(100)
-      .get();
+    // Loop until the expired set is drained (2026-07-08 audit): a single
+    // limit(100) pass let a backlog build without bound whenever the expiry
+    // rate beat 100/hour or a prior run errored — and expired-but-undeleted
+    // whispers stay readable to tampered clients (the read rule can't check
+    // expiresAt without breaking every list query). Bounded at 50 pages as a
+    // runaway backstop; the next hourly run picks up any remainder.
+    let totalDeleted = 0;
+    for (let page = 0; page < 50; page++) {
+      const expiredSnap = await db.collection("posts")
+        .where("expiresAt", "<=", now)
+        .limit(100)
+        .get();
+      if (expiredSnap.empty) break;
 
-    if (expiredSnap.empty) {
-      console.log("No expired posts found.");
-      return;
+      for (const doc of expiredSnap.docs) {
+        // Drain each reply's nested likes first — deleteCollection is
+        // non-recursive, and once the reply docs are gone these are
+        // permanently orphaned (the post-delete backstop queries an
+        // already-empty replies collection).
+        const replySnap = await doc.ref.collection("replies").get();
+        for (const replyDoc of replySnap.docs) {
+          await deleteCollection(replyDoc.ref.collection("likes"));
+        }
+        await deleteCollection(doc.ref.collection("replies"));
+        // Likes drain BEFORE the post doc delete so each per-like trigger
+        // still sees the post and decrements likeCount + author totalLikes.
+        await deleteCollection(doc.ref.collection("likes"));
+        await deleteCollection(doc.ref.collection("reflections"));
+        await doc.ref.delete();
+      }
+      totalDeleted += expiredSnap.size;
+      if (expiredSnap.size < 100) break;
     }
 
-    for (const doc of expiredSnap.docs) {
-      await deleteCollection(doc.ref.collection("replies"));
-      await deleteCollection(doc.ref.collection("likes"));
-      await deleteCollection(doc.ref.collection("reflections"));
-      await doc.ref.delete();
-    }
-
-    console.log(`Deleted ${expiredSnap.size} expired posts.`);
+    console.log(totalDeleted === 0 ? "No expired posts found." : `Deleted ${totalDeleted} expired posts.`);
   } catch (error) {
     console.error("Expired post cleanup failed:", error);
     throw error;
@@ -3374,15 +3684,18 @@ exports.enrichReplyNotification = onDocumentCreated(
         return;
       }
 
-      // M-1 (2026-06-08 audit): if the backing reply is HELD for review
-      // (moderationStatus == "pending_review"), do NOT leak its text into the
-      // recipient's in-app notification preview — the whole point of the hold
-      // is that this recipient can't see the (possibly PII) reply. Leave the
-      // message unset so NotificationsView shows the generic "replied to your
-      // post" fallback; if an admin later approves the reply it rejoins the
-      // thread normally.
-      if (replySnap.docs[0].data().moderationStatus === "pending_review") {
-        console.log("enrichReplyNotification: backing reply is held; suppressing preview:", notifRef.path);
+      // M-1 (2026-06-08 audit, tightened 2026-07-08): only a VISIBLE reply's
+      // text may become the recipient's preview. The original guard skipped
+      // only "pending_review", but a fresh reply is still "pending_validation"
+      // here (this trigger races — and usually beats — validateReply), so a
+      // reply that moderation was about to hold had its PII/crisis text
+      // backfilled anyway, permanently. Now: pending_validation replies get
+      // their preview from setReplyLive AFTER moderation clears them;
+      // setReplyPendingReview scrubs on any later hold. Legacy replies with
+      // no status field default-read as live and enrich here as before.
+      const replyStatus = replySnap.docs[0].data().moderationStatus;
+      if (replyStatus !== undefined && replyStatus !== "live") {
+        console.log(`enrichReplyNotification: backing reply is ${replyStatus}; deferring preview:`, notifRef.path);
         return;
       }
       replyText = replySnap.docs[0].data().text || "";
@@ -3881,11 +4194,19 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
       const actualLikes = likeAgg.data().count;
       const storedLikes = typeof data.likeCount === "number" ? data.likeCount : 0;
 
-      const repostAgg = await db.collection("posts")
+      // Reply-reposts match this query too (they carry the parent post's
+      // originalPostId) but are deliberately EXCLUDED from the post's stored
+      // repostCount (they increment the reply doc instead) — counting them
+      // here produced phantom drift on any post whose reply was ever
+      // reposted, i.e. false evidence inviting a wrong manual "correction".
+      // count() can't test field absence, so fetch key-only projections and
+      // filter; per-post repost sets are small.
+      const repostSnap = await db.collection("posts")
         .where("originalPostId", "==", id)
         .where("isRepost", "==", true)
-        .count().get();
-      const actualReposts = repostAgg.data().count;
+        .select("originalReplyId")
+        .get();
+      const actualReposts = repostSnap.docs.filter((d) => d.get("originalReplyId") === undefined).length;
       const storedReposts = typeof data.repostCount === "number" ? data.repostCount : 0;
 
       if (actualLikes !== storedLikes || actualReposts !== storedReposts) {
@@ -4058,7 +4379,11 @@ exports.giphyProxy = onCall(
 //   - moderationStatus live, no reposts, no ephemeral (whisper/midnight)
 //   - returns text/tag/likeCount/age only — NO handle, NO authorId, NO doc id
 // No App Check: this is deliberately public data. Abuse surface is capped by
-// the fixed 12-post response, no pagination, and CDN caching (10 min).
+// the fixed 12-post response, no pagination, and the per-instance memo below
+// (the site calls the raw cloudfunctions.net URL — nothing fronts it, so the
+// s-maxage header alone caps nothing; the memo makes repeat hits within 10
+// minutes cost zero Firestore reads per warm instance).
+let publicFeedMemo = { at: 0, body: null };
 exports.publicFeed = onRequest(
   { cors: ["https://toskaapp.com", "https://www.toskaapp.com"] },
   async (req, res) => {
@@ -4067,11 +4392,19 @@ exports.publicFeed = onRequest(
       return;
     }
     try {
+      if (publicFeedMemo.body && Date.now() - publicFeedMemo.at < 600e3) {
+        res.set("Cache-Control", "public, max-age=600, s-maxage=600");
+        res.json(publicFeedMemo.body);
+        return;
+      }
       // Direct query on the curation flag (single-field index, no composite);
-      // the featured set is small, so ordering happens in memory below.
+      // the featured set is small, so ordering happens in memory below. The
+      // window must stay comfortably above the human-curated set's size: the
+      // in-memory recency sort runs on what THIS query returns, so a too-small
+      // limit silently pins the feed to an arbitrary (docId-ordered) subset.
       const snap = await db.collection("posts")
         .where("webFeatured", "==", true)
-        .limit(60)
+        .limit(300)
         .get();
       const now = Date.now();
       const posts = [];
@@ -4097,6 +4430,7 @@ exports.publicFeed = onRequest(
         });
         if (posts.length >= 12) break;
       }
+      publicFeedMemo = { at: Date.now(), body: { posts } };
       res.set("Cache-Control", "public, max-age=600, s-maxage=600");
       res.json({ posts });
     } catch (err) {

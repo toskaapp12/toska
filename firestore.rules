@@ -923,6 +923,14 @@ service cloud.firestore {
             // report-hidden / held post and republish it live (re-moderation
             // doesn't catch a community-reported post, whose text is clean).
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('moderationStatus', 'live') == 'live'
+            // 2026-07-08 audit: can't repost an EPHEMERAL post. The repost doc
+            // copies neither the whisper/midnight flags nor expiresAt, so it
+            // would outlive the original as a permanent, unbadged, shareable
+            // copy of content the author was promised disappears. Same cached
+            // get() as the checks above — zero extra reads. validatePost
+            // backstops this server-side.
+            && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isWhisper', false) != true
+            && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isMidnightPost', false) != true
             && notBlockedBy(request.resource.data.originalAuthorId)
             && (
                  !('originalHandle' in request.resource.data.keys())
@@ -960,6 +968,11 @@ service cloud.firestore {
       // way). text.size() > 0 also matches the create-side guard so a
       // tampered client can't blank out a post via update.
       allow update: if ((isAuth() && resource.data.authorId == request.auth.uid)
+            // 2026-07-08 audit: restriction must gate EDIT like it gates
+            // create — without this, a restricted user publishes new text by
+            // editing an old live post (server re-moderation only catches
+            // matcher-visible content).
+            && notRestricted()
             && request.resource.data.text is string
             && request.resource.data.text.size() > 0
             && request.resource.data.text.size() <= 2000
@@ -1081,6 +1094,9 @@ service cloud.firestore {
         // as defense-in-depth. Admins keep the unconstrained isAdmin() leg.
         allow update: if (isAuth()
             && resource.data.authorId == request.auth.uid
+            // 2026-07-08 audit: same restricted-edit gate as the post update
+            // leg — reply create has notRestricted(), edit must too.
+            && notRestricted()
             && request.resource.data.text is string
             && request.resource.data.text.size() > 0
             && request.resource.data.text.size() <= 500

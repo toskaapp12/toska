@@ -62,6 +62,8 @@ struct ReplyDetailView: View {
     @State private var showDeleteAlert = false
     @State private var deleteError: String = ""
     @State private var showShareCard = false
+    // Reply-share consent denied at tap time (author's allowSharing is off).
+    @State private var shareBlocked = false
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
     @State private var showOtherProfile = false
@@ -186,7 +188,17 @@ struct ReplyDetailView: View {
                                 }
                                 .frame(maxWidth: .infinity)
                                 .accessibilityLabel(isSaved ? "remove from saved" : "save")
-                                Button { showShareCard = true } label: {
+                                Button {
+                                    // Consent check at tap time — replies carry no
+                                    // denormalized isShareable (see ShareConsent).
+                                    Task { @MainActor in
+                                        if await ShareConsent.authorAllowsSharing(replyAuthorId) {
+                                            showShareCard = true
+                                        } else {
+                                            shareBlocked = true
+                                        }
+                                    }
+                                } label: {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.system(size: 15, weight: .light))
                                         .foregroundColor(Color.toskaTextLight)
@@ -258,6 +270,11 @@ struct ReplyDetailView: View {
         .navigationDestination(isPresented: $showShareCard) {
             ShareCardView(text: replyText, handle: replyHandle, feltCount: likeCount, tag: nil)
                 .navigationBarHidden(true)
+        }
+        .alert("sharing is off", isPresented: $shareBlocked) {
+            Button("got it", role: .cancel) {}
+        } message: {
+            Text("the writer of this reply keeps sharing turned off, so it can't leave toska.")
         }
         .navigationDestination(isPresented: $showReportSheet) {
             ReportSheet(target: .reply(

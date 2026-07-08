@@ -778,6 +778,12 @@ extension Color {
     // Fixed ink for share-card art (the "paper" style) — card palettes are
     // deliberately theme-independent, so this must never adapt.
     static let toskaShareCardInk = Color(hex: "2a2a2a")
+    // Fixed ink for surfaces that are hard-LIGHT in both themes (the auth
+    // screens' f0f1f3 ground, white in-feed celebration cards, the GIF picker
+    // chrome). The adaptive toskaTextDark flips to its night value on those
+    // and vanishes — light ink on a light surface at the exact hours (0–5)
+    // the app auto-enters late-night. Same day value as toskaTextDark.
+    static let toskaInkOnLight = Color(hex: "2a2a2a")
     static let toskaDivider    = Color(hex: "d0d0d0")  // light dividers
     static let toskaTimestamp  = Color(hex: "c0c0c0")  // timestamp gray
 

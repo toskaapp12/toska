@@ -786,12 +786,25 @@ struct ComposeView: View {
                 draftSaveTask = Task {
                     try? await Task.sleep(nanoseconds: 500_000_000)
                     guard !Task.isCancelled else { return }
+                    // Sign-out scrub guard: a keystroke <0.5s before an
+                    // out-of-band session expiry must not re-persist the
+                    // draft AFTER ContentView's DraftStore.clearAll().
+                    guard Auth.auth().currentUser != nil else { return }
                     DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
                 }
             }
         }
         .onChange(of: draftTag) { _, newValue in
             DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftTag)
+        }
+        // Out-of-band sign-out (token revoked, account deleted on another
+        // device) while composing: cancel the pending debounce write and blank
+        // the buffer so neither the debounce nor the onDisappear flush can
+        // re-persist this user's words after the scrub.
+        .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
+            draftSaveTask?.cancel()
+            draftSaveTask = nil
+            draftText = ""
         }
         // Drives the fade/scale transition on the gentle-check overlay
         // regardless of which surface (button, tap-outside, etc.) flips it.
@@ -870,7 +883,13 @@ struct ComposeView: View {
                     draftSaveTask = nil
                     // Same guard as the keystroke write: an edit-draft session must
                     // not flush into the new-post buffer (would resurrect on cancel).
-                    if editingDraftId == nil, !draftText.isEmpty {
+                    // The currentUser guard matters on the sign-out path: this
+                    // onDisappear fires during the root-swap teardown AFTER
+                    // ContentView's DraftStore.clearAll(), and an unguarded flush
+                    // re-persisted user A's draft into user B's composer on a
+                    // shared device.
+                    if editingDraftId == nil, !draftText.isEmpty,
+                       Auth.auth().currentUser != nil {
                         DraftStore.set(draftText, forKey: UserDefaultsKeys.composeDraftText)
                     }
                 }

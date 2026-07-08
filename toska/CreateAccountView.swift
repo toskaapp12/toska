@@ -42,7 +42,7 @@ struct CreateAccountView: View {
                 
                 Text("create account")
                     .font(ToskaFont.serifItalic(28))
-                    .foregroundColor(Color.toskaTextDark)
+                    .foregroundColor(Color.toskaInkOnLight)
                     .padding(.bottom, 4)
                 
                 Text("no names. no faces. not even theirs.")
@@ -58,7 +58,7 @@ struct CreateAccountView: View {
                                     HStack {
                                         Text(assignedHandle)
                                             .font(ToskaFont.serif(16))
-                                            .foregroundColor(Color.toskaTextDark)
+                                            .foregroundColor(Color.toskaInkOnLight)
                                         
                                         Spacer()
                                         

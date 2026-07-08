@@ -501,6 +501,7 @@ struct FeedView: View {
                 authorId: data["authorId"] as? String ?? "",
                 isShareable: data["isShareable"] as? Bool ?? true,
                 originalHandle: data["originalHandle"] as? String,
+                originalAuthorId: data["originalAuthorId"] as? String,
                 promptDate: data["promptDate"] as? String
             )
         }
@@ -883,8 +884,11 @@ struct FeedPostRow: View, Equatable {
                                             .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
                                             .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
                                             .buttonStyle(ToskaTapStyle())
-                                            .disabled(isRepostPost)
-                                            .opacity(isRepostPost ? 0.3 : 1.0)
+                                            // Ephemeral posts can't be reposted (the copy
+                                            // would outlive the original — see
+                                            // PostInteractionManager.repost).
+                                            .disabled(isRepostPost || isWhisperPost || isMidnightPost)
+                                            .opacity((isRepostPost || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
 
                                             // like (with burst overlay — only visible mid-animation;
                                             // allowsHitTesting(false) so taps still hit the button)

@@ -111,6 +111,10 @@ struct PostDetailView: View {
     // sheet(item:) so SwiftUI auto-binds the dismiss + presentation to
     // the optional state without a separate Bool flag.
     @State private var shareReply: ThreadedReply? = nil
+    // Set when a reply-share tap is denied because the reply author's
+    // allowSharing is off (checked at tap time — replies carry no
+    // denormalized isShareable; see ShareConsent).
+    @State private var replyShareBlocked = false
     @State private var showOtherProfile = false
     @State private var authorUserId = ""
     @State private var isAuthorIdLoading = true
@@ -155,6 +159,13 @@ struct PostDetailView: View {
     @State private var replyPostError: String? = nil
     @State private var isLetter = false
     @State private var isWhisper = false
+    // Sharing consent, mirrored from the live listener. Starts FALSE (share
+    // button hidden) until server truth arrives — fail-closed is the right
+    // direction for a consent gate. The feed treats a missing field as
+    // shareable (legacy pre-stamp docs); the listener mirror below matches
+    // that, so the two surfaces agree once the first snapshot lands. A live
+    // revocation (onAllowSharingChanged backfill) hides the button mid-view.
+    @State private var isShareable = false
 
     var isOwnPost: Bool {
         authorUserId == Auth.auth().currentUser?.uid
@@ -245,12 +256,25 @@ struct PostDetailView: View {
                 teardownReplyListeners()
                 likePulseTask?.cancel()
                 likePulseTask = nil
+                // The debounced reply-draft write must not land after the
+                // sign-out scrub (cross-user draft leak on a shared device).
+                replyDraftSaveTask?.cancel()
+                replyDraftSaveTask = nil
                 dismiss()
             }
             .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                           dismiss()
                       }
-            .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+                // If the blocked user is the POST author (blocked via one of
+                // their replies in this thread, or from their profile), the
+                // whole thread is now hidden content — leave instead of
+                // rendering a headless thread whose next refresh denies.
+                if let blockedId = notif.userInfo?["userId"] as? String,
+                   !blockedId.isEmpty, blockedId == authorUserId {
+                    dismiss()
+                    return
+                }
                 // Blocking a reply author from within the thread must clear their
                 // replies immediately. The reply listener only re-runs the blocked
                 // filter on a server delta (which won't fire), so rebuild now.
@@ -327,6 +351,11 @@ struct PostDetailView: View {
                 ShareCardView(text: reply.text, handle: reply.handle, feltCount: reply.likes, tag: nil)
                     .navigationBarHidden(true)
                     .hidesAppTabBar()
+            }
+            .alert("sharing is off", isPresented: $replyShareBlocked) {
+                Button("got it", role: .cancel) {}
+            } message: {
+                Text("the writer of this reply keeps sharing turned off, so it can't leave toska.")
             }
             .navigationDestination(isPresented: $showOtherProfile) {
                             OtherProfileView(userId: authorUserId, handle: handle)
@@ -532,7 +561,7 @@ struct PostDetailView: View {
                                             replyingToHandle = item.reply.handle
                                             replyFocused = true
                                         },
-                                        onShare: { shareReply = item.reply },
+                                        onShare: { requestReplyShare(item.reply) },
                                         onEdit: {
                                             editReplyId = item.reply.id
                                             editReplyText = item.reply.text
@@ -653,6 +682,13 @@ struct PostDetailView: View {
                                 replyDraftSaveTask = Task {
                                     try? await Task.sleep(nanoseconds: 500_000_000)
                                     guard !Task.isCancelled else { return }
+                                    // Sign-out scrub guard: a keystroke <0.5s
+                                    // before an out-of-band session expiry must
+                                    // not re-persist this draft AFTER
+                                    // ContentView's DraftStore.clearAll() — the
+                                    // next user on a shared device would
+                                    // otherwise inherit it.
+                                    guard Auth.auth().currentUser != nil else { return }
                                     DraftStore.set(toSave, forKey: key)
                                 }
                             }
@@ -780,6 +816,12 @@ struct PostDetailView: View {
                            }
                            .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
                            .frame(maxWidth: .infinity)
+                           // Whispers can't be reposted (ephemeral — the copy would
+                           // outlive the original). Midnight posts are caught by the
+                           // tap-time fetch in PostInteractionManager.repost; the
+                           // detail view doesn't carry that flag.
+                           .disabled(isWhisper)
+                           .opacity(isWhisper ? 0.3 : 1.0)
 
                            Button { toggleSave() } label: {
                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -792,8 +834,12 @@ struct PostDetailView: View {
                            // Share — opens ShareCardView (the same path as the
                            // feed row's share button). Hidden for letters &
                            // whispers, which are private/ephemeral and not
-                           // shareable (mirrors the feed row's gating).
-                           if !isLetter && !isWhisper {
+                           // shareable, AND for posts whose author revoked
+                           // sharing consent (isShareable, live-mirrored from
+                           // the listener) — this now fully mirrors the feed
+                           // row's gating; previously consent revocation never
+                           // reached this surface.
+                           if isShareable && !isLetter && !isWhisper {
                                Button { showShareCard = true } label: {
                                    Image(systemName: "square.and.arrow.up")
                                        .font(.system(size: 15, weight: .light))
@@ -885,6 +931,21 @@ struct PostDetailView: View {
             return result
         }
 
+    // MARK: - Reply Share Consent
+
+    // Replies have no denormalized isShareable, so consent is checked at tap
+    // time against the reply author's public allowSharing projection. Fail
+    // closed: on any read failure the card never presents.
+    func requestReplyShare(_ reply: ThreadedReply) {
+        Task { @MainActor in
+            if await ShareConsent.authorAllowsSharing(reply.authorId) {
+                shareReply = reply
+            } else {
+                replyShareBlocked = true
+            }
+        }
+    }
+
     // MARK: - Live Listener
 
     func startLiveListener() {
@@ -913,6 +974,11 @@ struct PostDetailView: View {
                     guard let data = snapshot?.data() else { return }
                     if data["isLetter"] as? Bool == true { isLetter = true }
                     if data["isWhisper"] as? Bool == true { isWhisper = true }
+                    // Unconditional assignment (not set-if-true): consent
+                    // revocation while the view is open must hide the share
+                    // button, not just enable it. Missing field == shareable,
+                    // matching FeedView.feedPost(from:).
+                    isShareable = data["isShareable"] as? Bool ?? true
                     // Mirror the post body from server truth so an edit (this
                     // user's via EditPostView, or a remote edit) is reflected.
                     // The view's onAppear seeds postText from the immutable init
@@ -1792,6 +1858,9 @@ struct PostDetailView: View {
                 // rate-limit window the attempt consumed (line 1397) so the
                 // user can retry immediately instead of being blocked.
                 RateLimiter.shared.lastReplyTime = nil
+                // Tell the user (same alert the offline guard uses) — a
+                // silent failure looked like the reply just vanished.
+                self.replyPostError = "couldn't send — try again."
             }
         }
     }
@@ -1974,6 +2043,21 @@ struct EditPostView: View {
 
     func saveEdit() {
         guard !postId.isEmpty, !editText.isEmpty else { return }
+        // Restriction gates EDIT exactly like create (the update rule now
+        // enforces this server-side) — without it a restricted account
+        // publishes new text by editing an old live post.
+        guard !UserHandleCache.shared.isRestricted else {
+            saveError = "your account is under review. you cannot edit right now."
+            return
+        }
+        // Offline guard: updateData's completion never fires offline, so the
+        // spinner hung forever while the queued edit silently landed on
+        // reconnect — after the user had concluded it failed. Same fail-fast
+        // as postReplyNow.
+        guard NetworkMonitor.shared.isConnected else {
+            saveError = "you're offline — try again when you're connected."
+            return
+        }
         isSaving = true
         saveError = ""
         Firestore.firestore().collection("posts").document(postId).updateData([

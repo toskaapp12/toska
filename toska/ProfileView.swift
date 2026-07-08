@@ -1792,6 +1792,17 @@ struct EditReplyView: View {
     func saveReply() {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !postId.isEmpty, !replyId.isEmpty else { return }
+        // Mirrors EditPostView.saveEdit: restriction gates edits (rules
+        // enforce it server-side too), and offline the completion below never
+        // fires — a hung spinner plus a silently-queued edit on reconnect.
+        guard !UserHandleCache.shared.isRestricted else {
+            saveError = "your account is under review. you cannot edit right now."
+            return
+        }
+        guard NetworkMonitor.shared.isConnected else {
+            saveError = "you're offline — try again when you're connected."
+            return
+        }
         isSaving = true
         saveError = nil
         Firestore.firestore().collection("posts").document(postId).collection("replies").document(replyId)
@@ -1881,6 +1892,12 @@ struct PendingReviewBanner: View {
 // per-doc fallback build the same SavedPost shape).
 fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost? {
     guard data["text"] != nil else { return nil }
+    // Expired ephemerals linger until the hourly cleanup sweep; every other
+    // surface filters them out — without this, the saved/liked tabs rendered
+    // an expired whisper as a live, fully interactive row.
+    if let expiresAt = (data["expiresAt"] as? Timestamp)?.dateValue(), expiresAt <= Date() {
+        return nil
+    }
     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
     return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
 }

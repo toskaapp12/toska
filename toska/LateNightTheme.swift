@@ -124,8 +124,13 @@ struct LateNightTheme {
 
     // Text
     static var primaryText: Color   { isLateNight ? Color(hex: "E6E7EA") : Color.toskaInkBlack }
-    static var secondaryText: Color { isLateNight ? Color(hex: "82868D") : Color(hex: "8A8D96") }
-    static var tertiaryText: Color  { isLateNight ? Color(hex: "5C5F66") : Color(hex: "A9ACB4") }
+    // Day values darkened for WCAG (2026-07-07 a11y round): secondary 8A8D96→
+    // 72757E hits 4.5:1 AA body-text on white; tertiary A9ACB4→91949C hits the
+    // 3:1 floor for interactive icons (the feed action row uses text3). Night
+    // values already pass. Timestamp/meta (timeText) deliberately stays below —
+    // whisper-quiet metadata is brand voice, and it's non-interactive.
+    static var secondaryText: Color { isLateNight ? Color(hex: "82868D") : Color(hex: "72757E") }
+    static var tertiaryText: Color  { isLateNight ? Color(hex: "5C5F66") : Color(hex: "91949C") }
     static var handleText: Color    { isLateNight ? Color(hex: "B6B9BE") : Color(hex: "2A2C32") }
 
     // Dividers

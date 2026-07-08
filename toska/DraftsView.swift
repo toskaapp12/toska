@@ -49,7 +49,7 @@ struct DraftsView: View {
                             .foregroundColor(LateNightTheme.tertiaryText)
                             .padding(.bottom, 4)
                         Text("nothing saved yet.")
-                            .font(.custom("Georgia-Italic", size: 16))
+                            .font(ToskaFont.serifItalic(16))
                             .foregroundColor(LateNightTheme.secondaryText)
                         Text("write something, tap save instead of post.\nit stays here, just for you.")
                             .font(ToskaFont.sans(11))
@@ -66,7 +66,7 @@ struct DraftsView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(draft.text)
-                                        .font(.custom("Georgia", size: 16))
+                                        .font(ToskaFont.serif(16))
                                         .foregroundColor(LateNightTheme.primaryText)
                                         .lineSpacing(3)
                                         .lineLimit(3)

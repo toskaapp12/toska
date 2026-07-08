@@ -167,7 +167,7 @@ struct FeedView: View {
                             .font(.system(size: 12, weight: .light))
                             .foregroundColor(Color.toskaFollowGreen)
                         Text("you've been here a while. take a breath if you need.")
-                            .font(.system(size: 12, weight: .regular))
+                            .font(ToskaFont.sans(12, weight: .regular))
                             .foregroundColor(Color.toskaTextDark)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -208,7 +208,7 @@ struct FeedView: View {
                         Text(newPostsBadgeCount == 1
                              ? "1 new post · tap to see"
                              : "\(newPostsBadgeCount) new posts · tap to see")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(ToskaFont.sans(12, weight: .medium))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -692,7 +692,7 @@ struct FeedPostRow: View, Equatable {
                         Image(systemName: "arrow.2.squarepath")
                             .font(.system(size: 10, weight: .regular))
                         Text("\(reposter) reposted")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(ToskaFont.sans(11, weight: .medium))
                     }
                     .foregroundColor(ToskaColor.text3)
                     .padding(.bottom, 8)
@@ -765,7 +765,7 @@ struct FeedPostRow: View, Equatable {
                                 Image(systemName: "envelope.open")
                                     .font(.system(size: 9))
                                 Text("letter")
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(ToskaFont.sans(10, weight: .semibold))
                             }
                             .foregroundColor(Color.toskaAccentGold)
                             
@@ -781,7 +781,7 @@ struct FeedPostRow: View, Equatable {
                                                             }
                                                         } label: {
                                 Text("read this letter...")
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(ToskaFont.sans(13, weight: .medium))
                                     .foregroundColor(Color.toskaBlue)
                                     .padding(.top, 4)
                             }
@@ -794,7 +794,7 @@ struct FeedPostRow: View, Equatable {
                                     Image(systemName: "envelope.open")
                                         .font(.system(size: 9))
                                     Text("letter")
-                                        .font(.system(size: 10, weight: .semibold))
+                                        .font(ToskaFont.sans(10, weight: .semibold))
                                 }
                                 .foregroundColor(Color.toskaAccentGold)
                             }
@@ -1335,11 +1335,11 @@ struct FeedHeaderCard: View {
                                     .font(.system(size: 10))
                                     .foregroundColor(Color.toskaBlue.opacity(0.7))
                                 Text("your response")
-                                    .font(.system(size: 10, weight: .semibold))
+                                    .font(ToskaFont.sans(10, weight: .semibold))
                                     .foregroundColor(Color.toskaBlue.opacity(0.7))
                                 Spacer()
                                 Text("tap to open")
-                                    .font(.system(size: 9))
+                                    .font(ToskaFont.sans(9))
                                     .foregroundColor(Color.toskaTimestamp)
                             }
                             Text(response.text)
@@ -1508,7 +1508,7 @@ struct FeedColumn: View {
                                             searchFocused.wrappedValue = false
                                         } label: {
                                             Text("cancel")
-                                                .font(.system(size: 15))
+                                                .font(ToskaFont.sans(15))
                                                 .foregroundColor(ToskaColor.accent)
                                         }
                                         .transition(.opacity)
@@ -1530,7 +1530,7 @@ struct FeedColumn: View {
                                                 searchText = ""
                                             } label: {
                                                 Text("all")
-                                                    .font(.system(size: 12, weight: .semibold))
+                                                    .font(ToskaFont.sans(12, weight: .semibold))
                                                     .foregroundColor(allSelected ? ToskaColor.bg : ToskaColor.text2)
                                                     .padding(.horizontal, 12)
                                                     .padding(.vertical, 4)
@@ -1550,7 +1550,7 @@ struct FeedColumn: View {
                                                         Image(systemName: tag.icon)
                                                             .font(.system(size: 11))
                                                         Text(tag.name)
-                                                            .font(.system(size: 13, weight: .medium))
+                                                            .font(ToskaFont.sans(13, weight: .medium))
                                                     }
                                                     .foregroundColor(isSel ? Color(hex: "FFFFFF") : Color(hex: tag.colorHex))
                                                     .padding(.horizontal, 12)
@@ -1658,14 +1658,14 @@ struct FeedColumn: View {
                                                     Image(systemName: "exclamationmark.circle")
                                                         .font(.system(size: 10))
                                                     Text(error)
-                                                        .font(.system(size: 11))
+                                                        .font(ToskaFont.sans(11))
                                                     Spacer()
                                                     Button {
                                                         vm.fetchError = nil
                                                         vm.fetchPosts()
                                                     } label: {
                                                         Text("retry")
-                                                            .font(.system(size: 11, weight: .semibold))
+                                                            .font(ToskaFont.sans(11, weight: .semibold))
                                                     }
                                                 }
                                                 .foregroundColor(Color.toskaErrorRed)
@@ -1690,7 +1690,7 @@ struct FeedColumn: View {
                                                                 .multilineTextAlignment(.center)
                                                                 .lineSpacing(4)
                                                             Text("follow someone to see their words here")
-                                                                .font(.system(size: 11))
+                                                                .font(ToskaFont.sans(11))
                                                                 .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
                                                         }
                                                         .frame(maxWidth: .infinity)
@@ -1702,7 +1702,7 @@ struct FeedColumn: View {
                                                 Image(systemName: "exclamationmark.circle")
                                                     .font(.system(size: 10))
                                                 Text("some posts may be missing — pull to refresh")
-                                                    .font(.system(size: 11))
+                                                    .font(ToskaFont.sans(11))
                                             }
                                             .foregroundColor(Color.toskaAccentTan)
                                             .padding(.horizontal, 16)
@@ -1734,11 +1734,11 @@ struct FeedColumn: View {
                                             .font(.system(size: 28, weight: .light))
                                             .foregroundColor(LateNightTheme.tertiaryText)
                                         Text("\"its quiet right now.\"")
-                                            .font(.custom("Georgia-Italic", size: 18))
+                                            .font(ToskaFont.serifItalic(18))
                                             .foregroundColor(LateNightTheme.secondaryText)
                                             .multilineTextAlignment(.center)
                                         Text("be the first one to say what you couldnt say to them.\nor go find someone who already did.")
-                                            .font(.system(size: 12))
+                                            .font(ToskaFont.sans(12))
                                             .foregroundColor(LateNightTheme.tertiaryText)
                                             .multilineTextAlignment(.center)
                                             .lineSpacing(3)
@@ -1751,7 +1751,7 @@ struct FeedColumn: View {
                                                     Image(systemName: "plus.circle")
                                                         .font(.system(size: 11))
                                                     Text("say something")
-                                                        .font(.system(size: 12, weight: .medium))
+                                                        .font(ToskaFont.sans(12, weight: .medium))
                                                 }
                                                 .foregroundColor(.white)
                                                 .padding(.horizontal, 16)
@@ -1766,7 +1766,7 @@ struct FeedColumn: View {
                                                     Image(systemName: "magnifyingglass")
                                                         .font(.system(size: 11))
                                                     Text("explore")
-                                                        .font(.system(size: 12, weight: .medium))
+                                                        .font(ToskaFont.sans(12, weight: .medium))
                                                 }
                                                 .foregroundColor(Color.toskaBlue)
                                                 .padding(.horizontal, 16)
@@ -1777,7 +1777,7 @@ struct FeedColumn: View {
                                         }
                                         .padding(.top, 4)
                                         Text("pull down to refresh")
-                                            .font(.system(size: 9))
+                                            .font(ToskaFont.sans(9))
                                             .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
                                             .padding(.top, 8)
                                     }
@@ -1804,7 +1804,7 @@ struct FeedColumn: View {
                                                                                                                                         // blank column (which also used to drive runaway pagination).
                                                                                                                                         VStack(spacing: 8) {
                                                                                                                                             Text("nothing found")
-                                                                                                                                                .font(.custom("Georgia-Italic", size: 17))
+                                                                                                                                                .font(ToskaFont.serifItalic(17))
                                                                                                                                                 .foregroundColor(.primary)
                                                                                                                                             Text("no posts match your search")
                                                                                                                                                 .font(ToskaFont.sans(13))
@@ -1846,7 +1846,7 @@ struct FeedColumn: View {
                     if tab == 0 && !vm.hasMorePosts && !vm.posts.isEmpty {
                                                                 VStack(spacing: 4) {
                                                                     Text("no more posts to show")
-                                                                        .font(.system(size: 10))
+                                                                        .font(ToskaFont.sans(10))
                                                                         .foregroundColor(LateNightTheme.tertiaryText)
                                                                     // Only annotate when posts are hidden by blocking.
                                                                     // The neutral end-line stands on its own otherwise —
@@ -1854,7 +1854,7 @@ struct FeedColumn: View {
                                                                     // read as awkward at the bottom of a real feed.
                                                                     if vm.endedDueToBlocking {
                                                                         Text("some posts are hidden")
-                                                                            .font(.custom("Georgia-Italic", size: 10))
+                                                                            .font(ToskaFont.serifItalic(10))
                                                                             .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
                                                                     }
                                                                 }

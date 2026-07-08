@@ -214,7 +214,7 @@ struct ReplyDetailView: View {
                         } else if children.isEmpty {
                             VStack(spacing: 8) {
                                 Text("\"some words just need\na witness.\"")
-                                    .font(.custom("Georgia-Italic", size: 16))
+                                    .font(ToskaFont.serifItalic(16))
                                     .foregroundColor(Color.toskaTimestamp)
                                     .multilineTextAlignment(.center)
                                 Text("be the first to reply")

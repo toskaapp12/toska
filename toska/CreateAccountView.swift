@@ -41,7 +41,7 @@ struct CreateAccountView: View {
                 .padding(.bottom, 20)
                 
                 Text("create account")
-                    .font(.custom("Georgia-Italic", size: 28))
+                    .font(ToskaFont.serifItalic(28))
                     .foregroundColor(Color.toskaTextDark)
                     .padding(.bottom, 4)
                 
@@ -57,7 +57,7 @@ struct CreateAccountView: View {
                                     
                                     HStack {
                                         Text(assignedHandle)
-                                            .font(.custom("Georgia", size: 16))
+                                            .font(ToskaFont.serif(16))
                                             .foregroundColor(Color.toskaTextDark)
                                         
                                         Spacer()

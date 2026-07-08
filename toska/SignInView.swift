@@ -40,7 +40,7 @@ struct SignInView: View {
                 .padding(.bottom, 20)
                 
                 Text("welcome back.")
-                    .font(.custom("Georgia-Italic", size: 28))
+                    .font(ToskaFont.serifItalic(28))
                     .foregroundColor(Color(hex: "111111"))
                     .padding(.bottom, 4)
                 

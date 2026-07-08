@@ -40,6 +40,10 @@ struct ShareCardView: View {
     // the fix is purely perceived-latency: set the flag, yield one frame so
     // SwiftUI paints the disabled state, then render.
     @State private var isRendering = false
+    // First-time sharing explainer (same once-only pattern as the compose
+    // whisper/midnight/letter hints).
+    @AppStorage("toska_hint_sharing") private var sharingHintSeen = false
+    @State private var showSharingHint = false
 
     // "dusk" (index 1) is the signature plum mood — placed near the front so it
     // reads prominently in the swatch row. Inserting it shifted every later mood
@@ -142,6 +146,18 @@ struct ShareCardView: View {
                             .onAppear {
                                 withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
                                     cardAppeared = true
+                                }
+                                // One-time explainer (mirrors the compose-option
+                                // hints): the first time anyone opens a share
+                                // sheet, say exactly what leaves the app — the
+                                // words only, never a handle — and that a few
+                                // shared posts may be featured on toskaapp.com.
+                                // Consent scope lives with the author's "allow
+                                // sharing" setting; this is the reader-facing
+                                // half of that transparency.
+                                if !sharingHintSeen {
+                                    sharingHintSeen = true
+                                    showSharingHint = true
                                 }
                             }
                             .padding(.top, 18)
@@ -330,6 +346,11 @@ struct ShareCardView: View {
             Button("ok", role: .cancel) {}
         } message: {
             Text("toska needs permission to add to your photos. you can enable it in Settings › Privacy › Photos.")
+        }
+        .alert("sharing, quietly", isPresented: $showSharingHint) {
+            Button("got it", role: .cancel) {}
+        } message: {
+            Text("this card carries the words only — no name, no handle, nothing that points back to the writer. a few shared posts may also be featured, just as anonymously, on toskaapp.com. writers can turn sharing off any time in settings.")
         }
     }
 

@@ -791,6 +791,41 @@ async function checkRateLimit(uid, endpoint, maxRequests, windowSeconds, failClo
 }
 
 // ============================================================
+// Sharing-consent backfill
+// ============================================================
+// isShareable is stamped onto each post at CREATE time from the author's
+// allowSharing setting, so without this trigger, turning the setting off
+// never protected posts already written — revocation must be retroactive
+// (and the privacy policy says it is). Mirrors the new value onto the
+// user's original posts (letters/whispers stay unshareable) and onto
+// reposts of their posts (the repost doc carries its own isShareable copy).
+exports.onAllowSharingChanged = onDocumentUpdated("users/{userId}", async (event) => {
+  const before = event.data?.before.data()?.allowSharing;
+  const after = event.data?.after.data()?.allowSharing;
+  if (before === after || typeof after !== "boolean") return;
+  const uid = event.params.userId;
+  const apply = async (query, compute) => {
+    const snap = await query.get();
+    let batch = db.batch(); let n = 0;
+    for (const doc of snap.docs) {
+      const target = compute(doc.data());
+      if (doc.data().isShareable === target) continue;
+      batch.update(doc.ref, { isShareable: target });
+      if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+    }
+    if (n % 400 !== 0) await batch.commit();
+    return n;
+  };
+  const own = await apply(
+    db.collection("posts").where("authorId", "==", uid).where("isRepost", "==", false),
+    (d) => after && d.isLetter !== true && d.isWhisper !== true);
+  const reposts = await apply(
+    db.collection("posts").where("originalAuthorId", "==", uid).where("isRepost", "==", true),
+    () => after);
+  console.log(`onAllowSharingChanged(${uid}): allowSharing=${after} — updated ${own} posts, ${reposts} reposts`);
+});
+
+// ============================================================
 // Account deletion cleanup
 // ============================================================
 

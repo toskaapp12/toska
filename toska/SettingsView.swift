@@ -117,7 +117,11 @@ struct SettingsView: View {
                         settingsGroup {
                             groupHeader("privacy")
                             VStack(spacing: 0) {
-                                toggleRow("allow sharing", subtitle: "let people share your words", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
+                                // Subtitle names BOTH sharing surfaces (image
+                                // cards + hand-picked toskaapp.com features) —
+                                // this toggle is the consent for each, so the
+                                // scope can't live only in a one-time popup.
+                                toggleRow("allow sharing", subtitle: "let people share your words as image cards, and let a few be featured on toskaapp.com — always without your handle", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
                                 Divider().padding(.leading, 52)
                                 toggleRow("show follower count", subtitle: "let others see how many people follow you", icon: "person.2.fill", iconColor: Color.toskaBlue, isOn: $settings.showFollowerCount)
                                 Divider().padding(.leading, 52)

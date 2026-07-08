@@ -4013,6 +4013,64 @@ exports.giphyProxy = onCall(
 // foundation that makes that lockdown safe later.
 // ============================================================
 
+// ============================================================
+// Public read-only feed for toskaapp.com (roadmap phase-2 slice)
+// ============================================================
+// Serves a small curated JSON of recent posts for the marketing site's
+// "from the feed" section. Privacy invariants (same rules as share cards —
+// words leave the platform, identity never does):
+//   - isShareable only (the author's "allow sharing" consent toggle)
+//   - moderationStatus live, no reposts, no ephemeral (whisper/midnight)
+//   - returns text/tag/likeCount/age only — NO handle, NO authorId, NO doc id
+// No App Check: this is deliberately public data. Abuse surface is capped by
+// the fixed 12-post response, no pagination, and CDN caching (10 min).
+exports.publicFeed = onRequest(
+  { cors: ["https://toskaapp.com", "https://www.toskaapp.com"] },
+  async (req, res) => {
+    if (req.method !== "GET") {
+      res.status(405).json({ error: "method not allowed" });
+      return;
+    }
+    try {
+      // Direct query on the curation flag (single-field index, no composite);
+      // the featured set is small, so ordering happens in memory below.
+      const snap = await db.collection("posts")
+        .where("webFeatured", "==", true)
+        .limit(60)
+        .get();
+      const now = Date.now();
+      const posts = [];
+      const docs = [...snap.docs].sort((a, b) =>
+        (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0));
+      for (const doc of docs) {
+        const d = doc.data();
+        if (d.moderationStatus !== "live") continue;
+        if (d.isRepost === true || d.isShareable !== true) continue;
+        if (d.isWhisper === true || d.isMidnightPost === true) continue;
+        // Curation gate: only posts an admin explicitly flagged for the web.
+        // The live feed contains tester noise and PII-shaped test posts —
+        // author consent (isShareable) is necessary but NOT sufficient for
+        // the marketing site. Flag via: posts/{id}.webFeatured = true.
+        if (d.webFeatured !== true) continue;
+        if (typeof d.text !== "string" || d.text.length < 40 || d.text.length > 500) continue;
+        const ageH = d.createdAt?.toMillis ? Math.max(1, Math.round((now - d.createdAt.toMillis()) / 3600e3)) : null;
+        posts.push({
+          text: d.text,
+          tag: typeof d.tag === "string" ? d.tag : null,
+          felt: typeof d.likeCount === "number" ? d.likeCount : 0,
+          ageHours: ageH,
+        });
+        if (posts.length >= 12) break;
+      }
+      res.set("Cache-Control", "public, max-age=600, s-maxage=600");
+      res.json({ posts });
+    } catch (err) {
+      console.error("publicFeed:", err);
+      res.status(500).json({ error: "unavailable" });
+    }
+  },
+);
+
 exports.reconcileMyCounts = onRequest(
   { cors: false },
   async (req, res) => {

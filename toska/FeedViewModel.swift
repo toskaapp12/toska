@@ -1590,7 +1590,7 @@ class FeedViewModel: ObservableObject {
                 .padding(.bottom, 24)
 
                 Text(mostUnsaidText)
-                    .font(.custom("Georgia", size: 22))
+                    .font(ToskaFont.serif(22))
                     .foregroundColor(.white.opacity(0.95))
                     .lineSpacing(8)
                     .multilineTextAlignment(.center)
@@ -1605,7 +1605,7 @@ class FeedViewModel: ObservableObject {
 
                 VStack(spacing: 4) {
                     Text("toska")
-                        .font(.custom("Georgia-Italic", size: 18))
+                        .font(ToskaFont.serifItalic(18))
                         .foregroundColor(.white.opacity(0.15))
                     Text("say what you never said")
                         .font(ToskaFont.sans(11))

@@ -40,10 +40,11 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, signOut, connectAuthEmulator } from "firebase/auth";
 import {
   getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, serverTimestamp,
+  connectFirestoreEmulator,
 } from "firebase/firestore";
 
 const PROJECT_ID = "toskastaging";
@@ -78,7 +79,12 @@ function webApp(name) {
     apiKey: WEB_API_KEY, authDomain: `${PROJECT_ID}.firebaseapp.com`,
     projectId: PROJECT_ID, appId: WEB_APP_ID, messagingSenderId: WEB_SENDER_ID,
   }, name);
-  return { auth: getAuth(app), db: getFirestore(app) };
+  const auth = getAuth(app), db = getFirestore(app);
+  // Web SDK doesn't auto-read emulator env vars (only firebase-admin does) —
+  // without these, emulators:exec runs silently hit REAL staging. No-op live.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
+  if (process.env.FIRESTORE_EMULATOR_HOST) { const [h, p] = process.env.FIRESTORE_EMULATOR_HOST.split(":"); connectFirestoreEmulator(db, h, Number(p)); }
+  return { auth, db };
 }
 
 // ---- result tracking ----

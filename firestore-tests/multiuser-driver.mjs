@@ -8,8 +8,8 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
-import { getFirestore, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, doc, setDoc, serverTimestamp, connectFirestoreEmulator } from "firebase/firestore";
 
 const PROJECT_ID = "toskastaging";
 const POST_ID = "multiuser_target_post";
@@ -35,9 +35,13 @@ for (let i = 1; i <= 5; i++) {
     apiKey: WEB_API_KEY, authDomain: `${PROJECT_ID}.firebaseapp.com`,
     projectId: PROJECT_ID, appId: WEB_APP_ID, messagingSenderId: WEB_SENDER_ID,
   }, `drv${i}`);
-  const auth = getAuth(app);
+  const auth = getAuth(app), db = getFirestore(app);
+  // Web SDK doesn't auto-read emulator env vars (only firebase-admin does) —
+  // without these, emulators:exec runs silently hit REAL staging. No-op live.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
+  if (process.env.FIRESTORE_EMULATOR_HOST) { const [h, p] = process.env.FIRESTORE_EMULATOR_HOST.split(":"); connectFirestoreEmulator(db, h, Number(p)); }
   const cred = await signInWithEmailAndPassword(auth, `toska-multi-${i}@example.com`, `MultiPass!${i}9`);
-  sessions.push({ i, uid: cred.user.uid, handle: `multi_user_${i}`, db: getFirestore(app) });
+  sessions.push({ i, uid: cred.user.uid, handle: `multi_user_${i}`, db });
   console.log(`signed in multi_user_${i}`);
 }
 

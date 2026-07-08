@@ -145,7 +145,10 @@ struct SettingsView: View {
                         settingsGroup {
                             groupHeader("notifications")
                             VStack(spacing: 0) {
-                                toggleRow("push notifications", subtitle: "know when someone feels what you said", icon: "bell.badge.fill", iconColor: Color.toskaErrorRed, isOn: $settings.pushEnabled)
+                                // Muted app-accent tile (was Color.toskaErrorRed) — the red
+                                // read as an alarm/error state among the calm blue/gray/gold
+                                // neighbor tiles; the plum accent matches the toggles' tint.
+                                toggleRow("push notifications", subtitle: "know when someone feels what you said", icon: "bell.badge.fill", iconColor: ToskaColor.accent, isOn: $settings.pushEnabled)
                                 if settings.pushEnabled {
                                     Divider().padding(.leading, 52)
                                     miniToggle("likes", isOn: $settings.notifyLikes)

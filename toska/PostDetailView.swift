@@ -472,7 +472,7 @@ struct PostDetailView: View {
                         } else if replyList.isEmpty {
                                                     VStack(spacing: 8) {
                                                         Text("\"some words just need\na witness.\"")
-                                                            .font(.custom("Georgia-Italic", size: 18))
+                                                            .font(ToskaFont.serifItalic(18))
                                                             .foregroundColor(Color.toskaTimestamp)
                                                             .multilineTextAlignment(.center)
                                                             .lineSpacing(4)

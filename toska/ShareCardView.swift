@@ -224,7 +224,10 @@ struct ShareCardView: View {
                         }
                         .padding(.horizontal, 24)
 
-                        Color.clear.frame(height: 30)
+                        // Small trailing breather only — the save/share bar lives in a
+                        // bottom safeAreaInset now, which already reserves its own
+                        // clearance; the old 30pt spacer double-padded the scroll end.
+                        Color.clear.frame(height: 8)
                     }
                 }
                 // MARK: - Share Buttons
@@ -547,33 +550,6 @@ struct ShareCardView: View {
         case 3: return .custom("Georgia-Italic", size: size)
         default: return .custom("Georgia", size: size)
         }
-    }
-
-    // MARK: - Platform Button
-
-    func platformButton(name: String, icon: String, colors: [Color], action: @escaping () -> Void) -> some View {
-        Button {
-            action()
-        } label: {
-            VStack(spacing: 7) {
-                Image(systemName: icon)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 50, height: 50)
-                    .background(
-                        Circle().fill(
-                            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-                        )
-                    )
-                    .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 0.75))
-                    .shadow(color: colors.first?.opacity(0.45) ?? .clear, radius: 9, y: 4)
-                Text(name)
-                    .font(ToskaFont.sans(11, weight: .semibold))
-                    .foregroundColor(Color(hex: "1a1720"))
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(SharePressStyle())
     }
 
     // Labeled pill destination (Save / Share) — replaces the round icon buttons

@@ -20,8 +20,8 @@
 
 import admin from "firebase-admin";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, signOut, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp, connectFirestoreEmulator } from "firebase/firestore";
 
 const PROJECT_ID = "toskastaging";
 const envProject = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT;
@@ -34,7 +34,15 @@ const ACCT = { C: { email: "toska-tester-c@example.com", pw: "ToskaTest!C3", han
 
 admin.initializeApp({ projectId: PROJECT_ID });
 const adminAuth = admin.auth(), adminDb = admin.firestore(), FV = admin.firestore.FieldValue;
-function web(name) { const a = initializeApp({ apiKey: K, authDomain: `${PROJECT_ID}.firebaseapp.com`, projectId: PROJECT_ID, appId: AID, messagingSenderId: SID }, name); return { auth: getAuth(a), db: getFirestore(a) }; }
+function web(name) {
+  const a = initializeApp({ apiKey: K, authDomain: `${PROJECT_ID}.firebaseapp.com`, projectId: PROJECT_ID, appId: AID, messagingSenderId: SID }, name);
+  const auth = getAuth(a), db = getFirestore(a);
+  // Web SDK doesn't auto-read emulator env vars (only firebase-admin does) —
+  // without these, emulators:exec runs silently hit REAL staging. No-op live.
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, { disableWarnings: true });
+  if (process.env.FIRESTORE_EMULATOR_HOST) { const [h, p] = process.env.FIRESTORE_EMULATOR_HOST.split(":"); connectFirestoreEmulator(db, h, Number(p)); }
+  return { auth, db };
+}
 
 const results = [];
 function rec(ok, name, d = "") { results.push({ ok, name, d }); console.log(`${ok ? "✓" : "✗"} ${name}${d ? "  — " + d : ""}`); }

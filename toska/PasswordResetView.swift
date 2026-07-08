@@ -29,7 +29,7 @@ struct PasswordResetView: View {
                 .padding(.bottom, 20)
                 
                 Text("reset password")
-                    .font(.custom("Georgia-Italic", size: 28))
+                    .font(ToskaFont.serifItalic(28))
                     .foregroundColor(Color(hex: "111111"))
                     .padding(.bottom, 4)
                 

@@ -473,6 +473,9 @@ async function viewFeed() {
     search.addEventListener("input", debounce(applyFilter, 250));
     const tab = feedTab;
     const finish = (cache) => {
+        // A slow fetch can land after the user moved on — never touch the
+        // screen (or scroll the window) for a view that's no longer mounted.
+        if (feedTab !== tab || !list.isConnected) return;
         mount.querySelector(".spinner")?.remove();
         const rows = cache.rows.filter(([, d]) => postVisible(d));
         if (!rows.length) {

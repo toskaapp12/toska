@@ -13,6 +13,12 @@ import {
     writeBatch, setDoc, serverTimestamp, onSnapshot, documentId,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
+import {
+    initWrites, resetWriteCaches, createPost, createReply, postRateLimited,
+    toggleLike, toggleSave, toggleRepost, isLiked, isSaved, isReposted,
+    submitReport, blockUser, POST_TAGS, REPORT_REASONS,
+} from "./writes.js";
+import { runGates } from "./gates.js";
 
 const app = initializeApp(FIREBASE_CONFIG);
 
@@ -41,7 +47,25 @@ if (new Date().getHours() < 5) document.documentElement.dataset.theme = "night";
 const mount = document.getElementById("mount");
 const header = document.getElementById("appHeader");
 const mainNav = document.getElementById("mainNav");
-function setChrome(hidden) { header.hidden = hidden; mainNav.hidden = hidden; }
+const writeFab = document.getElementById("writeFab");
+function setChrome(hidden) { header.hidden = hidden; mainNav.hidden = hidden; writeFab.hidden = hidden; }
+
+function toast(msg, ms = 3200) {
+    const t = el("div", { class: "toast" }, msg);
+    document.body.append(t);
+    setTimeout(() => t.remove(), ms);
+}
+
+function menuSheet(items) { // [{label, danger, onclick}]
+    const overlay = el("div", { class: "modal-overlay" });
+    const card = el("div", { class: "modal-card menu-sheet" });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    for (const it of items) {
+        card.append(el("button", { class: it.danger ? "danger" : "", onclick: () => { overlay.remove(); it.onclick(); } }, it.label));
+    }
+    overlay.append(card);
+    document.body.append(overlay);
+}
 
 function el(tag, attrs = {}, ...children) {
     const n = document.createElement(tag);
@@ -232,17 +256,20 @@ function viewSignUp() {
                 console.warn("confirmAdult deferred", e?.code);
             }
             signupInProgress = false;
+            initWrites(db, uid);
             startBlockedListener(uid);
             startNotifBadge(uid);
             location.hash = "#/";
             route();
         } catch (e) {
             signupInProgress = false;
-            if (created && auth.currentUser) { try { await auth.currentUser.delete(); } catch {} }
             const m = e?.code === "auth/email-already-in-use" ? "that email already has an account — sign in instead."
                 : e?.code === "auth/weak-password" ? "password needs at least 6 characters."
                 : GENERIC_ERR;
+            // toast survives the re-render that the rollback's auth event triggers
+            toast(m, 5000);
             err.replaceChildren(errorBox(m)); btn.disabled = false;
+            if (created && auth.currentUser) { try { await auth.currentUser.delete(); } catch {} }
         }
     };
     mount.replaceChildren(
@@ -356,6 +383,71 @@ async function fetchFollowing() {
     return all.slice(0, 50).map(d => [d.id, d.data()]);
 }
 
+// ---------------------------------------------------------------- compose
+function viewCompose() {
+    setChrome(false);
+    writeFab.hidden = true;
+    let isLetter = false;
+    let selectedTag = null;
+    const ta = el("textarea", { placeholder: "say it how it actually feels…", maxlength: "2100" });
+    const count = el("span", { class: "char-count" }, "0 / 500");
+    const err = el("div");
+    const limit = () => isLetter ? 2000 : 500;
+    ta.addEventListener("input", () => {
+        const n = ta.value.length;
+        count.textContent = `${n} / ${limit()}`;
+        count.classList.toggle("over", n > limit());
+    });
+    const letterBtn = el("button", { class: "tab" }, "✉ letter mode");
+    letterBtn.onclick = () => {
+        isLetter = !isLetter;
+        letterBtn.classList.toggle("active", isLetter);
+        ta.dispatchEvent(new Event("input"));
+    };
+    const tagRow = el("div", { class: "tag-picker" },
+        POST_TAGS.map(t => {
+            const b = el("button", { class: "tab" }, t);
+            b.onclick = () => {
+                selectedTag = selectedTag === t ? null : t;
+                for (const x of tagRow.children) x.classList.toggle("active", x.textContent === selectedTag);
+            };
+            return b;
+        }));
+    const share = el("button", { class: "btn" }, "share it");
+    share.onclick = async () => {
+        err.replaceChildren();
+        const text = ta.value.trim();
+        if (!text) return;
+        if (text.length > limit()) { err.replaceChildren(errorBox(`keep it under ${limit()} characters${isLetter ? "" : " — or make it a letter"}.`)); return; }
+        if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline. your words deserve to actually land — try again when you're back.")); return; }
+        if (postRateLimited()) { err.replaceChildren(errorBox("one moment between posts — breathe, then share.")); return; }
+        share.disabled = true;
+        try {
+            const gate = await runGates(text);
+            if (!gate.ok) { share.disabled = false; return; }
+            await createPost({ text, tag: selectedTag, isLetter });
+            toast(gate.willBeHeld ? "shared — it'll be looked over first." : "shared, quietly.");
+            location.hash = "#/me";
+        } catch (e) {
+            console.error(e);
+            err.replaceChildren(errorBox(GENERIC_ERR));
+            share.disabled = false;
+        }
+    };
+    mount.replaceChildren(
+        el("a", { class: "back", href: "#/" }, "← feed"),
+        el("div", { class: "compose-card" },
+            ta,
+            tagRow,
+            el("div", { class: "compose-meta" },
+                el("div", { style: "display:flex; gap:8px; align-items:center;" }, letterBtn, count),
+                share),
+            err),
+        el("p", { class: "note", style: "padding:0 6px;" },
+            "no names, no photos, no links. letters can run long (2000); everything else stays short (500)."),
+    );
+}
+
 // ---------------------------------------------------------------- most felt
 // Mirrors TopView: today/week = createdAt-windowed limit 100 ranked by likes
 // client-side; all-time = likeCount DESC directly (composite index exists).
@@ -427,6 +519,7 @@ async function viewTop() {
 const NOTIF_ACTION = {
     like: "felt this", reply: "replied to your moment",
     follow: "followed you", repost: "shared your words",
+    save: "kept your words close",
 };
 async function viewNotifications() {
     setChrome(false);
@@ -492,21 +585,151 @@ async function viewPost(postId) {
             (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
             el("div", { class: "post-text", style: "font-size:19px;" }, d.text ?? ""),
             d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:10px; margin-top:10px;", alt: "gif" }) : null,
-            el("div", { class: "post-stats" },
-                el("span", {}, `${d.replyCount ?? 0} replies`),
-                el("span", {}, `${d.likeCount ?? 0} felt this`)),
+            statsRow(d),
         );
+
+        // ---- action row: like / save / repost / overflow
+        const targetPostId = d.isRepost ? (d.originalPostId ?? postId) : postId;
+        const targetAuthorId = d.isRepost ? (d.originalAuthorId ?? d.authorId) : d.authorId;
+        const icon = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+        const HEART = icon('<path d="M12 20.5s-7.5-4.7-9.3-9.3C1.4 7.9 3.6 4.5 7 4.5c2.2 0 3.9 1.3 5 3 1.1-1.7 2.8-3 5-3 3.4 0 5.6 3.4 4.3 6.7-1.8 4.6-9.3 9.3-9.3 9.3z"/>');
+        const BOOKMARK = icon('<path d="M6.5 3.5h11a1 1 0 011 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 011-1z"/>');
+        const CYCLE = icon('<path d="M4 7h11a4 4 0 014 4v1M20 17H9a4 4 0 01-4-4v-1"/><path d="M16.5 4.5L19 7l-2.5 2.5M7.5 19.5L5 17l2.5-2.5"/>');
+        const mkAction = (svg, label, cls) => {
+            const b = el("button", { class: "action-btn" });
+            b.innerHTML = svg;
+            b.append(el("span", {}, label));
+            b.dataset.on = cls;
+            return b;
+        };
+        const likeBtn = mkAction(HEART, "felt", "on-like");
+        const saveBtn = mkAction(BOOKMARK, "save", "on-save");
+        const repostBtn = mkAction(CYCLE, "repost", "on-repost");
+        const moreBtn = el("button", { class: "action-btn overflow" }, "⋯");
+        const setOn = (btn, on, onLabel, offLabel) => {
+            btn.classList.toggle(btn.dataset.on, on);
+            btn.querySelector("span").textContent = on ? onLabel : offLabel;
+        };
+        isLiked(targetPostId).then(v => setOn(likeBtn, v, "felt this", "felt"));
+        isSaved(targetPostId).then(v => setOn(saveBtn, v, "saved", "save"));
+        // Repost allowed unless the target is your own ORIGINAL post — from
+        // your own repost row the button still works (as un-repost).
+        if (targetAuthorId !== me.uid) isReposted(targetPostId).then(v => setOn(repostBtn, v, "reposted", "repost"));
+        else repostBtn.disabled = true;
+        if (d.isWhisper === true || d.isMidnightPost === true) repostBtn.disabled = true;
+
+        likeBtn.onclick = async () => {
+            const on = likeBtn.classList.contains("on-like");
+            setOn(likeBtn, !on, "felt this", "felt"); // optimistic
+            const r = await toggleLike(targetPostId, on, targetAuthorId).catch((e) => { console.error("like failed", e); return null; });
+            if (r === null) setOn(likeBtn, on, "felt this", "felt"); // revert
+        };
+        saveBtn.onclick = async () => {
+            const on = saveBtn.classList.contains("on-save");
+            setOn(saveBtn, !on, "saved", "save");
+            const r = await toggleSave(targetPostId, on, targetAuthorId).catch((e) => { console.error("save failed", e); return null; });
+            if (r === null) setOn(saveBtn, on, "saved", "save");
+        };
+        repostBtn.onclick = async () => {
+            const on = repostBtn.classList.contains("on-repost");
+            setOn(repostBtn, !on, "reposted", "repost");
+            const r = await toggleRepost(targetPostId).catch((e) => { console.error("repost failed", e); return null; });
+            if (r === "blocked_ephemeral") { setOn(repostBtn, false, "reposted", "repost"); toast("whispers stay ephemeral — they can't be reposted."); }
+            else if (r === "own_post" || r === null) setOn(repostBtn, on, "reposted", "repost");
+        };
+        moreBtn.onclick = () => {
+            const handle = d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous");
+            const items = [{
+                label: "report this post",
+                onclick: () => reportSheet({ type: "post", postId: targetPostId, reportedUserId: targetAuthorId, reportedHandle: handle, text: d.text }),
+            }];
+            if (targetAuthorId !== me.uid) items.push({
+                label: `block ${handle}`, danger: true,
+                onclick: async () => {
+                    try { await blockUser(targetAuthorId, handle); toast(`${handle} is blocked. you won't see them again.`); location.hash = "#/"; }
+                    catch { toast(GENERIC_ERR); }
+                },
+            });
+            menuSheet(items);
+        };
+        const actions = el("div", { class: "action-row" }, likeBtn, saveBtn, repostBtn, moreBtn);
+
+        // ---- reply composer
         const repliesBox = el("div");
-        mount.append(body, el("h3", { style: "margin:22px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
-        const replies = await fetchReplies(postId);
+        let replyingTo = null; // {id, handle}
+        const replyingStrip = el("div", { class: "replying-strip" });
+        const renderStrip = () => {
+            replyingStrip.replaceChildren();
+            if (replyingTo) {
+                replyingStrip.append(`replying to ${replyingTo.handle}`,
+                    el("button", { onclick: () => { replyingTo = null; renderStrip(); } }, "cancel"));
+            }
+        };
+        const rta = el("textarea", { placeholder: "say something gently…", rows: "1", maxlength: "520" });
+        rta.addEventListener("input", () => { rta.style.height = "auto"; rta.style.height = rta.scrollHeight + "px"; });
+        const send = el("button", { class: "reply-send", "aria-label": "send reply" }, "↑");
+        send.onclick = async () => {
+            const text = rta.value.trim();
+            if (text.length < 2) return;
+            if (text.length > 500) { toast("replies stay under 500 characters."); return; }
+            if (!navigator.onLine) { toast("you're offline — try again when you're back."); return; }
+            send.disabled = true;
+            try {
+                const gate = await runGates(text, { isReply: true });
+                if (!gate.ok) { send.disabled = false; return; }
+                await createReply(targetPostId, {
+                    text, parentReplyId: replyingTo?.id,
+                    parentPostText: d.text,
+                    // reply lands on the ORIGINAL post — snapshot its author,
+                    // not the reposter, as the parent context
+                    parentPostHandle: d.isRepost ? (d.originalHandle ?? "") : d.authorHandle,
+                    postAuthorId: targetAuthorId,
+                });
+                rta.value = ""; rta.style.height = "auto";
+                replyingTo = null; renderStrip();
+                toast(gate.willBeHeld ? "sent — it'll be looked over first." : "sent, gently.");
+                const rows = await fetchReplies(targetPostId);
+                repliesBox.replaceChildren();
+                renderThread(repliesBox, rows, null, 0, onReplyTo);
+            } catch (e) { console.error(e); toast(GENERIC_ERR); }
+            send.disabled = false;
+        };
+        const composer = el("div", {},
+            replyingStrip,
+            el("div", { class: "reply-composer" }, rta, send));
+        const onReplyTo = (r) => { replyingTo = { id: r.id, handle: r.authorHandle ?? "anonymous" }; renderStrip(); rta.focus(); };
+
+        mount.append(body, actions, composer,
+            el("h3", { style: "margin:18px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
+        const replies = await fetchReplies(targetPostId);
         mount.querySelector(".spinner")?.remove();
         if (!replies.length) repliesBox.append(emptyState("no replies yet. someone will find this."));
-        renderThread(repliesBox, replies, null, 0);
+        renderThread(repliesBox, replies, null, 0, onReplyTo);
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
         mount.append(emptyState("this post isn't available."));
         console.error(e);
     }
+}
+
+function reportSheet(target) { // {type, postId?, replyId?, reportedUserId, reportedHandle, text?}
+    const overlay = el("div", { class: "modal-overlay" });
+    const card = el("div", { class: "modal-card" });
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    card.append(el("h3", {}, "what's wrong here?"),
+        el("p", { class: "modal-hint", style: "margin-bottom:10px;" }, "reports are anonymous. a human looks at every one."));
+    for (const r of REPORT_REASONS) {
+        card.append(el("button", {
+            class: "tab", style: "display:block; width:100%; text-align:left; margin:7px 0; border-radius:12px; padding:13px 15px;",
+            onclick: async () => {
+                overlay.remove();
+                try { await submitReport({ ...target, reason: r.code, reasonLabel: r.label }); toast("thank you. we'll look at it."); }
+                catch (e) { console.error(e); toast(GENERIC_ERR); }
+            },
+        }, r.label));
+    }
+    overlay.append(card);
+    document.body.append(overlay);
 }
 
 async function fetchReplies(postId) {
@@ -521,15 +744,37 @@ async function fetchReplies(postId) {
     } catch {}
     const byId = new Map();
     for (const d of [...live.docs, ...mine.docs]) byId.set(d.id, d);
-    const rows = [...byId.values()].map(d => ({ id: d.id, ...d.data() }))
+    const rows = [...byId.values()].map(d => ({ id: d.id, postId, ...d.data() }))
         .filter(r => !blocked.has(r.authorId))
         .sort((a, b) => (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0));
     return rows;
 }
 
-function renderThread(container, all, parentId, depth) {
+function renderThread(container, all, parentId, depth, onReplyTo) {
     for (const r of all.filter(r => (r.parentReplyId ?? null) === parentId)) {
         const isPending = (r.moderationStatus ?? "live") !== "live";
+        const own = r.authorId === me.uid;
+        const stats = el("div", { class: "post-stats" });
+        if ((r.likeCount ?? 0) > 0) stats.append(el("span", {}, `${r.likeCount} felt this`));
+        if (onReplyTo && !isPending) {
+            const rb = el("span", {});
+            rb.append(el("a", { class: "plain", href: "#", style: "font-size:12.5px;", onclick: (ev) => { ev.preventDefault(); onReplyTo(r); } }, "reply"));
+            stats.append(rb);
+        }
+        if (!own) {
+            const mb = el("span", {});
+            mb.append(el("a", { class: "plain", href: "#", style: "font-size:12.5px; color:var(--faint);", onclick: (ev) => {
+                ev.preventDefault();
+                menuSheet([
+                    { label: "report this reply", onclick: () => reportSheet({ type: "reply", postId: r.postId ?? null, replyId: r.id, reportedUserId: r.authorId, reportedHandle: r.authorHandle, text: r.text }) },
+                    { label: `block ${r.authorHandle ?? "anonymous"}`, danger: true, onclick: async () => {
+                        try { await blockUser(r.authorId, r.authorHandle); toast("blocked. you won't see them again."); route(); }
+                        catch { toast(GENERIC_ERR); }
+                    } },
+                ]);
+            } }, "⋯"));
+            stats.append(mb);
+        }
         container.append(el("div", {
             class: `post-row reply-row ${depth > 0 ? "thread-child" : ""}`,
             style: `cursor:default; margin-left:${Math.min(depth, 3) * 18}px;` },
@@ -538,9 +783,9 @@ function renderThread(container, all, parentId, depth) {
                 el("span", {}, relTime(r.createdAt))),
             isPending ? pendingBanner() : null,
             el("div", { class: "post-text" }, r.text ?? ""),
-            el("div", { class: "post-stats" }, el("span", {}, `${r.likeCount ?? 0} felt this`)),
+            stats,
         ));
-        renderThread(container, all, r.id, depth + 1);
+        renderThread(container, all, r.id, depth + 1, onReplyTo);
     }
 }
 
@@ -670,6 +915,9 @@ function setActiveNav(key) {
         a.classList.toggle("active", a.dataset.nav === key);
 }
 function route() {
+    // Navigation kills any open modal — a gate dialog must never outlive its
+    // compose view (M1: a stuck "post anyway" could publish an abandoned post).
+    document.querySelectorAll(".modal-overlay").forEach(o => o.remove());
     const h = location.hash || "#/";
     if (!me) {
         if (h === "#/signup") viewSignUp();
@@ -677,6 +925,7 @@ function route() {
         return;
     }
     if (h === "#/" || h === "" || h === "#/signin" || h === "#/signup") { setActiveNav("feed"); viewFeed(); }
+    else if (h === "#/compose") { setActiveNav(""); viewCompose(); }
     else if (h === "#/top") { setActiveNav("top"); viewTop(); }
     else if (h === "#/notifications") { setActiveNav("notifications"); viewNotifications(); }
     else if (h.startsWith("#/post/")) { setActiveNav(""); viewPost(h.slice(7)); }
@@ -693,15 +942,18 @@ window.addEventListener("hashchange", route);
 document.getElementById("signOutBtn").onclick = async () => {
     stopBlockedListener();
     stopNotifBadge();
+    resetWriteCaches();
     await signOut(auth);
     location.hash = "#/signin";
 };
 
 onAuthStateChanged(auth, async (user) => {
     me = user;
-    if (!user) { stopBlockedListener(); route(); return; }
+    if (!user) { stopBlockedListener(); stopNotifBadge(); resetWriteCaches(); route(); return; }
     if (signupInProgress) return; // signup completes its own routing
-    // Mirror ContentView.verifyUserDocumentAsync: the users doc must exist.
+    // Mirror ContentView.verifyUserDocumentAsync: the users doc must exist,
+    // and confirmAdult re-fires on every sign-in until it sticks (a failed
+    // signup callable must not permanently brick publishing — H1).
     try {
         const u = await getDoc(doc(db, "users", user.uid));
         if (!u.exists()) {
@@ -710,7 +962,11 @@ onAuthStateChanged(auth, async (user) => {
                 el("a", { class: "plain", href: "#/signin", onclick: () => signOut(auth) }, "sign out")));
             return;
         }
+        if (u.data().confirmedAdult !== true) {
+            httpsCallable(functions, "confirmAdult")({}).catch(e => console.warn("confirmAdult deferred", e?.code));
+        }
     } catch (e) { console.warn("verify failed, continuing", e?.code); }
+    initWrites(db, user.uid);
     startBlockedListener(user.uid);
     startNotifBadge(user.uid);
     route();

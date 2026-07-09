@@ -37,4 +37,16 @@ if echo "$staged" | grep -qE 'functions/(index|moderation(Logic)?)\.js|toska/Con
   fi
 fi
 
+# Web client vendors the server moderation modules VERBATIM (webapp/js/vendor/)
+# so its gates can never drift from the server. Byte-identical or the commit fails.
+if echo "$staged" | grep -qE 'functions/moderation(Logic)?\.js|webapp/js/vendor/'; then
+  for f in moderation.js moderationLogic.js; do
+    if ! cmp -s "$repo_root/functions/$f" "$repo_root/webapp/js/vendor/$f"; then
+      echo "pre-commit: webapp/js/vendor/$f differs from functions/$f — run: cp functions/$f webapp/js/vendor/$f" >&2
+      exit 1
+    fi
+  done
+  echo "pre-commit: web moderation vendor copies in parity."
+fi
+
 echo "pre-commit: checks passed."

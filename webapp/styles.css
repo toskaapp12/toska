@@ -43,13 +43,7 @@ body {
 #mount > * { animation: rise 0.35s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-header.app {
-    position: sticky; top: 0; z-index: 10;
-    background: color-mix(in srgb, var(--ground) 82%, transparent);
-    backdrop-filter: blur(16px) saturate(1.4);
-    -webkit-backdrop-filter: blur(16px) saturate(1.4);
-    border-bottom: 1px solid var(--hairline);
-}
+header.app { background: var(--ground); }
 header.app .inner {
     max-width: 620px; margin: 0 auto; padding: 16px 16px 4px;
     display: flex; align-items: center; justify-content: space-between;
@@ -65,25 +59,59 @@ header.app .inner {
 }
 #signOutBtn:hover { color: var(--soft); }
 
-/* main navigation */
+/* main navigation — segmented pills on desktop, floating tab bar on mobile.
+   NOTE: lives OUTSIDE header.app — backdrop-filter on an ancestor would
+   hijack position:fixed and pin the mobile bar to the header. */
 .mainnav {
-    max-width: 620px; margin: 0 auto; padding: 0 16px;
-    display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--ground) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    border-bottom: 1px solid var(--hairline);
+    display: flex; gap: 4px;
+    padding: 8px max(12px, calc(50% - 298px)) 8px;
 }
-.mainnav::-webkit-scrollbar { display: none; }
 .mainnav a {
     position: relative;
-    font-size: 14px; color: var(--faint); text-decoration: none;
-    padding: 10px 13px 12px; white-space: nowrap;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s ease;
+    display: flex; align-items: center; gap: 7px;
+    font-size: 13.5px; color: var(--faint); text-decoration: none;
+    padding: 8px 14px; white-space: nowrap; border-radius: 999px;
+    transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
+.mainnav[hidden] { display: none; }
+.mainnav a svg { width: 17px; height: 17px; flex-shrink: 0; }
 .mainnav a:hover { color: var(--soft); }
-.mainnav a.active { color: var(--ink); border-bottom-color: var(--plum); }
+.mainnav a.active {
+    color: var(--ink); background: var(--card); box-shadow: var(--shadow);
+}
+.mainnav a.active svg { color: var(--plum); }
 .mainnav a .dot {
-    position: absolute; top: 9px; right: 3px;
+    position: absolute; top: 7px; left: 24px;
     width: 6px; height: 6px; border-radius: 50%; background: var(--plum);
-    display: inline-block;
+    display: inline-block; border: 1.5px solid var(--ground);
+    box-sizing: content-box;
+}
+
+@media (max-width: 640px) {
+    .mainnav {
+        position: fixed; top: auto; bottom: 14px; left: 50%; transform: translateX(-50%);
+        z-index: 20; margin: 0; padding: 7px;
+        background: color-mix(in srgb, var(--card) 86%, transparent);
+        border: 1px solid var(--hairline);
+        border-bottom: 1px solid var(--hairline);
+        border-radius: 999px; box-shadow: var(--shadow-lift);
+        width: auto; max-width: calc(100% - 24px);
+    }
+    .mainnav a {
+        flex-direction: column; gap: 3px;
+        font-size: 10px; letter-spacing: 0.02em;
+        padding: 7px 13px 6px;
+    }
+    .mainnav a svg { width: 21px; height: 21px; }
+    .mainnav a.active { background: color-mix(in srgb, var(--plum) 10%, transparent); box-shadow: none; color: var(--plum); }
+    .mainnav a .dot { top: 5px; left: auto; right: 10px; }
+    header.app { border-bottom: none; }
+    header.app .inner { padding-bottom: 12px; }
 }
 
 /* buttons + tabs */

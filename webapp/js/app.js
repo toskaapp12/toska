@@ -5,7 +5,7 @@ import { FIREBASE_CONFIG, IS_PROD, RECAPTCHA_SITE_KEY, POLICY_VERSION } from "./
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-    createUserWithEmailAndPassword, signOut,
+    createUserWithEmailAndPassword, signOut, sendPasswordResetEmail,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 import {
     getFirestore, collection, collectionGroup, doc, getDoc, getDocs,
@@ -40,6 +40,8 @@ if (new Date().getHours() < 5) document.documentElement.dataset.theme = "night";
 // ---------------------------------------------------------------- helpers
 const mount = document.getElementById("mount");
 const header = document.getElementById("appHeader");
+const mainNav = document.getElementById("mainNav");
+function setChrome(hidden) { header.hidden = hidden; mainNav.hidden = hidden; }
 
 function el(tag, attrs = {}, ...children) {
     const n = document.createElement(tag);
@@ -152,7 +154,7 @@ const GENERIC_ERR = "something went wrong. try again in a moment.";
 
 // ---------------------------------------------------------------- auth views
 function viewSignIn() {
-    header.hidden = true;
+    setChrome(true);
     const email = el("input", { type: "email", autocomplete: "email", placeholder: "you@example.com" });
     const pw = el("input", { type: "password", autocomplete: "current-password", placeholder: "password" });
     const err = el("div");
@@ -167,12 +169,30 @@ function viewSignIn() {
             err.replaceChildren(errorBox(m)); btn.disabled = false;
         }
     };
+    const resetNote = el("div");
+    const forgot = el("a", { class: "plain", href: "#", style: "font-size:13px;" }, "forgot your password?");
+    forgot.onclick = async (ev) => {
+        ev.preventDefault();
+        resetNote.replaceChildren();
+        const addr = email.value.trim();
+        if (!addr) { resetNote.replaceChildren(errorBox("type your email above first, then tap this again.")); return; }
+        try {
+            await sendPasswordResetEmail(auth, addr);
+            resetNote.replaceChildren(el("p", { class: "note", style: "margin:10px 0; color:var(--plum);" },
+                "if that email has an account, a reset link is on its way. check your inbox."));
+        } catch {
+            resetNote.replaceChildren(el("p", { class: "note", style: "margin:10px 0; color:var(--plum);" },
+                "if that email has an account, a reset link is on its way. check your inbox."));
+        }
+    };
     mount.replaceChildren(
         el("div", { class: "auth-card" },
             el("h1", { style: "color:var(--plum);" }, "toska"),
             el("p", { class: "note tagline" }, "an anonymous space for heartbreak."),
             el("div", { class: "field" }, el("label", {}, "email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pw),
+            el("div", { style: "margin:2px 0 4px;" }, forgot),
+            resetNote,
             err, el("div", { style: "margin-top:6px;" }, btn),
             el("p", { class: "note", style: "margin-top:20px;" },
                 "new here? ", el("a", { class: "plain", href: "#/signup" }, "create an account")),
@@ -184,15 +204,17 @@ function viewSignIn() {
 // ONE batch (retried with fresh handles) → private email → confirmAdult
 // callable → verified. Any failure rolls the auth user back.
 function viewSignUp() {
-    header.hidden = true;
+    setChrome(true);
     const email = el("input", { type: "email", autocomplete: "email", placeholder: "you@example.com" });
     const pw = el("input", { type: "password", autocomplete: "new-password", placeholder: "at least 6 characters" });
     const adult = el("input", { type: "checkbox", id: "adultCk", style: "width:auto;" });
+    const terms = el("input", { type: "checkbox", id: "termsCk", style: "width:auto;" });
     const err = el("div");
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "create account");
     btn.onclick = async () => {
         err.replaceChildren();
         if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 18 or older.")); return; }
+        if (!terms.checked) { err.replaceChildren(errorBox("please read and accept the terms and privacy policy to continue.")); return; }
         btn.disabled = true;
         signupInProgress = true;
         let created = false;
@@ -230,14 +252,14 @@ function viewSignUp() {
                 "no real names. you'll get an anonymous handle."),
             el("div", { class: "field" }, el("label", {}, "email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pw),
-            el("label", { class: "note", style: "display:flex; gap:8px; align-items:center; margin:14px 0;", for: "adultCk" },
-                adult, "i confirm i'm 18 or older"),
-            el("p", { class: "note", style: "margin:10px 0;" },
-                "by continuing you accept the ",
-                el("a", { class: "plain", href: "https://www.toskaapp.com/terms.html", target: "_blank" }, "terms"),
-                " and ",
-                el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"),
-                "."),
+            el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "adultCk" },
+                adult, el("span", {}, "i confirm i'm 18 or older")),
+            el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:10px 0 14px; cursor:pointer;", for: "termsCk" },
+                terms, el("span", {},
+                    "i have read and agree to the ",
+                    el("a", { class: "plain", href: "https://www.toskaapp.com/terms.html", target: "_blank" }, "terms of service"),
+                    " and ",
+                    el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"))),
             err, el("div", { style: "margin-top:6px;" }, btn),
             el("p", { class: "note", style: "margin-top:20px;" },
                 "already have an account? ", el("a", { class: "plain", href: "#/signin" }, "sign in")),
@@ -272,7 +294,7 @@ async function claimHandleAndCreateUserDoc(uid) {
 // ---------------------------------------------------------------- feed
 let feedTab = "for you";
 async function viewFeed() {
-    header.hidden = false;
+    setChrome(false);
     const list = el("div");
     const tabs = el("div", { class: "tabs" },
         ["for you", "following"].map(t =>
@@ -341,7 +363,7 @@ async function fetchFollowing() {
 let topPeriod = "today";
 const TOP_CUTOFF = { today: 86400e3, "this week": 7 * 86400e3 };
 async function viewTop() {
-    header.hidden = false;
+    setChrome(false);
     const list = el("div");
     const tabs = el("div", { class: "tabs" },
         ["today", "this week", "all time"].map(t =>
@@ -407,7 +429,7 @@ const NOTIF_ACTION = {
     follow: "followed you", repost: "shared your words",
 };
 async function viewNotifications() {
-    header.hidden = false;
+    setChrome(false);
     const list = el("div");
     mount.replaceChildren(el("h2", { class: "section-title" }, "notifications"), list, spinner());
     try {
@@ -449,7 +471,7 @@ async function viewNotifications() {
 
 // ---------------------------------------------------------------- post detail
 async function viewPost(postId) {
-    header.hidden = false;
+    setChrome(false);
     mount.replaceChildren(el("a", { class: "back", href: "#/" }, "← feed"), spinner());
     try {
         const ps = await getDoc(doc(db, "posts", postId));
@@ -524,7 +546,7 @@ function renderThread(container, all, parentId, depth) {
 
 // ---------------------------------------------------------------- profiles
 async function viewProfile(uid) {
-    header.hidden = false;
+    setChrome(false);
     const own = uid === me.uid;
     // Own profile is a top-level tab — no back link; others get one.
     mount.replaceChildren(own ? el("span") : el("a", { class: "back", href: "#/" }, "← feed"), spinner());

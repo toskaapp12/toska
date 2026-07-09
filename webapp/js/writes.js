@@ -3,7 +3,7 @@
 // notifIds, and handle==users/{uid}.handle. Counters are server-side only.
 import {
     getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
-    query, where, limit, runTransaction, serverTimestamp,
+    updateDoc, query, where, limit, runTransaction, serverTimestamp, Timestamp,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
 let db, uid;
@@ -15,15 +15,30 @@ export function initWrites(database, userId) {
 }
 
 // authorHandle/fromHandle MUST equal users/{uid}.handle or rules deny.
-let cachedHandle = null;
-export async function myHandle() {
-    if (cachedHandle) return cachedHandle;
+// The cached doc also feeds isShareable (allowSharing) and the client-side
+// restriction gate, mirroring iOS UserHandleCache.
+let cachedProfile = null;
+async function myProfile() {
+    if (cachedProfile) return cachedProfile;
     const u = await getDoc(doc(db, "users", uid));
-    cachedHandle = u.data()?.handle;
-    if (!cachedHandle) throw new Error("no handle on user doc");
-    return cachedHandle;
+    cachedProfile = u.data() ?? {};
+    return cachedProfile;
 }
-export function resetWriteCaches() { cachedHandle = null; inFlight.clear(); }
+export async function myHandle() {
+    const handle = (await myProfile()).handle;
+    if (!handle) throw new Error("no handle on user doc");
+    return handle;
+}
+// Mirrors notRestricted() in firestore.rules: restricted==true blocks unless
+// restrictedUntil exists and is in the past. Reads the cached user doc — a
+// mid-session restriction is still caught server-side by the rules.
+export async function isRestricted() {
+    const p = await myProfile();
+    if (p.restricted !== true) return false;
+    const until = p.restrictedUntil?.toDate?.();
+    return !until || until > new Date();
+}
+export function resetWriteCaches() { cachedProfile = null; inFlight.clear(); }
 
 // in-flight + rate-limit guards, per iOS PostInteractionManager
 const inFlight = new Set();
@@ -54,20 +69,36 @@ async function notify(toUserId, type, postId) {
 export const POST_TAGS = ["longing", "numb", "anger", "regret", "acceptance",
     "confusion", "unsent", "moving on", "still love you"];
 
-export async function createPost({ text, tag, isLetter }) {
-    const handle = await myHandle();
+export async function createPost({ text, tag, isLetter, isWhisper, isMidnight, gifUrl, promptDate }) {
+    const profile = await myProfile();
+    const handle = profile.handle;
+    if (!handle) throw new Error("no handle on user doc");
     const data = {
         authorId: uid,
         authorHandle: handle,
         text,
         likeCount: 0, repostCount: 0, replyCount: 0,
         isRepost: false,
-        isShareable: !isLetter, // web has no whisper; letters aren't shareable
+        // Mirrors ComposeView: the user's allowSharing setting AND
+        // letter/whisper both force the share affordance off.
+        isShareable: (profile.allowSharing ?? true) && !isLetter && !isWhisper,
         createdAt: serverTimestamp(),
         moderationStatus: "pending_validation",
     };
     if (tag) data.tag = tag;
     if (isLetter) data.isLetter = true;
+    if (gifUrl) data.gifUrl = gifUrl;
+    if (promptDate) data.promptDate = promptDate;
+    if (isWhisper && !isMidnight) {
+        data.isWhisper = true;
+        data.expiresAt = Timestamp.fromDate(new Date(Date.now() + 3600e3));
+    }
+    if (isMidnight && !isWhisper) {
+        data.isMidnightPost = true;
+        const midnight = new Date();
+        midnight.setHours(24, 0, 0, 0); // next local midnight
+        data.expiresAt = Timestamp.fromDate(midnight);
+    }
     const ref = await addDoc(collection(db, "posts"), data);
     lastAt.post = Date.now();
     return ref.id;
@@ -75,7 +106,7 @@ export async function createPost({ text, tag, isLetter }) {
 export function postRateLimited() { return lastAt.post && Date.now() - lastAt.post < 30_000; }
 
 // ------------------------------------------------------------ reply create
-export async function createReply(postId, { text, parentReplyId, parentPostText, parentPostHandle, postAuthorId }) {
+export async function createReply(postId, { text, parentReplyId, parentPostText, parentPostHandle, postAuthorId, gifUrl }) {
     const handle = await myHandle();
     const data = {
         authorId: uid,
@@ -88,6 +119,7 @@ export async function createReply(postId, { text, parentReplyId, parentPostText,
         moderationStatus: "pending_validation",
     };
     if (parentReplyId) data.parentReplyId = parentReplyId;
+    if (gifUrl) data.gifUrl = gifUrl;
     const ref = await addDoc(collection(db, "posts", postId, "replies"), data);
     // Reply notifId is pinned to reply_{postId}_{uid} — after-commit, best-effort.
     notify(postAuthorId, "reply", postId);
@@ -195,6 +227,27 @@ export async function isReposted(postId) {
     } catch { return false; }
 }
 
+// ------------------------------------------------------------ edit / delete
+// Rules pin author edits to exactly ['text','editedAt'] (posts ≤2000,
+// replies ≤500, size>0) and gate them on notRestricted(); the server
+// re-moderates on update (functions onPostUpdated / reply equivalent).
+export async function editPost(postId, text) {
+    await updateDoc(doc(db, "posts", postId),
+        { text, editedAt: serverTimestamp() });
+}
+export async function editReply(postId, replyId, text) {
+    await updateDoc(doc(db, "posts", postId, "replies", replyId),
+        { text, editedAt: serverTimestamp() });
+}
+// Simple client path, like PostDetailView's self-delete: remove the doc,
+// Cloud Functions cascade the cleanup (replies, likes, refs, counters).
+export async function deletePost(postId) {
+    await deleteDoc(doc(db, "posts", postId));
+}
+export async function deleteReply(postId, replyId) {
+    await deleteDoc(doc(db, "posts", postId, "replies", replyId));
+}
+
 // ------------------------------------------------------------ report / block
 export const REPORT_REASONS = [
     { label: "harassment or bullying", code: "harassment" },
@@ -222,6 +275,21 @@ export async function blockUser(userId, handle) {
     const data = { blockedAt: serverTimestamp(), blockedUid: userId };
     if (handle) data.handle = handle;
     await setDoc(doc(db, "users", uid, "blocked", userId), data);
+    // Mirror PostDetailView's block: sever any follow relationship in both
+    // directions (best-effort — counter decrements are CF-owned; a rules
+    // denial on the cross-user leg just leaves a dangling doc iOS also leaves).
+    for (const [a, sub, b, sub2] of [
+        [uid, "following", userId, "followers"],
+        [uid, "followers", userId, "following"],
+    ]) {
+        try {
+            const mine = doc(db, "users", a, sub, b);
+            if ((await getDoc(mine)).exists()) {
+                await deleteDoc(mine);
+                await deleteDoc(doc(db, "users", b, sub2, a)).catch(() => {});
+            }
+        } catch { /* best-effort */ }
+    }
 }
 export async function unblockUser(userId) {
     await deleteDoc(doc(db, "users", uid, "blocked", userId));

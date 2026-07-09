@@ -396,3 +396,75 @@ a.plain:hover { text-decoration: underline; }
     .post-row { padding: 17px 17px 13px; border-radius: 16px; }
     .auth-card { margin-top: 40px; padding: 30px 22px; box-shadow: none; background: transparent; }
 }
+
+/* ---- phase 2 parity (2026-07-09): search, prompt, ephemerals, edit, gifs, blocked ---- */
+
+/* the `hidden` attribute loses to `display:block` on .post-row (see guide §2) */
+.post-row[hidden] { display: none; }
+
+.feed-search {
+    width: 100%; margin: 14px 0 0; padding: 11px 16px;
+    font-family: -apple-system, sans-serif; font-size: 14px;
+    border: 1px solid var(--hairline); border-radius: 999px;
+    background: var(--card); color: var(--ink);
+}
+.feed-search:focus { outline: none; border-color: var(--plum-soft); }
+
+.prompt-card {
+    background: var(--card); border-radius: 18px; box-shadow: var(--shadow);
+    padding: 18px 22px 16px; margin: 18px 0 0;
+    border: 1px solid color-mix(in srgb, var(--plum) 14%, transparent);
+}
+.prompt-card .eyebrow {
+    font-family: -apple-system, sans-serif; font-size: 11px;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--plum-soft);
+    margin-bottom: 8px;
+}
+.prompt-card .btn.quiet { padding: 7px 16px; font-size: 13px; margin-left: auto; }
+
+.post-meta .tag.ephemeral { color: var(--plum-soft); margin-left: 0; }
+
+.compose-toggles { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.mode-note { font-size: 12.5px; color: var(--plum-soft); margin-top: 8px; }
+
+.gif-card { width: min(480px, calc(100vw - 48px)); }
+.gif-card input[type="search"] {
+    width: 100%; margin: 10px 0; padding: 10px 14px;
+    font-family: -apple-system, sans-serif; font-size: 14px;
+    border: 1px solid var(--hairline); border-radius: 10px;
+    background: var(--ground); color: var(--ink);
+}
+.gif-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    max-height: 46vh; overflow-y: auto;
+}
+.gif-grid img {
+    width: 100%; height: 90px; object-fit: cover; border-radius: 8px;
+    cursor: pointer; transition: transform 0.12s ease;
+}
+.gif-grid img:hover { transform: scale(1.04); }
+.gif-attach { position: relative; margin-top: 10px; }
+.gif-attach img { max-width: 220px; border-radius: 12px; display: block; }
+.gif-attach .tab { margin-top: 6px; font-size: 12px; padding: 4px 12px; }
+.reply-gif {
+    background: none; border: 1px solid var(--hairline); border-radius: 999px;
+    font-family: -apple-system, sans-serif; font-size: 11.5px; color: var(--faint);
+    padding: 6px 10px; cursor: pointer; flex-shrink: 0;
+}
+.reply-gif:hover { color: var(--plum); border-color: var(--plum-soft); }
+
+.edit-card { width: min(560px, calc(100vw - 48px)); }
+.edit-card textarea {
+    width: 100%; min-height: 130px; margin: 10px 0 4px; padding: 12px 14px;
+    font-family: inherit; font-size: 16px; line-height: 1.6;
+    border: 1px solid var(--hairline); border-radius: 12px;
+    background: var(--ground); color: var(--ink); resize: vertical;
+}
+.edit-card textarea:focus { outline: none; border-color: var(--plum-soft); }
+.edit-card .modal-actions { align-items: center; }
+.edit-card .char-count { margin-left: auto; }
+
+.btn.danger { background: var(--danger); }
+
+.blocked-row { display: flex; align-items: center; justify-content: space-between; }
+.blocked-row .btn.quiet { padding: 8px 18px; font-size: 13px; }

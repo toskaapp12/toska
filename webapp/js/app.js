@@ -16,7 +16,9 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import {
     initWrites, resetWriteCaches, createPost, createReply, postRateLimited,
     toggleLike, toggleSave, toggleRepost, isLiked, isSaved, isReposted,
-    submitReport, blockUser, POST_TAGS, REPORT_REASONS,
+    submitReport, blockUser, unblockUser, isRestricted,
+    editPost, editReply, deletePost, deleteReply,
+    POST_TAGS, REPORT_REASONS,
 } from "./writes.js";
 import { runGates } from "./gates.js";
 
@@ -121,6 +123,85 @@ function stopNotifBadge() {
     document.getElementById("notifDot").hidden = true;
 }
 
+// ---------------------------------------------------------------- drafts
+// localStorage, keyed per-uid so an account switch can't leak text (the iOS
+// sign-out draft-leak bug class). Writes are guarded on auth; sign-out and
+// token-revocation both purge every draft_{uid}_* key for that uid.
+const draftKey = (kind) => me ? `draft_${me.uid}_${kind}` : null;
+function loadDraft(kind) {
+    const k = draftKey(kind);
+    try { return k ? (localStorage.getItem(k) ?? "") : ""; } catch { return ""; }
+}
+function saveDraft(kind, text) {
+    const k = draftKey(kind);
+    if (!k) return;
+    try { text.trim() ? localStorage.setItem(k, text) : localStorage.removeItem(k); } catch {}
+}
+function clearDrafts(uid) {
+    try {
+        const prefix = `draft_${uid}_`;
+        for (const k of Object.keys(localStorage))
+            if (k.startsWith(prefix)) localStorage.removeItem(k);
+    } catch {}
+}
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+// ---------------------------------------------------------------- daily prompt
+// Verbatim mirror of FeedViewModel.dailyPrompts (text, tag) — client-static
+// on iOS too; dayOfYear % count picks today's.
+const DAILY_PROMPTS = [
+    ["its 2am and you cant sleep. what are you thinking about.", "longing"],
+    ["type out the text you almost sent last night", "unsent"],
+    ["what do you miss that has nothing to do with them as a person. like their dog. or their car. or their kitchen.", "regret"],
+    ["are you actually healing or just getting quieter about it", "confusion"],
+    ["what would you say if they called right now. no thinking just say it.", "still love you"],
+    ["i dont want to start over with someone new and explain all my shit again. do you feel that.", "moving on"],
+    ["do you think they feel guilty or are you not even something to feel guilty about", "anger"],
+    ["what are you pretending is fine right now", "acceptance"],
+    ["whats the thing you cant tell anyone because theyd say youre crazy", "longing"],
+    ["write the letter youll never send. start with dear you.", "unsent"],
+    ["whats something small that still ruins you. a song. a street. a food.", "regret"],
+    ["do you miss them or do you miss not being alone. its okay if you dont know.", "confusion"],
+    ["say the thing you pretend you dont feel anymore", "still love you"],
+    ["what would it take to feel like a beginning instead of an aftermath.", "moving on"],
+    ["whats the thing you cant forgive them for", "anger"],
+    ["did you eat today. did you sleep. are you drinking water. be honest.", "acceptance"],
+    ["do you still check their social media. be honest.", "longing"],
+    ["say something you havent said out loud to anyone. not even yourself.", "unsent"],
+    ["what did they say that you still hear on repeat", "regret"],
+    ["i keep thinking maybe if i was different. not even better just different. do you do that too.", "confusion"],
+    ["be honest. would you take them back right now if they asked.", "still love you"],
+    ["name the first day you noticed you thought about them less. did it scare you.", "moving on"],
+    ["are you angry or just really really sad. or both.", "anger"],
+    ["you got out of bed today. thats not nothing. say it like it counts.", "acceptance"],
+    ["what song do you skip now because it ruins you", "longing"],
+    ["type out the message thats been sitting in your drafts for weeks", "unsent"],
+    ["whats the most pathetic thing youve done since it ended. no judgment here.", "regret"],
+    ["the thing nobody understands about what happened is", "confusion"],
+    ["do you still love them. you dont have to answer that. but do you.", "still love you"],
+    ["who are you when youre not orbiting them. be honest.", "moving on"],
+    ["say it. the one thing you wouldve screamed if you werent so busy being calm and reasonable", "anger"],
+    ["what is the first thing that tasted good again. even a little.", "acceptance"],
+    ["whats the thought you have every single morning before you can stop it", "longing"],
+    ["write what you wouldve said if youd picked up the last time they called", "unsent"],
+    ["whats the last thing that made you cry about it. like actually cry.", "regret"],
+    ["how are you. and not the version you tell people.", "confusion"],
+    ["if they walked back in tonight. no questions asked. would you let them.", "still love you"],
+    ["i dont want to be brave. i just want to wake up and not reach for my phone first.", "moving on"],
+    ["whats the lie they told that still makes your face hot when you remember it", "anger"],
+    ["name one small thing you did today that you didnt think youd manage.", "acceptance"],
+];
+function dayOfYear(d = new Date()) {
+    return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400e3);
+}
+const todaysPrompt = () => DAILY_PROMPTS[dayOfYear() % DAILY_PROMPTS.length];
+const todaysPromptDate = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+// Set by the prompt card's "respond" click; consumed by the next compose.
+let promptContext = null; // {promptDate, tag}
+
 // Post visible on read surfaces: mirrors iOS filterBlocked + expiry + flagged.
 function postVisible(d) {
     if (d.flagged === true) return false;
@@ -149,17 +230,30 @@ function statsRow(d) {
     if ((d.repostCount ?? 0) > 0) bits.push(el("span", {}, `${d.repostCount} reposts`));
     return bits.length ? el("div", { class: "post-stats" }, bits) : null;
 }
+// "whisper · fades in 42m" / "midnight · fades at midnight" chips on
+// ephemeral posts (web-only affordance; iOS shows the state in compose).
+function ephemeralChip(d) {
+    if (d.isWhisper !== true && d.isMidnightPost !== true) return null;
+    let fade = "";
+    const exp = d.expiresAt?.toDate?.();
+    if (exp) {
+        const mins = Math.max(1, Math.round((exp - Date.now()) / 60e3));
+        fade = d.isWhisper ? ` · fades in ${mins}m` : " · fades at midnight";
+    }
+    return el("span", { class: "tag ephemeral" }, (d.isWhisper ? "whisper" : "midnight") + fade);
+}
 function postRow(id, d) {
     const meta = el("div", { class: "post-meta" },
         el("span", { class: "handle" }, d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
         el("span", {}, relTime(d.createdAt)),
         tagChip(d.tag),
+        ephemeralChip(d),
     );
     return el("a", { class: "post-row", href: `#/post/${id}` },
         d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle ?? "anonymous"} reposted`) : null,
         meta,
         el("div", { class: "post-text" }, d.text ?? ""),
-        d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:12px; margin-top:12px;", alt: "gif" }) : null,
+        d.gifUrl ? el("img", { src: d.gifUrl, loading: "lazy", style: "max-width:100%; border-radius:12px; margin-top:12px;", alt: "gif" }) : null,
         statsRow(d),
     );
 }
@@ -327,7 +421,37 @@ async function viewFeed() {
         ["for you", "following"].map(t =>
             el("button", { class: `tab ${feedTab === t ? "active" : ""}`, onclick: () => { feedTab = t; viewFeed(); } }, t)),
     );
-    mount.replaceChildren(tabs, list, spinner());
+    // Daily prompt card — same client-static list + dayOfYear pick as iOS.
+    const [pText, pTag] = todaysPrompt();
+    const respond = el("button", { class: "btn quiet" }, "respond");
+    respond.onclick = () => {
+        promptContext = { text: pText, tag: pTag, promptDate: todaysPromptDate() };
+        location.hash = "#/compose";
+    };
+    const promptCard = el("div", { class: "prompt-card" },
+        el("div", { class: "eyebrow" }, "today's prompt"),
+        el("div", { class: "post-text", style: "font-size:16.5px;" }, pText),
+        el("div", { style: "display:flex; align-items:center; gap:10px; margin-top:10px;" },
+            tagChip(pTag), respond));
+    // Search — honest scope, same as FeedView: filters only what's already
+    // fetched (text + handle), no extra Firestore round-trip.
+    const search = el("input", {
+        type: "search", class: "feed-search", placeholder: "search what's been said here…",
+    });
+    mount.replaceChildren(promptCard, search, tabs, list, spinner());
+    const applyFilter = () => {
+        const q = search.value.trim().toLowerCase();
+        let any = false;
+        for (const row of list.querySelectorAll(".post-row")) {
+            const hit = !q || row.textContent.toLowerCase().includes(q);
+            row.hidden = !hit;
+            any = any || hit;
+        }
+        list.querySelector(".search-empty")?.remove();
+        if (!any) list.append(el("div", { class: "empty search-empty" },
+            el("span", { class: "glyph" }, "☾"), `nothing here matches "${q}" — it only searches what's loaded.`));
+    };
+    search.addEventListener("input", debounce(applyFilter, 250));
     try {
         const rows = feedTab === "for you" ? await fetchForYou() : await fetchFollowing();
         mount.querySelector(".spinner")?.remove();
@@ -383,30 +507,104 @@ async function fetchFollowing() {
     return all.slice(0, 50).map(d => [d.id, d.data()]);
 }
 
+// ---------------------------------------------------------------- gif picker
+// Giphy through the giphyProxy callable (App Check enforced server-side, so
+// this works on prod; on staging web the callable 403s and we show the same
+// gentle copy iOS shows on any failure). fixed_width rendition, like iOS.
+function gifPicker(onPick) {
+    const overlay = el("div", { class: "modal-overlay" });
+    const grid = el("div", { class: "gif-grid" });
+    const note = el("p", { class: "modal-hint" }, "");
+    const input = el("input", { type: "search", placeholder: "search gifs…" });
+    const card = el("div", { class: "modal-card gif-card" },
+        el("h3", {}, "add a gif"), input, note, grid);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.append(card);
+    document.body.append(overlay);
+    async function load(q) {
+        grid.replaceChildren(spinner());
+        note.textContent = "";
+        try {
+            const payload = q ? { mode: "search", q, limit: 30 } : { mode: "trending", limit: 30 };
+            const res = await httpsCallable(functions, "giphyProxy")(payload);
+            const items = (res.data?.data ?? []).map(it => {
+                const im = it.images ?? {};
+                const url = im.fixed_width?.url ?? im.downsized?.url ?? im.original?.url;
+                return url && it.id ? { id: it.id, url } : null;
+            }).filter(Boolean);
+            grid.replaceChildren();
+            if (!items.length) { note.textContent = "nothing found — try another word."; return; }
+            for (const g of items) {
+                const img = el("img", { src: g.url, loading: "lazy", alt: "gif result" });
+                img.onclick = () => { overlay.remove(); onPick(g.url); };
+                grid.append(img);
+            }
+        } catch (e) {
+            console.warn("giphyProxy failed", e?.code);
+            grid.replaceChildren();
+            note.textContent = "couldn't load gifs — try again.";
+        }
+    }
+    input.addEventListener("input", debounce(() => load(input.value.trim()), 400));
+    load("");
+}
+
 // ---------------------------------------------------------------- compose
 function viewCompose() {
     setChrome(false);
     writeFab.hidden = true;
     let isLetter = false;
+    let isWhisper = false;
+    let isMidnight = false;
     let selectedTag = null;
+    let gifUrl = null;
+    // A prompt respond-click seeds the tag + promptDate for this compose only.
+    const prompt = promptContext;
+    promptContext = null;
+    if (prompt?.tag) selectedTag = prompt.tag;
     const ta = el("textarea", { placeholder: "say it how it actually feels…", maxlength: "2100" });
     const count = el("span", { class: "char-count" }, "0 / 500");
     const err = el("div");
     const limit = () => isLetter ? 2000 : 500;
+    // draft restore + debounced save (guarded on auth by draftKey)
+    ta.value = loadDraft("compose");
+    const persistDraft = debounce(() => saveDraft("compose", ta.value), 400);
     ta.addEventListener("input", () => {
         const n = ta.value.length;
         count.textContent = `${n} / ${limit()}`;
         count.classList.toggle("over", n > limit());
+        persistDraft();
     });
-    const letterBtn = el("button", { class: "tab" }, "✉ letter mode");
-    letterBtn.onclick = () => {
-        isLetter = !isLetter;
-        letterBtn.classList.toggle("active", isLetter);
-        ta.dispatchEvent(new Event("input"));
+    if (ta.value) queueMicrotask(() => ta.dispatchEvent(new Event("input")));
+    const mkToggle = (label, get, set) => {
+        const b = el("button", { class: "tab" }, label);
+        b.onclick = () => { set(!get()); render(); };
+        return () => { const x = el("button", { class: `tab ${get() ? "active" : ""}` }, label); x.onclick = b.onclick; return x; };
     };
+    const letterT = mkToggle("✉ letter", () => isLetter, v => { isLetter = v; });
+    const whisperT = mkToggle("◌ whisper", () => isWhisper, v => { isWhisper = v; if (v) isMidnight = false; });
+    const midnightT = mkToggle("☾ midnight", () => isMidnight, v => { isMidnight = v; if (v) isWhisper = false; });
+    const modeNote = () => {
+        if (isWhisper) return "whisper · disappears in 1 hour · can't be shared or reposted";
+        if (isMidnight) return "midnight · disappears at midnight";
+        return null;
+    };
+    const gifBtn = el("button", { class: "tab" }, "gif");
+    gifBtn.onclick = () => gifPicker((url) => { gifUrl = url; render(); });
+    const toggleRow = el("div", { class: "compose-toggles" });
+    const gifBox = el("div");
+    const noteBox = el("div");
+    function render() {
+        toggleRow.replaceChildren(letterT(), whisperT(), midnightT(), gifBtn);
+        noteBox.replaceChildren(modeNote() ? el("p", { class: "note mode-note" }, modeNote()) : "");
+        gifBox.replaceChildren(gifUrl ? el("div", { class: "gif-attach" },
+            el("img", { src: gifUrl, alt: "attached gif" }),
+            el("button", { class: "tab", onclick: () => { gifUrl = null; render(); } }, "remove")) : "");
+        ta.dispatchEvent(new Event("input"));
+    }
     const tagRow = el("div", { class: "tag-picker" },
         POST_TAGS.map(t => {
-            const b = el("button", { class: "tab" }, t);
+            const b = el("button", { class: `tab ${selectedTag === t ? "active" : ""}` }, t);
             b.onclick = () => {
                 selectedTag = selectedTag === t ? null : t;
                 for (const x of tagRow.children) x.classList.toggle("active", x.textContent === selectedTag);
@@ -421,11 +619,16 @@ function viewCompose() {
         if (text.length > limit()) { err.replaceChildren(errorBox(`keep it under ${limit()} characters${isLetter ? "" : " — or make it a letter"}.`)); return; }
         if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline. your words deserve to actually land — try again when you're back.")); return; }
         if (postRateLimited()) { err.replaceChildren(errorBox("one moment between posts — breathe, then share.")); return; }
+        if (await isRestricted()) { err.replaceChildren(errorBox("your account is under review. you cannot post right now.")); return; }
         share.disabled = true;
         try {
             const gate = await runGates(text);
             if (!gate.ok) { share.disabled = false; return; }
-            await createPost({ text, tag: selectedTag, isLetter });
+            await createPost({
+                text, tag: selectedTag, isLetter, isWhisper, isMidnight, gifUrl,
+                promptDate: prompt?.promptDate,
+            });
+            saveDraft("compose", "");
             toast(gate.willBeHeld ? "shared — it'll be looked over first." : "shared, quietly.");
             location.hash = "#/me";
         } catch (e) {
@@ -434,18 +637,24 @@ function viewCompose() {
             share.disabled = false;
         }
     };
-    mount.replaceChildren(
+    // NB: replaceChildren stringifies a raw null (unlike el()'s child filter)
+    mount.replaceChildren(...[
         el("a", { class: "back", href: "#/" }, "← feed"),
+        prompt ? el("p", { class: "note", style: "padding:0 6px;" }, `responding to today's prompt — "${prompt.text}"`) : null,
         el("div", { class: "compose-card" },
             ta,
+            gifBox,
             tagRow,
+            toggleRow,
+            noteBox,
             el("div", { class: "compose-meta" },
-                el("div", { style: "display:flex; gap:8px; align-items:center;" }, letterBtn, count),
+                el("div", { style: "display:flex; gap:8px; align-items:center;" }, count),
                 share),
             err),
         el("p", { class: "note", style: "padding:0 6px;" },
             "no names, no photos, no links. letters can run long (2000); everything else stays short (500)."),
-    );
+    ].filter(Boolean));
+    render();
 }
 
 // ---------------------------------------------------------------- most felt
@@ -581,7 +790,8 @@ async function viewPost(postId) {
                 el("a", { class: "handle plain", href: `#/u/${d.isRepost ? (d.originalAuthorId ?? d.authorId) : d.authorId}` },
                     d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
                 el("span", {}, relTime(d.createdAt)),
-                tagChip(d.tag)),
+                tagChip(d.tag),
+                ephemeralChip(d)),
             (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
             el("div", { class: "post-text", style: "font-size:19px;" }, d.text ?? ""),
             d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:10px; margin-top:10px;", alt: "gif" }) : null,
@@ -639,10 +849,26 @@ async function viewPost(postId) {
         };
         moreBtn.onclick = () => {
             const handle = d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous");
-            const items = [{
+            const items = [];
+            if (own) {
+                // Edit only on ORIGINAL own posts — a repost's text is pinned
+                // to the original at create; editing it would break that tie.
+                if (!d.isRepost) items.push({
+                    label: "edit",
+                    onclick: () => editSheet({ text: d.text, isReply: false, onSave: (t) => editPost(postId, t) }),
+                });
+                items.push({
+                    label: "delete", danger: true,
+                    onclick: () => confirmDelete(d.isRepost ? "repost" : "post", async () => {
+                        await deletePost(postId);
+                        location.hash = "#/me";
+                    }),
+                });
+            }
+            items.push({
                 label: "report this post",
                 onclick: () => reportSheet({ type: "post", postId: targetPostId, reportedUserId: targetAuthorId, reportedHandle: handle, text: d.text }),
-            }];
+            });
             if (targetAuthorId !== me.uid) items.push({
                 label: `block ${handle}`, danger: true,
                 onclick: async () => {
@@ -666,7 +892,21 @@ async function viewPost(postId) {
             }
         };
         const rta = el("textarea", { placeholder: "say something gently…", rows: "1", maxlength: "520" });
-        rta.addEventListener("input", () => { rta.style.height = "auto"; rta.style.height = rta.scrollHeight + "px"; });
+        let replyGif = null;
+        const replyGifBox = el("div");
+        const renderReplyGif = () => replyGifBox.replaceChildren(replyGif ? el("div", { class: "gif-attach" },
+            el("img", { src: replyGif, alt: "attached gif" }),
+            el("button", { class: "tab", onclick: () => { replyGif = null; renderReplyGif(); } }, "remove")) : "");
+        // reply draft, per post, debounced; keyed per-uid like compose
+        const rDraftKind = `reply_${targetPostId}`;
+        rta.value = loadDraft(rDraftKind);
+        const persistReplyDraft = debounce(() => saveDraft(rDraftKind, rta.value), 400);
+        rta.addEventListener("input", () => {
+            rta.style.height = "auto"; rta.style.height = rta.scrollHeight + "px";
+            persistReplyDraft();
+        });
+        const rGifBtn = el("button", { class: "reply-gif", "aria-label": "add a gif" }, "gif");
+        rGifBtn.onclick = () => gifPicker((url) => { replyGif = url; renderReplyGif(); });
         const send = el("button", { class: "reply-send", "aria-label": "send reply" }, "↑");
         send.onclick = async () => {
             const text = rta.value.trim();
@@ -684,8 +924,11 @@ async function viewPost(postId) {
                     // not the reposter, as the parent context
                     parentPostHandle: d.isRepost ? (d.originalHandle ?? "") : d.authorHandle,
                     postAuthorId: targetAuthorId,
+                    gifUrl: replyGif,
                 });
                 rta.value = ""; rta.style.height = "auto";
+                saveDraft(rDraftKind, "");
+                replyGif = null; renderReplyGif();
                 replyingTo = null; renderStrip();
                 toast(gate.willBeHeld ? "sent — it'll be looked over first." : "sent, gently.");
                 const rows = await fetchReplies(targetPostId);
@@ -696,7 +939,8 @@ async function viewPost(postId) {
         };
         const composer = el("div", {},
             replyingStrip,
-            el("div", { class: "reply-composer" }, rta, send));
+            replyGifBox,
+            el("div", { class: "reply-composer" }, rta, rGifBtn, send));
         const onReplyTo = (r) => { replyingTo = { id: r.id, handle: r.authorHandle ?? "anonymous" }; renderStrip(); rta.focus(); };
 
         mount.append(body, actions, composer,
@@ -710,6 +954,77 @@ async function viewPost(postId) {
         mount.append(emptyState("this post isn't available."));
         console.error(e);
     }
+}
+
+// Edit sheet for own posts/replies. Mirrors PostDetailView.attemptSave: the
+// full gate set runs on the edited text, restriction blocks the save, and the
+// char cap floors at the current length (a legacy over-cap post stays
+// editable without forced truncation).
+function editSheet({ text, isReply, onSave }) {
+    const baseCap = isReply ? 500 : 2000;
+    const cap = Math.max(baseCap, (text ?? "").length);
+    const overlay = el("div", { class: "modal-overlay" });
+    const ta = el("textarea", { maxlength: String(cap) }, );
+    ta.value = text ?? "";
+    const count = el("span", { class: "char-count" }, `${ta.value.length} / ${cap}`);
+    ta.addEventListener("input", () => {
+        count.textContent = `${ta.value.length} / ${cap}`;
+        count.classList.toggle("over", ta.value.length > cap);
+    });
+    const err = el("div");
+    const save = el("button", { class: "btn" }, "save");
+    save.onclick = async () => {
+        err.replaceChildren();
+        const t = ta.value.trim();
+        if (!t) { err.replaceChildren(errorBox("it can't be empty — delete it instead if you want it gone.")); return; }
+        if (t.length > cap) { err.replaceChildren(errorBox(`keep it under ${cap} characters.`)); return; }
+        if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline — try again when you're connected.")); return; }
+        if (await isRestricted()) { err.replaceChildren(errorBox("your account is under review. you cannot edit right now.")); return; }
+        save.disabled = true;
+        try {
+            const gate = await runGates(t, { isReply });
+            if (!gate.ok) { save.disabled = false; return; }
+            await onSave(t);
+            overlay.remove();
+            toast(gate.willBeHeld ? "saved — it'll be looked over first." : "saved.");
+            route();
+        } catch (e) {
+            console.error(e);
+            err.replaceChildren(errorBox(GENERIC_ERR));
+            save.disabled = false;
+        }
+    };
+    const card = el("div", { class: "modal-card edit-card" },
+        el("h3", {}, isReply ? "edit your reply" : "edit your post"),
+        ta, err,
+        el("div", { class: "modal-actions" },
+            save,
+            el("button", { class: "btn quiet", onclick: () => overlay.remove() }, "cancel"),
+            count),
+    );
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.append(card);
+    document.body.append(overlay);
+    ta.focus();
+}
+
+// Quiet, honest delete confirm. Cloud Functions cascade the cleanup.
+function confirmDelete(what, onConfirm) {
+    const overlay = el("div", { class: "modal-overlay" });
+    const card = el("div", { class: "modal-card" },
+        el("h3", {}, `delete this ${what}?`),
+        el("p", { class: "modal-body" }, "it's gone for good. no archive, no undo."),
+        el("div", { class: "modal-actions" },
+            el("button", { class: "btn danger", onclick: async () => {
+                overlay.remove();
+                try { await onConfirm(); toast("deleted."); }
+                catch (e) { console.error(e); toast(GENERIC_ERR); }
+            } }, "delete"),
+            el("button", { class: "btn quiet", onclick: () => overlay.remove() }, "keep it")),
+    );
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.append(card);
+    document.body.append(overlay);
 }
 
 function reportSheet(target) { // {type, postId?, replyId?, reportedUserId, reportedHandle, text?}
@@ -761,11 +1076,14 @@ function renderThread(container, all, parentId, depth, onReplyTo) {
             rb.append(el("a", { class: "plain", href: "#", style: "font-size:12.5px;", onclick: (ev) => { ev.preventDefault(); onReplyTo(r); } }, "reply"));
             stats.append(rb);
         }
-        if (!own) {
+        {
             const mb = el("span", {});
             mb.append(el("a", { class: "plain", href: "#", style: "font-size:12.5px; color:var(--faint);", onclick: (ev) => {
                 ev.preventDefault();
-                menuSheet([
+                menuSheet(own ? [
+                    { label: "edit", onclick: () => editSheet({ text: r.text, isReply: true, onSave: (t) => editReply(r.postId, r.id, t) }) },
+                    { label: "delete", danger: true, onclick: () => confirmDelete("reply", async () => { await deleteReply(r.postId, r.id); route(); }) },
+                ] : [
                     { label: "report this reply", onclick: () => reportSheet({ type: "reply", postId: r.postId ?? null, replyId: r.id, reportedUserId: r.authorId, reportedHandle: r.authorHandle, text: r.text }) },
                     { label: `block ${r.authorHandle ?? "anonymous"}`, danger: true, onclick: async () => {
                         try { await blockUser(r.authorId, r.authorHandle); toast("blocked. you won't see them again."); route(); }
@@ -783,6 +1101,7 @@ function renderThread(container, all, parentId, depth, onReplyTo) {
                 el("span", {}, relTime(r.createdAt))),
             isPending ? pendingBanner() : null,
             el("div", { class: "post-text" }, r.text ?? ""),
+            r.gifUrl ? el("img", { src: r.gifUrl, loading: "lazy", style: "max-width:100%; border-radius:10px; margin-top:8px;", alt: "gif" }) : null,
             stats,
         ));
         renderThread(container, all, r.id, depth + 1, onReplyTo);
@@ -816,6 +1135,7 @@ async function viewProfile(uid) {
             showFollowers ? stat(ud.followerCount, "followers") : null,
             own ? stat(ud.followingCount, "following") : null,
             stat(ud.totalLikes, "felt")),
+        own ? el("a", { class: "plain", href: "#/blocked", style: "font-size:13px;" }, "blocked users") : null,
     );
     const list = el("div");
     if (own) {
@@ -909,6 +1229,41 @@ async function fetchUserReplies(uid) {
     return snap.docs.map(d => ({ id: d.id, postId: d.ref.parent.parent?.id, ...d.data() }));
 }
 
+// ---------------------------------------------------------------- blocked users
+// Settings-lite: the block docs store handle when it was known at block time.
+async function viewBlocked() {
+    setChrome(false);
+    const list = el("div");
+    mount.replaceChildren(
+        el("a", { class: "back", href: "#/me" }, "← profile"),
+        el("h2", { class: "section-title" }, "blocked"),
+        el("p", { class: "note", style: "padding:0 6px 10px;" },
+            "people you've blocked. you don't see them; they can't reply to you."),
+        list, spinner());
+    try {
+        const snap = await getDocs(query(collection(db, "users", me.uid, "blocked"), limit(200)));
+        mount.querySelector(".spinner")?.remove();
+        if (snap.empty) { list.append(emptyState("no one. may it stay that way.")); return; }
+        for (const b of snap.docs) {
+            const handle = b.data().handle ?? "anonymous";
+            const row = el("div", { class: "post-row blocked-row", style: "cursor:default;" },
+                el("span", { class: "handle" }, handle));
+            const btn = el("button", { class: "btn quiet" }, "unblock");
+            btn.onclick = async () => {
+                btn.disabled = true;
+                try { await unblockUser(b.id); row.remove(); toast(`${handle} is unblocked.`); }
+                catch (e) { console.error(e); btn.disabled = false; toast(GENERIC_ERR); }
+            };
+            row.append(btn);
+            list.append(row);
+        }
+    } catch (e) {
+        mount.querySelector(".spinner")?.remove();
+        list.append(emptyState(GENERIC_ERR));
+        console.error(e);
+    }
+}
+
 // ---------------------------------------------------------------- router
 function setActiveNav(key) {
     for (const a of document.querySelectorAll("#mainNav a"))
@@ -930,6 +1285,7 @@ function route() {
     else if (h === "#/notifications") { setActiveNav("notifications"); viewNotifications(); }
     else if (h.startsWith("#/post/")) { setActiveNav(""); viewPost(h.slice(7)); }
     else if (h === "#/me") { setActiveNav("me"); viewProfile(me.uid); }
+    else if (h === "#/blocked") { setActiveNav("me"); viewBlocked(); }
     else if (h.startsWith("#/u/")) {
         const uid = h.slice(4);
         setActiveNav(uid === me.uid ? "me" : "");
@@ -943,13 +1299,20 @@ document.getElementById("signOutBtn").onclick = async () => {
     stopBlockedListener();
     stopNotifBadge();
     resetWriteCaches();
+    if (me) clearDrafts(me.uid); // drafts never outlive the session that wrote them
     await signOut(auth);
     location.hash = "#/signin";
 };
 
 onAuthStateChanged(auth, async (user) => {
+    const prev = me;
     me = user;
-    if (!user) { stopBlockedListener(); stopNotifBadge(); resetWriteCaches(); route(); return; }
+    if (!user) {
+        // Token revocation lands here without the sign-out button — purge the
+        // previous account's drafts so they can't leak into the next session.
+        if (prev) clearDrafts(prev.uid);
+        stopBlockedListener(); stopNotifBadge(); resetWriteCaches(); route(); return;
+    }
     if (signupInProgress) return; // signup completes its own routing
     // Mirror ContentView.verifyUserDocumentAsync: the users doc must exist,
     // and confirmAdult re-fires on every sign-in until it sticks (a failed

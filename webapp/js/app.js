@@ -138,6 +138,10 @@ function postRow(id, d) {
     );
 }
 
+function emptyState(msg) {
+    return el("div", { class: "empty" }, el("span", { class: "glyph" }, "☾"), msg);
+}
+
 function pendingBanner(reasonLabel) {
     return el("div", { class: "pending-banner" },
         `under review${reasonLabel ? " — " + reasonLabel : ""}. only you can see this right now.`);
@@ -279,7 +283,7 @@ async function viewFeed() {
         const rows = feedTab === "for you" ? await fetchForYou() : await fetchFollowing();
         mount.querySelector(".spinner")?.remove();
         if (!rows.length) {
-            list.append(el("div", { class: "empty" }, "it's quiet here right now."));
+            list.append(emptyState("it's quiet here right now."));
             return;
         }
         for (const [id, d] of rows) list.append(postRow(id, d));
@@ -297,7 +301,7 @@ async function viewFeed() {
         }
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
-        list.append(el("div", { class: "empty" }, GENERIC_ERR));
+        list.append(emptyState(GENERIC_ERR));
         console.error(e);
     }
 }
@@ -367,7 +371,7 @@ async function viewTop() {
                 ((a.likeCount ?? 0) + (a.createdAt?.toMillis() ?? 0) / 1e15))
             .slice(0, 10);
         if (!ranked.length) {
-            list.append(el("div", { class: "empty" }, "nothing has been felt enough yet. it takes one."));
+            list.append(emptyState("nothing has been felt enough yet. it takes one."));
             return;
         }
         const [heroId, hero] = ranked[0];
@@ -390,7 +394,7 @@ async function viewTop() {
         });
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
-        list.append(el("div", { class: "empty" }, GENERIC_ERR));
+        list.append(emptyState(GENERIC_ERR));
         console.error(e);
     }
 }
@@ -412,12 +416,12 @@ async function viewNotifications() {
         mount.querySelector(".spinner")?.remove();
         const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
             .filter(n => !blocked.has(n.fromUserId));
-        if (!rows.length) { list.append(el("div", { class: "empty" }, "nothing yet. it's coming.")); return; }
+        if (!rows.length) { list.append(emptyState("nothing yet. when someone feels your words, it lands here.")); return; }
         for (const n of rows) {
             const action = NOTIF_ACTION[n.type] ?? (n.message || n.type);
             const preview = n.type === "reply" && n.message?.trim() ? n.message.trim() : null;
             list.append(el("a", {
-                class: "post-row",
+                class: "post-row notif-row",
                 href: n.postId ? `#/post/${n.postId}` : (n.type === "follow" && n.fromUserId ? `#/u/${n.fromUserId}` : "#/"),
                 style: n.isRead === false ? "border-left: 3px solid var(--plum);" : "",
             },
@@ -438,7 +442,7 @@ async function viewNotifications() {
         }
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
-        list.append(el("div", { class: "empty" }, GENERIC_ERR));
+        list.append(emptyState(GENERIC_ERR));
         console.error(e);
     }
 }
@@ -451,7 +455,7 @@ async function viewPost(postId) {
         const ps = await getDoc(doc(db, "posts", postId));
         mount.querySelector(".spinner")?.remove();
         if (!ps.exists() || !postVisible(ps.data())) {
-            mount.append(el("div", { class: "empty" }, "this post has disappeared."));
+            mount.append(emptyState("this post has disappeared."));
             return;
         }
         const d = ps.data();
@@ -474,11 +478,11 @@ async function viewPost(postId) {
         mount.append(body, el("h3", { style: "margin:22px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
         const replies = await fetchReplies(postId);
         mount.querySelector(".spinner")?.remove();
-        if (!replies.length) repliesBox.append(el("div", { class: "empty" }, "no replies yet."));
+        if (!replies.length) repliesBox.append(emptyState("no replies yet. someone will find this."));
         renderThread(repliesBox, replies, null, 0);
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
-        mount.append(el("div", { class: "empty" }, "this post isn't available."));
+        mount.append(emptyState("this post isn't available."));
         console.error(e);
     }
 }
@@ -505,7 +509,8 @@ function renderThread(container, all, parentId, depth) {
     for (const r of all.filter(r => (r.parentReplyId ?? null) === parentId)) {
         const isPending = (r.moderationStatus ?? "live") !== "live";
         container.append(el("div", {
-            class: "post-row", style: `cursor:default; margin-left:${Math.min(depth, 3) * 20}px;` },
+            class: `post-row reply-row ${depth > 0 ? "thread-child" : ""}`,
+            style: `cursor:default; margin-left:${Math.min(depth, 3) * 18}px;` },
             el("div", { class: "post-meta" },
                 el("a", { class: "handle plain", href: `#/u/${r.authorId}` }, r.authorHandle ?? "anonymous"),
                 el("span", {}, relTime(r.createdAt))),
@@ -521,27 +526,29 @@ function renderThread(container, all, parentId, depth) {
 async function viewProfile(uid) {
     header.hidden = false;
     const own = uid === me.uid;
-    mount.replaceChildren(el("a", { class: "back", href: "#/" }, "← feed"), spinner());
+    // Own profile is a top-level tab — no back link; others get one.
+    mount.replaceChildren(own ? el("span") : el("a", { class: "back", href: "#/" }, "← feed"), spinner());
     let u = null;
     try { u = await getDoc(doc(db, "users", uid)); }
     catch { // rules: a user who blocked me denies this read
         mount.querySelector(".spinner")?.remove();
-        mount.append(el("div", { class: "empty" }, "this profile isn't available."));
+        mount.append(emptyState("this profile isn't available."));
         return;
     }
     mount.querySelector(".spinner")?.remove();
-    if (!u.exists()) { mount.append(el("div", { class: "empty" }, "this profile isn't available.")); return; }
+    if (!u.exists()) { mount.append(emptyState("this profile isn't available.")); return; }
     const ud = u.data();
     const joined = ud.createdAt?.toDate ?
         ud.createdAt.toDate().toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "";
     const showFollowers = own || ud.showFollowerCount === true;
+    const stat = (n, label) => el("span", {}, el("b", {}, String(n ?? 0)), ` ${label}`);
     const head = el("div", { class: "profile-head" },
         el("h2", {}, ud.handle ?? "anonymous"),
-        el("div", { class: "post-stats", style: "margin-top:6px;" },
-            showFollowers ? el("span", {}, `${ud.followerCount ?? 0} followers`) : null,
-            own ? el("span", {}, `${ud.followingCount ?? 0} following`) : null,
-            el("span", {}, `${ud.totalLikes ?? 0} felt`),
-            joined ? el("span", {}, `joined ${joined}`) : null),
+        joined ? el("div", { class: "joined" }, `here since ${joined}`) : null,
+        el("div", { class: "stat-line" },
+            showFollowers ? stat(ud.followerCount, "followers") : null,
+            own ? stat(ud.followingCount, "following") : null,
+            stat(ud.totalLikes, "felt")),
     );
     const list = el("div");
     if (own) {
@@ -554,11 +561,15 @@ async function viewProfile(uid) {
             tabsMount.replaceChildren(tabsRow());
             list.replaceChildren(spinner());
             try {
-                if (tab === "posts") renderPostDocs(list, await fetchOwnPosts(), { showPending: true });
-                else if (tab === "liked") renderPostDocs(list, await fetchRefTab("liked"));
-                else if (tab === "saved") renderPostDocs(list, await fetchRefTab("saved"));
-                else renderReplyDocs(list, await fetchUserReplies(uid));
-            } catch (e) { list.replaceChildren(el("div", { class: "empty" }, GENERIC_ERR)); console.error(e); }
+                if (tab === "posts") renderPostDocs(list, await fetchOwnPosts(),
+                    { showPending: true, emptyMsg: "no posts yet. the app is where words begin." });
+                else if (tab === "liked") renderPostDocs(list, await fetchRefTab("liked"),
+                    { emptyMsg: "nothing felt yet. it finds you." });
+                else if (tab === "saved") renderPostDocs(list, await fetchRefTab("saved"),
+                    { emptyMsg: "nothing saved yet. keep what helps." });
+                else renderReplyDocs(list, await fetchUserReplies(uid),
+                    "no replies yet. someone's words will need yours.");
+            } catch (e) { list.replaceChildren(emptyState(GENERIC_ERR)); console.error(e); }
         };
         mount.append(head, tabsMount, list);
         refresh();
@@ -567,28 +578,28 @@ async function viewProfile(uid) {
         try {
             const posts = await fetchOtherPosts(uid);
             mount.querySelector(".spinner")?.remove();
-            renderPostDocs(list, posts);
+            renderPostDocs(list, posts, { emptyMsg: "nothing shared yet." });
         } catch (e) {
             mount.querySelector(".spinner")?.remove();
-            list.append(el("div", { class: "empty" }, GENERIC_ERR)); console.error(e);
+            list.append(emptyState(GENERIC_ERR)); console.error(e);
         }
     }
 }
 
 function renderPostDocs(list, rows, opts = {}) {
     list.replaceChildren();
-    if (!rows.length) { list.append(el("div", { class: "empty" }, "nothing here yet.")); return; }
+    if (!rows.length) { list.append(emptyState(opts.emptyMsg ?? "nothing here yet.")); return; }
     for (const [id, d] of rows) {
         const row = postRow(id, d);
         if (opts.showPending && (d.moderationStatus ?? "live") !== "live") row.prepend(pendingBanner());
         list.append(row);
     }
 }
-function renderReplyDocs(list, rows) {
+function renderReplyDocs(list, rows, emptyMsg) {
     list.replaceChildren();
-    if (!rows.length) { list.append(el("div", { class: "empty" }, "nothing here yet.")); return; }
+    if (!rows.length) { list.append(emptyState(emptyMsg ?? "nothing here yet.")); return; }
     for (const r of rows) {
-        list.append(el("a", { class: "post-row", href: r.postId ? `#/post/${r.postId}` : "#/" },
+        list.append(el("a", { class: "post-row reply-row", href: r.postId ? `#/post/${r.postId}` : "#/" },
             el("div", { class: "post-meta" },
                 el("span", { class: "handle" }, r.authorHandle ?? "anonymous"),
                 el("span", {}, relTime(r.createdAt))),

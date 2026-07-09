@@ -199,10 +199,6 @@ h2, h3 { font-weight: 500; }
 .section-title {
     font-size: 22px; font-weight: 500; padding: 22px 4px 4px;
 }
-.empty {
-    text-align: center; color: var(--faint); padding: 72px 24px;
-    font-style: italic; font-size: 16.5px;
-}
 .spinner {
     width: 22px; height: 22px; margin: 48px auto; display: block;
     border: 2px solid var(--hairline); border-top-color: var(--plum);
@@ -222,8 +218,37 @@ a.plain:hover { text-decoration: underline; }
     color: var(--soft); border: 1px solid color-mix(in srgb, var(--plum) 18%, transparent);
     border-radius: 10px; padding: 9px 13px; margin: 4px 0 10px;
 }
-.profile-head { padding: 30px 4px 8px; }
-.profile-head h2 { font-size: 26px; }
+.profile-head {
+    background: var(--card); border-radius: 20px; box-shadow: var(--shadow);
+    padding: 30px 26px 24px; margin: 18px 0 6px;
+}
+.profile-head h2 { font-size: 28px; letter-spacing: 0.01em; }
+.profile-head .joined {
+    font-style: italic; color: var(--faint); font-size: 15px; margin-top: 2px;
+}
+.stat-line {
+    font-family: -apple-system, sans-serif; font-size: 13.5px; color: var(--faint);
+    display: flex; gap: 8px; margin-top: 14px; align-items: baseline; flex-wrap: wrap;
+}
+.stat-line b { color: var(--ink); font-weight: 600; font-size: 15px; }
+.stat-line span + span::before { content: "·"; margin-right: 8px; color: var(--hairline); }
+
+/* empty states */
+.empty {
+    text-align: center; color: var(--faint); padding: 56px 24px 72px;
+    font-style: italic; font-size: 16.5px;
+}
+.empty .glyph {
+    display: block; font-size: 26px; font-style: normal;
+    color: var(--plum-soft); margin-bottom: 12px; opacity: 0.75;
+}
+
+/* replies + notifications read lighter than posts */
+.reply-row { padding: 15px 18px 12px; border-radius: 14px; margin: 10px 0; }
+.reply-row .post-text { font-size: 16px; }
+.thread-child { border-left: 2px solid var(--hairline); }
+.notif-row { padding: 15px 18px 13px; border-radius: 14px; margin: 10px 0; }
+.notif-row .post-text { font-size: 15px; }
 
 @media (max-width: 480px) {
     .post-row { padding: 17px 17px 13px; border-radius: 16px; }

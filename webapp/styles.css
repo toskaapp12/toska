@@ -119,6 +119,21 @@ header.app .inner {
     color: var(--soft); text-decoration: none; display: inline-block; margin: 14px 0 0;
 }
 a.plain { color: var(--plum); text-decoration: none; }
+.hero-card {
+    background: var(--night); color: #eeeff1; border-radius: 16px;
+    padding: 26px 22px; margin: 14px 0;
+}
+.hero-card .eyebrow {
+    font-family: -apple-system, sans-serif; font-size: 11.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--plum-soft);
+    margin-bottom: 12px;
+}
+.hero-card .post-text { font-size: 20px; color: #eeeff1; }
+.hero-card .post-meta, .hero-card .post-stats { color: #91949c; }
+.rank-num {
+    font-family: -apple-system, sans-serif; font-size: 13px; color: var(--faint);
+    min-width: 22px; display: inline-block;
+}
 .pending-banner {
     font-family: -apple-system, sans-serif; font-size: 13px;
     background: color-mix(in srgb, var(--plum) 8%, var(--card));

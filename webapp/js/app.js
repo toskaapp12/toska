@@ -303,6 +303,71 @@ async function fetchFollowing() {
     return all.slice(0, 50).map(d => [d.id, d.data()]);
 }
 
+// ---------------------------------------------------------------- most felt
+// Mirrors TopView: today/week = createdAt-windowed limit 100 ranked by likes
+// client-side; all-time = likeCount DESC directly (composite index exists).
+// Only posts with ≥1 felt make the board; top 10.
+let topPeriod = "today";
+const TOP_CUTOFF = { today: 86400e3, "this week": 7 * 86400e3 };
+async function viewTop() {
+    header.hidden = false;
+    const list = el("div");
+    const tabs = el("div", { class: "tabs" },
+        ["today", "this week", "all time"].map(t =>
+            el("button", { class: `tab ${topPeriod === t ? "active" : ""}`, onclick: () => { topPeriod = t; viewTop(); } }, t)),
+    );
+    mount.replaceChildren(tabs, list, spinner());
+    try {
+        let q;
+        if (topPeriod === "all time") {
+            q = query(collection(db, "posts"),
+                where("moderationStatus", "==", "live"),
+                orderBy("likeCount", "desc"), orderBy("createdAt", "desc"), limit(100));
+        } else {
+            const cutoff = new Date(Date.now() - TOP_CUTOFF[topPeriod]);
+            q = query(collection(db, "posts"),
+                where("moderationStatus", "==", "live"),
+                where("createdAt", ">", cutoff),
+                orderBy("createdAt", "desc"), limit(100));
+        }
+        const snap = await getDocs(q);
+        mount.querySelector(".spinner")?.remove();
+        const ranked = snap.docs
+            .map(d => [d.id, d.data()])
+            .filter(([, d]) => postVisible(d) && (d.likeCount ?? 0) > 0)
+            .sort(([, a], [, b]) =>
+                ((b.likeCount ?? 0) + (b.createdAt?.toMillis() ?? 0) / 1e15) -
+                ((a.likeCount ?? 0) + (a.createdAt?.toMillis() ?? 0) / 1e15))
+            .slice(0, 10);
+        if (!ranked.length) {
+            list.append(el("div", { class: "empty" }, "nothing has been felt enough yet. it takes one."));
+            return;
+        }
+        const [heroId, hero] = ranked[0];
+        list.append(el("a", { class: "hero-card post-row", href: `#/post/${heroId}`, style: "display:block;" },
+            el("div", { class: "eyebrow" },
+                `most felt ${topPeriod === "all time" ? "of all time" : topPeriod}`),
+            el("div", { class: "post-meta" },
+                el("span", { class: "handle" }, hero.isRepost ? (hero.originalHandle ?? "anonymous") : (hero.authorHandle ?? "anonymous")),
+                el("span", {}, relTime(hero.createdAt)),
+                hero.tag ? el("span", { class: "tag" }, hero.tag) : null),
+            el("div", { class: "post-text" }, hero.text ?? ""),
+            el("div", { class: "post-stats" },
+                el("span", {}, `${hero.likeCount ?? 0} felt this`),
+                el("span", {}, `${hero.replyCount ?? 0} replies`)),
+        ));
+        ranked.slice(1).forEach(([id, d], i) => {
+            const row = postRow(id, d);
+            row.prepend(el("span", { class: "rank-num" }, `${i + 2}.`));
+            list.append(row);
+        });
+    } catch (e) {
+        mount.querySelector(".spinner")?.remove();
+        list.append(el("div", { class: "empty" }, GENERIC_ERR));
+        console.error(e);
+    }
+}
+
 // ---------------------------------------------------------------- post detail
 async function viewPost(postId) {
     header.hidden = false;
@@ -500,6 +565,7 @@ function route() {
         return;
     }
     if (h === "#/" || h === "" || h === "#/signin" || h === "#/signup") viewFeed();
+    else if (h === "#/top") viewTop();
     else if (h.startsWith("#/post/")) viewPost(h.slice(7));
     else if (h === "#/me") viewProfile(me.uid);
     else if (h.startsWith("#/u/")) {

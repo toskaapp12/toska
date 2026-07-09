@@ -1,0 +1,127 @@
+/* toska web — design tokens mirror ToskaDesign.swift / LateNightTheme */
+:root {
+    --ink: #14130f;
+    --paper: #ffffff;
+    --ground: #eeeff1;
+    --soft: #72757e;
+    --faint: #91949c;
+    --plum: #6d55c9;
+    --plum-soft: #9387c0;
+    --night: #0b0a10;
+    --hairline: #e2e4e8;
+    --card: #ffffff;
+    --danger: #b3564f;
+}
+[data-theme="night"] {
+    --ink: #eeeff1;
+    --paper: #14131a;
+    --ground: #0b0a10;
+    --soft: #91949c;
+    --faint: #72757e;
+    --hairline: #24232c;
+    --card: #17161e;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+    font-family: "Newsreader", Georgia, "Times New Roman", serif;
+    background: var(--ground);
+    color: var(--ink);
+    line-height: 1.65;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+}
+.sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif; }
+
+/* layout */
+.shell { max-width: 640px; margin: 0 auto; padding: 0 16px 96px; }
+header.app {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--ground) 88%, transparent);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--hairline);
+}
+header.app .inner {
+    max-width: 640px; margin: 0 auto; padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.wordmark { font-size: 22px; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+.wordmark b { color: var(--plum); font-weight: 500; }
+
+/* buttons + tabs */
+.btn {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 15px; border: none; cursor: pointer; border-radius: 10px;
+    padding: 12px 20px; background: var(--plum); color: #fff;
+}
+.btn.quiet { background: transparent; color: var(--soft); border: 1px solid var(--hairline); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.tabs { display: flex; gap: 8px; padding: 12px 0; }
+.tab {
+    font-family: -apple-system, sans-serif; font-size: 14px;
+    padding: 7px 14px; border-radius: 999px; border: 1px solid var(--hairline);
+    background: transparent; color: var(--soft); cursor: pointer;
+}
+.tab.active { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+
+/* post rows */
+.post-row {
+    background: var(--card); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 18px 18px 14px; margin: 12px 0;
+    cursor: pointer; display: block; width: 100%; text-align: left; color: inherit;
+    text-decoration: none;
+}
+.post-meta {
+    font-family: -apple-system, sans-serif; font-size: 13px; color: var(--faint);
+    display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px;
+}
+.post-meta .handle { color: var(--soft); }
+.post-meta .tag { margin-left: auto; color: var(--plum-soft); }
+.post-text { font-size: 17px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.post-stats {
+    font-family: -apple-system, sans-serif; font-size: 13px; color: var(--faint);
+    display: flex; gap: 16px; margin-top: 12px;
+}
+.repost-strip {
+    font-family: -apple-system, sans-serif; font-size: 12.5px; color: var(--faint);
+    margin-bottom: 6px;
+}
+
+/* forms */
+.field { margin: 14px 0; }
+.field label {
+    display: block; font-family: -apple-system, sans-serif;
+    font-size: 13px; color: var(--soft); margin-bottom: 6px;
+}
+.field input {
+    width: 100%; padding: 13px 14px; font-size: 16px;
+    font-family: -apple-system, sans-serif;
+    border: 1px solid var(--hairline); border-radius: 10px;
+    background: var(--card); color: var(--ink);
+}
+.field input:focus { outline: 2px solid var(--plum-soft); border-color: transparent; }
+.error {
+    font-family: -apple-system, sans-serif; font-size: 14px;
+    color: var(--danger); margin: 10px 0;
+}
+.note { font-family: -apple-system, sans-serif; font-size: 13.5px; color: var(--faint); }
+
+/* misc */
+.empty { text-align: center; color: var(--faint); padding: 64px 24px; }
+.spinner {
+    width: 22px; height: 22px; margin: 40px auto; display: block;
+    border: 2px solid var(--hairline); border-top-color: var(--plum);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.back {
+    font-family: -apple-system, sans-serif; font-size: 14px;
+    color: var(--soft); text-decoration: none; display: inline-block; margin: 14px 0 0;
+}
+a.plain { color: var(--plum); text-decoration: none; }
+.pending-banner {
+    font-family: -apple-system, sans-serif; font-size: 13px;
+    background: color-mix(in srgb, var(--plum) 8%, var(--card));
+    color: var(--soft); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 10px 14px; margin: 8px 0;
+}

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>toska</title>
+    <meta name="description" content="toska — an anonymous space for heartbreak. sign in to read the feed.">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0a10'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='40' fill='%236d55c9' text-anchor='middle'%3Et%3C/text%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <header class="app" id="appHeader" hidden>
+        <div class="inner">
+            <a class="wordmark" href="#/"><b>toska</b></a>
+            <nav class="sans" style="display:flex; gap:16px; align-items:center;">
+                <a class="plain" href="#/me" id="navProfile" style="font-size:14px;">profile</a>
+                <button class="tab" id="signOutBtn">sign out</button>
+            </nav>
+        </div>
+    </header>
+    <main class="shell" id="mount">
+        <span class="spinner"></span>
+    </main>
+    <script type="module" src="/js/app.js"></script>
+</body>
+</html>

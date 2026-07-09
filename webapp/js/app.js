@@ -105,23 +105,36 @@ function postVisible(d) {
 }
 
 // ---------------------------------------------------------------- shared UI
+// Tag palette from the marketing site — muted, tag-specific ink.
+const TAG_COLORS = {
+    "longing": "#7a6fc0", "anger": "#c0736f", "acceptance": "#6f9c8a",
+    "regret": "#a58a6f", "confusion": "#8a8a9c", "still love you": "#b07a8a",
+    "moving on": "#6f9c8a", "numb": "#8a8a9c",
+};
+function tagChip(tag) {
+    if (!tag) return null;
+    const c = TAG_COLORS[tag] ?? "var(--plum-soft)";
+    return el("span", { class: "tag", style: `color:${c};` }, tag);
+}
+function statsRow(d) {
+    const bits = [];
+    if ((d.replyCount ?? 0) > 0) bits.push(el("span", {}, `${d.replyCount} ${d.replyCount === 1 ? "reply" : "replies"}`));
+    if ((d.likeCount ?? 0) > 0) bits.push(el("span", {}, `${d.likeCount} felt this`));
+    if ((d.repostCount ?? 0) > 0) bits.push(el("span", {}, `${d.repostCount} reposts`));
+    return bits.length ? el("div", { class: "post-stats" }, bits) : null;
+}
 function postRow(id, d) {
-    const stats = el("div", { class: "post-stats" },
-        el("span", {}, `${d.replyCount ?? 0} replies`),
-        el("span", {}, `${d.likeCount ?? 0} felt this`),
-        (d.repostCount ?? 0) > 0 ? el("span", {}, `${d.repostCount} reposts`) : null,
-    );
     const meta = el("div", { class: "post-meta" },
         el("span", { class: "handle" }, d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
         el("span", {}, relTime(d.createdAt)),
-        d.tag ? el("span", { class: "tag" }, d.tag) : null,
+        tagChip(d.tag),
     );
     return el("a", { class: "post-row", href: `#/post/${id}` },
         d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle ?? "anonymous"} reposted`) : null,
         meta,
         el("div", { class: "post-text" }, d.text ?? ""),
-        d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:10px; margin-top:10px;", alt: "gif" }) : null,
-        stats,
+        d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:12px; margin-top:12px;", alt: "gif" }) : null,
+        statsRow(d),
     );
 }
 
@@ -151,13 +164,13 @@ function viewSignIn() {
         }
     };
     mount.replaceChildren(
-        el("div", { style: "padding-top:96px; max-width:400px; margin:0 auto;" },
-            el("h1", { style: "font-size:34px; font-weight:500;" }, el("b", { style: "color:var(--plum)" }, "toska")),
-            el("p", { class: "note", style: "margin:6px 0 24px;" }, "an anonymous space for heartbreak."),
+        el("div", { class: "auth-card" },
+            el("h1", { style: "color:var(--plum);" }, "toska"),
+            el("p", { class: "note tagline" }, "an anonymous space for heartbreak."),
             el("div", { class: "field" }, el("label", {}, "email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pw),
-            err, btn,
-            el("p", { class: "note", style: "margin-top:18px;" },
+            err, el("div", { style: "margin-top:6px;" }, btn),
+            el("p", { class: "note", style: "margin-top:20px;" },
                 "new here? ", el("a", { class: "plain", href: "#/signup" }, "create an account")),
         )
     );
@@ -207,9 +220,9 @@ function viewSignUp() {
         }
     };
     mount.replaceChildren(
-        el("div", { style: "padding-top:96px; max-width:400px; margin:0 auto;" },
-            el("h1", { style: "font-size:28px; font-weight:500;" }, "create your account"),
-            el("p", { class: "note", style: "margin:6px 0 24px;" },
+        el("div", { class: "auth-card" },
+            el("h1", { style: "font-size:28px;" }, "create your account"),
+            el("p", { class: "note tagline" },
                 "no real names. you'll get an anonymous handle."),
             el("div", { class: "field" }, el("label", {}, "email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pw),
@@ -221,8 +234,8 @@ function viewSignUp() {
                 " and ",
                 el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"),
                 "."),
-            err, btn,
-            el("p", { class: "note", style: "margin-top:18px;" },
+            err, el("div", { style: "margin-top:6px;" }, btn),
+            el("p", { class: "note", style: "margin-top:20px;" },
                 "already have an account? ", el("a", { class: "plain", href: "#/signin" }, "sign in")),
         )
     );
@@ -364,7 +377,7 @@ async function viewTop() {
             el("div", { class: "post-meta" },
                 el("span", { class: "handle" }, hero.isRepost ? (hero.originalHandle ?? "anonymous") : (hero.authorHandle ?? "anonymous")),
                 el("span", {}, relTime(hero.createdAt)),
-                hero.tag ? el("span", { class: "tag" }, hero.tag) : null),
+                tagChip(hero.tag)),
             el("div", { class: "post-text" }, hero.text ?? ""),
             el("div", { class: "post-stats" },
                 el("span", {}, `${hero.likeCount ?? 0} felt this`),
@@ -392,7 +405,7 @@ const NOTIF_ACTION = {
 async function viewNotifications() {
     header.hidden = false;
     const list = el("div");
-    mount.replaceChildren(el("h2", { style: "padding:20px 4px 4px; font-weight:500;" }, "notifications"), list, spinner());
+    mount.replaceChildren(el("h2", { class: "section-title" }, "notifications"), list, spinner());
     try {
         const snap = await getDocs(query(collection(db, "users", me.uid, "notifications"),
             orderBy("createdAt", "desc"), limit(50)));
@@ -449,7 +462,7 @@ async function viewPost(postId) {
                 el("a", { class: "handle plain", href: `#/u/${d.isRepost ? (d.originalAuthorId ?? d.authorId) : d.authorId}` },
                     d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
                 el("span", {}, relTime(d.createdAt)),
-                d.tag ? el("span", { class: "tag" }, d.tag) : null),
+                tagChip(d.tag)),
             (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
             el("div", { class: "post-text", style: "font-size:19px;" }, d.text ?? ""),
             d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:10px; margin-top:10px;", alt: "gif" }) : null,
@@ -522,8 +535,8 @@ async function viewProfile(uid) {
     const joined = ud.createdAt?.toDate ?
         ud.createdAt.toDate().toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "";
     const showFollowers = own || ud.showFollowerCount === true;
-    const head = el("div", { style: "padding:26px 4px 6px;" },
-        el("h2", { style: "font-weight:500;" }, ud.handle ?? "anonymous"),
+    const head = el("div", { class: "profile-head" },
+        el("h2", {}, ud.handle ?? "anonymous"),
         el("div", { class: "post-stats", style: "margin-top:6px;" },
             showFollowers ? el("span", {}, `${ud.followerCount ?? 0} followers`) : null,
             own ? el("span", {}, `${ud.followingCount ?? 0} following`) : null,

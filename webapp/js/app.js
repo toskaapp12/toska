@@ -82,6 +82,19 @@ function startBlockedListener(uid) {
 }
 function stopBlockedListener() { if (blockedUnsub) { blockedUnsub(); blockedUnsub = null; } blocked = new Set(); }
 
+let notifUnsub = null;
+function startNotifBadge(uid) {
+    stopNotifBadge();
+    notifUnsub = onSnapshot(
+        query(collection(db, "users", uid, "notifications"), where("isRead", "==", false), limit(1)),
+        snap => { document.getElementById("notifDot").hidden = snap.empty; },
+        () => {});
+}
+function stopNotifBadge() {
+    if (notifUnsub) { notifUnsub(); notifUnsub = null; }
+    document.getElementById("notifDot").hidden = true;
+}
+
 // Post visible on read surfaces: mirrors iOS filterBlocked + expiry + flagged.
 function postVisible(d) {
     if (d.flagged === true) return false;
@@ -181,6 +194,7 @@ function viewSignUp() {
             }
             signupInProgress = false;
             startBlockedListener(uid);
+            startNotifBadge(uid);
             location.hash = "#/";
             route();
         } catch (e) {
@@ -361,6 +375,54 @@ async function viewTop() {
             row.prepend(el("span", { class: "rank-num" }, `${i + 2}.`));
             list.append(row);
         });
+    } catch (e) {
+        mount.querySelector(".spinner")?.remove();
+        list.append(el("div", { class: "empty" }, GENERIC_ERR));
+        console.error(e);
+    }
+}
+
+// ---------------------------------------------------------------- notifications
+// users/{uid}/notifications, createdAt DESC limit 50 (owner-only read).
+// Visiting marks everything read in one batch, like the iOS sweep.
+const NOTIF_ACTION = {
+    like: "felt this", reply: "replied to your moment",
+    follow: "followed you", repost: "shared your words",
+};
+async function viewNotifications() {
+    header.hidden = false;
+    const list = el("div");
+    mount.replaceChildren(el("h2", { style: "padding:20px 4px 4px; font-weight:500;" }, "notifications"), list, spinner());
+    try {
+        const snap = await getDocs(query(collection(db, "users", me.uid, "notifications"),
+            orderBy("createdAt", "desc"), limit(50)));
+        mount.querySelector(".spinner")?.remove();
+        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(n => !blocked.has(n.fromUserId));
+        if (!rows.length) { list.append(el("div", { class: "empty" }, "nothing yet. it's coming.")); return; }
+        for (const n of rows) {
+            const action = NOTIF_ACTION[n.type] ?? (n.message || n.type);
+            const preview = n.type === "reply" && n.message?.trim() ? n.message.trim() : null;
+            list.append(el("a", {
+                class: "post-row",
+                href: n.postId ? `#/post/${n.postId}` : (n.type === "follow" && n.fromUserId ? `#/u/${n.fromUserId}` : "#/"),
+                style: n.isRead === false ? "border-left: 3px solid var(--plum);" : "",
+            },
+                el("div", { class: "post-meta" },
+                    el("span", { class: "handle" }, n.fromHandle ?? "anonymous"),
+                    el("span", {}, relTime(n.createdAt))),
+                el("div", { class: "post-text", style: "font-size:15.5px;" },
+                    n.type === "milestone" ? (n.message || "a milestone") : action),
+                preview ? el("div", { class: "note", style: "margin-top:6px;" }, `"${preview}"`) : null,
+            ));
+        }
+        // mark-read sweep (best effort; owner-scoped update)
+        const unread = snap.docs.filter(d => d.data().isRead === false);
+        if (unread.length) {
+            const batch = writeBatch(db);
+            for (const d of unread.slice(0, 400)) batch.update(d.ref, { isRead: true });
+            batch.commit().catch(() => {});
+        }
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
         list.append(el("div", { class: "empty" }, GENERIC_ERR));
@@ -557,6 +619,10 @@ async function fetchUserReplies(uid) {
 }
 
 // ---------------------------------------------------------------- router
+function setActiveNav(key) {
+    for (const a of document.querySelectorAll("#mainNav a"))
+        a.classList.toggle("active", a.dataset.nav === key);
+}
 function route() {
     const h = location.hash || "#/";
     if (!me) {
@@ -564,20 +630,23 @@ function route() {
         else viewSignIn();
         return;
     }
-    if (h === "#/" || h === "" || h === "#/signin" || h === "#/signup") viewFeed();
-    else if (h === "#/top") viewTop();
-    else if (h.startsWith("#/post/")) viewPost(h.slice(7));
-    else if (h === "#/me") viewProfile(me.uid);
+    if (h === "#/" || h === "" || h === "#/signin" || h === "#/signup") { setActiveNav("feed"); viewFeed(); }
+    else if (h === "#/top") { setActiveNav("top"); viewTop(); }
+    else if (h === "#/notifications") { setActiveNav("notifications"); viewNotifications(); }
+    else if (h.startsWith("#/post/")) { setActiveNav(""); viewPost(h.slice(7)); }
+    else if (h === "#/me") { setActiveNav("me"); viewProfile(me.uid); }
     else if (h.startsWith("#/u/")) {
         const uid = h.slice(4);
-        uid === me.uid ? viewProfile(me.uid) : viewProfile(uid);
+        setActiveNav(uid === me.uid ? "me" : "");
+        viewProfile(uid);
     }
-    else viewFeed();
+    else { setActiveNav("feed"); viewFeed(); }
 }
 window.addEventListener("hashchange", route);
 
 document.getElementById("signOutBtn").onclick = async () => {
     stopBlockedListener();
+    stopNotifBadge();
     await signOut(auth);
     location.hash = "#/signin";
 };
@@ -597,5 +666,6 @@ onAuthStateChanged(auth, async (user) => {
         }
     } catch (e) { console.warn("verify failed, continuing", e?.code); }
     startBlockedListener(user.uid);
+    startNotifBadge(user.uid);
     route();
 });

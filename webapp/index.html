@@ -16,12 +16,14 @@
     <header class="app" id="appHeader" hidden>
         <div class="inner">
             <a class="wordmark" href="#/"><b>toska</b></a>
-            <nav class="sans" style="display:flex; gap:16px; align-items:center;">
-                <a class="plain" href="#/top" style="font-size:14px;">most felt</a>
-                <a class="plain" href="#/me" id="navProfile" style="font-size:14px;">profile</a>
-                <button class="tab" id="signOutBtn">sign out</button>
-            </nav>
+            <button class="tab" id="signOutBtn">sign out</button>
         </div>
+        <nav class="mainnav sans" id="mainNav">
+            <a href="#/" data-nav="feed">feed</a>
+            <a href="#/top" data-nav="top">most felt</a>
+            <a href="#/notifications" data-nav="notifications">notifications<span class="dot" id="notifDot" hidden></span></a>
+            <a href="#/me" data-nav="me">profile</a>
+        </nav>
     </header>
     <main class="shell" id="mount">
         <span class="spinner"></span>

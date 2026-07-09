@@ -325,15 +325,11 @@ a.plain:hover { text-decoration: underline; }
 .char-count { font-family: -apple-system, sans-serif; font-size: 12.5px; color: var(--faint); }
 .char-count.over { color: var(--danger); }
 .tag-picker { display: flex; gap: 7px; flex-wrap: wrap; margin: 14px 0 4px; }
-.write-fab {
-    position: fixed; right: 18px; bottom: 92px; z-index: 21;
-    width: 54px; height: 54px; border-radius: 50%;
-    background: var(--plum); color: #fff; border: none; cursor: pointer;
-    font-size: 26px; line-height: 1; box-shadow: var(--shadow-lift);
-    display: flex; align-items: center; justify-content: center;
+.write-top {
+    padding: 9px 18px; font-size: 14px; border-radius: 999px;
+    box-shadow: var(--shadow);
 }
-@media (min-width: 641px) { .write-fab { bottom: 28px; right: calc(50% - 340px); } }
-.write-fab[hidden] { display: none; }
+.write-top[hidden] { display: none; }
 
 /* action row on post detail */
 .action-row {

@@ -215,12 +215,16 @@ describe("baseline sanity", () => {
       );
     });
 
-    it("owner can release their own registry row; others cannot", async () => {
+    it("NO client may delete a registry row — not even the owner", async () => {
+      // The rule moved to `allow delete: if false` (self-release let a user
+      // free their own handle while still carrying it → duplicate-handle
+      // sockpuppets; the Admin-SDK deletion cascade releases rows instead).
+      // This test previously asserted owner-release and went stale.
       await seedRegistryRow("alice123", "alice");
       const a = env.authenticatedContext("alice").firestore();
       const m = env.authenticatedContext("mallory").firestore();
       await assertFails(m.collection("handles").doc("alice123").delete());
-      await assertSucceeds(a.collection("handles").doc("alice123").delete());
+      await assertFails(a.collection("handles").doc("alice123").delete());
     });
 
     it("registry rows are readable by any authenticated user (availability pre-check)", async () => {
@@ -2317,5 +2321,44 @@ describe("user doc: aggregate counters are server-owned (SEC-1)", () => {
     await setUserDoc("alice");
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(a.collection("users").doc("alice").update({ allowSharing: false }));
+  });
+});
+
+// Web-phase-1 finding (2026-07-09): the shared `allow create, delete` on
+// users/{uid}/blocked evaluated request.resource.data on DELETE, where
+// request.resource doesn't exist — so every client unblock (iOS
+// BlockedUsersCache.unblock, web) was denied since S-2 (2026-06-16). The rule
+// is now split; these pin both halves.
+describe("blocked subcollection: unblock works, S-2 create pin holds", () => {
+  it("allows the owner to delete their own block entry (unblock)", async () => {
+    await setUserDoc("alice");
+    await setBlock("alice", "bob");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").collection("blocked").doc("bob").delete());
+  });
+
+  it("rejects a non-owner deleting someone else's block entry", async () => {
+    await setUserDoc("alice");
+    await setBlock("alice", "bob");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("users").doc("alice").collection("blocked").doc("bob").delete());
+  });
+
+  it("still allows create with blockedUid == doc id", async () => {
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").collection("blocked").doc("bob")
+        .set({ blockedAt: new Date(), blockedUid: "bob", handle: "handle_bob" }));
+  });
+
+  it("still rejects create with a tampered blockedUid (S-2)", async () => {
+    await setUserDoc("alice");
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").collection("blocked").doc("bob")
+        .set({ blockedAt: new Date(), blockedUid: "victim" }));
   });
 });

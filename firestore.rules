@@ -642,9 +642,16 @@ service cloud.firestore {
         // at a third party Y, so that when Y deletes their account the cascade
         // would delete THIS block entry — a cross-user unblock-griefing vector.
         // Absent is allowed for legacy/transition docs.
-        allow create, delete: if isOwner(userId)
+        allow create: if isOwner(userId)
           && (!request.resource.data.keys().hasAny(['blockedUid'])
               || request.resource.data.blockedUid == blockedId);
+        // Delete gets its own clause (2026-07-09 web-phase-1 finding): the
+        // shared `create, delete` above evaluated request.resource.data on
+        // deletes, where request.resource doesn't exist — the expression
+        // errored → false → EVERY unblock (iOS BlockedUsersCache.unblock and
+        // web alike) was denied since S-2 shipped. The blockedUid pin is a
+        // create-shape concern; a delete has no shape to pin.
+        allow delete: if isOwner(userId);
         allow read: if isOwner(userId) || (isAuth() && request.auth.uid == blockedId);
       }
 

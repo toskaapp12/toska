@@ -9,6 +9,20 @@
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0a10'/%3E%3Ctext x='32' y='45' font-family='Georgia,serif' font-size='40' fill='%236d55c9' text-anchor='middle'%3Et%3C/text%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- perf: warm the connections the app hits immediately after JS loads -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+    <!-- perf: the module graph is 4 levels deep — declare it up front so
+         every file downloads in parallel instead of by discovery order -->
+    <link rel="modulepreload" href="/js/app.js">
+    <link rel="modulepreload" href="/js/config.js">
+    <link rel="modulepreload" href="/js/writes.js">
+    <link rel="modulepreload" href="/js/gates.js">
+    <link rel="modulepreload" href="/js/moderation.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js" crossorigin>
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
 </head>

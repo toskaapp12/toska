@@ -414,12 +414,31 @@ async function claimHandleAndCreateUserDoc(uid) {
 
 // ---------------------------------------------------------------- feed
 let feedTab = "for you";
+// Feed cache (§ perf): a route hit within TTL re-renders the last fetch and
+// restores scroll instead of re-burning a 60-doc query. Tapping the active
+// tab forces a refresh (the web stand-in for pull-to-refresh). Cached rows
+// re-run postVisible at render, so blocks and whisper expiry still apply.
+const FEED_TTL = 120e3;
+const feedCache = new Map(); // tab -> {rows, cursor, noMore, scrollY, at}
+let activeFeedTab = null;    // which tab's list is on screen (for scroll save)
+function saveFeedScroll() {
+    const c = activeFeedTab ? feedCache.get(activeFeedTab) : null;
+    if (c) c.scrollY = window.scrollY;
+}
+function invalidateFeedCache() { feedCache.clear(); }
+let followingUids = null; // {uids, at} — the follow graph only changes via block on web
+function onSocialGraphChange() { followingUids = null; feedCache.delete("following"); }
 async function viewFeed() {
     setChrome(false);
+    saveFeedScroll(); // tab switches re-enter here without passing through route()
+    activeFeedTab = null;
     const list = el("div");
     const tabs = el("div", { class: "tabs" },
         ["for you", "following"].map(t =>
-            el("button", { class: `tab ${feedTab === t ? "active" : ""}`, onclick: () => { feedTab = t; viewFeed(); } }, t)),
+            el("button", { class: `tab ${feedTab === t ? "active" : ""}`, onclick: () => {
+                if (feedTab === t) feedCache.delete(t);
+                feedTab = t; viewFeed();
+            } }, t)),
     );
     // Daily prompt card — same client-static list + dayOfYear pick as iOS.
     const [pText, pTag] = todaysPrompt();
@@ -452,26 +471,38 @@ async function viewFeed() {
             el("span", { class: "glyph" }, "☾"), `nothing here matches "${q}" — it only searches what's loaded.`));
     };
     search.addEventListener("input", debounce(applyFilter, 250));
-    try {
-        const rows = feedTab === "for you" ? await fetchForYou() : await fetchFollowing();
+    const tab = feedTab;
+    const finish = (cache) => {
         mount.querySelector(".spinner")?.remove();
+        const rows = cache.rows.filter(([, d]) => postVisible(d));
         if (!rows.length) {
             list.append(emptyState("it's quiet here right now."));
             return;
         }
         for (const [id, d] of rows) list.append(postRow(id, d));
-        if (feedTab === "for you" && rows.length >= 60) {
+        if (tab === "for you" && cache.rows.length >= 60 && cache.cursor && !cache.noMore) {
             const more = el("button", { class: "btn quiet", style: "display:block; margin:20px auto;" }, "more");
             more.onclick = async () => {
                 more.disabled = true;
-                const next = await fetchForYou(rows._cursor);
+                const next = await fetchForYou(cache.cursor);
                 for (const [id, d] of next) list.append(postRow(id, d));
-                rows._cursor = next._cursor;
+                cache.rows.push(...next);
+                cache.cursor = next._cursor;
                 more.disabled = false;
-                if (next.length < 20) more.remove();
+                if (next.length < 20) { cache.noMore = true; more.remove(); }
             };
             list.append(more);
         }
+        activeFeedTab = tab;
+        requestAnimationFrame(() => window.scrollTo(0, cache.scrollY ?? 0));
+    };
+    const cached = feedCache.get(tab);
+    if (cached && Date.now() - cached.at < FEED_TTL) { finish(cached); return; }
+    try {
+        const rows = tab === "for you" ? await fetchForYou() : await fetchFollowing();
+        const cache = { rows, cursor: rows._cursor, noMore: false, scrollY: 0, at: Date.now() };
+        feedCache.set(tab, cache);
+        finish(cache);
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
         list.append(emptyState(GENERIC_ERR));
@@ -494,8 +525,12 @@ async function fetchForYou(cursor) {
 
 async function fetchFollowing() {
     // Mirrors fetchFollowingPosts: following limit 200 → authorId IN chunks of 30.
-    const fl = await getDocs(query(collection(db, "users", me.uid, "following"), limit(200)));
-    const uids = fl.docs.map(d => d.id);
+    // The uid list is cached 5 min (web has no follow UI; blocks invalidate it).
+    if (!followingUids || Date.now() - followingUids.at > 300e3) {
+        const fl = await getDocs(query(collection(db, "users", me.uid, "following"), limit(200)));
+        followingUids = { uids: fl.docs.map(d => d.id), at: Date.now() };
+    }
+    const uids = followingUids.uids;
     if (!uids.length) return [];
     const chunks = await Promise.all(chunk(uids, 30).map(c =>
         getDocs(query(collection(db, "posts"),
@@ -628,6 +663,7 @@ function viewCompose() {
                 text, tag: selectedTag, isLetter, isWhisper, isMidnight, gifUrl,
                 promptDate: prompt?.promptDate,
             });
+            invalidateFeedCache(); // the new post should show on the next feed visit
             saveDraft("compose", "");
             toast(gate.willBeHeld ? "shared — it'll be looked over first." : "shared, quietly.");
             location.hash = "#/me";
@@ -776,6 +812,10 @@ async function viewPost(postId) {
     setChrome(false);
     mount.replaceChildren(el("a", { class: "back", href: "#/" }, "← feed"), spinner());
     try {
+        // Replies almost always live under this same doc id — fetch them in
+        // parallel with the post doc instead of after it (a repost's target
+        // differs and refetches below; reposts are the rare case).
+        const earlyReplies = fetchReplies(postId).catch(() => null);
         const ps = await getDoc(doc(db, "posts", postId));
         mount.querySelector(".spinner")?.remove();
         if (!ps.exists() || !postVisible(ps.data())) {
@@ -820,12 +860,9 @@ async function viewPost(postId) {
             btn.classList.toggle(btn.dataset.on, on);
             btn.querySelector("span").textContent = on ? onLabel : offLabel;
         };
-        isLiked(targetPostId).then(v => setOn(likeBtn, v, "felt this", "felt"));
-        isSaved(targetPostId).then(v => setOn(saveBtn, v, "saved", "save"));
         // Repost allowed unless the target is your own ORIGINAL post — from
         // your own repost row the button still works (as un-repost).
-        if (targetAuthorId !== me.uid) isReposted(targetPostId).then(v => setOn(repostBtn, v, "reposted", "repost"));
-        else repostBtn.disabled = true;
+        if (targetAuthorId === me.uid) repostBtn.disabled = true;
         if (d.isWhisper === true || d.isMidnightPost === true) repostBtn.disabled = true;
 
         likeBtn.onclick = async () => {
@@ -846,6 +883,7 @@ async function viewPost(postId) {
             const r = await toggleRepost(targetPostId).catch((e) => { console.error("repost failed", e); return null; });
             if (r === "blocked_ephemeral") { setOn(repostBtn, false, "reposted", "repost"); toast("whispers stay ephemeral — they can't be reposted."); }
             else if (r === "own_post" || r === null) setOn(repostBtn, on, "reposted", "repost");
+            else invalidateFeedCache(); // a repost row appeared or vanished from the feed
         };
         moreBtn.onclick = () => {
             const handle = d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous");
@@ -861,6 +899,7 @@ async function viewPost(postId) {
                     label: "delete", danger: true,
                     onclick: () => confirmDelete(d.isRepost ? "repost" : "post", async () => {
                         await deletePost(postId);
+                        invalidateFeedCache(); // a cached feed may still hold the row
                         location.hash = "#/me";
                     }),
                 });
@@ -872,7 +911,7 @@ async function viewPost(postId) {
             if (targetAuthorId !== me.uid) items.push({
                 label: `block ${handle}`, danger: true,
                 onclick: async () => {
-                    try { await blockUser(targetAuthorId, handle); toast(`${handle} is blocked. you won't see them again.`); location.hash = "#/"; }
+                    try { await blockUser(targetAuthorId, handle); onSocialGraphChange(); toast(`${handle} is blocked. you won't see them again.`); location.hash = "#/"; }
                     catch { toast(GENERIC_ERR); }
                 },
             });
@@ -945,7 +984,13 @@ async function viewPost(postId) {
 
         mount.append(body, actions, composer,
             el("h3", { style: "margin:18px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
-        const replies = await fetchReplies(targetPostId);
+        // Interaction-state reads fire after the body is on screen (§ perf):
+        // three exists() doc reads that shouldn't contend with first paint.
+        isLiked(targetPostId).then(v => setOn(likeBtn, v, "felt this", "felt"));
+        isSaved(targetPostId).then(v => setOn(saveBtn, v, "saved", "save"));
+        if (!repostBtn.disabled) isReposted(targetPostId).then(v => setOn(repostBtn, v, "reposted", "repost"));
+        const replies = (targetPostId === postId ? await earlyReplies : null)
+            ?? await fetchReplies(targetPostId);
         mount.querySelector(".spinner")?.remove();
         if (!replies.length) repliesBox.append(emptyState("no replies yet. someone will find this."));
         renderThread(repliesBox, replies, null, 0, onReplyTo);
@@ -985,6 +1030,7 @@ function editSheet({ text, isReply, onSave }) {
             const gate = await runGates(t, { isReply });
             if (!gate.ok) { save.disabled = false; return; }
             await onSave(t);
+            invalidateFeedCache(); // cached feed rows may hold the old text
             overlay.remove();
             toast(gate.willBeHeld ? "saved — it'll be looked over first." : "saved.");
             route();
@@ -1048,15 +1094,14 @@ function reportSheet(target) { // {type, postId?, replyId?, reportedUserId, repo
 }
 
 async function fetchReplies(postId) {
-    // Two queries like iOS (rules deny a mixed list): live for everyone,
-    // own-authored any-status for the pending banner.
-    const live = await getDocs(query(collection(db, "posts", postId, "replies"),
-        where("moderationStatus", "==", "live"), orderBy("createdAt", "desc"), limit(500)));
-    let mine = { docs: [] };
-    try {
-        mine = await getDocs(query(collection(db, "posts", postId, "replies"),
-            where("authorId", "==", me.uid), orderBy("createdAt", "asc")));
-    } catch {}
+    // Two queries like iOS (rules deny a mixed list), in parallel: live for
+    // everyone, own-authored any-status for the pending banner.
+    const [live, mine] = await Promise.all([
+        getDocs(query(collection(db, "posts", postId, "replies"),
+            where("moderationStatus", "==", "live"), orderBy("createdAt", "desc"), limit(500))),
+        getDocs(query(collection(db, "posts", postId, "replies"),
+            where("authorId", "==", me.uid), orderBy("createdAt", "asc"))).catch(() => ({ docs: [] })),
+    ]);
     const byId = new Map();
     for (const d of [...live.docs, ...mine.docs]) byId.set(d.id, d);
     const rows = [...byId.values()].map(d => ({ id: d.id, postId, ...d.data() }))
@@ -1086,7 +1131,7 @@ function renderThread(container, all, parentId, depth, onReplyTo) {
                 ] : [
                     { label: "report this reply", onclick: () => reportSheet({ type: "reply", postId: r.postId ?? null, replyId: r.id, reportedUserId: r.authorId, reportedHandle: r.authorHandle, text: r.text }) },
                     { label: `block ${r.authorHandle ?? "anonymous"}`, danger: true, onclick: async () => {
-                        try { await blockUser(r.authorId, r.authorHandle); toast("blocked. you won't see them again."); route(); }
+                        try { await blockUser(r.authorId, r.authorHandle); onSocialGraphChange(); toast("blocked. you won't see them again."); route(); }
                         catch { toast(GENERIC_ERR); }
                     } },
                 ]);
@@ -1251,7 +1296,7 @@ async function viewBlocked() {
             const btn = el("button", { class: "btn quiet" }, "unblock");
             btn.onclick = async () => {
                 btn.disabled = true;
-                try { await unblockUser(b.id); row.remove(); toast(`${handle} is unblocked.`); }
+                try { await unblockUser(b.id); onSocialGraphChange(); row.remove(); toast(`${handle} is unblocked.`); }
                 catch (e) { console.error(e); btn.disabled = false; toast(GENERIC_ERR); }
             };
             row.append(btn);
@@ -1273,6 +1318,11 @@ function route() {
     // Navigation kills any open modal — a gate dialog must never outlive its
     // compose view (M1: a stuck "post anyway" could publish an abandoned post).
     document.querySelectorAll(".modal-overlay").forEach(o => o.remove());
+    // Remember where the feed was scrolled to, then start the new view at the
+    // top (viewFeed restores its own saved position when serving from cache).
+    saveFeedScroll();
+    activeFeedTab = null;
+    window.scrollTo(0, 0);
     const h = location.hash || "#/";
     if (!me) {
         if (h === "#/signup") viewSignUp();
@@ -1311,6 +1361,7 @@ onAuthStateChanged(auth, async (user) => {
         // Token revocation lands here without the sign-out button — purge the
         // previous account's drafts so they can't leak into the next session.
         if (prev) clearDrafts(prev.uid);
+        feedCache.clear(); activeFeedTab = null; followingUids = null;
         stopBlockedListener(); stopNotifBadge(); resetWriteCaches(); route(); return;
     }
     if (signupInProgress) return; // signup completes its own routing

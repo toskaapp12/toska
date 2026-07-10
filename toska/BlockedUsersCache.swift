@@ -23,8 +23,24 @@ class BlockedUsersCache {
     }
 
     private func setBlockedUserIds(_ ids: Set<String>) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        let added = ids.subtracting(_blockedUserIds)
         _blockedUserIds = ids
+        lock.unlock()
+        // F-P3-1 (2026-07-09 full-audit): a block that arrives via THIS listener
+        // — a block made on another device, or the cold-start initial load
+        // landing AFTER the feed already rendered — must prune the displayed
+        // feed the same way an in-app block() does. Previously only block()
+        // broadcast .userBlocked, so a listener-delivered block left the
+        // blocked author's posts on screen until the next navigation/refresh.
+        // Re-use the same broadcast; FeedViewModel.handleUserBlocked is
+        // idempotent, so block()'s own notification double-firing is harmless.
+        // An unblock (set shrinks) adds nothing, so it never strips rows.
+        if !added.isEmpty {
+            Task { @MainActor in
+                for uid in added { self.postUserBlockedBroadcast(userId: uid, handle: nil) }
+            }
+        }
     }
 
     private func insertLocal(_ id: String) {

@@ -391,7 +391,17 @@ service cloud.firestore {
         // to inflate the victim's followerCount — a block bypass + count desync.
         allow create: if isOwner(userId) && followedId != userId
           && notBlockedBy(followedId)
-          && request.resource.data.keys().hasOnly(['handle', 'createdAt']);
+          && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
+          // Handle pin (2026-07-09 Phase-1 audit): `handle` snapshots the
+          // FOLLOWED user's handle (FollowListView "following" tab renders it).
+          // Pin it to their canonical user-doc handle so a tampered client
+          // can't store a spoofed byline. Mirrors the followers-side pin below
+          // and the authorHandle/fromHandle/originalHandle pins elsewhere.
+          // Own-tree/owner-read so lower blast radius than the followers side,
+          // but kept in parity. Reuses the notBlockedBy(followedId) doc lookup.
+          && (!('handle' in request.resource.data.keys())
+              || request.resource.data.handle ==
+                   get(/databases/$(database)/documents/users/$(followedId)).data.handle);
         allow delete: if isOwner(userId);
       }
 
@@ -413,16 +423,33 @@ service cloud.firestore {
         // hasOnly, a follower could attach arbitrary fields into a doc that
         // lives under the TARGET's user document — a side channel a future
         // counter trigger or admin tool might read/trust.
+        // Handle pin (2026-07-09 Phase-1 audit): the follower doc lives in the
+        // TARGET's tree and its `handle` is rendered VERBATIM by the victim's
+        // FollowListView "followers" tab (ProfileView.swift:1564). Without a
+        // pin a tampered follower could plant an arbitrary/impersonating byline
+        // ("handle_victim followed you") into anyone's followers list — the same
+        // byline-spoof class the authorHandle/fromHandle/originalHandle pins
+        // already close, missed here because the doc sits in the target's tree.
+        // Pin it to the FOLLOWER's canonical user-doc handle. Reuses no cached
+        // read (notBlockedBy targets userId's tree), so +1 get() on the caller's
+        // own user doc per follow — fine at v1.0 volume.
         allow create: if isAuth() && request.auth.uid == followerId
           && request.auth.uid != userId
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
-          && notBlockedBy(userId);
+          && notBlockedBy(userId)
+          && (!('handle' in request.resource.data.keys())
+              || request.resource.data.handle ==
+                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle);
         // The client only ever re-writes a follower doc via setData (same
         // { handle, createdAt } shape); there is no field-level update path.
         // Lock the allow-list so the previously unconstrained update can't be
-        // used to inject side-channel fields.
+        // used to inject side-channel fields. Same handle pin as create — else
+        // the spoof just moves to a follow-then-update two-step.
         allow update: if isAuth() && request.auth.uid == followerId
-          && request.resource.data.keys().hasOnly(['handle', 'createdAt']);
+          && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
+          && (!('handle' in request.resource.data.keys())
+              || request.resource.data.handle ==
+                   get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle);
         allow delete: if isAuth() && (request.auth.uid == followerId || isOwner(userId));
       }
 
@@ -911,6 +938,13 @@ service cloud.firestore {
                 // held reply's text to satisfy the text-match above anyway, but
                 // this closes it explicitly.
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.get('moderationStatus', 'live') == 'live'
+                // F-P2-1 (2026-07-09 full-audit): no self-repost. Reposting your
+                // OWN reply would self-inflate its repostCount via onReplyRepost
+                // CreatedUpdateCount with no real cross-user signal. Both clients
+                // already disable the own-post repost button (web app.js:34; iOS
+                // repost() returns 'own_post'); this closes the tampered-client
+                // path. Mirrors the self-follow guard.
+                && request.resource.data.originalAuthorId != request.auth.uid
                 && notBlockedBy(request.resource.data.originalAuthorId)
                 && (
                      !('originalHandle' in request.resource.data.keys())
@@ -938,6 +972,10 @@ service cloud.firestore {
             // backstops this server-side.
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isWhisper', false) != true
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isMidnightPost', false) != true
+            // F-P2-1 (2026-07-09 full-audit): no self-repost — see the reply-
+            // repost branch above. Reposting your own post self-inflates its
+            // repostCount; both clients already disable the button.
+            && request.resource.data.originalAuthorId != request.auth.uid
             && notBlockedBy(request.resource.data.originalAuthorId)
             && (
                  !('originalHandle' in request.resource.data.keys())
@@ -1030,8 +1068,14 @@ service cloud.firestore {
         // (B) where authorId == me && moderationStatus == 'pending_review' so
         // the author still sees their own held reply (with an "under review"
         // banner). Each query satisfies exactly one disjunct below.
+        // KO#3 (2026-07-09 full-audit): reading a NON-EXISTENT reply must be
+        // allowed (returns null, no data leaks) — same guard the posts read rule
+        // carries (firestore.rules:766). Without it, moderationVisible(resource
+        // .data) dereferences null.data and ERRORS → deny, which broke any
+        // transaction/dedup read of a not-yet-created reply doc (the repost
+        // null-read class). resource==null short-circuits before the deref.
         allow read: if postVisibleToCaller(postId)
-          && moderationVisible(resource.data);
+          && (resource == null || moderationVisible(resource.data));
         // Block enforcement: the post author can't be replied to by a user
         // they've blocked. Without this check, blocked users could keep
         // engaging server-side; the client filter (BlockedUsersCache) only

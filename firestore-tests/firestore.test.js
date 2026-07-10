@@ -1473,12 +1473,14 @@ describe("follow mirrors: create + delete", () => {
   // 2026-06-01 audit: follower/following docs are schema-locked to
   // { handle, createdAt } so a follower can't smuggle arbitrary fields into
   // a doc that lives under the target's user document.
+  // Handle must be the follower's REAL user-doc handle (2026-07-09 pin);
+  // setUserDoc seeds handle_${uid}, so alice's follower doc carries handle_alice.
   it("allows a follower create carrying the legit { handle, createdAt }", async () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("users").doc("bob")
         .collection("followers").doc("alice")
-        .set({ handle: "alice_h", createdAt: serverTimestamp() })
+        .set({ handle: "handle_alice", createdAt: serverTimestamp() })
     );
   });
 
@@ -1487,7 +1489,7 @@ describe("follow mirrors: create + delete", () => {
     await assertFails(
       a.collection("users").doc("bob")
         .collection("followers").doc("alice")
-        .set({ handle: "alice_h", createdAt: serverTimestamp(), injected: "x" })
+        .set({ handle: "handle_alice", createdAt: serverTimestamp(), injected: "x" })
     );
   });
 
@@ -1496,7 +1498,7 @@ describe("follow mirrors: create + delete", () => {
       await ctx.firestore()
         .collection("users").doc("bob")
         .collection("followers").doc("alice")
-        .set({ handle: "alice_h", createdAt: new Date() });
+        .set({ handle: "handle_alice", createdAt: new Date() });
     });
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(
@@ -1511,7 +1513,7 @@ describe("follow mirrors: create + delete", () => {
     await assertFails(
       a.collection("users").doc("alice")
         .collection("following").doc("bob")
-        .set({ handle: "bob_h", createdAt: serverTimestamp(), injected: "x" })
+        .set({ handle: "handle_bob", createdAt: serverTimestamp(), injected: "x" })
     );
   });
 });

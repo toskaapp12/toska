@@ -5,8 +5,12 @@
   },
   "hosting": {
     "public": "webapp",
-    "ignore": ["**/.*"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "ignore": ["**/.DS_Store", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "/p/**", "function": "sharePage" },
+      { "source": "/sitemap.xml", "function": "postsSitemap" },
+      { "source": "**", "destination": "/index.html" }
+    ],
     "headers": [
       {
         "source": "**",
@@ -15,6 +19,21 @@
       {
         "source": "**/*.@(js|css)",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+      },
+      {
+        "source": "/p/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=300, s-maxage=600" }]
+      },
+      {
+        "source": "/sitemap.xml",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600, s-maxage=3600" }]
+      },
+      {
+        "source": "/.well-known/apple-app-site-association",
+        "headers": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Cache-Control", "value": "public, max-age=3600" }
+        ]
       }
     ]
   },

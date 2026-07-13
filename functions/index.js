@@ -4440,6 +4440,101 @@ exports.publicFeed = onRequest(
   },
 );
 
+// ============================================================
+// Server-rendered public share pages — /p/{postId} + posts sitemap
+// (roadmap phase-2 share/SEO layer)
+// ============================================================
+// Firebase Hosting rewrites /p/** and /sitemap.xml to these (firebase.json).
+// Crawlers can't sign in and the rules require auth, so this is the ONE
+// unauthenticated read path for full post content; every privacy gate lives
+// in sharePage.evaluateSharePage (live + isShareable + never whisper/midnight/
+// expired; reposts 301 to the original; identity never rendered; indexing is
+// admin-curated via webFeatured, same rationale as publicFeed above). No App
+// Check — deliberately public, like publicFeed; abuse is capped by the CDN
+// cache headers plus one doc read per uncached miss.
+const share = require("./sharePage");
+
+exports.sharePage = onRequest(async (req, res) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.status(405).send("method not allowed");
+    return;
+  }
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Referrer-Policy", "no-referrer");
+  // Everything on the page is inline markup — lock the rest down. img-src
+  // data: covers the inline SVG favicon.
+  res.set("Content-Security-Policy",
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'");
+  const notFound = () => {
+    res.set("Cache-Control", "public, max-age=60, s-maxage=300");
+    res.status(404).send(share.renderNotFoundHtml());
+  };
+  try {
+    const parts = req.path.split("/").filter(Boolean); // ["p", "{postId}"]
+    const postId = parts.length === 2 && parts[0] === "p" ? parts[1] : null;
+    if (!share.isValidDocId(postId)) {
+      notFound();
+      return;
+    }
+    const snap = await db.collection("posts").doc(postId).get();
+    const verdict = share.evaluateSharePage(snap.exists ? snap.data() : null, Date.now());
+    if (verdict.outcome === "redirect") {
+      // The repost→original edge never changes; if the original is (or later
+      // becomes) unshareable, the target itself 404s.
+      res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+      res.redirect(301, `/p/${verdict.to}`);
+      return;
+    }
+    if (verdict.outcome !== "render") {
+      notFound();
+      return;
+    }
+    const post = snap.data();
+    // Takedown latency bound: a post moderated/unshared after caching stays
+    // visible at most s-maxage (10 min) on the CDN edge.
+    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.status(200).send(share.renderPostHtml(postId, post, {
+      indexable: verdict.indexable,
+      createdAtMs: post.createdAt?.toMillis?.(),
+    }));
+  } catch (err) {
+    console.error("sharePage:", err);
+    res.set("Cache-Control", "no-store");
+    res.status(500).send("unavailable");
+  }
+});
+
+exports.postsSitemap = onRequest(async (req, res) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.status(405).send("method not allowed");
+    return;
+  }
+  try {
+    // Same single-field query as publicFeed: the curated set is small, and
+    // evaluateSharePage re-applies the full render+indexable gate per doc so
+    // a featured-but-since-unshared post drops out of the sitemap too.
+    const snap = await db.collection("posts")
+      .where("webFeatured", "==", true)
+      .limit(500)
+      .get();
+    const now = Date.now();
+    const entries = [];
+    for (const doc of snap.docs) {
+      const verdict = share.evaluateSharePage(doc.data(), now);
+      if (verdict.outcome === "render" && verdict.indexable) {
+        entries.push({ postId: doc.id, createdAtMs: doc.data().createdAt?.toMillis?.() });
+      }
+    }
+    res.set("Content-Type", "application/xml; charset=utf-8");
+    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    res.status(200).send(share.renderSitemapXml(entries));
+  } catch (err) {
+    console.error("postsSitemap:", err);
+    res.set("Cache-Control", "no-store");
+    res.status(500).send("unavailable");
+  }
+});
+
 exports.reconcileMyCounts = onRequest(
   { cors: false },
   async (req, res) => {

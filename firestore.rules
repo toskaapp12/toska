@@ -1186,7 +1186,11 @@ service cloud.firestore {
           // replies default to 'live'.
           allow read: if postVisibleToCaller(postId)
             && moderationVisible(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data);
+          // F-P2-1 (2026-07-13 product call): no self-like — mirrors the
+          // post-like rule (create-only; unlike stays allowed). Targets the
+          // REPLY author, same as block enforcement above. Cached get().
           allow create: if isAuth() && request.auth.uid == likeUserId
+            && get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId != request.auth.uid
             && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)
             && request.resource.data.keys().hasOnly(['createdAt'])
             && request.resource.data.createdAt == request.time;
@@ -1207,9 +1211,15 @@ service cloud.firestore {
         // T-10 (2026-06-11): schema lock + createdAt pin, mirroring the reply-
         // like sibling rule. Without hasOnly, a tampered client could attach
         // arbitrary scratch fields to a like doc.
+        // F-P2-1 (2026-07-13 product call): no self-like ("felt"). Liking your
+        // own post self-inflates likeCount + your totalLikes via
+        // onLikeCreatedUpdateCounts with no real cross-user signal — mirrors
+        // the self-repost/self-follow guards. Create-only: deleting a legacy
+        // self-like stays allowed. Same cached get() as notBlockedBy.
         allow create: if isAuth() && request.auth.uid == likeUserId
           && request.resource.data.keys().hasOnly(['createdAt'])
           && request.resource.data.createdAt == request.time
+          && get(/databases/$(database)/documents/posts/$(postId)).data.authorId != request.auth.uid
           && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         allow delete: if isAuth()
           && (request.auth.uid == likeUserId

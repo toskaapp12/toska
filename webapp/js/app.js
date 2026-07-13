@@ -1239,12 +1239,17 @@ async function viewPost(postId) {
         // your own repost row the button still works (as un-repost).
         if (targetAuthorId === me.uid) repostBtn.disabled = true;
         if (d.isWhisper === true || d.isMidnightPost === true) repostBtn.disabled = true;
+        // F-P2-1: no self-felt — same rule as repost above. The isLiked()
+        // read below re-enables it only if a legacy self-like exists, so
+        // un-felting still works; it re-disables after that unlike.
+        if (targetAuthorId === me.uid) likeBtn.disabled = true;
 
         likeBtn.onclick = async () => {
             const on = likeBtn.classList.contains("on-like");
             setOn(likeBtn, !on, "felt this", "felt"); // optimistic
             const r = await toggleLike(targetPostId, on, targetAuthorId).catch((e) => { console.error("like failed", e); return null; });
-            if (r === null) setOn(likeBtn, on, "felt this", "felt"); // revert
+            if (r === null || r === "own_post") setOn(likeBtn, on, "felt this", "felt"); // revert
+            else if (r === false && targetAuthorId === me.uid) likeBtn.disabled = true; // legacy self-like removed
         };
         saveBtn.onclick = async () => {
             const on = saveBtn.classList.contains("on-save");
@@ -1361,7 +1366,10 @@ async function viewPost(postId) {
             el("h3", { style: "margin:18px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
         // Interaction-state reads fire after the body is on screen (§ perf):
         // three exists() doc reads that shouldn't contend with first paint.
-        isLiked(targetPostId).then(v => setOn(likeBtn, v, "felt this", "felt"));
+        isLiked(targetPostId).then(v => {
+            setOn(likeBtn, v, "felt this", "felt");
+            if (v) likeBtn.disabled = false; // legacy self-like — allow un-felt
+        });
         isSaved(targetPostId).then(v => setOn(saveBtn, v, "saved", "save"));
         if (!repostBtn.disabled) isReposted(targetPostId).then(v => setOn(repostBtn, v, "reposted", "repost"));
         const replies = (targetPostId === postId ? await earlyReplies : null)

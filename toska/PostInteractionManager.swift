@@ -32,6 +32,10 @@ class PostInteractionManager {
                     onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
                     return
                 }
+        // F-P2-1: no self-like — rules deny the create (mirrors the repost
+        // own_post guard). Unlike direction stays allowed so a legacy
+        // self-like can still be removed.
+        if !currentlyLiked, !authorId.isEmpty, authorId == uid { return }
         if let last = RateLimiter.shared.lastLikeTime(for: postId), Date().timeIntervalSince(last) < 0.8 { return }
                // In-flight guard: rejects re-entry while a previous toggle's
                // transaction is still running. The 0.8s rate limit catches
@@ -719,6 +723,9 @@ class PostInteractionManager {
             print("⚠️ toggleReplyLike — offline, skipping")
             return
         }
+        // F-P2-1: no self-like on your own reply — mirrors toggleLike; the
+        // rules guard targets the REPLY author. Unlike stays allowed.
+        if !currentlyLiked, !replyAuthorId.isEmpty, replyAuthorId == uid { return }
         // Rate-limit + in-flight guard, mirroring toggleLike: without it, rapid
         // taps on a reply heart fire N transactions and N CF counter updates and
         // thrash the optimistic count. Keyed per-reply with a "reply_" prefix so

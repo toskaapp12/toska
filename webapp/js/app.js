@@ -1284,6 +1284,22 @@ async function viewPost(postId) {
                     }),
                 });
             }
+            // Public share link — same gate as the server's /p/{id} render rule
+            // (sharePage.js): strict isShareable, never letters/whispers/
+            // midnight. A repost's isShareable is pinned to the original at
+            // create, so d.isShareable speaks for the target; the link uses
+            // targetPostId because the repost id would just 301 anyway.
+            if (d.isShareable === true && d.isLetter !== true && d.isWhisper !== true && d.isMidnightPost !== true) {
+                items.push({
+                    label: "copy link",
+                    onclick: async () => {
+                        try {
+                            await navigator.clipboard.writeText(`https://app.toskaapp.com/p/${targetPostId}`);
+                            toast("link copied — the page carries the words only, never the writer.");
+                        } catch { toast(GENERIC_ERR); }
+                    },
+                });
+            }
             items.push({
                 label: "report this post",
                 onclick: () => reportSheet({ type: "post", postId: targetPostId, reportedUserId: targetAuthorId, reportedHandle: handle, text: d.text }),

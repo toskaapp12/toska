@@ -166,6 +166,10 @@ struct PostDetailView: View {
     // that, so the two surfaces agree once the first snapshot lands. A live
     // revocation (onAllowSharingChanged backfill) hides the button mid-view.
     @State private var isShareable = false
+    // Midnight flag, fetched alongside isLetter/isWhisper below. Only gates
+    // the public share LINK (the /p/{id} web page 404s midnight posts) — the
+    // image-card share stays available for midnight posts, matching the feed.
+    @State private var isMidnight = false
 
     var isOwnPost: Bool {
         authorUserId == Auth.auth().currentUser?.uid
@@ -208,6 +212,7 @@ struct PostDetailView: View {
                                         }
                                         if snapshot?.data()?["isLetter"] as? Bool == true { isLetter = true }
                                         if snapshot?.data()?["isWhisper"] as? Bool == true { isWhisper = true }
+                                        if snapshot?.data()?["isMidnightPost"] as? Bool == true { isMidnight = true }
                                     }
                                 }
                                 // Restore any reply draft persisted from a
@@ -338,7 +343,11 @@ struct PostDetailView: View {
                     .hidesAppTabBar()
             }
             .navigationDestination(isPresented: $showShareCard) {
-                ShareCardView(text: postText, handle: handle, feltCount: likeCount, tag: tag)
+                ShareCardView(text: postText, handle: handle, feltCount: likeCount, tag: tag,
+                              shareURL: ShareConsent.publicShareURL(
+                                  postId: postId, isShareable: isShareable,
+                                  isLetter: isLetter, isWhisper: isWhisper,
+                                  isMidnight: isMidnight))
                     .navigationBarHidden(true)
                     .hidesAppTabBar()
             }

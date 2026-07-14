@@ -10,6 +10,20 @@ import FirebaseFirestore
 // their user doc. Fail CLOSED: a failed read must never publish someone's
 // words. Missing field mirrors the post-side default (isShareable ?? true).
 enum ShareConsent {
+    /// The public share-page link for a post, or nil when no such page exists.
+    /// Mirrors the server's render gate in functions/sharePage.js exactly —
+    /// live + isShareable, never letters/whispers/midnight (ephemeral or
+    /// private kinds 404 on the web). Handing out a link the page would 404
+    /// is worse than handing out no link, so this is the ONE place the rule
+    /// lives client-side; every call site passes through here.
+    static func publicShareURL(postId: String, isShareable: Bool,
+                               isLetter: Bool, isWhisper: Bool,
+                               isMidnight: Bool) -> URL? {
+        guard isShareable, !isLetter, !isWhisper, !isMidnight,
+              !postId.isEmpty else { return nil }
+        return URL(string: "https://app.toskaapp.com/p/\(postId)")
+    }
+
     static func authorAllowsSharing(_ authorId: String) async -> Bool {
         guard !authorId.isEmpty else { return false }
         do {
@@ -29,6 +43,10 @@ struct ShareCardView: View {
     let handle: String
     let feltCount: Int
     let tag: String?
+    // Public share-page link (ShareConsent.publicShareURL). nil for replies
+    // and for kinds the web page won't serve (letters/whispers/midnight) —
+    // when nil the card shares image-only, exactly the pre-link behavior.
+    var shareURL: URL? = nil
 
     @Environment(\.dismiss) var dismiss
     // Default to "dawn" (index 8) — the first LIGHT mood. Indices 0–7 are dark
@@ -49,6 +67,7 @@ struct ShareCardView: View {
     // users sharing a post they want to feel less performative can hide it.
     @State private var showFeltCount = true
     @State private var showCopied = false
+    @State private var showCopiedLink = false
     @State private var showSharedConfirmation = false
     @State private var savedToPhotos = false
     @State private var showSaveError = false
@@ -229,38 +248,74 @@ struct ShareCardView: View {
                         }
                         .padding(.horizontal, 20)
 
-                        // MARK: - Copy Text
-                        Button {
-                            // N-6 (2026-06-09 re-review): grief text copied to the
-                            // pasteboard must not linger or sync off-device. Mirror
-                            // the image-share path's options — auto-expire after 5
-                            // min and keep it local (no Universal Clipboard hand-off
-                            // to the user's other Apple devices).
-                            UIPasteboard.general.setItems(
-                                [["public.utf8-plain-text": "\"\(text)\"\n\n— someone on toska"]],
-                                options: [
-                                    .expirationDate: Date().addingTimeInterval(300),
-                                    .localOnly: true,
-                                ]
-                            )
-                            showCopied = true
-                            HapticManager.play(.feltThis)
-                            Task {
-                                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                showCopied = false
+                        // MARK: - Copy Text / Copy Link
+                        // Two quiet tertiary actions side by side (link only when a
+                        // public share page exists) so the Save/Share pills stay the
+                        // clear primary actions.
+                        HStack(spacing: 0) {
+                            Button {
+                                // N-6 (2026-06-09 re-review): grief text copied to the
+                                // pasteboard must not linger or sync off-device. Mirror
+                                // the image-share path's options — auto-expire after 5
+                                // min and keep it local (no Universal Clipboard hand-off
+                                // to the user's other Apple devices).
+                                UIPasteboard.general.setItems(
+                                    [["public.utf8-plain-text": "\"\(text)\"\n\n— someone on toska"]],
+                                    options: [
+                                        .expirationDate: Date().addingTimeInterval(300),
+                                        .localOnly: true,
+                                    ]
+                                )
+                                showCopied = true
+                                HapticManager.play(.feltThis)
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                    showCopied = false
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 11))
+                                    Text(showCopied ? "copied" : "copy text instead")
+                                        .font(ToskaFont.sans(11, weight: .medium))
+                                }
+                                .foregroundColor(showCopied ? Color.toskaFollowGreen.opacity(0.9) : Color(hex: "8a8790"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
                             }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 11))
-                                Text(showCopied ? "copied" : "copy text instead")
-                                    .font(ToskaFont.sans(11, weight: .medium))
+
+                            if let shareURL {
+                                Button {
+                                    // The link itself is not sensitive (it points at the
+                                    // anonymous public page), but keep the same local +
+                                    // expiring pasteboard posture as the text copy — a
+                                    // toska share landing on another device's clipboard
+                                    // unprompted would feel wrong even when harmless.
+                                    UIPasteboard.general.setItems(
+                                        [["public.utf8-plain-text": shareURL.absoluteString]],
+                                        options: [
+                                            .expirationDate: Date().addingTimeInterval(300),
+                                            .localOnly: true,
+                                        ]
+                                    )
+                                    showCopiedLink = true
+                                    HapticManager.play(.feltThis)
+                                    Task {
+                                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                        showCopiedLink = false
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: showCopiedLink ? "checkmark" : "link")
+                                            .font(.system(size: 11))
+                                        Text(showCopiedLink ? "copied" : "copy link")
+                                            .font(ToskaFont.sans(11, weight: .medium))
+                                    }
+                                    .foregroundColor(showCopiedLink ? Color.toskaFollowGreen.opacity(0.9) : Color(hex: "8a8790"))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 11)
+                                }
                             }
-                            // Quiet tertiary text link (no grey box) so the Save/Share
-                            // pills stay the clear primary actions.
-                            .foregroundColor(showCopied ? Color.toskaFollowGreen.opacity(0.9) : Color(hex: "8a8790"))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
                         }
                         .padding(.horizontal, 24)
 
@@ -374,7 +429,7 @@ struct ShareCardView: View {
         .alert("sharing, quietly", isPresented: $showSharingHint) {
             Button("got it", role: .cancel) { sharingHintSeen = true }
         } message: {
-            Text("this card carries the words only — no name, no handle, nothing that points back to the writer. a few shared posts may also be featured, just as anonymously, on toskaapp.com. writers can turn sharing off any time in settings.")
+            Text("this card carries the words only — no name, no handle, nothing that points back to the writer. sharing also includes a link to the post's page on toskaapp.com, anonymous in the same way. a few shared posts may also be featured there. writers can turn sharing off any time in settings.")
         }
     }
 
@@ -1068,7 +1123,13 @@ struct ShareCardView: View {
             // Previously it fired unconditionally, so cancelling the system share
             // sheet still declared success — jarring on a grief app. Mirrors the
             // save-to-Photos success gate.
-            presentShareSheet(with: [image]) { completed in
+            //
+            // When a public share page exists, the link rides along with the
+            // image: recipients (and link-preview bots) land on the anonymous
+            // /p/{id} page instead of a dead end. Targets that only take an
+            // image (Instagram stories etc.) ignore the URL item.
+            let items: [Any] = shareURL.map { [image, $0] } ?? [image]
+            presentShareSheet(with: items) { completed in
                 if completed {
                     Task { @MainActor in showPostShareConfirmation() }
                 }

@@ -1063,7 +1063,11 @@ struct FeedPostRow: View, Equatable {
                 // did, which is why these two are safe to keep per-row.
                 .fullScreenCover(isPresented: $showShareCard) {
                     EdgeSwipeDismissWrapper {
-                        ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag)
+                        ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag,
+                                      shareURL: ShareConsent.publicShareURL(
+                                          postId: postId, isShareable: isShareable,
+                                          isLetter: isLetter, isWhisper: isWhisperPost,
+                                          isMidnight: isMidnightPost))
                             .navigationBarHidden(true)
                     }
                 }

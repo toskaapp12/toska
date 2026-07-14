@@ -8,6 +8,7 @@
     "ignore": ["**/.DS_Store", "**/node_modules/**"],
     "rewrites": [
       { "source": "/p/**", "function": "sharePage" },
+      { "source": "/og/**", "function": "shareCardImage" },
       { "source": "/sitemap.xml", "function": "postsSitemap" },
       { "source": "**", "destination": "/index.html" }
     ],
@@ -22,6 +23,10 @@
       },
       {
         "source": "/p/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=300, s-maxage=600" }]
+      },
+      {
+        "source": "/og/**",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=300, s-maxage=600" }]
       },
       {

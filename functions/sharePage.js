@@ -154,15 +154,20 @@ function renderPostHtml(postId, post, { indexable, createdAtMs }) {
   const title = escapeHtml(excerpt(post.text, 70)) + " — toska";
   const description = escapeHtml(excerpt(post.text, 200));
   const robots = indexable ? "index, follow" : "noindex";
+  const cardUrl = `${CANONICAL_ORIGIN}/og/${postId}.png`;
   const head = `<link rel="canonical" href="${canonicalUrl}">
 <meta property="og:site_name" content="toska">
 <meta property="og:type" content="article">
 <meta property="og:url" content="${canonicalUrl}">
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${cardUrl}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
+<meta name="twitter:image" content="${cardUrl}">
 `;
   const felt = typeof post.likeCount === "number" && post.likeCount > 0
     ? `felt ${post.likeCount} ${post.likeCount === 1 ? "time" : "times"}` : null;

@@ -127,6 +127,8 @@ test("rendered page: content in, identity out", () => {
   assert.ok(html.includes(`<link rel="canonical" href="${CANONICAL_ORIGIN}/p/post123">`));
   assert.ok(html.includes('name="robots" content="noindex"'));
   assert.ok(html.includes("og:title"));
+  assert.ok(html.includes(`content="${CANONICAL_ORIGIN}/og/post123.png"`), "og:image points at the card endpoint");
+  assert.ok(html.includes("summary_large_image"));
   assert.ok(html.includes("felt 12 times"));
   assert.ok(html.includes("june 2026"));
   assert.ok(!html.includes("quietghost"), "handle must never render");

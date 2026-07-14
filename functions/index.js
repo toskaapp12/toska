@@ -4504,6 +4504,53 @@ exports.sharePage = onRequest(async (req, res) => {
   }
 });
 
+// The 1200×630 og:image card for a share page (/og/{postId}.png). Same gate
+// as the page itself — evaluateSharePage must say "render" — so a taken-down
+// or unshared post's card 404s in lockstep. shareCard.js (native canvas) is
+// required lazily: every function instance loads this file, and only this
+// endpoint should pay the native-module cold-start cost.
+exports.shareCardImage = onRequest({ memory: "512MiB" }, async (req, res) => {
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.status(405).send("method not allowed");
+    return;
+  }
+  res.set("X-Content-Type-Options", "nosniff");
+  const notFound = () => {
+    res.set("Cache-Control", "public, max-age=60, s-maxage=300");
+    res.status(404).send("not found");
+  };
+  try {
+    const m = req.path.match(/^\/og\/([^/]+)\.png$/);
+    const postId = m ? m[1] : null;
+    if (!share.isValidDocId(postId)) {
+      notFound();
+      return;
+    }
+    const snap = await db.collection("posts").doc(postId).get();
+    const verdict = share.evaluateSharePage(snap.exists ? snap.data() : null, Date.now());
+    if (verdict.outcome !== "render") {
+      // Reposts included: the page 301s to the original, whose og:image is
+      // the original's card — a card for the repost id has no consumer.
+      notFound();
+      return;
+    }
+    const post = snap.data();
+    const { renderShareCardPNG } = require("./shareCard");
+    const png = renderShareCardPNG({
+      text: post.text,
+      tag: typeof post.tag === "string" ? post.tag : null,
+      likeCount: typeof post.likeCount === "number" ? post.likeCount : 0,
+    });
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.status(200).send(png);
+  } catch (err) {
+    console.error("shareCardImage:", err);
+    res.set("Cache-Control", "no-store");
+    res.status(500).send("unavailable");
+  }
+});
+
 exports.postsSitemap = onRequest(async (req, res) => {
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.status(405).send("method not allowed");

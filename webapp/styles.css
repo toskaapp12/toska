@@ -215,6 +215,17 @@ a.handle:hover { color: var(--plum); }
     transition: border-color 0.15s ease, background 0.15s ease;
 }
 .field input:focus { outline: none; border-color: var(--plum-soft); background: var(--card); }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 46px; }
+.pw-toggle {
+    position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; padding: 0;
+    background: none; border: none; border-radius: 10px;
+    color: var(--soft); cursor: pointer;
+}
+.pw-toggle:hover { color: var(--plum); }
+.pw-toggle:focus-visible { outline: 2px solid var(--plum-soft); }
 .error {
     font-family: -apple-system, sans-serif; font-size: 14px;
     color: var(--danger); margin: 10px 0;

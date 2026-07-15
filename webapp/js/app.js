@@ -642,6 +642,24 @@ function pendingBanner(reasonLabel) {
 function errorBox(msg) { return el("div", { class: "error" }, msg); }
 const GENERIC_ERR = "something went wrong. try again in a moment.";
 
+const EYE_SVG = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_SVG = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+// password input wrapped with a show/hide eye toggle
+function pwField(pw) {
+    const toggle = el("button", { type: "button", class: "pw-toggle", "aria-label": "show password", "aria-pressed": "false" });
+    toggle.innerHTML = EYE_SVG;
+    toggle.onclick = () => {
+        const show = pw.type === "password";
+        pw.type = show ? "text" : "password";
+        toggle.innerHTML = show ? EYE_OFF_SVG : EYE_SVG;
+        toggle.setAttribute("aria-label", show ? "hide password" : "show password");
+        toggle.setAttribute("aria-pressed", String(show));
+        pw.focus();
+    };
+    return el("div", { class: "pw-wrap" }, pw, toggle);
+}
+
 // ---------------------------------------------------------------- auth views
 function viewSignIn() {
     setChrome(true);
@@ -680,7 +698,7 @@ function viewSignIn() {
             el("h1", { style: "color:var(--plum);" }, "toska"),
             el("p", { class: "note tagline" }, "an anonymous space for heartbreak."),
             el("div", { class: "field" }, el("label", {}, "email"), email),
-            el("div", { class: "field" }, el("label", {}, "password"), pw),
+            el("div", { class: "field" }, el("label", {}, "password"), pwField(pw)),
             el("div", { style: "margin:2px 0 4px;" }, forgot),
             resetNote,
             err, el("div", { style: "margin-top:6px;" }, btn),
@@ -744,7 +762,7 @@ function viewSignUp() {
             el("p", { class: "note tagline" },
                 "no real names. you'll get an anonymous handle."),
             el("div", { class: "field" }, el("label", {}, "email"), email),
-            el("div", { class: "field" }, el("label", {}, "password"), pw),
+            el("div", { class: "field" }, el("label", {}, "password"), pwField(pw)),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "adultCk" },
                 adult, el("span", {}, "i confirm i'm 18 or older")),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:10px 0 14px; cursor:pointer;", for: "termsCk" },

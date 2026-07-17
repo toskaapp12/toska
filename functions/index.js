@@ -4189,6 +4189,10 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
     if (data.isRepost === true) continue; // reposts don't own like/repost counts
     if (data.createdAt?.toMillis && Date.now() - data.createdAt.toMillis() < FRESH_MS) continue;
     const id = postDoc.id;
+    // Seeded App Review demo content (seedAppStoreDemo.js) carries fabricated
+    // like/repost counts with no backing subcollection docs — permanent
+    // by-construction "drift" that floods every report and masks real drift.
+    if (id.startsWith("demo_")) continue;
     try {
       const likeAgg = await postDoc.ref.collection("likes").count().get();
       const actualLikes = likeAgg.data().count;

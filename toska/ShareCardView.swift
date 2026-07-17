@@ -21,7 +21,14 @@ enum ShareConsent {
                                isMidnight: Bool) -> URL? {
         guard isShareable, !isLetter, !isWhisper, !isMidnight,
               !postId.isEmpty else { return nil }
-        return URL(string: "https://app.toskaapp.com/p/\(postId)")
+        // Repost rows carry the composite doc id ({reposterUid}_repost_{originalId}).
+        // The server 301s it to the original anyway, but the composite id embeds
+        // the reposter's uid — identity never rides a public URL, so link straight
+        // to the original (same as the web app's copy-link). uids and auto-ids are
+        // alphanumeric, so the first "_repost_" is always the separator.
+        let shareId = postId.range(of: "_repost_").map { String(postId[$0.upperBound...]) } ?? postId
+        guard !shareId.isEmpty else { return nil }
+        return URL(string: "https://app.toskaapp.com/p/\(shareId)")
     }
 
     static func authorAllowsSharing(_ authorId: String) async -> Bool {

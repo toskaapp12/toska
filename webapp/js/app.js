@@ -50,6 +50,9 @@ const mount = document.getElementById("mount");
 const header = document.getElementById("appHeader");
 const mainNav = document.getElementById("mainNav");
 const writeFab = document.getElementById("writeFab");
+// Bound here, not inline in index.html: the hosting CSP has no
+// 'unsafe-inline' for scripts, so attribute handlers never execute.
+writeFab.addEventListener("click", () => { location.hash = "#/compose"; });
 function setChrome(hidden) { header.hidden = hidden; mainNav.hidden = hidden; writeFab.hidden = hidden; }
 
 function toast(msg, ms = 3200) {

@@ -156,14 +156,20 @@ final class ToskaUITests: XCTestCase {
     }
     
     func testFeedSearchBar() throws {
-        // The search affordance is now an inline TextField below the prompt
-        // card, not a button that opens ExploreView as a sheet. The
-        // accessibility label "Search" is still set on the text field.
+        // The search affordance collapsed behind the header 🔍 toggle in the
+        // 2026 redesign: the TextField only renders AFTER the toggle is
+        // tapped. (This test previously asserted the field existed at rest,
+        // which has been stale since that redesign.) The field carries the
+        // stable "feedSearchField" identifier.
         let feedView = app.otherElements["feedView"]
         try XCTSkipUnless(waitFor(feedView, timeout: 15), "Feed didn't load — UI test likely running against signed-out session")
 
-        let searchField = app.textFields["Search"]
-        XCTAssertTrue(searchField.exists, "Inline search field not found")
+        let searchToggle = app.buttons["Search"]
+        try XCTSkipUnless(waitFor(searchToggle, timeout: 5), "Header search toggle not found")
+        searchToggle.tap()
+
+        let searchField = app.textFields["feedSearchField"]
+        XCTAssertTrue(waitFor(searchField, timeout: 5), "Inline search field not found after tapping the search toggle")
     }
     
     // MARK: - 5. Tab Bar Navigation
@@ -339,16 +345,18 @@ final class ToskaUITests: XCTestCase {
         let settingsHeader = app.staticTexts["settings"]
         try XCTSkipUnless(waitFor(settingsHeader, timeout: 5), "Settings view did not open after tap")
         
-        // Check sections exist
-        let privacySection = app.staticTexts["privacy"]
-        let notifSection = app.staticTexts["notifications"]
-        let contentSection = app.staticTexts["content"]
-        let accountSection = app.staticTexts["account"]
-        
-        XCTAssertTrue(privacySection.exists, "Privacy section not found")
-        XCTAssertTrue(notifSection.exists, "Notifications section not found")
-        XCTAssertTrue(contentSection.exists, "Content section not found")
-        XCTAssertTrue(accountSection.exists, "Account section not found")
+        // Check sections exist. groupHeader renders titles UPPERCASED
+        // ("PRIVACY"), so match case-insensitively — the same gotcha the
+        // walkthrough suite already handles for section headers.
+        func sectionHeader(_ title: String) -> XCUIElement {
+            app.staticTexts.matching(
+                NSPredicate(format: "label ==[c] %@", title)
+            ).firstMatch
+        }
+        XCTAssertTrue(sectionHeader("privacy").exists, "Privacy section not found")
+        XCTAssertTrue(sectionHeader("notifications").exists, "Notifications section not found")
+        XCTAssertTrue(sectionHeader("content").exists, "Content section not found")
+        XCTAssertTrue(sectionHeader("account").exists, "Account section not found")
         
         // "why this exists" section
         let whySection = app.staticTexts["why this exists"]

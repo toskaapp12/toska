@@ -126,6 +126,11 @@ struct FeedView: View {
                             .textInputAutocapitalization(.never)
                             .focused($searchFocused)
                             .submitLabel(.search)
+                            // Stable selector for XCUITest (the placeholder is
+                            // copy, not a contract) — testFeedSearchBar taps the
+                            // 🔍 toggle then finds this field by identifier.
+                            .accessibilityIdentifier("feedSearchField")
+                            .accessibilityLabel("Search")
                         if !searchText.isEmpty {
                             Button { searchText = "" } label: {
                                 Image(systemName: "xmark.circle.fill")

@@ -22,7 +22,7 @@ No attorney was available, so v1.0 was finalized with best-practice defaults. De
 
 ## Owner checklist (nobody else can do these)
 
-1. **Register a DMCA agent** — copyright.gov/dmca-directory, $6. Preserves the safe harbor for user-posted text (poems/lyrics). ~10 minutes. Recommended: do it before public launch.
+1. ~~Register a DMCA agent~~ — **DONE 2026-07-17**: registration **DMCA-1075752**, pay.gov tracking 2848SPCS, agent Tess Salinaro / salte@saltedevelopments.com, alternate names toska / toska app / toskaapp.com / app.toskaapp.com / saltedevelopments.com. **Renewal due July 2029** (3-year validity — calendar it). Terms §18 now carries the notice-and-takedown clause.
 2. **Confirm salte@saltedevelopments.com is monitored** — the docs promise 30-day responses to privacy requests and it's the legal-notice address.
 3. When 1.1 clears Apple review and you cut v1.2: the policy re-acceptance will fire for all existing testers once — expected, one-time.
 

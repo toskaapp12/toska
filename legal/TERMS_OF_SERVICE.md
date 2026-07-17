@@ -104,8 +104,10 @@ You get toska through the Apple App Store, and Apple's Standard Licensed Applica
 
 If any provision is unenforceable, the rest remain in effect. Our failure to enforce a provision isn't a waiver. These terms plus the Privacy Policy and the Apple EULA are the entire agreement between you and us about toska. You may not assign these terms; we may assign them in connection with a merger, acquisition, or sale of the service, and the Privacy Policy governs what happens to data in that event.
 
-## 18. Contact
+## 18. Contact; copyright notices
 
-salte@saltedevelopments.com
+General contact: salte@saltedevelopments.com
+
+**Copyright / DMCA notices:** SALTE DEVELOPMENT LLC's designated agent for notices of claimed infringement (DMCA registration DMCA-1075752) is reachable at **salte@saltedevelopments.com** or SALTE DEVELOPMENT LLC, 4118 San Carlos, Dallas, TX 75205. If you believe content on toska infringes your copyright, send a notice with the elements required by 17 U.S.C. § 512(c)(3) — identification of the work, the infringing material's location (post link), your contact info, a good-faith statement, a statement of accuracy under penalty of perjury, and your physical or electronic signature. We remove infringing content promptly on valid notice and terminate repeat infringers.
 
 © 2026 SALTE DEVELOPMENT LLC

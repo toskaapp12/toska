@@ -460,6 +460,12 @@ struct OnboardingView: View {
         // Clear FCM token before deleting the auth account. Without this,
         // the server can keep pushing to a device whose user just opted out.
         PushNotificationManager.shared.clearFCMToken()
+        // Revoke the Sign in with Apple token for the account we're about to
+        // delete — Apple guideline 5.1.1(v) expects revocation on account
+        // deletion, and SettingsView.deleteAccount already does this. Detached
+        // (it retries up to ~30s) so it can't delay the delete below; no-op
+        // for Google/email signups (no stored auth code).
+        Task.detached { await AppleSignInHelper.revokeTokenIfNeeded() }
         Task { @MainActor in
             do {
                 try await Auth.auth().currentUser?.delete()

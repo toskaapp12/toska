@@ -8,7 +8,6 @@ import FirebaseAuth
  Create these in Firebase Console > Firestore > Indexes > Composite:
  
  Collection "posts":
-   - replyCount ASC, createdAt DESC       (fetchWitnessPost)
    - authorId ASC, createdAt DESC         (fetchAnniversaryPost, loadMyPosts, loadPosts by author)
    - createdAt ASC, likeCount DESC        (fetchTopPosts — TopView)
    - tag ASC, createdAt DESC              (fetchPeopleFeelingThis, fetchPostsForTag — ExploreView)
@@ -477,9 +476,7 @@ struct FeedView: View {
                         }
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
                     vm.showExplore = false
-                    vm.showWitnessPost = false
                     vm.showPromptCompose = false
-                    vm.showDailyMoment = false
                 }
 
                     }
@@ -1287,7 +1284,13 @@ struct FeedHeaderCard: View {
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if vm.todaysPromptResponse == nil {
+                    // Show "respond" unless there's a response FOR TODAY. A
+                    // plain nil-check kept the button hidden after a midnight
+                    // rollover (todaysPromptResponse still held yesterday's
+                    // answer until the next fetch), locking the user out of
+                    // the new day's prompt. nil?.promptDate != today, so the
+                    // no-response case still shows the button.
+                    if vm.todaysPromptResponse?.promptDate != vm.todaysPromptDateString {
                         Button {
                             vm.showPromptCompose = true
                             HapticManager.play(.compose)
@@ -1319,7 +1322,14 @@ struct FeedHeaderCard: View {
                 // prompt header in the collapsed state so it's immediately
                 // visible. Tap pushes PostDetailView (where the existing ⋯
                 // menu surfaces edit/delete on own posts).
-                if let response = vm.todaysPromptResponse {
+                // promptDate must match TODAY: after a midnight rollover with
+                // the app still in memory, todaysPromptResponse can hold
+                // yesterday's answer until the next fetch — rendering it under
+                // the new day's prompt misattributes it. The respond button
+                // above uses the same date check, so post-rollover the card
+                // hides and the button returns immediately.
+                if let response = vm.todaysPromptResponse,
+                   response.promptDate == vm.todaysPromptDateString {
                     NavigationLink {
                         PostDetailView(
                             postId: response.id,

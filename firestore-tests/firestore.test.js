@@ -302,6 +302,45 @@ describe("baseline sanity", () => {
   });
 });
 
+describe("post create: expiresAt bounded to the near future (audit 2026-07-17)", () => {
+  // expiresAt is computed from the DEVICE clock (whisper +1h, midnight ≤
+  // ~24h+DST). The rule bounds it to request.time + 26h so a skewed clock or
+  // tampered client can't mint an "ephemeral" post that never expires.
+  beforeEach(async () => { await setUserDoc("alice"); });
+
+  function whisperWith(expiresAt) {
+    const a = env.authenticatedContext("alice").firestore();
+    const data = {
+      authorId: "alice",
+      authorHandle: "handle_alice",
+      text: "hello world",
+      createdAt: serverTimestamp(),
+      likeCount: 0,
+      repostCount: 0,
+      replyCount: 0,
+      isWhisper: true,
+    };
+    if (expiresAt !== undefined) data.expiresAt = expiresAt;
+    return a.collection("posts").doc("p_exp").set(data);
+  }
+
+  it("allows a whisper expiring in 1h", async () => {
+    await assertSucceeds(whisperWith(new Date(Date.now() + 3600 * 1000)));
+  });
+  it("allows a midnight-style expiry ~24h out", async () => {
+    await assertSucceeds(whisperWith(new Date(Date.now() + 24 * 3600 * 1000)));
+  });
+  it("rejects expiresAt in the far future (never-expiring 'ephemeral' post)", async () => {
+    await assertFails(whisperWith(new Date("3000-01-01T00:00:00Z")));
+  });
+  it("rejects expiresAt just past the 26h bound", async () => {
+    await assertFails(whisperWith(new Date(Date.now() + 27 * 3600 * 1000)));
+  });
+  it("rejects a non-timestamp expiresAt", async () => {
+    await assertFails(whisperWith("3000-01-01"));
+  });
+});
+
 describe("post create: client moderationStatus is start-hidden only (audit 2026-06-01)", () => {
   // Clients may start a post hidden ("pending_validation") so it's invisible
   // until validatePost promotes it to "live", but can NEVER self-publish as

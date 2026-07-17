@@ -11,6 +11,7 @@ struct SignInView: View {
     @State private var errorMessage = ""
     @State private var isLoading = false
     @State private var showReset = false
+    @State private var showCreate = false
     
     var body: some View {
         // NavigationStack so showReset can push PasswordResetView instead
@@ -156,7 +157,10 @@ struct SignInView: View {
                 HStack {
                     Spacer()
                     Button {
-                        dismiss()
+                        // Push the create-account flow directly. Previously this
+                        // just dismissed back to Splash, leaving the user to find
+                        // and tap "im new here" — an extra dead-end step.
+                        showCreate = true
                     } label: {
                         Text("no account? create one")
                             .font(ToskaFont.sans(11))
@@ -170,6 +174,11 @@ struct SignInView: View {
         }
         .navigationDestination(isPresented: $showReset) {
             PasswordResetView().navigationBarHidden(true)
+        }
+        .navigationDestination(isPresented: $showCreate) {
+            // CreateAccountView's own back button / "already have an account?
+            // sign in" both call dismiss(), which pops back here.
+            CreateAccountView().navigationBarHidden(true)
         }
         }
     }

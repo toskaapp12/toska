@@ -90,8 +90,12 @@ class PostInteractionManager {
             catch let e as NSError { errorPointer?.pointee = e; return nil }
 
             if newLiked {
-                // Already liked (e.g. from another device) — no-op.
-                if existingLike.exists { return nil }
+                // Already liked (e.g. from another device) — no-op. Return a
+                // marker (mirrors repostReply) so the completion skips the
+                // notification: re-sending overwrites the deterministic
+                // notification doc with isRead:false, flipping the author's
+                // already-read notification back to unread.
+                if existingLike.exists { return true }
 
                 transaction.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: likeRef)
                 transaction.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: userLikedRef)
@@ -107,7 +111,7 @@ class PostInteractionManager {
             }
 
             return nil
-        }, completion: { _, error in
+        }, completion: { object, error in
             Task { @MainActor in
                 // Always clear the in-flight marker, regardless of success
                 // or failure, so a later legitimate tap can re-enter.
@@ -128,7 +132,10 @@ class PostInteractionManager {
                     // dedup no-op.
 
                     // totalLikes counter update handled by Cloud Function.
-                    if !authorId.isEmpty, authorId != uid {
+                    // Skip the notification when the transaction no-opped on an
+                    // already-existing like (see the marker above).
+                    let wasNoOp = (object as? Bool) == true
+                    if !wasNoOp, !authorId.isEmpty, authorId != uid {
                         if newLiked {
                             sendNotification(postId: postId, toUserId: authorId, type: "like", message: "")
                         }

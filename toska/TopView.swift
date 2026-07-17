@@ -35,7 +35,14 @@ struct TopView: View {
     // pull-to-refresh refetches the active one.
     @State private var cache: [Period: [RankedPost]] = [:]
     @State private var loadingPeriods: Set<Period> = []
-    @State private var fetchedPeriods: Set<Period> = []
+    // Per-period fetch timestamps (was a fetched-once Set). MainTabView keeps
+    // this tab alive all session, so a Set meant ONE fetch per period per
+    // session — "most felt today" could sit hours stale unless the user
+    // pulled to refresh. A timestamp lets ensureFetched treat anything older
+    // than `refetchInterval` as unfetched: cheap freshness on tab return /
+    // foreground without listener-level read cost.
+    @State private var fetchedAt: [Period: Date] = [:]
+    private static let refetchInterval: TimeInterval = 180
     // Periods whose last fetch errored — so an empty board reads as "couldn't
     // load" (with pull-to-retry) instead of a false "everyone's being quiet".
     @State private var loadFailedPeriods: Set<Period> = []
@@ -74,6 +81,16 @@ struct TopView: View {
             for key in cache.keys {
                 cache[key]?.removeAll { $0.authorId == blockedId }
             }
+        }
+        // Freshness triggers. onAppear fires only once per session (MainTabView
+        // keeps the tab alive via .opacity), so these are the real re-entry
+        // signals: switching back to this tab, and returning from background.
+        // ensureFetched no-ops inside the staleness window, so both are cheap.
+        .onReceive(NotificationCenter.default.publisher(for: .topTabSelected)) { _ in
+            ensureFetched(period)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            ensureFetched(period)
         }
     }
 
@@ -120,9 +137,11 @@ struct TopView: View {
         }
     }
 
-    /// Fetch a period's data once (unless already fetched). force=true refetches.
+    /// Fetch a period's data on first visit, then again whenever the cached
+    /// copy is older than `refetchInterval`. force (pull-to-refresh) bypasses
+    /// the window via fetchTopPosts directly.
     private func ensureFetched(_ p: Period) {
-        guard !fetchedPeriods.contains(p) else { return }
+        if let fetched = fetchedAt[p], Date().timeIntervalSince(fetched) < Self.refetchInterval { return }
         fetchTopPosts(for: p)
     }
 
@@ -221,7 +240,12 @@ struct TopView: View {
     // MARK: - Fetch
 
     func fetchTopPosts(for fetchPeriod: Period, force: Bool = false, onComplete: (() -> Void)? = nil) {
-        if !force && fetchedPeriods.contains(fetchPeriod) { onComplete?(); return }
+        // Coalesce: ensureFetched can now fire from several triggers (tab
+        // select, foreground, period change), so don't stack a second query
+        // while one is in flight for the same period.
+        if loadingPeriods.contains(fetchPeriod) { onComplete?(); return }
+        if !force, let fetched = fetchedAt[fetchPeriod],
+           Date().timeIntervalSince(fetched) < Self.refetchInterval { onComplete?(); return }
         loadingPeriods.insert(fetchPeriod)
         let cutoff = fetchPeriod.cutoff
         let base = Firestore.firestore().collection("posts")
@@ -257,14 +281,14 @@ struct TopView: View {
                     if let error = error {
                         print("❌ TopView query error: \(error)")
                         loadingPeriods.remove(fetchPeriod)
-                        fetchedPeriods.insert(fetchPeriod)
+                        fetchedAt[fetchPeriod] = Date()
                         loadFailedPeriods.insert(fetchPeriod)
                         onComplete?()
                         return
                     }
                     guard let documents = snapshot?.documents else {
                         loadingPeriods.remove(fetchPeriod)
-                        fetchedPeriods.insert(fetchPeriod)
+                        fetchedAt[fetchPeriod] = Date()
                         loadFailedPeriods.insert(fetchPeriod)
                         onComplete?()
                         return
@@ -318,7 +342,7 @@ struct TopView: View {
                     print("📊 TopView showing \(ranked.count) ranked, engaged: \(engaged.count)")
                     cache[fetchPeriod] = ranked
                     loadingPeriods.remove(fetchPeriod)
-                    fetchedPeriods.insert(fetchPeriod)
+                    fetchedAt[fetchPeriod] = Date()
                     onComplete?()
                 }
             }

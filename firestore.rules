@@ -868,6 +868,16 @@ service cloud.firestore {
         // resurface old content in recency-sorted feed queries or to predate
         // a post before a moderation restriction took effect.
         && request.resource.data.createdAt == request.time
+        // expiresAt (when present) must be a timestamp bounded to the near
+        // future. The client computes it from the DEVICE clock (whisper: +1h,
+        // midnight: next local midnight ≤ ~24h + DST), so without a bound a
+        // skewed clock or tampered client could mint an "ephemeral" post that
+        // effectively never expires (expiresAt in year 3000) — outliving the
+        // disappears-tonight promise. 26h covers the worst legitimate case
+        // (midnight post composed right after local midnight + DST shift).
+        && (!('expiresAt' in request.resource.data.keys())
+            || (request.resource.data.expiresAt is timestamp
+                && request.resource.data.expiresAt < request.time + duration.value(26, 'h')))
         // authorHandle (when present) pinned to the caller's canonical
         // user-doc handle. Without this, an author could write a post with
         // their real authorId but a spoofed authorHandle ("@victim_handle"),

@@ -273,6 +273,9 @@ struct SplashView: View {
         guard let windowScene = UIApplication.shared.connectedScenes
             .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
               let rootVC = windowScene.keyWindow?.rootViewController else {
+            // No foreground window to present Google's sheet over (app mid-
+            // transition). Rare, but a silent return read as a dead button.
+            errorMessage = "couldn't start google sign-in — try again"
             isSigningIn = false
             googleSigningIn = false
             return

@@ -27,6 +27,12 @@ struct NotificationsView: View {
     // Shown when a follow notification's actor no longer exists, instead of
     // navigating to an empty/broken profile.
     @State private var showDeletedUserAlert = false
+    // Shown when the referenced post exists but the read was DENIED (e.g. it
+    // was moderation-held after the notification landed). Transient network
+    // errors stay silent (the post may be fine — don't claim otherwise), but
+    // a permission-denied is deterministic and a silent dead tap read as a
+    // broken row.
+    @State private var showCantOpenAlert = false
     @State private var markAsReadTask: Task<Void, Never>? = nil
     // Real-time listener for the notification feed. Replaces the earlier
     // one-shot loadNotifications/pull-to-refresh model so likes, replies,
@@ -373,6 +379,11 @@ struct NotificationsView: View {
         } message: {
             Text("this person isnt here anymore.")
         }
+        .alert("cant open this", isPresented: $showCantOpenAlert) {
+            Button("ok") {}
+        } message: {
+            Text("this post isnt available right now.")
+        }
     }
 
     // MARK: - Section Header
@@ -528,8 +539,15 @@ struct NotificationsView: View {
                 // notifications referencing that post.
                 if let error = error {
                     print("⚠️ openPost: getDocument failed: \(error)")
-                    // Don't prune notifications on transient error — the post
-                    // may still exist on the server.
+                    // permission-denied is deterministic (post moderation-held
+                    // or otherwise unreadable) — tell the user instead of a
+                    // silent dead tap. Transient errors stay silent, and we
+                    // never prune notifications on either: the post may still
+                    // exist on the server.
+                    let nsError = error as NSError
+                    if nsError.domain == "FIRFirestoreErrorDomain", nsError.code == 7 {
+                        showCantOpenAlert = true
+                    }
                     return
                 }
                 guard let data = snapshot?.data() else {

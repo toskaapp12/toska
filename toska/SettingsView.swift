@@ -399,7 +399,10 @@ struct SettingsView: View {
                                                         .padding(.horizontal, 24)
                                                     
                                                     VStack(spacing: 4) {
-                                                        Text("toska v1.0")
+                                                        // Read from the bundle so this can't silently lag the
+                                                        // shipping MARKETING_VERSION (it said "v1.0" while 1.1
+                                                        // was in review).
+                                                        Text("toska v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                                                             .font(ToskaFont.sans(11))
                                                             .foregroundColor(Color.toskaDivider)
                                                         Text("for the things you couldnt say to them")

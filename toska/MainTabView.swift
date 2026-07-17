@@ -419,6 +419,13 @@ struct MainTabView: View {
             // so each tab view is instantiated exactly once and never torn down.
             loadedTabs.insert(newTab)
 
+            // Tabs are kept alive (opacity trick), so a re-selected tab's
+            // onAppear never re-fires — TopView needs an explicit signal to
+            // refresh a stale "most felt" board on return to the tab.
+            if newTab == .top {
+                NotificationCenter.default.post(name: .topTabSelected, object: nil)
+            }
+
             pendingUnreadTask?.cancel()
             if newTab == .notifications && unreadCount > 0 {
                 // Pin the uid at schedule time so the delayed sweep can't run

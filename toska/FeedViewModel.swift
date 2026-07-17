@@ -3,18 +3,6 @@ import Combine
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 
-// MARK: - Witness Post Data
-
-struct WitnessPostData {
-    let postId: String
-    let handle: String
-    let text: String
-    let tag: String?
-    let timeString: String
-    let likeCount: Int
-    let repostCount: Int
-}
-
 // MARK: - Anniversary Post Data
 
 struct AnniversaryPostData {
@@ -37,8 +25,6 @@ class FeedViewModel: ObservableObject {
     // MARK: - Tab & Navigation State
         @Published var selectedTab = 0
         @Published var showExplore = false
-        @Published var showDailyMoment = false
-        @Published var showWitnessPost = false
         @Published var showPromptCompose = false
 
     // MARK: - Post Data
@@ -62,14 +48,7 @@ class FeedViewModel: ObservableObject {
     @Published var expandedLetterIds: Set<String> = []
 
     // MARK: - Featured Content
-    var witnessPost: WitnessPostData? = nil
-    var emotionalWeather = ""
-    var weatherTag = ""
-    var mostUnsaidText = ""
-    var mostUnsaidLikes = 0
-    var mostUnsaidPostId = ""
     var anniversaryPost: AnniversaryPostData? = nil
-    var hasDailyMoment = false
 
     // MARK: - Fetch State
     // Simple in-flight flag so fetchPosts callers coalesce instead of stacking
@@ -727,6 +706,15 @@ class FeedViewModel: ObservableObject {
             if let last = lastForegroundFetch, Date().timeIntervalSince(last) < 60 { return }
             lastForegroundFetch = Date()
             fetchError = nil
+            // Re-resolve today's prompt response BEFORE the pagination-depth
+            // guard below: if the day rolled over while the app was in memory,
+            // the header card computes the NEW prompt at render but
+            // todaysPromptResponse still holds yesterday's answer — rendering
+            // "your response" under a prompt the user never answered until a
+            // pull-to-refresh. One cheap query, already debounced by the 60s
+            // window above. FeedHeaderCard also guards on promptDate as
+            // belt-and-suspenders for the in-memory-overnight case.
+            fetchTodaysPromptResponse()
             // Don't wholesale-refetch when the user has paginated past the first
             // page (60): fetchPosts rebuilds `posts` as just the newest 60,
             // discarding the deeper pages they loaded — including the post they
@@ -1324,107 +1312,6 @@ class FeedViewModel: ObservableObject {
             }
         }
 
-    // MARK: - Witness Post
-
-    func fetchWitnessPost() {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        let db = Firestore.firestore()
-        db.collection("posts")
-            // moderationStatus filter required by firestore.rules
-            // (see fetchPosts comment).
-            .whereField("moderationStatus", isEqualTo: "live")
-            .whereField("replyCount", isEqualTo: 0)
-            .whereField("isRepost", isEqualTo: false)
-            .order(by: "createdAt", descending: true)
-            .limit(to: 10)
-            .getDocuments { snapshot, error in
-                if let error = error {
-                    print("⚠️ fetchWitnessPost — check composite index (replyCount, isRepost, createdAt): \(error)")
-                    return
-                }
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    guard let documents = snapshot?.documents else { return }
-                    guard let doc = documents.first(where: {
-                        let data = $0.data()
-                        let authorId = data["authorId"] as? String ?? ""
-                        if authorId == uid || BlockedUsersCache.shared.isBlocked(authorId) { return false }
-                        if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return false }
-                        if data["flagged"] as? Bool == true { return false }
-                        return true
-                    }) else { return }
-                    let data = doc.data()
-                    let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                    self.witnessPost = WitnessPostData(
-                        postId: doc.documentID,
-                        handle: data["authorHandle"] as? String ?? "anonymous",
-                        text: data["text"] as? String ?? "",
-                        tag: data["tag"] as? String,
-                        timeString: ToskaFormatters.hourMinute.string(from: createdAt).lowercased(),
-                        likeCount: data["likeCount"] as? Int ?? 0,
-                        repostCount: data["repostCount"] as? Int ?? 0
-                    )
-                }
-            }
-    }
-
-    // MARK: - Most Unsaid Today
-
-    func fetchMostUnsaidAndDailyMoment() {
-        guard Auth.auth().currentUser != nil else { return }
-        let yesterday = Date().addingTimeInterval(-24 * 60 * 60)
-        Firestore.firestore().collection("posts")
-            // moderationStatus filter required by firestore.rules
-            // (see fetchPosts comment).
-            .whereField("moderationStatus", isEqualTo: "live")
-            .whereField("createdAt", isGreaterThan: Timestamp(date: yesterday))
-            .whereField("isRepost", isEqualTo: false)
-            .order(by: "createdAt", descending: true)
-            .limit(to: 50)
-            .getDocuments { [weak self] snapshot, error in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if let error = error {
-                        print("⚠️ fetchMostUnsaidAndDailyMoment error: \(error)")
-                        return
-                    }
-                    guard let docs = snapshot?.documents else {
-                        self.mostUnsaidText = ""
-                        self.mostUnsaidLikes = 0
-                        self.mostUnsaidPostId = ""
-                        self.hasDailyMoment = false
-                        return
-                    }
-                    let sorted = docs.sorted {
-                        ($0.data()["likeCount"] as? Int ?? 0) > ($1.data()["likeCount"] as? Int ?? 0)
-                    }
-
-                    if let topDoc = sorted.first {
-                        self.hasDailyMoment = (topDoc.data()["likeCount"] as? Int ?? 0) > 0
-                    } else {
-                        self.hasDailyMoment = false
-                    }
-
-                    guard let doc = sorted.first(where: {
-                        let data = $0.data()
-                        if BlockedUsersCache.shared.isBlocked(data["authorId"] as? String ?? "") { return false }
-                        if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return false }
-                        if data["flagged"] as? Bool == true { return false }
-                        return true
-                    }) else {
-                        self.mostUnsaidText = ""
-                        self.mostUnsaidLikes = 0
-                        self.mostUnsaidPostId = ""
-                        return
-                    }
-                    let data = doc.data()
-                    self.mostUnsaidText = data["text"] as? String ?? ""
-                    self.mostUnsaidLikes = data["likeCount"] as? Int ?? 0
-                    self.mostUnsaidPostId = doc.documentID
-                }
-            }
-    }
-
     // MARK: - Anniversary Post
 
     func fetchAnniversaryPost() {
@@ -1517,150 +1404,5 @@ class FeedViewModel: ObservableObject {
             // deleted or its window passed.
             self.anniversaryPost = nil
         }
-    }
-
-    // MARK: - Emotional Weather
-
-    func fetchEmotionalWeather() {
-        guard Auth.auth().currentUser != nil else { return }
-        let db = Firestore.firestore()
-        let sixHoursAgo = Date().addingTimeInterval(-6 * 60 * 60)
-
-        db.collection("posts")
-            // moderationStatus filter required by firestore.rules
-            // (see fetchPosts comment).
-            .whereField("moderationStatus", isEqualTo: "live")
-            .whereField("createdAt", isGreaterThan: Timestamp(date: sixHoursAgo))
-            .limit(to: 50)
-            .getDocuments { [weak self] snapshot, error in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    if let error = error {
-                        print("⚠️ fetchEmotionalWeather error: \(error)")
-                        self.setDefaultWeather()
-                        return
-                    }
-                    guard let documents = snapshot?.documents else {
-                        self.setDefaultWeather()
-                        return
-                    }
-                    // Filter out posts authored by users the viewer has blocked.
-                    // Without this, a blocked user's tag selections still
-                    // shape the aggregate "today's weather" message — the
-                    // viewer keeps seeing emotional cues from someone they
-                    // explicitly cut off. This is the same client-side
-                    // pattern the feed itself uses.
-                    var tagCounts: [String: Int] = [:]
-                    for doc in documents {
-                        let data = doc.data()
-                        let authorId = data["authorId"] as? String ?? ""
-                        if !authorId.isEmpty, BlockedUsersCache.shared.isBlocked(authorId) {
-                            continue
-                        }
-                        if let tag = data["tag"] as? String {
-                            tagCounts[tag, default: 0] += 1
-                        }
-                    }
-                    if let topTag = tagCounts.max(by: { $0.value < $1.value }) {
-                        self.weatherTag = topTag.key
-                        self.emotionalWeather = self.weatherPhrase(for: topTag.key)
-                    } else {
-                        self.setDefaultWeather()
-                    }
-                }
-            }
-    }
-
-    // MARK: - Share Most Unsaid
-
-    func shareMostUnsaid() {
-        guard !mostUnsaidText.isEmpty else { return }
-
-        let cardView = ZStack {
-                    Color.toskaNearBlack
-
-                    VStack(spacing: 0) {
-                        Spacer()
-
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Color.toskaBlue)
-                        .frame(width: 4, height: 4)
-                    Text("most unsaid today")
-                        .font(ToskaFont.sans(11, weight: .semibold))
-                        .foregroundColor(Color.toskaBlue)
-                        .tracking(1)
-                }
-                .padding(.bottom, 24)
-
-                Text(mostUnsaidText)
-                    .font(ToskaFont.serif(22))
-                    .foregroundColor(.white.opacity(0.95))
-                    .lineSpacing(8)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-
-                Spacer()
-
-                Text("\(formatCount(mostUnsaidLikes)) felt this")
-                    .font(ToskaFont.sans(13, weight: .medium))
-                    .foregroundColor(Color.toskaWhisperPink.opacity(0.7))
-                    .padding(.bottom, 24)
-
-                VStack(spacing: 4) {
-                    Text("toska")
-                        .font(ToskaFont.serifItalic(18))
-                        .foregroundColor(.white.opacity(0.15))
-                    Text("say what you never said")
-                        .font(ToskaFont.sans(11))
-                        .foregroundColor(.white.opacity(0.08))
-                }
-                .padding(.bottom, 40)
-            }
-        }
-        .frame(width: 1080 / 3, height: 1920 / 3)
-        .environment(\.colorScheme, .dark)
-
-        let renderer = ImageRenderer(content: cardView)
-        renderer.scale = 3.0
-
-        if let image = renderer.uiImage {
-            presentShareSheet(with: [image])
-        }
-    }
-
-    // MARK: - Weather Helpers
-
-    func setDefaultWeather() {
-        let defaults: [(String, String)] = [
-                    ("longing", "a lot of people are missing someone right now"),
-                    ("regret", "everyone keeps thinking about what they shouldve said"),
-                    ("still love you", "a lot of people still love someone who left"),
-                ]
-        let dayOfYear = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
-        let pick = defaults[dayOfYear % defaults.count]
-        weatherTag = pick.0
-        emotionalWeather = pick.1
-    }
-
-    func weatherPhrase(for tag: String) -> String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        let timeOfDay: String
-        if hour >= 21 || hour < 5 { timeOfDay = "tonight" }
-        else if hour < 12 { timeOfDay = "this morning" }
-        else if hour < 17 { timeOfDay = "this afternoon" }
-        else { timeOfDay = "this evening" }
-
-        switch tag {
-                case "longing": return "a lot of people are missing someone \(timeOfDay)"
-                case "anger": return "a lot of people are angry \(timeOfDay)"
-                case "regret": return "everyone keeps replaying the same moments \(timeOfDay)"
-                case "acceptance": return "people are trying to accept things \(timeOfDay)"
-                case "confusion": return "nobody knows what theyre feeling \(timeOfDay)"
-                case "unsent": return "a lot of things are going unsaid \(timeOfDay)"
-                case "moving on": return "people are trying to move on \(timeOfDay)"
-                case "still love you": return "a lot of people still love someone they shouldnt \(timeOfDay)"
-                default: return "everyones going through something \(timeOfDay)"
-                }
     }
 }

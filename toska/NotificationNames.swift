@@ -44,6 +44,12 @@ extension NSNotification.Name {
         // the top via a ScrollViewReader anchor.
         static let scrollTopTabToTop  = NSNotification.Name("ScrollTopTabToTop")
         static let scrollProfileToTop = NSNotification.Name("ScrollProfileToTop")
+        // Posted by MainTabView when the user SWITCHES to the Top tab (not a
+        // re-tap). MainTabView keeps every tab alive via the .opacity trick,
+        // so TopView's onAppear fires only once per session — this is the
+        // "tab became visible again" signal TopView uses to refresh a stale
+        // "most felt" board (see TopView.ensureFetched's staleness window).
+        static let topTabSelected     = NSNotification.Name("TopTabSelected")
         // (scrollFeedToTop already exists above — added to the same family
         // of behaviors when the feed's scroll-up affordance was wired.)
     }

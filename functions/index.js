@@ -4785,25 +4785,31 @@ exports.auditUserRestriction = onDocumentUpdated(
   async (event) => {
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
-    if (before.restricted === after.restricted) return; // unrelated update
 
-    const action = after.restricted === true ? "user.restrict" : "user.unrestrict";
-    await writeAuditEntry({
-      action,
-      adminUid: after.restrictedBy || before.restrictedBy || "unknown",
-      targetType: "user",
-      targetId: event.params.userId,
-      targetHandle: after.handle || before.handle || null,
-      before: { restricted: before.restricted ?? false },
-      after:  { restricted: after.restricted ?? false },
-    }, event.id);
+    if (before.restricted !== after.restricted) {
+      const action = after.restricted === true ? "user.restrict" : "user.unrestrict";
+      await writeAuditEntry({
+        action,
+        adminUid: after.restrictedBy || before.restrictedBy || "unknown",
+        targetType: "user",
+        targetId: event.params.userId,
+        targetHandle: after.handle || before.handle || null,
+        before: { restricted: before.restricted ?? false },
+        after:  { restricted: after.restricted ?? false },
+      }, event.id);
+    }
 
     // M-1 (2026-07-17): restrictedBy is an admin uid on the MAIN user doc,
     // which other authenticated users can read (public-projection rule leg).
-    // It exists to attribute the audit entry just written — scrub it now.
-    // The `restricted` flag itself stays (firestore.rules' notRestricted()
-    // reads it) and the scrub doesn't flip it, so this update early-returns
-    // through the restricted-unchanged gate above without re-auditing.
+    // It exists to attribute the audit entry above — scrub it now. The scrub
+    // runs OUTSIDE the restricted-changed gate (2026-07-17 review):
+    // restrictUserDirect (docs/admin.html) writes restrictedBy
+    // unconditionally, so restricting an already-restricted user produces an
+    // update where `restricted` never flips — the old early-return skipped
+    // the scrub and the admin uid stranded on the readable doc. No loop
+    // either way: the scrub's own event has restrictedBy == null. The
+    // `restricted` flag itself stays (firestore.rules' notRestricted() reads
+    // it) and the scrub doesn't flip it.
     if (after.restrictedBy != null) {
       try {
         await event.data.after.ref.update({ restrictedBy: FieldValue.delete() });
@@ -4939,6 +4945,55 @@ exports.auditPostModeration = onDocumentUpdated(
       await event.data.after.ref.update(scrub);
     } catch (err) {
       if (err.code !== 5) throw err;
+    }
+  }
+);
+
+// Audit + scrub reply approvals (2026-07-17 review). approvePendingReply
+// (docs/admin.html) stamps pendingApprovedBy on the reply doc as it goes
+// live — the same M-1 exposure auditPostModeration closes for posts (a live
+// reply is readable by every authenticated client), and until this trigger
+// existed the stamp persisted forever AND the approval never reached
+// adminAuditLog: restoring a PII/link-held reply to a public thread was the
+// one moderation reversal with no audit entry. Mirrors auditPostModeration
+// (audit keyed on the stamp newly appearing, then scrub), with one
+// deliberate difference: the scrub keys on any stamp PRESENT, not newly
+// appearing, so a stamp that survives a lost event or failed scrub (update
+// triggers don't retry by default) self-heals on the reply's next write.
+// unflaggedBy / crisisReviewedBy have no reply-side writer today (crisis
+// review is queue-based, unflag is post-only) — scrubbing them unaudited is
+// defense-in-depth for the same invariant. Loop-safe: the scrub's own event
+// carries no stamps and returns at the gate.
+exports.auditReplyModeration = onDocumentUpdated(
+  "posts/{postId}/replies/{replyId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after  = event.data.after.data() || {};
+
+    const stamps = ["pendingApprovedBy", "unflaggedBy", "crisisReviewedBy"]
+      .filter((k) => after[k] != null);
+    if (stamps.length === 0) return;
+
+    const newlyApproved =
+      before.pendingApprovedBy == null && after.pendingApprovedBy != null;
+    if (newlyApproved) {
+      await writeAuditEntry({
+        action: "reply.approve",
+        adminUid: after.pendingApprovedBy || "unknown",
+        targetType: "reply",
+        targetId: `${event.params.postId}/${event.params.replyId}`,
+        targetHandle: after.authorHandle || before.authorHandle || null,
+        before: { moderationStatus: before.moderationStatus || null, pendingReason: before.pendingReason ?? null },
+        after:  { moderationStatus: after.moderationStatus  || null, pendingReason: after.pendingReason ?? null },
+      }, `${event.id}_approve`);
+    }
+
+    const scrub = {};
+    for (const k of stamps) scrub[k] = FieldValue.delete();
+    try {
+      await event.data.after.ref.update(scrub);
+    } catch (err) {
+      if (err.code !== 5) throw err; // NOT_FOUND: reply deleted in the window — nothing leaks
     }
   }
 );

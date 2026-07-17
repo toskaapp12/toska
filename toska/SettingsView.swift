@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseAnalytics
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import UserNotifications
@@ -437,6 +438,12 @@ struct SettingsView: View {
                     saveSettings()
                 }
             }
+        }
+        .onChange(of: shareAnonymousUsage) { _, optedIn in
+            // Mirror the toggle into Firebase Analytics' automatic collection
+            // (sessions, screen views) — Telemetry's guard only covers our
+            // custom events. toskaApp.swift applies the same at launch.
+            Analytics.setAnalyticsCollectionEnabled(optedIn)
         }
         .onChange(of: settings) { oldValue, newValue in
             if isLoaded && oldValue != newValue {

@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseCore
+import FirebaseAnalytics
 import FirebaseMessaging
 import FirebaseAuth
 import FirebaseAppCheck
@@ -126,6 +127,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // Analytics + Crashlytics are wired through the Telemetry namespace
             // in ToskaTheme.swift. FirebaseApp.configure() above also boots
             // Analytics; Crashlytics auto-collects on next launch after a crash.
+
+            // The Settings → Privacy toggle must govern Firebase Analytics'
+            // AUTOMATIC collection (sessions, screen views), not just our
+            // custom Telemetry events — otherwise opting out is cosmetic.
+            // SettingsView re-invokes this when the toggle flips.
+            Analytics.setAnalyticsCollectionEnabled(Telemetry.isOptedIn)
 
         // Bump URLCache so AsyncImage / GIF reloads don't constantly refetch.
         // The URLSession default is ~4 MB memory + ~20 MB disk, which a feed

@@ -37,6 +37,9 @@ let explicitCrisisPhrases = [
     "kill myself", "killing myself", "kill my self", "want to kill myself",
     "wanna kill myself", "going to kill myself", "gonna kill myself",
     "off myself", "end myself", "delete myself", "unalive", "unalive myself",
+    // 2026-07-17 red-team extension: gerund form — word-boundary matching means
+    // "unalive" does NOT match "unaliving" ("thinking about unaliving tonight").
+    "unaliving",
     "hang myself", "hanging myself", "neck myself",
     // ending my life
     "end my life", "ending my life", "end it all", "ending it all",
@@ -92,6 +95,17 @@ let softConcernPhrases = [
     "point of living", "better off if i was gone", "better off if i wasn't",
     "everyone would be better off if i", "not waking up", "wish i wouldn't wake up",
     "thinking about not waking", "what's the point anymore", "whats the point anymore",
+    // 2026-07-17 red-team extension (soft tier — held + gentle check-in, never
+    // paged; over-hold is the safe direction):
+    // "kms" — ubiquitous "kill myself" shorthand. Deliberately SOFT, not
+    // explicit: most usage is flippant, and the token can collide with
+    // "kilometers" ("300 kms apart") — a soft hold on that rare collision is
+    // acceptable collateral; paging a human on every "ugh kms" is not.
+    "kms",
+    // paraphrases the red team slipped through entirely
+    "no reason to keep going", "no reason to go on",
+    // farewell-note shape ("this is my goodbye post, don't try to find me")
+    "this is my goodbye",
 ]
 
 // Back-compat alias so existing call sites that only care about "is it

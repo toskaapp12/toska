@@ -53,6 +53,16 @@ const SHOULD_CATCH = [
   ["what's the point of living", "any"],
   ["everyone would be better off if I was gone", "any"],
   ["I've been thinking about not waking up", "any"],
+  // 2026-07-17 re-audit extension — platform-era euphemisms + fresh evasions
+  ["i want to unalive myself", "any"],          // moderation-dodge slang, now mainstream
+  ["thinking about unaliving tonight", "any"],
+  ["honestly kms", "any"],                      // ubiquitous abbreviation
+  ["i want to d​ie", "any"],               // zero-width space inside the phrase
+  ["і want to dіe", "any"],                     // Cyrillic і homoglyphs
+  ["i.want.to.die", "any"],                     // period separators
+  ["planning to end my life tonight", "EXPLICIT"],
+  ["i have no reason to keep going", "any"],
+  ["this is my goodbye post, don't try to find me", "any"], // farewell-note shape
 ];
 
 // ============================================================
@@ -78,6 +88,12 @@ const MUST_NOT_PAGE = [
   "voy a matarme a trabajar",        // ES: work myself to death
   "j'ai envie de mourir de honte",   // FR: die of embarrassment
   "esta mejor muerto en la pelicula", // ES: character better off dead in the film
+  // 2026-07-17 re-audit extension — breakup-app-typical hyperbole
+  "I'm killing it at the gym since the breakup",
+  "this diet is killing me",
+  "murdered a whole pizza by myself tonight",
+  "losing him killed my confidence",
+  "deleted my ex from my life for good",
 ];
 
 console.log("=== CRISIS RED TEAM ===\n");

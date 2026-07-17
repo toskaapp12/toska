@@ -690,6 +690,11 @@
                     pendingDetectedAt: deleteField(),
                     crisisReviewedAt: deleteField(),
                     crisisReviewedBy: deleteField(),
+                    // 2026-07-17 re-audit: the report-count marker from
+                    // onReportCreatedAutoHide must not ride on the live doc
+                    // ("community reported this ≥N times"); the rules gate
+                    // now requires it absent on any go-live transition.
+                    autoHiddenReportCount: deleteField(),
                 });
                 const card = document.getElementById(`pending-${postId}`);
                 if (card) card.remove();
@@ -1396,6 +1401,9 @@
                     pendingDetectedAt: deleteField(),
                     crisisReviewedAt: deleteField(),
                     crisisReviewedBy: deleteField(),
+                    // 2026-07-17 re-audit: see approvePending — the auto-hide
+                    // report-count marker must not survive onto the live doc.
+                    autoHiddenReportCount: deleteField(),
                     unflaggedBy: auth.currentUser.uid,
                     unflaggedAt: serverTimestamp()
                 });

@@ -878,6 +878,14 @@ service cloud.firestore {
         && (!('expiresAt' in request.resource.data.keys())
             || (request.resource.data.expiresAt is timestamp
                 && request.resource.data.expiresAt < request.time + duration.value(26, 'h')))
+        // 2026-07-17 re-audit: the ephemeral flags REQUIRE expiresAt. Both
+        // legit compose paths always set it (ComposeView.swift:1141-1151,
+        // webapp writes.js); without this a tampered client could mint a
+        // permanent post wearing the "disappears" badge — cleanupExpiredPosts
+        // and the TTL both key on expiresAt, so it would never die.
+        && (!(request.resource.data.get('isWhisper', false) == true
+              || request.resource.data.get('isMidnightPost', false) == true)
+            || 'expiresAt' in request.resource.data.keys())
         // authorHandle (when present) pinned to the caller's canonical
         // user-doc handle. Without this, an author could write a post with
         // their real authorId but a spoofed authorHandle ("@victim_handle"),
@@ -1075,7 +1083,36 @@ service cloud.firestore {
                 || (request.resource.data.get('concerningContent', false) != true
                     && request.resource.data.get('flagged', false) != true
                     && !('pendingReason' in request.resource.data.keys())
-                    && !('flagReason' in request.resource.data.keys()))));
+                    && !('flagReason' in request.resource.data.keys())
+                    // 2026-07-17 re-audit: the gate is the BACKSTOP for the
+                    // client scrubs, so it must cover the full marker set the
+                    // clients delete — plus autoHiddenReportCount, which no
+                    // client scrubbed at all (a live doc carrying it tells
+                    // every authed reader "community reported this ≥N times
+                    // and it was auto-hidden"). Deploy order: admin.html must
+                    // ship its matching deleteField()s BEFORE these rules, or
+                    // approving an auto-hidden post becomes rules-denied.
+                    && !('flaggedAt' in request.resource.data.keys())
+                    && !('pendingDetectedAt' in request.resource.data.keys())
+                    && !('crisisReviewedAt' in request.resource.data.keys())
+                    && !('autoHiddenReportCount' in request.resource.data.keys())))
+            // Attribution pins (2026-07-17 re-audit): auditPostModeration
+            // trusts these stamps as the acting admin's uid when writing the
+            // adminAuditLog entry — pin each (when CHANGED) to the caller so
+            // admin A can't attribute an action to admin B. Delete-tolerant:
+            // the get() default passes when the change is a deleteField()
+            // (the approve/unflag scrubs). Mirrors the users restrictedBy pin
+            // and the reports reviewedBy pin.
+            && (!('pendingApprovedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                || request.resource.data.get('pendingApprovedBy', request.auth.uid) == request.auth.uid)
+            && (!('unflaggedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                || request.resource.data.get('unflaggedBy', request.auth.uid) == request.auth.uid)
+            && (!('crisisReviewedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                || request.resource.data.get('crisisReviewedBy', request.auth.uid) == request.auth.uid)
+            // deletedBy is the same class: auditPostDeletion reads it off the
+            // pre-delete stamp as the acting admin.
+            && (!('deletedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                || request.resource.data.get('deletedBy', request.auth.uid) == request.auth.uid));
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();
 
@@ -1184,7 +1221,19 @@ service cloud.firestore {
                          'pendingApprovedAt', 'pendingApprovedBy',
                          'likeCount', 'repostCount', 'flagged', 'flagReason', 'flaggedAt',
                          'authorId', 'createdAt']))
-          || isAdmin();
+          // Attribution pins on the admin leg (2026-07-17 re-audit), mirroring
+          // the posts admin leg above: auditReplyModeration trusts these
+          // stamps as the acting admin's uid — pin each (when CHANGED) to the
+          // caller, delete-tolerant via the get() default.
+          || (isAdmin()
+              && (!('pendingApprovedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                  || request.resource.data.get('pendingApprovedBy', request.auth.uid) == request.auth.uid)
+              && (!('unflaggedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                  || request.resource.data.get('unflaggedBy', request.auth.uid) == request.auth.uid)
+              && (!('crisisReviewedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                  || request.resource.data.get('crisisReviewedBy', request.auth.uid) == request.auth.uid)
+              && (!('deletedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                  || request.resource.data.get('deletedBy', request.auth.uid) == request.auth.uid));
         // Author or post-author can delete; admins can remove a held reply
         // from the pending-replies tab.
         allow delete: if isAdmin()
@@ -1441,7 +1490,18 @@ service cloud.firestore {
       allow create: if false;
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['reviewed', 'reviewedAt', 'reviewedBy']);
+            .hasOnly(['reviewed', 'reviewedAt', 'reviewedBy'])
+        // 2026-07-17 re-audit: (a) `reviewed` must stay a real bool —
+        // auditCrisisReplyReview keys on `=== true`, so a truthy non-bool
+        // (1, "done") would clear the entry from the pending queue WITHOUT
+        // an adminAuditLog entry, a silent gap in the crisis audit trail;
+        // (b) reviewedBy (when changed) is pinned to the caller so the
+        // audit entry can't attribute the review to a different admin.
+        // Mirrors the reports reviewedBy pin and users restrictedBy pin.
+        && (!('reviewed' in request.resource.data.keys())
+            || request.resource.data.reviewed is bool)
+        && (!('reviewedBy' in request.resource.data.diff(resource.data).affectedKeys())
+            || request.resource.data.reviewedBy == request.auth.uid);
       allow delete: if isAdmin();
     }
 
@@ -1457,7 +1517,18 @@ service cloud.firestore {
 
     match /pendingDeletions/{uid} {
       allow read: if false;
-      allow create: if isOwner(uid);
+      // Schema lock + requestedAt pin (2026-07-17 re-audit): the client
+      // writes exactly { uid, requestedAt: serverTimestamp() }
+      // (SettingsView.swift:856-859). monitorPendingDeletions trusts
+      // requestedAt for its stuck-cascade threshold, so without the
+      // request.time pin a future-dated intent doc whose auth-delete lands
+      // after the grace window would make the cascade silently never run
+      // (self-inflicted retention — the deletion promise quietly unmet).
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['uid', 'requestedAt'])
+        && request.resource.data.keys().hasAll(['uid', 'requestedAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.requestedAt == request.time;
       allow update: if isOwner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelled', 'cancelledAt']);
       // Owners can delete their own pendingDeletion. Without this, a user

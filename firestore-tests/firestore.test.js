@@ -339,6 +339,20 @@ describe("post create: expiresAt bounded to the near future (audit 2026-07-17)",
   it("rejects a non-timestamp expiresAt", async () => {
     await assertFails(whisperWith("3000-01-01"));
   });
+  // 2026-07-17 re-audit: the ephemeral flags now REQUIRE expiresAt — without
+  // it a tampered client mints a permanent post wearing the "disappears"
+  // badge (cleanup + TTL both key on expiresAt, so it would never die).
+  it("rejects a whisper with NO expiresAt at all", async () => {
+    await assertFails(whisperWith(undefined));
+  });
+  it("rejects a midnight post with NO expiresAt at all", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("posts").doc("p_mid").set({
+      authorId: "alice", authorHandle: "handle_alice", text: "hello world",
+      createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+      isMidnightPost: true,
+    }));
+  });
 });
 
 describe("post create: client moderationStatus is start-hidden only (audit 2026-06-01)", () => {
@@ -2232,6 +2246,146 @@ describe("C-1 (2026-07-17): crisisReplyQueue is admin-only", () => {
       postId: "p", replyId: "r", reviewed: false,
     }));
     await assertFails(a.collection("crisisReplyQueue").doc("p1_r1").update({ reviewed: true }));
+  });
+  // 2026-07-17 re-audit: attribution + audit-trail integrity on the queue.
+  it("DENIED: admin cannot stamp reviewedBy as ANOTHER admin", async () => {
+    await setAdmin("mod2");
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("crisisReplyQueue").doc("p1_r1").update({
+      reviewed: true, reviewedAt: serverTimestamp(), reviewedBy: "mod2",
+    }));
+  });
+  it("DENIED: reviewed cannot be a truthy non-bool (audit-trigger dodge)", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("crisisReplyQueue").doc("p1_r1").update({
+      reviewed: 1,
+    }));
+  });
+});
+
+describe("2026-07-17 re-audit: admin attribution pins + widened go-live gate", () => {
+  // (a) The go-live gate must also require flaggedAt / pendingDetectedAt /
+  // crisisReviewedAt / autoHiddenReportCount absent — autoHiddenReportCount in
+  // particular told every authed reader "community reported this ≥N times".
+  // (b) The *By stamps the audit triggers trust as the acting admin's uid
+  // (pendingApprovedBy / unflaggedBy / crisisReviewedBy / deletedBy) are
+  // pinned, when changed, to the caller.
+  const fullScrub = () => ({
+    concerningContent: deleteField(), flagged: deleteField(),
+    flagReason: deleteField(), pendingReason: deleteField(),
+    flaggedAt: deleteField(), pendingDetectedAt: deleteField(),
+    crisisReviewedAt: deleteField(), crisisReviewedBy: deleteField(),
+    autoHiddenReportCount: deleteField(),
+  });
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setAdmin("mod");
+    await setAdmin("mod2");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("posts").doc("held9").set({
+        authorId: "alice", authorHandle: "handle_alice", text: "held words",
+        createdAt: new Date(), likeCount: 0, repostCount: 0, replyCount: 0,
+        moderationStatus: "pending_review", pendingReason: "crisis",
+        concerningContent: true, flagged: true, flagReason: "self_harm",
+        flaggedAt: new Date(), pendingDetectedAt: new Date(),
+        autoHiddenReportCount: 3,
+      });
+      await ctx.firestore().collection("posts").doc("held9")
+        .collection("replies").doc("hr1").set({
+          authorId: "alice", text: "held reply", createdAt: new Date(),
+          likeCount: 0, moderationStatus: "pending_review",
+        });
+    });
+  });
+
+  it("allows admin go-live with the FULL scrub (incl. autoHiddenReportCount) + self stamp", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("posts").doc("held9").update({
+      moderationStatus: "live", pendingApprovedAt: serverTimestamp(),
+      pendingApprovedBy: "mod", ...fullScrub(),
+    }));
+  });
+  it("DENIED: go-live leaving autoHiddenReportCount on the doc", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    const partial = fullScrub();
+    delete partial.autoHiddenReportCount;
+    await assertFails(m.collection("posts").doc("held9").update({
+      moderationStatus: "live", ...partial,
+    }));
+  });
+  it("DENIED: go-live leaving flaggedAt on the doc", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    const partial = fullScrub();
+    delete partial.flaggedAt;
+    await assertFails(m.collection("posts").doc("held9").update({
+      moderationStatus: "live", ...partial,
+    }));
+  });
+  it("DENIED: admin approves a post stamping pendingApprovedBy as ANOTHER admin", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("posts").doc("held9").update({
+      moderationStatus: "live", pendingApprovedAt: serverTimestamp(),
+      pendingApprovedBy: "mod2", ...fullScrub(),
+    }));
+  });
+  it("DENIED: admin stamps deletedBy as ANOTHER admin (pre-delete stamp)", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("posts").doc("held9").update({
+      deletedBy: "mod2", deletedAt: serverTimestamp(),
+    }));
+  });
+  it("allows the self-stamped pre-delete stamp (control)", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("posts").doc("held9").update({
+      deletedBy: "mod", deletedAt: serverTimestamp(),
+    }));
+  });
+  it("allows admin reply-approve with a SELF pendingApprovedBy stamp", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("posts").doc("held9")
+      .collection("replies").doc("hr1").update({
+        moderationStatus: "live", pendingApprovedAt: serverTimestamp(),
+        pendingApprovedBy: "mod",
+      }));
+  });
+  it("DENIED: admin reply-approve stamping pendingApprovedBy as ANOTHER admin", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("posts").doc("held9")
+      .collection("replies").doc("hr1").update({
+        moderationStatus: "live", pendingApprovedAt: serverTimestamp(),
+        pendingApprovedBy: "mod2",
+      }));
+  });
+});
+
+describe("2026-07-17 re-audit: pendingDeletions create is schema-locked", () => {
+  // monitorPendingDeletions trusts requestedAt for its stuck-cascade
+  // threshold; the client writes exactly { uid, requestedAt: serverTimestamp() }.
+  beforeEach(async () => { await setUserDoc("alice"); });
+
+  it("allows the exact client shape (uid + server-time requestedAt)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("pendingDeletions").doc("alice").set({
+      uid: "alice", requestedAt: serverTimestamp(),
+    }));
+  });
+  it("DENIED: future-dated requestedAt (cascade-dodge)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("pendingDeletions").doc("alice").set({
+      uid: "alice", requestedAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+    }));
+  });
+  it("DENIED: missing requestedAt", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("pendingDeletions").doc("alice").set({
+      uid: "alice",
+    }));
+  });
+  it("DENIED: extra scratch fields", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("pendingDeletions").doc("alice").set({
+      uid: "alice", requestedAt: serverTimestamp(), cancelled: true,
+    }));
   });
 });
 

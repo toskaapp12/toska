@@ -466,7 +466,10 @@ struct AdminModerationView: View {
             "concerningContent": FieldValue.delete(), "flagged": FieldValue.delete(),
             "flagReason": FieldValue.delete(), "flaggedAt": FieldValue.delete(),
             "pendingReason": FieldValue.delete(), "pendingDetectedAt": FieldValue.delete(),
-            "crisisReviewedAt": FieldValue.delete(), "crisisReviewedBy": FieldValue.delete()
+            "crisisReviewedAt": FieldValue.delete(), "crisisReviewedBy": FieldValue.delete(),
+            // 2026-07-17 re-audit: the auto-hide report-count marker must not
+            // ride on the live doc; the rules go-live gate requires it absent.
+            "autoHiddenReportCount": FieldValue.delete()
         ]) { err in Task { @MainActor in
             if let err = err { showToast("couldn't approve: \(err.localizedDescription)") }
             else { removePost(id); showToast("approved") }
@@ -496,6 +499,9 @@ struct AdminModerationView: View {
             "flagReason": FieldValue.delete(), "flaggedAt": FieldValue.delete(),
             "pendingReason": FieldValue.delete(), "pendingDetectedAt": FieldValue.delete(),
             "crisisReviewedAt": FieldValue.delete(), "crisisReviewedBy": FieldValue.delete(),
+            // 2026-07-17 re-audit: see approve — the auto-hide report-count
+            // marker must not survive onto the live doc.
+            "autoHiddenReportCount": FieldValue.delete(),
             "moderationStatus": "live", "unflaggedBy": adminUid, "unflaggedAt": FieldValue.serverTimestamp()
         ]) { err in Task { @MainActor in
             if let err = err { showToast("couldn't clear: \(err.localizedDescription)") }

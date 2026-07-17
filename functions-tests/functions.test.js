@@ -409,10 +409,16 @@ describe("crisis on edit — onPostUpdated / onReplyUpdated", () => {
       "reviewed stamp covers the OLD text; new crisis text must re-enter the unreviewed queue");
   });
 
-  it("reply edited into crisis text gets concerningContent + reviewed stamp cleared", async () => {
+  it("reply edited into crisis text re-enters the crisisReplyQueue unreviewed (C-1: no on-doc marker)", async () => {
+    // C-1 (2026-07-17): crisis replies stay LIVE and UNMARKED — the crisis
+    // marker lives in the admin-only crisisReplyQueue, and the reviewed:false
+    // merge IS the resurfacing semantics the old crisisReviewedAt-delete
+    // provided.
     await db.doc("posts/pce/replies/rce").set({
       authorId: "u", text: "i cant do this anymore", moderationStatus: "live",
-      crisisReviewedAt: new Date(),
+    });
+    await db.doc("crisisReplyQueue/pce_rce").set({
+      postId: "pce", replyId: "rce", reviewed: true, detectedAt: new Date(),
     });
     await fns.onReplyUpdated.run({
       id: "ce2",
@@ -423,9 +429,11 @@ describe("crisis on edit — onPostUpdated / onReplyUpdated", () => {
       params: { postId: "pce", replyId: "rce" },
     });
     const snap = await db.doc("posts/pce/replies/rce").get();
-    assert.strictEqual(snap.get("concerningContent"), true);
-    assert.ok(snap.get("concerningDetectedAt"));
-    assert.strictEqual(snap.get("crisisReviewedAt"), undefined);
+    assert.strictEqual(snap.get("concerningContent"), undefined,
+      "crisis marker must NOT land on the world-readable reply doc");
+    const queue = await db.doc("crisisReplyQueue/pce_rce").get();
+    assert.strictEqual(queue.get("reviewed"), false,
+      "already-reviewed entry must re-enter the unreviewed queue on a crisis edit");
   });
 
   it("reply edit on a deleted reply is a no-op (no ghost doc)", async () => {
@@ -606,8 +614,10 @@ describe("#1 replyCount visibility tracking", () => {
     assert.strictEqual((await db.doc("posts/p").get()).get("replyCount"), 4);
   });
   it("deleting a LIVE reply DOES decrement", async () => {
+    // The blank-reply guard only decrements replies that were countable at
+    // create (real text + authorId) — mirror a real deleted reply's data.
     await db.doc("posts/p").set({ replyCount: 4 });
-    await fns.onReplyDeletedUpdateCount.run({ id: "d2", data: { data: () => ({ moderationStatus: "live" }) }, params: { postId: "p", replyId: "r" } });
+    await fns.onReplyDeletedUpdateCount.run({ id: "d2", data: { data: () => ({ moderationStatus: "live", text: "a real reply", authorId: "u" }) }, params: { postId: "p", replyId: "r" } });
     assert.strictEqual((await db.doc("posts/p").get()).get("replyCount"), 3);
   });
 });

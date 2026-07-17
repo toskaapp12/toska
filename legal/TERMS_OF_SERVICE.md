@@ -15,10 +15,7 @@ toska is a pseudonymous platform for expressing feelings about breakups and loss
 
 ## 2. Who can use toska
 
-You must be at least **17 years old** to use toska. By creating an account you confirm this, and your confirmation is recorded. We do not knowingly allow anyone under 17 to use the app, and we remove accounts we discover to be underage.
-
-> [OWNER DECISION] The app, the App Store rating, and the in-app attestation all say 17+. The audit brief assumed 18+. Pick one: staying at 17+ matches Apple's rating tier and current code; moving to 18+ requires changing the age gate copy, the attestation, and this section together. Do not let these drift apart.
-> [LAWYER REVIEW] Whether 17+ (vs 18) affects enforceability of these terms against minors in your governing-law state, and any state-law social-media age statutes that may apply.
+You must be at least **17 years old** to use toska. By creating an account you confirm this, and your confirmation is recorded. We do not knowingly allow anyone under 17 to use the app, and we remove accounts we discover to be underage. (17+ matches the app's App Store age rating and the in-app attestation; all three are kept in sync deliberately.)
 
 ## 3. Your account
 
@@ -58,7 +55,7 @@ Two narrower, **optional** uses are controlled by your "allow sharing" setting (
 - **Share cards:** other users may render one of your posts as a shareable image. The card carries the words and feeling tag only — never your handle or any account identifier.
 - **Website featuring:** we may hand-pick a small number of posts to display on toskaapp.com and its share pages, again without your handle or any identifier.
 
-Turning "allow sharing" off ends both uses, including for existing posts. Deleting a post ends all uses of it. We claim **no other rights** — no advertising use of your content, no sale of your content, no use of your words to promote anything outside the two mechanisms above.
+Turning "allow sharing" off ends both uses, including for existing posts. Deleting a post ends all uses of it. We claim **no other rights** — no advertising use of your content, no sale of your content, no use of your words to promote anything outside the two mechanisms above, and **no use of your content to train AI models (ours or anyone's)**.
 
 The license for a piece of content ends when you delete it or delete your account, except for (a) copies in reports/moderation records where content was reported (kept for safety and legal-defense purposes), and (b) short-lived backups (§12).
 
@@ -89,13 +86,11 @@ We keep standard database backups for disaster recovery: point-in-time recovery 
 
 ## 13. Limitation of liability
 
-To the fullest extent permitted by law: we are not liable for indirect, incidental, special, consequential, or punitive damages, or lost data, arising from your use of toska; our total liability for any claim is limited to the greater of **$100** or the amount you paid us in the past 12 months (currently $0 — toska is free). Some jurisdictions don't allow these limitations, so parts may not apply to you.
-
-> [LAWYER REVIEW] Liability cap amount and enforceability; whether an arbitration clause and/or class-action waiver is advisable for a solo-operator UGC app, and the consumer-notice requirements that come with one. None is included in v1.0.
+To the fullest extent permitted by law: we are not liable for indirect, incidental, special, consequential, or punitive damages, or lost data, arising from your use of toska; our total liability for any claim is limited to the greater of **$100** or the amount you paid us in the past 12 months (currently $0 — toska is free). You are responsible for what you post, and you agree to indemnify SALTE DEVELOPMENT LLC against claims arising out of content you post in violation of these terms. Some jurisdictions don't allow these limitations, so parts may not apply to you.
 
 ## 14. Governing law and disputes
 
-> [LAWYER REVIEW — placeholder] These terms are governed by the laws of the State of **[Texas — SALTE DEVELOPMENT LLC's formation state; confirm]**, without regard to conflict-of-law rules. Venue/forum, small-claims carve-out, and informal-resolution-first language to be settled with counsel.
+These terms are governed by the laws of the **State of Texas** (where SALTE DEVELOPMENT LLC is organized), without regard to conflict-of-law rules. Before filing any claim, you agree to first contact us at salte@saltedevelopments.com and give us 30 days to try to resolve it informally. Either of us may bring qualifying claims in small claims court. These terms deliberately contain **no arbitration clause and no class-action waiver** — if a future version adds one, it will be a material change requiring re-acceptance under §15.
 
 ## 15. Changes to these terms
 

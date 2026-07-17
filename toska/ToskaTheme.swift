@@ -1007,7 +1007,11 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 /// Version of the combined Terms + Content Policy that the app enforces.
 /// Bump when the policy changes. Existing users will be re-prompted until
 /// their stored `acceptedPolicyVersion` matches this value.
-let currentPolicyVersion = 1
+// v2 (2026-07-17): legal-docs round — narrowed content license to the two
+// consent-gated sharing uses, honest expiring-post mechanics, Texas governing
+// law, $100 liability floor. Bumping this triggers the blocking re-acceptance
+// cover for every user whose acceptedPolicyVersion is lower (ContentView).
+let currentPolicyVersion = 2
 
 let toskaSupportEmail = "salte@saltedevelopments.com"
 
@@ -1051,7 +1055,9 @@ toska is not a substitute for professional help. if you are in crisis, please re
 you can block any user at any time from their profile or from a post. blocked users will no longer see each other's content. you can report any post, reply, or user — reports go to our moderation team. the "report" action is the fastest way to flag something you've seen.
 
 6. your content
-you keep ownership of anything you post. by posting, you grant toska a limited license to display your content within the app and in aggregated, anonymous forms (like the daily moment or weekly recap). we don't sell your content. we don't train third-party AI on it.
+you keep ownership of anything you post. by posting, you grant toska a limited license to display your content within the app. two extra uses are controlled by your "allow sharing" setting (on by default, off any time in settings → privacy): other users can turn a post of yours into a share-card image, and we may hand-pick a few posts for toskaapp.com — both always show the words and feeling only, never your handle. we don't sell your content, we don't use it in ads, and we don't train AI on it or let anyone else.
+
+whisper and midnight posts stop being shown the moment they expire and are permanently deleted from our live database within about an hour after that (short-lived backups age out within ~60 days). expiration can't un-show a post to people who already saw it, and screenshots exist — please share accordingly.
 
 7. anonymity and data
 toska keeps your real identity separate from your posts. we store the minimum needed to run the service: an anonymous handle, the content you post, and basic account metadata. we never share your identity publicly. we may share account information with law enforcement when legally required (for example, in response to a valid warrant).
@@ -1065,7 +1071,7 @@ you can delete your account at any time from settings. we may suspend or termina
 we'll update these rules as toska evolves. when we make material changes, we'll ask you to re-accept before you can keep using the app.
 
 10. the legal bits
-toska is provided "as is," with no warranties of any kind. to the fullest extent allowed by law, SALTE DEVELOPMENT LLC is not liable for any indirect, incidental, or consequential damages arising from your use of the app, and our total liability is limited to the amount you paid us (for most people, that's nothing). you are responsible for what you post, and you agree to indemnify and hold SALTE DEVELOPMENT LLC harmless from any claim arising out of content you post in violation of these rules. these rules are governed by the laws of the state in which SALTE DEVELOPMENT LLC is organized, without regard to conflict-of-laws principles. if any part of these rules is found unenforceable, the rest still applies, and our failure to enforce a rule isn't a waiver of it. our full terms of service at toskaapp.com/terms and apple's standard licensed application end user license agreement also apply to your use of toska; apple is a third-party beneficiary of these rules and may enforce them against you.
+toska is provided "as is," with no warranties of any kind. to the fullest extent allowed by law, SALTE DEVELOPMENT LLC is not liable for any indirect, incidental, or consequential damages arising from your use of the app, and our total liability for any claim is limited to the greater of $100 or the amount you paid us in the past 12 months (toska is free, so for most people that's $100). you are responsible for what you post, and you agree to indemnify and hold SALTE DEVELOPMENT LLC harmless from any claim arising out of content you post in violation of these rules. these rules are governed by the laws of the State of Texas, without regard to conflict-of-laws principles. if any part of these rules is found unenforceable, the rest still applies, and our failure to enforce a rule isn't a waiver of it. our full terms of service at toskaapp.com/terms and apple's standard licensed application end user license agreement also apply to your use of toska; apple is a third-party beneficiary of these rules and may enforce them against you.
 
 11. contact
 questions, appeals, or anything else: \(toskaSupportEmail). we read every message.

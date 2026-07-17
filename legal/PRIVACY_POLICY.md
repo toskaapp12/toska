@@ -38,7 +38,7 @@ Timestamps on content are server-assigned and used for ordering and expiration �
 
 ## 3. How we use data
 
-To run the app (feeds, threads, notifications), personalize your feed, detect and act on content that violates the Terms, keep the service safe (report review, crisis-content review, abuse rate-limiting), and fix crashes. **We do not sell, rent, or share your personal data with advertisers or data brokers, and we do not use your data for advertising at all.**
+To run the app (feeds, threads, notifications), personalize your feed, detect and act on content that violates the Terms, keep the service safe (report review, crisis-content review, abuse rate-limiting), and fix crashes. **We do not sell, rent, or share your personal data with advertisers or data brokers, we do not use your data for advertising at all, and we do not use your content to train AI models or allow anyone else to.**
 
 ## 4. Public sharing of posts (your control)
 
@@ -87,10 +87,7 @@ Available to **everyone, in-app, today** — no forms, no email needed:
 - **Analytics opt-out:** Settings → Privacy.
 - **Sharing opt-out:** Settings → Privacy.
 
-If you're in the EU/EEA/UK, these mechanisms are how we honor GDPR access, portability, erasure, and rectification requests; if you're in California, they cover CCPA access and deletion (we do not sell or "share" personal information as the CCPA defines those terms). You can also email salte@saltedevelopments.com for anything the in-app tools don't cover, and we'll respond within 30 days.
-
-> [LAWYER REVIEW] Formal GDPR posture for a US solo operator with incidental EU users (representative requirements, transfer mechanism language for Google Cloud processing, whether a DPA/SCC reference is needed) and CCPA applicability thresholds (likely below them — confirm the "we are not a covered business but honor the rights anyway" framing).
-> [OWNER DECISION] Confirm US-focused distribution intent; App Store territory list at launch determines how much EU language matters in practice.
+If you're in the EU/EEA/UK, these mechanisms are how we honor GDPR access, portability, erasure, and rectification requests; if you're in California, they cover CCPA access and deletion (we do not sell or "share" personal information as the CCPA defines those terms, and we likely fall below the CCPA's covered-business thresholds — we honor the rights regardless). You can also email salte@saltedevelopments.com for anything the in-app tools don't cover, and we'll respond within 30 days. toska is US-based and your data is processed on Google Cloud infrastructure in the United States; by using toska from outside the US you understand your data is transferred there.
 
 ## 9. Legal requests
 

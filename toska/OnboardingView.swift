@@ -649,7 +649,7 @@ struct OnboardingView: View {
             )
             .padding(.horizontal, 32)
             
-            Text("nobody knows who you are here.\nthats the whole point.")
+            Text("no one on toska knows who you are.\nthats the whole point.")
                 .font(ToskaFont.sans(11))
                 .foregroundColor(Color.toskaPlaceholderGray)
                 .multilineTextAlignment(.center)

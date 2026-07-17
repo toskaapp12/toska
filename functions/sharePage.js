@@ -133,6 +133,8 @@ blockquote { font-size: 23px; line-height: 1.65; white-space: pre-wrap; overflow
 .meta .tag { color: #9387c0; }
 .cta { margin-top: 44px; padding-top: 22px; border-top: 1px solid #23222c; color: #91949c; font-size: 14px; }
 .cta a { color: #9387c0; }
+.legal { margin-top: 30px; font-size: 12px; color: #5a5d66; }
+.legal a { color: #7d80a8; text-decoration: none; }
 h1 { font-weight: 500; font-size: 30px; margin-bottom: 10px; }
 h1 span { color: #9387c0; }
 p { color: #91949c; }
@@ -142,6 +144,7 @@ a { color: #9387c0; }
 <body>
 <main>
 ${body}
+<p class="legal"><a href="https://www.toskaapp.com/privacy">privacy</a> · <a href="https://www.toskaapp.com/terms">terms</a></p>
 </main>
 </body>
 </html>

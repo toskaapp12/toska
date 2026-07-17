@@ -90,124 +90,83 @@
     </div>
     <div class="content">
         <h1>Privacy Policy</h1>
-        <p class="updated">Last updated: April 17, 2026</p>
+        <p class="updated">Version 1.0 &middot; Effective July 17, 2026</p>
 
-        <p>toska is built around anonymity. We collect as little as possible and never sell your data. This policy explains what we collect, why, and what you can do about it.</p>
+        <p>toska is built around pseudonymity. We collect as little as we can, we never sell your data, and this policy is written to match what the code actually does &mdash; no more, no less.</p>
 
         <h2>1. What we collect</h2>
-
-        <table>
-            <tr>
-                <th>Data</th>
-                <th>Why</th>
-                <th>Stored where</th>
-            </tr>
-            <tr>
-                <td>Email address</td>
-                <td>Account creation, password reset, support</td>
-                <td>Firebase Auth + Firestore (private subcollection)</td>
-            </tr>
-            <tr>
-                <td>Anonymous handle</td>
-                <td>Display identity (randomly generated, not your real name)</td>
-                <td>Firestore</td>
-            </tr>
-            <tr>
-                <td>Posts, replies, messages</td>
-                <td>Core app functionality</td>
-                <td>Firestore</td>
-            </tr>
-            <tr>
-                <td>Likes, saves, follows</td>
-                <td>Personalization and engagement features</td>
-                <td>Firestore</td>
-            </tr>
-            <tr>
-                <td>Push notification token</td>
-                <td>Delivering notifications you opted into</td>
-                <td>Firestore (private subcollection)</td>
-            </tr>
-            <tr>
-                <td>Crash reports</td>
-                <td>Fixing bugs</td>
-                <td>Firebase Crashlytics</td>
-            </tr>
-            <tr>
-                <td>Anonymous usage analytics</td>
-                <td>Understanding how the app is used (opt-out available in Settings)</td>
-                <td>Firebase Analytics</td>
-            </tr>
-        </table>
-
-        <h2>2. What we don't collect</h2>
+        <p>Everything below is collected only because a feature needs it. We collect <strong>no</strong> real name, phone number, location, contacts, photos, camera data, or advertising identifiers, and the app contains no ad SDKs and does no cross-app tracking.</p>
         <ul>
-            <li>Your real name</li>
-            <li>Your phone number</li>
-            <li>Your location</li>
-            <li>Your contacts</li>
-            <li>Photos or camera data</li>
-            <li>Advertising identifiers (IDFA)</li>
+            <li><strong>Email address</strong> &mdash; sign-in, password reset, account recovery, support. Stored with Firebase Auth and in your private, owner-only profile area.</li>
+            <li><strong>Random handle</strong> &mdash; your display identity (generated; never your real name).</li>
+            <li><strong>Posts, replies, reflections, prompt responses</strong> &mdash; the app itself.</li>
+            <li><strong>Drafts</strong> &mdash; posts you saved but didn't publish (only you can read them).</li>
+            <li><strong>Likes, saves, reposts, follows, blocks</strong> &mdash; core features. Your lists are private to you; a like/repost's existence is visible on the content it touches.</li>
+            <li><strong>Feeling tag, breakup stage, mood</strong> (if you set them) &mdash; feed personalization. Stage and mood live in your private, owner-only profile area.</li>
+            <li><strong>Days you opened the app</strong> (date only) &mdash; powers your streak; only you can read it.</li>
+            <li><strong>Push notification token</strong> &mdash; delivering notifications you opted into; private area.</li>
+            <li><strong>Reports you submit</strong> (including the reported text) &mdash; readable only by moderators.</li>
+            <li><strong>Crash reports</strong> &mdash; Firebase Crashlytics, not linked to your account, error text scrubbed of identifiers before sending.</li>
+            <li><strong>Usage analytics</strong> (event names only; opt out in Settings &rarr; Privacy) &mdash; a fixed event vocabulary that never includes what you wrote, your handle, your ID, or search terms.</li>
+        </ul>
+        <p>Timestamps on content are server-assigned and used for ordering and expiration &mdash; we don't collect device clocks, time zones, device models, or OS-version analytics of our own.</p>
+
+        <h2>2. What "anonymous" actually means here &mdash; the honest version</h2>
+        <ul>
+            <li><strong>To other users:</strong> you are a random handle. Nothing in the app shows any other user your email, name, or account identifiers, and our database rules &mdash; not just the interface &mdash; prevent other users from reading your private data.</li>
+            <li><strong>To us (the operator):</strong> toska is pseudonymous, not anonymous. Your posts are stored against your account ID, which is connected to your email. We can technically connect content to an email address, and will do so only for moderation, safety, or valid legal process. We can't honestly claim otherwise, and we won't.</li>
+            <li><strong>One persistent handle:</strong> all your posts appear under the same handle. Whisper and midnight posts are ephemeral, not extra-anonymous &mdash; they show your handle like any post until they expire.</li>
+            <li><strong>Crisis signals:</strong> if our systems detect crisis language in a post, the post is held for human review and crisis resources are shown to you. Since July 2026 our database rules structurally prevent moderation and crisis flags from ever being readable by other users, and content restored after review is scrubbed of all such markers.</li>
         </ul>
 
-        <h2>3. How we use your data</h2>
-        <ul>
-            <li>To operate the app (display posts, deliver messages, send notifications)</li>
-            <li>To personalize your feed based on your engagement</li>
-            <li>To detect and remove content that violates our terms</li>
-            <li>To fix crashes and improve the app</li>
-        </ul>
-        <p>We do not sell, rent, or share your personal data with advertisers or third parties for marketing purposes.</p>
+        <h2>3. How we use data</h2>
+        <p>To run the app (feeds, threads, notifications), personalize your feed, detect and act on content that violates the Terms, keep the service safe (report review, crisis-content review, abuse rate-limiting), and fix crashes. <strong>We do not sell, rent, or share your personal data with advertisers or data brokers, we do not use your data for advertising at all, and we do not use your content to train AI models or allow anyone else to.</strong></p>
 
-        <h2>3a. Public sharing of posts</h2>
-        <p>If your "allow sharing" setting is on (it is on by default and can be turned off any time in Settings → Privacy), two things become possible:</p>
-        <ul>
-            <li><strong>Share cards</strong> — other users can turn one of your posts into an image to share outside the app. The image carries the words of the post and its feeling tag only — never your handle or any account identifier.</li>
-            <li><strong>Featured on our website</strong> — a small number of posts, hand-picked by us, may be shown in the "from the feed" section of toskaapp.com. The same rule applies: the words, the feeling tag, and the felt count only — never your handle, never any account identifier, and never a link back to your profile.</li>
-        </ul>
-        <p>Turning "allow sharing" off stops both, including for posts you already wrote. Deleting a post removes it everywhere, including the website.</p>
+        <h2>4. Public sharing of posts (your control)</h2>
+        <p>If your <strong>allow sharing</strong> setting is on (default on; Settings &rarr; Privacy): other users can render a post of yours as a share-card image &mdash; words and feeling tag only, never your handle; and a small number of posts, hand-picked by us, may appear on toskaapp.com and its share pages &mdash; same rule: words, tag, and felt-count only, no handle, no identifier, no profile link.</p>
+        <p>Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website. Letters and expiring posts are never shareable regardless of this setting.</p>
 
-        <h2>4. Third-party services</h2>
-        <p>toska uses the following third-party services:</p>
+        <h2>5. Third-party services</h2>
         <ul>
-            <li><strong>Firebase</strong> (Google) — authentication, database, analytics, crash reporting, push notifications. <a href="https://firebase.google.com/support/privacy">Firebase Privacy Policy</a></li>
-            <li><strong>Giphy</strong> — GIF search within the app. When you search for GIFs, your search query is sent to Giphy's API. <a href="https://support.giphy.com/hc/en-us/articles/360032872931-GIPHY-Privacy-Policy">Giphy Privacy Policy</a></li>
-            <li><strong>Apple Sign-In / Google Sign-In</strong> — optional authentication methods. These services share only your email (and in Apple's case, you can hide it).</li>
+            <li><strong>Firebase / Google Cloud</strong> &mdash; our infrastructure: authentication, database, serverless functions, push delivery, crash reporting, analytics, and app-integrity checks all run on Google's servers under <a href="https://firebase.google.com/support/privacy">Firebase's privacy documentation</a>. We use them to run toska, not to advertise.</li>
+            <li><strong>Apple</strong> &mdash; push notifications are routed through Apple's service; the payloads contain no post content and no handles &mdash; only generic text and routing IDs. Sign in with Apple shares your email with us (or Apple's private relay address if you Hide My Email).</li>
+            <li><strong>Google Sign-In</strong> (optional) &mdash; shares your Google account email with us.</li>
+            <li><strong>Giphy</strong> &mdash; GIF search goes through our server, so Giphy does not receive your identity, account ID, or IP address for searches. When a GIF is displayed, your device loads the image directly from Giphy's servers, which &mdash; like any image host &mdash; see your IP address. <a href="https://support.giphy.com/hc/en-us/articles/360032872931">Giphy privacy policy</a>.</li>
         </ul>
+        <p>No other third party receives user data. There are no ad networks, no data brokers, no tracking SDKs.</p>
 
-        <h2>5. Data retention</h2>
+        <h2>6. Retention &mdash; exact windows</h2>
         <ul>
-            <li>Your posts and messages are stored until you delete them or delete your account</li>
-            <li>Expired posts (if you set an expiration) are automatically deleted</li>
-            <li>When you delete your account, we remove your data within 30 days. Some data may persist in encrypted backups for up to 90 days.</li>
-            <li>Reports and moderation logs may be retained separately for safety purposes</li>
+            <li>Posts, replies, profile: until you delete them or your account.</li>
+            <li>Whisper posts: 1 hour after posting, then hard-deleted from the live database within about 1 more hour by automated cleanup. Midnight posts: same, from your local midnight.</li>
+            <li>Notifications in your inbox: pruned after 90 days.</li>
+            <li>Reports and moderation records: retained after content deletion for safety, abuse-pattern, and legal-defense purposes.</li>
+            <li>Backups: point-in-time 7 days; daily backups 7 days; weekly backups 8 weeks &mdash; deleted data ages out of all backups within about 60 days.</li>
         </ul>
 
-        <h2>6. Your rights</h2>
-        <p>You can:</p>
-        <ul>
-            <li><strong>Export your data</strong> — available in Settings</li>
-            <li><strong>Delete your account</strong> — available in Settings, removes your profile and content</li>
-            <li><strong>Opt out of analytics</strong> — toggle in Settings</li>
-            <li><strong>Block users</strong> — prevents them from seeing your content or contacting you</li>
-        </ul>
+        <h2>7. Account deletion &mdash; exactly what it deletes</h2>
+        <p>Deleting your account (Settings) starts an automated server-side cascade that removes: your profile and handle, private profile data (email copy, mood, stage, settings, push token), posts, replies, likes and their effect on counts, saves, reposts, follows/followers, blocks, drafts, streak days, notifications you received, notifications you triggered in other users' inboxes, and your authentication account. Sign-in-with-Apple tokens are revoked with Apple. The cascade retries hourly until complete if any step fails. What survives: reports about content (for safety), our internal moderation-action log, and backup copies until they age out. The live-database cascade typically completes within minutes.</p>
 
-        <h2>7. Children's privacy</h2>
-        <p>toska is not intended for anyone under 17 years of age. We do not knowingly collect data from children. If we learn that we have collected data from someone under 17, we will delete their account.</p>
+        <h2>8. Your rights</h2>
+        <p>Available to everyone, in-app, today: <strong>export my data</strong> (Settings &mdash; a JSON file of everything you've authored and own), <strong>deletion</strong> (per-item and full-account), <strong>correction</strong> (edit posts/replies, change email), <strong>analytics opt-out</strong>, and <strong>sharing opt-out</strong>.</p>
+        <p>If you're in the EU/EEA/UK, these mechanisms are how we honor GDPR access, portability, erasure, and rectification; if you're in California, they cover CCPA access and deletion (we do not sell or "share" personal information as the CCPA defines those terms, and we honor these rights regardless of whether the CCPA technically covers us). Email <a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a> for anything the in-app tools don't cover; we respond within 30 days. toska is US-based and your data is processed on Google Cloud infrastructure in the United States.</p>
 
-        <h2>8. Security</h2>
-        <p>We use industry-standard security measures including encrypted connections (TLS), Firebase security rules, and access controls. However, no system is 100% secure. Use toska at your own risk.</p>
-        <p>Direct messages and posts are stored securely in our database but are <strong>not end-to-end encrypted</strong>. This means they are protected in transit (via TLS) and at rest (via Firebase's infrastructure encryption), but could theoretically be accessed by the toska team for moderation or legal compliance purposes. This is the same model used by most social platforms.</p>
+        <h2>9. Legal requests</h2>
+        <p>We may disclose data when required by law &mdash; a valid subpoena, court order, or equivalent legal process. We will notify affected users when legally permitted. We do not voluntarily hand data to law enforcement or governments, with one exception: we may report imminent threats of serious harm.</p>
 
-        <h2>9. Law enforcement</h2>
-        <p>We may disclose your data if required by law, such as in response to a valid subpoena, court order, or government request. We will attempt to notify affected users when legally permitted to do so. We do not voluntarily share data with law enforcement or government agencies.</p>
+        <h2>10. Security</h2>
+        <p>Data is encrypted in transit and at rest on Google's infrastructure. Access rules are enforced in the database layer (not just the app), are covered by an automated test suite, and are audited regularly. App integrity checks limit API access to genuine builds of the app. No system is perfect: if we learn of a breach affecting your personal data, we will notify affected users and any required regulators without undue delay after confirming it.</p>
 
-        <h2>10. Changes to this policy</h2>
-        <p>We may update this policy. If we make significant changes, we'll notify you in the app. The "last updated" date at the top reflects the most recent version.</p>
+        <h2>11. Age</h2>
+        <p>toska is for users 17 and older, and your age confirmation is recorded at signup. We do not knowingly collect data from anyone under 17; if we learn we have, we delete the account and its data. toska is not directed at children under 13, and we never knowingly collect their data.</p>
 
-        <h2>11. Contact</h2>
-        <p>Questions about your privacy? Email us at <a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a>.</p>
+        <h2>12. Changes to this policy</h2>
+        <p>Each version is numbered and dated. Material changes are shown in the app for re-acceptance before continued use, and your accepted version and timestamp are recorded on your account.</p>
 
-        <div class="copyright">© 2026 <a href="https://saltedevelopments.com">SALTE DEVELOPMENT LLC</a></div>
+        <h2>13. Contact</h2>
+        <p><a href="mailto:salte@saltedevelopments.com">salte@saltedevelopments.com</a></p>
+
+        <p class="copyright">&copy; 2026 SALTE DEVELOPMENT LLC</p>
     </div>
 </body>
 </html>

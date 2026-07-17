@@ -1059,7 +1059,23 @@ service cloud.firestore {
                          // author shouldn't be able to forge an approval
                          // stamp even though they can't flip status.
                          'pendingApprovedAt', 'pendingApprovedBy']))
-        || isAdmin();
+        // C-1 (2026-07-17 privacy audit): a post may only be (re)published
+        // CLEAN. When an admin update transitions moderationStatus to "live",
+        // the resulting doc must carry no crisis/moderation markers — a live
+        // doc is readable by every authenticated client, and
+        // concerningContent / flagReason / pendingReason are health-adjacent
+        // metadata about a pseudonymous author. Gated on the status key
+        // actually changing so marker-neutral admin updates on live docs
+        // (deletedBy stamp before delete, legacy crisis-review marks) are
+        // unaffected.
+        || (isAdmin()
+            && (!request.resource.data.diff(resource.data).affectedKeys()
+                  .hasAny(['moderationStatus'])
+                || request.resource.data.moderationStatus != 'live'
+                || (request.resource.data.get('concerningContent', false) != true
+                    && request.resource.data.get('flagged', false) != true
+                    && !('pendingReason' in request.resource.data.keys())
+                    && !('flagReason' in request.resource.data.keys()))));
       allow delete: if (isAuth() && resource.data.authorId == request.auth.uid)
         || isAdmin();
 
@@ -1411,6 +1427,22 @@ service cloud.firestore {
     match /adminAuditLog/{entryId} {
       allow read: if isAdmin();
       allow write: if false;
+    }
+
+    // Crisis-reply review queue (C-1, 2026-07-17 privacy audit). Crisis
+    // replies stay LIVE in their threads by design, so the crisis marker
+    // lives HERE — admin-only — instead of on the world-readable reply doc.
+    // validateReply / onReplyUpdated create entries via Admin SDK; admins
+    // mark them reviewed (or prune orphans whose reply was deleted). The
+    // update is key-constrained so a compromised admin session can't
+    // repoint an entry at a different reply.
+    match /crisisReplyQueue/{entryId} {
+      allow read: if isAdmin();
+      allow create: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['reviewed', 'reviewedAt', 'reviewedBy']);
+      allow delete: if isAdmin();
     }
 
     // Internal dedup ledger written by Cloud Functions counter triggers

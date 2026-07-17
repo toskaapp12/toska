@@ -169,7 +169,7 @@
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
         // Web app config (NOT iOS). App Check is registered per-app, so
         // the dashboard needs its own Web appId — using the iOS appId
@@ -444,8 +444,10 @@
                 pendingReplies: query(collectionGroup(db, "replies"), where("moderationStatus", "==", "pending_review")),
                 flagged: query(collection(db, "posts"), where("flagged", "==", true)),
                 crisis: query(collection(db, "posts"), where("concerningContent", "==", true)),
-                // Concerning replies fold into the crisis badge below (not its own tab).
-                crisisReplies: query(collectionGroup(db, "replies"), where("concerningContent", "==", true)),
+                // Concerning replies fold into the crisis badge below (not its
+                // own tab). C-1: counted from the admin-only crisisReplyQueue
+                // (reviewed==false is exact, not an upper bound like before).
+                crisisReplies: query(collection(db, "crisisReplyQueue"), where("reviewed", "==", false)),
                 restricted: query(collection(db, "users"), where("restricted", "==", true)),
             };
         }
@@ -666,13 +668,28 @@
             try {
                 // Flip back to "live" + null out the pending markers so the
                 // post stops appearing on this tab and starts appearing in
-                // the feed again. Keep flagged / flagReason / concerningContent
-                // intact for audit trail; only the visibility gate changes.
+                // the feed again. C-1 (2026-07-17 privacy audit): going live
+                // must scrub ALL moderation/crisis markers in the SAME update
+                // — a live post doc is readable by every authenticated client,
+                // and concerningContent / flagReason / pendingReason are
+                // health-adjacent metadata about a pseudonymous author. The
+                // audit trail lives in adminAuditLog (auditPostModeration),
+                // NOT on the doc; that trigger also scrubs pendingApprovedBy
+                // right after recording the entry. firestore.rules now
+                // DENIES an admin go-live that leaves markers behind.
                 const uid = auth.currentUser?.uid || "";
                 await updateDoc(doc(db, "posts", postId), {
                     moderationStatus: "live",
                     pendingApprovedAt: serverTimestamp(),
                     pendingApprovedBy: uid,
+                    concerningContent: deleteField(),
+                    flagged: deleteField(),
+                    flagReason: deleteField(),
+                    flaggedAt: deleteField(),
+                    pendingReason: deleteField(),
+                    pendingDetectedAt: deleteField(),
+                    crisisReviewedAt: deleteField(),
+                    crisisReviewedBy: deleteField(),
                 });
                 const card = document.getElementById(`pending-${postId}`);
                 if (card) card.remove();
@@ -749,11 +766,22 @@
         async function approvePendingReply(replyRef, cardKey) {
             if (!confirm("approve and publish this reply back into its thread?")) return;
             try {
+                // C-1: same go-live marker scrub as posts — a live reply doc
+                // is world-readable, so no moderation metadata may ride on it.
                 const uid = auth.currentUser?.uid || "";
                 await updateDoc(replyRef, {
                     moderationStatus: "live",
                     pendingApprovedAt: serverTimestamp(),
                     pendingApprovedBy: uid,
+                    concerningContent: deleteField(),
+                    concerningDetectedAt: deleteField(),
+                    flagged: deleteField(),
+                    flagReason: deleteField(),
+                    flaggedAt: deleteField(),
+                    pendingReason: deleteField(),
+                    pendingDetectedAt: deleteField(),
+                    crisisReviewedAt: deleteField(),
+                    crisisReviewedBy: deleteField(),
                 });
                 document.getElementById(`pendingreply-${cardKey}`)?.remove();
                 refreshCounts();
@@ -821,39 +849,45 @@
                     if (snap.docs.length < PAGE) break;          // last page
                     if (pagesScanned >= MAX_PAGES) moreRemain = true; // cap, not exhaustion
                 }
-                // Concerning REPLIES: crisis language in a reply is tagged
-                // concerningContent (NOT hidden — a peer reach-out isn't
-                // censored) and pages an admin, but that FCM page is best-effort.
-                // Without this list a reply whose page didn't deliver was
-                // surfaced NOWHERE. Same startAfter pagination as the posts
-                // above — a single limit(50) page + client-side reviewed
-                // filter reintroduced for replies exactly the hiding bug the
-                // posts loop's comment describes (50 reviewed-but-still-
-                // concerning replies permanently masking an older unreviewed
-                // one). Index: replies(concerningContent, concerningDetectedAt DESC).
-                let replyDocs = [];
+                // Concerning REPLIES: crisis language in a reply is queued
+                // for review (NOT hidden — a peer reach-out isn't censored)
+                // and pages an admin, but that FCM page is best-effort.
+                // C-1 (2026-07-17 privacy audit): the queue moved OFF the
+                // reply docs (a live reply is world-readable; a machine-
+                // assigned crisis marker on it is health-adjacent metadata
+                // about a pseudonymous author) into the admin-only
+                // crisisReplyQueue collection, written by validateReply /
+                // onReplyUpdated. `reviewed` is filtered SERVER-side here, so
+                // the old reviewed-posts-masking-unreviewed pagination bug
+                // can't recur. Each entry's reply doc is fetched for display;
+                // an entry whose reply was deleted is pruned as an orphan.
+                let replyDocs = [];   // { entryId, replyRef, data, detectedAt }
                 let replyMoreRemain = false;
                 let repliesError = null;
                 try {
-                    let rCursor = null;
-                    let rPagesScanned = 0;
-                    while (replyDocs.length < TARGET && rPagesScanned < MAX_PAGES) {
-                        const parts = [
-                            collectionGroup(db, "replies"),
-                            where("concerningContent", "==", true),
-                            orderBy("concerningDetectedAt", "desc"),
-                        ];
-                        if (rCursor) parts.push(startAfter(rCursor));
-                        parts.push(limit(PAGE));
-                        const rsnap = await getDocs(query(...parts));
-                        rPagesScanned++;
-                        if (rsnap.empty) break;
-                        for (const d of rsnap.docs) {
-                            if (!d.data().crisisReviewedAt) replyDocs.push(d);
+                    const qsnap = await getDocs(query(
+                        collection(db, "crisisReplyQueue"),
+                        where("reviewed", "==", false),
+                        limit(200)
+                    ));
+                    // Sort client-side by detectedAt (newest first) — avoids a
+                    // composite index; the unreviewed queue is small by nature.
+                    const entries = qsnap.docs.slice().sort((a, b) =>
+                        (b.data().detectedAt?.toMillis?.() || 0) - (a.data().detectedAt?.toMillis?.() || 0));
+                    replyMoreRemain = qsnap.docs.length >= 200;
+                    for (const entry of entries) {
+                        if (replyDocs.length >= TARGET) { replyMoreRemain = true; break; }
+                        const e = entry.data();
+                        if (!e.postId || !e.replyId) continue;
+                        const replyRef = doc(db, "posts", e.postId, "replies", e.replyId);
+                        const rsnap = await getDoc(replyRef);
+                        if (!rsnap.exists()) {
+                            // Reply deleted after queueing — prune the orphan
+                            // so it stops consuming queue scans. Best-effort.
+                            deleteDoc(entry.ref).catch(() => {});
+                            continue;
                         }
-                        rCursor = rsnap.docs[rsnap.docs.length - 1];
-                        if (rsnap.docs.length < PAGE) break;          // last page
-                        if (rPagesScanned >= MAX_PAGES) replyMoreRemain = true; // cap, not exhaustion
+                        replyDocs.push({ entryId: entry.id, replyRef, data: rsnap.data(), detectedAt: e.detectedAt });
                     }
                 } catch (e) {
                     // A silently-swallowed failure here previously left the
@@ -921,20 +955,20 @@
                         container.appendChild(note);
                     }
                     replyDocs.forEach(d => {
-                        const r = d.data();
-                        const detectedAt = r.concerningDetectedAt?.toDate?.() ?? r.createdAt?.toDate?.();
+                        const r = d.data;
+                        const detectedAt = d.detectedAt?.toDate?.() ?? r.createdAt?.toDate?.();
                         const time = detectedAt ? timeAgo(detectedAt) : "unknown";
 
                         const reviewedBtn = el("button", "btn-dismiss");
                         reviewedBtn.textContent = "mark reviewed";
-                        reviewedBtn.addEventListener("click", () => markReplyCrisisReviewed(d.ref, d.id));
+                        reviewedBtn.addEventListener("click", () => markReplyCrisisReviewed(d.entryId));
 
                         const deleteBtn = el("button", "btn-remove");
                         deleteBtn.textContent = "delete reply";
-                        deleteBtn.addEventListener("click", () => deleteCrisisReply(d.ref, `crisisreply-${d.id}`));
+                        deleteBtn.addEventListener("click", () => deleteCrisisReply(d.replyRef, `crisisreply-${d.entryId}`, d.entryId));
 
                         const card = renderCard({
-                            id: `crisisreply-${d.id}`,
+                            id: `crisisreply-${d.entryId}`,
                             headerLeft: [
                                 span("card-type type-reply", "reply"),
                                 span("flagged-label", "concerning content"),
@@ -976,19 +1010,22 @@
             }
         }
 
-        // Mark a concerning REPLY reviewed. Stamps crisisReviewedAt/By on the
-        // reply doc (admin has an unconstrained update leg in firestore.rules),
-        // which drops it from the loader's unreviewed filter. Does NOT hide or
-        // delete the reply — a peer reach-out stays live in its thread.
-        async function markReplyCrisisReviewed(replyRef, id) {
+        // Mark a concerning REPLY reviewed. C-1 (2026-07-17): flips `reviewed`
+        // on the admin-only crisisReplyQueue entry — NEVER stamps the reply
+        // doc, which is world-readable while the reply stays live in its
+        // thread (a peer reach-out isn't hidden). reviewedBy can live on the
+        // queue doc because only admins can read it; auditCrisisReplyReview
+        // records the adminAuditLog entry off the reviewed flip.
+        async function markReplyCrisisReviewed(entryId) {
             if (!confirm("mark reviewed? this removes the item from the crisis queue (no undo in this UI).")) return;
             try {
                 const uid = auth.currentUser?.uid || "";
-                await updateDoc(replyRef, {
-                    crisisReviewedAt: serverTimestamp(),
-                    crisisReviewedBy: uid,
+                await updateDoc(doc(db, "crisisReplyQueue", entryId), {
+                    reviewed: true,
+                    reviewedAt: serverTimestamp(),
+                    reviewedBy: uid,
                 });
-                document.getElementById(`crisisreply-${id}`)?.remove();
+                document.getElementById(`crisisreply-${entryId}`)?.remove();
                 refreshCounts();
             } catch (e) {
                 alert(`couldn't mark reviewed: ${e.message}`);
@@ -998,10 +1035,15 @@
         // Delete a concerning reply (removeReply hardcodes a "pendingreply-"
         // card prefix, so the crisis tab needs its own that targets the passed
         // card element id).
-        async function deleteCrisisReply(replyRef, cardId) {
+        async function deleteCrisisReply(replyRef, cardId, queueEntryId) {
             if (!confirm("delete this reply permanently?")) return;
             try {
                 await deleteDoc(replyRef);
+                // Prune the queue entry too (best-effort) so the deleted reply
+                // doesn't linger as an orphan until the loader's next sweep.
+                if (queueEntryId) {
+                    deleteDoc(doc(db, "crisisReplyQueue", queueEntryId)).catch(() => {});
+                }
                 document.getElementById(cardId)?.remove();
                 refreshCounts();
                 showToast("reply deleted");
@@ -1341,10 +1383,19 @@
                 // public feeds is the most sensitive moderation reversal, and
                 // auditPostModeration (functions/index.js) keys a "post.unflag"
                 // entry on unflaggedBy newly appearing.
+                // C-1 (2026-07-17): scrub the FULL marker set with deleteField
+                // (not false/null) — pendingReason ("crisis"), flaggedAt, and
+                // the crisisReviewed stamps otherwise ride on the now-world-
+                // readable live doc. Absent == clean for every reader.
                 await updateDoc(doc(db, "posts", postId), {
-                    flagged: false,
-                    concerningContent: false,
-                    flagReason: null,
+                    flagged: deleteField(),
+                    concerningContent: deleteField(),
+                    flagReason: deleteField(),
+                    flaggedAt: deleteField(),
+                    pendingReason: deleteField(),
+                    pendingDetectedAt: deleteField(),
+                    crisisReviewedAt: deleteField(),
+                    crisisReviewedBy: deleteField(),
                     unflaggedBy: auth.currentUser.uid,
                     unflaggedAt: serverTimestamp()
                 });

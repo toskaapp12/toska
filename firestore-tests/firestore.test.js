@@ -19,7 +19,7 @@ const {
   assertSucceeds,
   assertFails,
 } = require("@firebase/rules-unit-testing");
-const { serverTimestamp } = require("firebase/firestore");
+const { serverTimestamp, deleteField } = require("firebase/firestore");
 const fs = require("fs");
 const path = require("path");
 
@@ -2141,6 +2141,99 @@ async function setAdmin(uid) {
     await ctx.firestore().collection("admins").doc(uid).set({ role: "admin" });
   });
 }
+
+describe("C-1 (2026-07-17): admin go-live must scrub moderation markers", () => {
+  // A live post doc is readable by every authenticated client, so an admin
+  // update that transitions moderationStatus to "live" must not leave
+  // crisis/moderation metadata (concerningContent / flagged / flagReason /
+  // pendingReason) on the resulting doc.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setAdmin("mod");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("posts").doc("held1").set({
+        authorId: "alice", authorHandle: "handle_alice", text: "held words",
+        createdAt: new Date(), likeCount: 0, repostCount: 0, replyCount: 0,
+        moderationStatus: "pending_review", pendingReason: "crisis",
+        concerningContent: true, flagged: true, flagReason: "self_harm",
+      });
+    });
+  });
+
+  it("DENIED: admin sets live while concerningContent stays true", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("posts").doc("held1").update({
+      moderationStatus: "live",
+    }));
+  });
+
+  it("allows admin go-live when the full marker set is cleared", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("posts").doc("held1").update({
+      moderationStatus: "live",
+      concerningContent: deleteField(), flagged: deleteField(),
+      flagReason: deleteField(), pendingReason: deleteField(),
+    }));
+  });
+
+  it("allows a marker-neutral admin update on a live+flagged doc (delete stamp)", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("posts").doc("liveflagged").set({
+        authorId: "alice", authorHandle: "handle_alice", text: "flagged words",
+        createdAt: new Date(), likeCount: 0, repostCount: 0, replyCount: 0,
+        moderationStatus: "live", flagged: true, flagReason: "spam",
+      });
+    });
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("posts").doc("liveflagged").update({
+      deletedBy: "mod", deletedAt: serverTimestamp(),
+    }));
+  });
+});
+
+describe("C-1 (2026-07-17): crisisReplyQueue is admin-only", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setAdmin("mod");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("crisisReplyQueue").doc("p1_r1").set({
+        postId: "p1", replyId: "r1", reviewed: false, detectedAt: new Date(),
+      });
+    });
+  });
+
+  it("DENIED: non-admin cannot read a queue entry", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("crisisReplyQueue").doc("p1_r1").get());
+  });
+  it("DENIED: non-admin cannot list the queue", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("crisisReplyQueue").where("reviewed", "==", false).get());
+  });
+  it("allows admin read", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("crisisReplyQueue").doc("p1_r1").get());
+  });
+  it("allows admin to mark reviewed", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("crisisReplyQueue").doc("p1_r1").update({
+      reviewed: true, reviewedAt: serverTimestamp(), reviewedBy: "mod",
+    }));
+  });
+  it("DENIED: admin update cannot repoint the entry at another reply", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("crisisReplyQueue").doc("p1_r1").update({
+      reviewed: true, replyId: "someone_elses_reply",
+    }));
+  });
+  it("DENIED: non-admin cannot create or update queue entries", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("crisisReplyQueue").doc("x").set({
+      postId: "p", replyId: "r", reviewed: false,
+    }));
+    await assertFails(a.collection("crisisReplyQueue").doc("p1_r1").update({ reviewed: true }));
+  });
+});
 
 async function setReply(postId, replyId, authorId) {
   await env.withSecurityRulesDisabled(async (ctx) => {

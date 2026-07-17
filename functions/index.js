@@ -3250,28 +3250,33 @@ exports.onReplyCreatedModerate = onDocumentCreated(
   async (event) => {
     const data = event.data.data();
     if (!data) return;
-    // Crisis/concerning text in a reply: mark it concerning (for the record +
-    // future admin visibility) but do NOT hide it — in a peer-support thread a
-    // reach-out shouldn't be censored, and onReplyCreatedAlertAdmins pages a
-    // human on explicit crisis. The author sees crisis resources client-side at
-    // send time. This runs independently of the abuse/PII flag below.
-    //
-    // update(), NOT set({merge:true}): a merge-set re-creates a reply that was
-    // concurrently deleted (rateLimitReplies, admin/author delete), leaving a
-    // text-less ghost in the admin crisis queue. A deleted reply needs no
-    // flag — swallow only NOT_FOUND (grpc code 5); any other failure must
-    // throw so retry:true redelivers, otherwise a transient error silently
-    // drops the reply from the durable crisis review queue.
+    // Crisis/concerning text in a reply: queue it for human review but do NOT
+    // hide it — in a peer-support thread a reach-out shouldn't be censored,
+    // and onReplyCreatedAlertAdmins pages a human on explicit crisis. The
+    // author sees crisis resources client-side at send time. This runs
+    // independently of the abuse/PII flag below.
     if (isPostConcerning(data.text)) {
-      try {
-        await event.data.ref.update({
-          concerningContent: true,
-          concerningDetectedAt: FieldValue.serverTimestamp(),
-        });
-      } catch (err) {
-        if (err.code !== 5) throw err;
-        console.log(`reply ${event.params.replyId} deleted before concerning-flag; skipping`);
-      }
+      // 2026-07-17 privacy audit (C-1, reply surface): crisis replies stay
+      // LIVE by design (a peer reach-out shouldn't vanish from its thread),
+      // so the crisis marker must NOT be written onto the reply doc — a live
+      // reply is readable by every authenticated client, and a machine-
+      // assigned health-adjacent flag on a pseudonymous author's words is
+      // exactly the metadata this app promises not to leak. The durable
+      // review queue now lives in the admin-only crisisReplyQueue collection
+      // (rules: read/update isAdmin, create server-only). Deterministic doc
+      // id + set(merge) keeps this idempotent under retry redelivery; a
+      // retried event re-setting reviewed:false is harmless (the human
+      // review window dwarfs the retry window). Unlike the old on-doc
+      // update, this can't NOT_FOUND — a concurrently-deleted reply just
+      // leaves an orphan queue entry the admin loader skips (and can prune).
+      await db.collection("crisisReplyQueue")
+        .doc(`${event.params.postId}_${event.params.replyId}`)
+        .set({
+          postId: event.params.postId,
+          replyId: event.params.replyId,
+          reviewed: false,
+          detectedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
     }
     const flagReason = computeReplyFlagReason(data.text);
     if (flagReason) {
@@ -3317,24 +3322,22 @@ exports.onReplyUpdated = onDocumentUpdated(
     const replyRef = db.collection("posts").doc(event.params.postId)
       .collection("replies").doc(event.params.replyId);
 
-    // Crisis text introduced by edit — the create path tags concerningContent
-    // and pages, but this handler previously checked only PII/abuse, so a
-    // clean reply edited into crisis language produced ZERO moderation signal
-    // (no queue entry, no page). Same policy as create: tag, don't hide, page
-    // on explicit. A crisisReviewedAt stamp covers the OLD text, so clear it —
-    // the admin queue filters !crisisReviewedAt and would never resurface the
-    // new disclosure otherwise.
+    // Crisis text introduced by edit — same policy as create: queue for
+    // review (crisisReplyQueue, never on the world-readable reply doc — C-1
+    // 2026-07-17), don't hide, page on explicit.
     if (isPostConcerning(after.text)) {
-      const update = {
-        concerningContent: true,
-        concerningDetectedAt: FieldValue.serverTimestamp(),
-      };
-      if (after.crisisReviewedAt) update.crisisReviewedAt = FieldValue.delete();
-      try {
-        await replyRef.update(update);
-      } catch (err) {
-        if (err.code !== 5) throw err; // NOT_FOUND: deleted concurrently, nothing to flag
-      }
+      // Same crisisReplyQueue routing as the create path (C-1) — and the
+      // reviewed:false merge IS the resurfacing semantics the old
+      // crisisReviewedAt-delete provided: an already-reviewed reply edited
+      // into fresh crisis language re-enters the unreviewed queue.
+      await db.collection("crisisReplyQueue")
+        .doc(`${event.params.postId}_${event.params.replyId}`)
+        .set({
+          postId: event.params.postId,
+          replyId: event.params.replyId,
+          reviewed: false,
+          detectedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
       if (isPostExplicitCrisis(after.text)) {
         // Same per-reply claim as onReplyCreatedAlertAdmins: a reply that
         // already paged at create won't re-page on edit.
@@ -4794,6 +4797,42 @@ exports.auditUserRestriction = onDocumentUpdated(
       before: { restricted: before.restricted ?? false },
       after:  { restricted: after.restricted ?? false },
     }, event.id);
+
+    // M-1 (2026-07-17): restrictedBy is an admin uid on the MAIN user doc,
+    // which other authenticated users can read (public-projection rule leg).
+    // It exists to attribute the audit entry just written — scrub it now.
+    // The `restricted` flag itself stays (firestore.rules' notRestricted()
+    // reads it) and the scrub doesn't flip it, so this update early-returns
+    // through the restricted-unchanged gate above without re-auditing.
+    if (after.restrictedBy != null) {
+      try {
+        await event.data.after.ref.update({ restrictedBy: FieldValue.delete() });
+      } catch (err) {
+        if (err.code !== 5) throw err;
+      }
+    }
+  }
+);
+
+// Audit crisis-reply reviews. Replaces the old on-doc crisisReviewedBy stamp
+// (which sat on a world-readable live reply — C-1 2026-07-17): the review now
+// flips `reviewed` on the admin-only crisisReplyQueue entry, so the actor uid
+// can live right on the queue doc and the audit keys on the flip.
+exports.auditCrisisReplyReview = onDocumentUpdated(
+  "crisisReplyQueue/{entryId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after  = event.data.after.data() || {};
+    if (before.reviewed === true || after.reviewed !== true) return;
+    await writeAuditEntry({
+      action: "reply.crisis_reviewed",
+      adminUid: after.reviewedBy || "unknown",
+      targetType: "reply",
+      targetId: `${after.postId || "?"}/${after.replyId || event.params.entryId}`,
+      targetHandle: null,
+      before: { reviewed: before.reviewed ?? false },
+      after:  { reviewed: true },
+    }, event.id);
   }
 );
 
@@ -4881,6 +4920,25 @@ exports.auditPostModeration = onDocumentUpdated(
           flagReason: after.flagReason ?? null,
         },
       }, `${event.id}_unflag`);
+    }
+
+    // 2026-07-17 privacy audit (M-1): the *By stamps exist purely to
+    // attribute the audit entries above — they must not persist on the post
+    // doc, which any authenticated client can read once the post is (or
+    // returns to) "live". An admin uid on a world-readable doc deanonymizes
+    // the moderator (the data-export path already strips restrictedBy on the
+    // same principle). Scrub each stamp now that its entry is written. The
+    // scrub is its own update: the newly-appearing gates above see
+    // non-null → null and emit nothing, so there's no trigger loop. NOT_FOUND
+    // (doc deleted in the window) is swallowed — a deleted doc leaks nothing.
+    const scrub = {};
+    if (newlyApproved) scrub.pendingApprovedBy = FieldValue.delete();
+    if (newlyCrisisReviewed) scrub.crisisReviewedBy = FieldValue.delete();
+    if (newlyUnflagged) scrub.unflaggedBy = FieldValue.delete();
+    try {
+      await event.data.after.ref.update(scrub);
+    } catch (err) {
+      if (err.code !== 5) throw err;
     }
   }
 );

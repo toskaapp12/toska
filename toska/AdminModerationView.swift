@@ -451,8 +451,22 @@ struct AdminModerationView: View {
     // and the moderator believed harmful content was handled when it wasn't.
 
     private func approvePending(_ id: String) {
+        // Going live must scrub ALL moderation/crisis markers in the SAME
+        // update — a live post doc is readable by every authenticated client,
+        // and `concerningContent` / `flagReason` / `pendingReason` are
+        // health-adjacent metadata about a pseudonymous author (2026-07-17
+        // privacy audit C-1). Previously only unflag cleared (some of) these,
+        // so approve returned crisis-held posts to the world WITH the crisis
+        // marker attached — and client feeds kept suppressing the approved
+        // post because they filter on concerningContent. pendingApprovedBy is
+        // still written for audit attribution; auditPostModeration scrubs it
+        // off the doc right after recording the adminAuditLog entry.
         db.collection("posts").document(id).updateData([
-            "moderationStatus": "live", "pendingApprovedAt": FieldValue.serverTimestamp(), "pendingApprovedBy": adminUid
+            "moderationStatus": "live", "pendingApprovedAt": FieldValue.serverTimestamp(), "pendingApprovedBy": adminUid,
+            "concerningContent": FieldValue.delete(), "flagged": FieldValue.delete(),
+            "flagReason": FieldValue.delete(), "flaggedAt": FieldValue.delete(),
+            "pendingReason": FieldValue.delete(), "pendingDetectedAt": FieldValue.delete(),
+            "crisisReviewedAt": FieldValue.delete(), "crisisReviewedBy": FieldValue.delete()
         ]) { err in Task { @MainActor in
             if let err = err { showToast("couldn't approve: \(err.localizedDescription)") }
             else { removePost(id); showToast("approved") }
@@ -471,8 +485,17 @@ struct AdminModerationView: View {
     private func unflag(_ id: String) {
         // Match the web: clear flags + flagReason, stamp the audit, AND restore a
         // held post to live so clearing the flag actually returns it to the feed.
+        // C-1 (2026-07-17): scrub the FULL marker set, not just flagged/
+        // concerningContent — pendingReason ("crisis"), flaggedAt, and the
+        // crisisReviewed stamps otherwise ride on the now-world-readable live
+        // doc. Deletion (vs false) keeps the doc schema-minimal; every reader
+        // treats absent as clean. unflaggedBy is scrubbed post-audit by
+        // auditPostModeration, same as approve.
         db.collection("posts").document(id).updateData([
-            "flagged": false, "concerningContent": false, "flagReason": FieldValue.delete(),
+            "flagged": FieldValue.delete(), "concerningContent": FieldValue.delete(),
+            "flagReason": FieldValue.delete(), "flaggedAt": FieldValue.delete(),
+            "pendingReason": FieldValue.delete(), "pendingDetectedAt": FieldValue.delete(),
+            "crisisReviewedAt": FieldValue.delete(), "crisisReviewedBy": FieldValue.delete(),
             "moderationStatus": "live", "unflaggedBy": adminUid, "unflaggedAt": FieldValue.serverTimestamp()
         ]) { err in Task { @MainActor in
             if let err = err { showToast("couldn't clear: \(err.localizedDescription)") }

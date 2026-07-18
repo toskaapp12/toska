@@ -19,6 +19,24 @@ final class WalkthroughUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
+        acceptPolicyGateIfPresent()
+    }
+
+    /// Policy re-acceptance cover (v2, 2026-07-17): a stale staging session
+    /// whose acceptedPolicyVersion is behind currentPolicyVersion boots into a
+    /// BLOCKING fullScreenCover that eats every navigation tap — which is the
+    /// designed behavior, not a bug. Accept it once so the walkthrough can
+    /// proceed; the write stamps the staging account, so the gate won't
+    /// re-fire until the next policy version bump.
+    func acceptPolicyGateIfPresent() {
+        let agree = app.buttons["i agree and continue"]
+        guard agree.waitForExistence(timeout: 3) else { return }
+        let checkbox = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "i confirm i am 17 or older")
+        ).firstMatch
+        if checkbox.waitForExistence(timeout: 2) { checkbox.tap() }
+        forceTap(agree)
+        _ = feedView.waitForExistence(timeout: 10)
     }
 
     override func tearDownWithError() throws { app = nil }
@@ -582,18 +600,20 @@ final class WalkthroughUITests: XCTestCase {
         // happens to sit atop the for-you feed.
         app.buttons["Profile"].tap()
         sleep(2)
-        let share = app.buttons["Share post"].firstMatch
-        XCTAssertTrue(waitFor(share, 12), "Share button not found on profile")
-        forceTap(share)
-        // The screenshot only guards the card if the sheet is actually up —
-        // forceTap's coordinate fallback can land on the row and push post
-        // DETAIL instead. Recover via the detail's own share button, then
-        // hard-require the card before snapping.
-        if !waitFor(app.staticTexts["share this"], 8) {
-            let detailShare = app.buttons["Share post"].firstMatch
-            XCTAssertTrue(waitFor(detailShare, 5), "Share sheet didn't present and no recovery share button found")
-            forceTap(detailShare)
-        }
+        // A ≈500-char post pushes its row's inline share button reliably BELOW
+        // the profile viewport, where exists==true but taps (including
+        // forceTap's coordinate fallback) land off-screen and do nothing. Open
+        // the long post's DETAIL instead — findRow scroll-searches the row into
+        // the safe band — and share from the detail header, which is always
+        // on-screen.
+        let row = findRow(matching: NSPredicate(format: "label CONTAINS 'refrigerator hum'"))
+        XCTAssertNotNil(row, "Long post row not found on profile")
+        guard let row else { return }
+        forceTap(row)
+        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        let detailShare = app.buttons["Share post"].firstMatch
+        XCTAssertTrue(waitFor(detailShare, 8), "Share button not found on detail")
+        forceTap(detailShare)
         XCTAssertTrue(waitFor(app.staticTexts["share this"], 8), "Share card never presented — nothing to screenshot")
         dismissSharingHintIfPresent()
         sleep(1)
@@ -608,9 +628,13 @@ final class WalkthroughUITests: XCTestCase {
         try requireFeed()
         // The ••• menu lives on the post DETAIL header, not on feed rows —
         // open a post first (mirrors test05_postDetailInteractions).
-        let firstPost = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS 'first light, honestly'")).firstMatch
-        XCTAssertTrue(waitFor(firstPost, 10), "No post row found in feed")
+        // Scroll-search like test05 — after test13/13b the fresh long posts
+        // occupy the top of for-you and the seeded row sits below the fold,
+        // where a bare firstMatch query never materializes it.
+        let firstPost = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"))
+        XCTAssertNotNil(firstPost, "No post row found in feed")
+        guard let firstPost else { return }
         forceTap(firstPost)
         XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open (header 'post' missing)")
         sleep(1)

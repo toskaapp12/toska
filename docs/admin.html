@@ -1393,6 +1393,15 @@
                 // the crisisReviewed stamps otherwise ride on the now-world-
                 // readable live doc. Absent == clean for every reader.
                 await updateDoc(doc(db, "posts", postId), {
+                    // 2026-07-17 re-audit (phase 3): restore the post to live,
+                    // matching AdminModerationView.unflag. Every flagged post
+                    // since 2026-05-31 is ALSO pending_review (setPendingReview
+                    // writes flag + hold atomically), so without this the
+                    // "now visible in feeds" toast was wrong — the post stayed
+                    // hidden in the pending queue until separately approved.
+                    // Writing "live" on an already-live legacy doc is a no-op
+                    // for the rules gate (unchanged keys aren't in the diff).
+                    moderationStatus: "live",
                     flagged: deleteField(),
                     concerningContent: deleteField(),
                     flagReason: deleteField(),

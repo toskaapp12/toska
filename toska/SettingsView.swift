@@ -1038,6 +1038,51 @@ struct SettingsView: View {
                     item.removeValue(forKey: "fromUserId")
                     return sanitizeForJSON(item) as? [String: Any] ?? item
                 }
+
+                // Reflections — the user's own anniversary thoughts on their own
+                // posts (2026-07-18 re-audit: authored content previously missing
+                // from the export, contradicting Privacy §8's "everything you've
+                // authored"). They live only under the user's OWN posts (create
+                // rule pins post author == caller) and there's no collection-
+                // group rule for reflections, so walk the just-fetched own posts.
+                var reflections: [[String: Any]] = []
+                for postDoc in postsSnap.documents {
+                    let snap = try await postDoc.reference.collection("reflections")
+                        .document(uid).getDocumentAsync()
+                    if let data = snap.data() {
+                        var item = data
+                        item["postId"] = postDoc.documentID
+                        reflections.append(sanitizeForJSON(item) as? [String: Any] ?? item)
+                    }
+                }
+                payload["reflections"] = reflections
+
+                // Reply engagement indices (mirror liked/saved above; the docs
+                // also carry the reply-text snapshot the app stored for the
+                // "liked" tab), block list (handles are not stored on block
+                // docs; IDs only would leak others' uids, so export just the
+                // count and dates), and presence dates (the streak history —
+                // enumerated in Privacy §7's deletion list, so the export
+                // includes it too).
+                let likedRepliesSnap = try await db.collection("users").document(uid).collection("likedReplies").limit(to: 5000).getDocumentsAsync()
+                payload["likedReplies"] = likedRepliesSnap.documents.map { doc -> [String: Any] in
+                    var item = doc.data()
+                    item["replyId"] = doc.documentID
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
+                }
+                let savedRepliesSnap = try await db.collection("users").document(uid).collection("savedReplies").limit(to: 5000).getDocumentsAsync()
+                payload["savedReplies"] = savedRepliesSnap.documents.map { doc -> [String: Any] in
+                    var item = doc.data()
+                    item["replyId"] = doc.documentID
+                    return sanitizeForJSON(item) as? [String: Any] ?? item
+                }
+                let blockedSnap = try await db.collection("users").document(uid).collection("blocked").limit(to: 5000).getDocumentsAsync()
+                payload["blockedCount"] = blockedSnap.documents.count
+                payload["blockedAt"] = blockedSnap.documents.compactMap {
+                    sanitizeForJSON($0.data()["createdAt"] ?? $0.data()["blockedAt"] ?? NSNull())
+                }
+                let presenceSnap = try await db.collection("users").document(uid).collection("presence").limit(to: 5000).getDocumentsAsync()
+                payload["presenceDates"] = presenceSnap.documents.map { $0.documentID }
             } catch {
                 exportError = "couldn't export all your data — check your connection and try again."
                 print("⚠️ exportData incomplete, not presenting partial file: \(error)")

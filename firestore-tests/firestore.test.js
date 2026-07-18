@@ -2261,6 +2261,18 @@ describe("C-1 (2026-07-17): crisisReplyQueue is admin-only", () => {
       reviewed: 1,
     }));
   });
+  it("DENIED: un-review (true→false) — server-only resurfacing, no unaudited flips", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("crisisReplyQueue").doc("p1_done").set({
+        postId: "p1", replyId: "r9", reviewed: true, reviewedBy: "mod",
+        detectedAt: new Date(),
+      });
+    });
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("crisisReplyQueue").doc("p1_done").update({
+      reviewed: false,
+    }));
+  });
 });
 
 describe("2026-07-17 re-audit: admin attribution pins + widened go-live gate", () => {

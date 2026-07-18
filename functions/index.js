@@ -4769,19 +4769,26 @@ async function writeAuditEntry(entry, dedupeId) {
     if (dedupeId) {
       // Deterministic id keyed on the trigger event so an at-least-once
       // Eventarc redelivery of the same update overwrites the same row
-      // instead of appending a duplicate audit entry. Update triggers don't
-      // retry by default, so redelivery is rare — this just makes it harmless.
+      // instead of appending a duplicate audit entry.
       await col.doc(dedupeId).set(payload);
     } else {
       await col.add(payload);
     }
   } catch (err) {
-    console.error("adminAuditLog write failed:", err.message);
+    // 2026-07-18 re-audit: THROW instead of swallowing. The audit triggers
+    // scrub the attribution stamp right after this call — a swallowed write
+    // failure let the scrub outrun the audit entry, silently losing the
+    // trail. Every audit trigger now carries retry:true, so a transient
+    // failure redelivers the SAME event (before/after unchanged → the
+    // newly-appeared gate re-fires → this write retries, dedupe id keeps it
+    // single) and the scrub only ever runs after the entry has landed.
+    console.error("adminAuditLog write failed (will retry):", err.message);
+    throw err;
   }
 }
 
 exports.auditUserRestriction = onDocumentUpdated(
-  "users/{userId}",
+  { document: "users/{userId}", retry: true },
   async (event) => {
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
@@ -4825,7 +4832,7 @@ exports.auditUserRestriction = onDocumentUpdated(
 // flips `reviewed` on the admin-only crisisReplyQueue entry, so the actor uid
 // can live right on the queue doc and the audit keys on the flip.
 exports.auditCrisisReplyReview = onDocumentUpdated(
-  "crisisReplyQueue/{entryId}",
+  { document: "crisisReplyQueue/{entryId}", retry: true },
   async (event) => {
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
@@ -4843,7 +4850,7 @@ exports.auditCrisisReplyReview = onDocumentUpdated(
 );
 
 exports.auditReportResolution = onDocumentUpdated(
-  "reports/{reportId}",
+  { document: "reports/{reportId}", retry: true },
   async (event) => {
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
@@ -4869,7 +4876,7 @@ exports.auditReportResolution = onDocumentUpdated(
 // (setPendingReview from onPostCreated/onPostUpdated/onReportCreatedAutoHide)
 // do NOT generate audit noise. Writes only to adminAuditLog → no trigger loop.
 exports.auditPostModeration = onDocumentUpdated(
-  "posts/{postId}",
+  { document: "posts/{postId}", retry: true },
   async (event) => {
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
@@ -4965,7 +4972,7 @@ exports.auditPostModeration = onDocumentUpdated(
 // defense-in-depth for the same invariant. Loop-safe: the scrub's own event
 // carries no stamps and returns at the gate.
 exports.auditReplyModeration = onDocumentUpdated(
-  "posts/{postId}/replies/{replyId}",
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
@@ -5004,7 +5011,7 @@ exports.auditReplyModeration = onDocumentUpdated(
 // record who removed it. Author self-deletes (no deletedBy) are recorded as
 // "author".
 exports.auditPostDeletion = onDocumentDeleted(
-  "posts/{postId}",
+  { document: "posts/{postId}", retry: true },
   async (event) => {
     const data = event.data?.data() || {};
     await writeAuditEntry({

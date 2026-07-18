@@ -1491,15 +1491,19 @@ service cloud.firestore {
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['reviewed', 'reviewedAt', 'reviewedBy'])
-        // 2026-07-17 re-audit: (a) `reviewed` must stay a real bool —
-        // auditCrisisReplyReview keys on `=== true`, so a truthy non-bool
-        // (1, "done") would clear the entry from the pending queue WITHOUT
-        // an adminAuditLog entry, a silent gap in the crisis audit trail;
+        // 2026-07-17 re-audit (tightened 07-18): (a) a CHANGED `reviewed` may
+        // only become the literal bool `true` — auditCrisisReplyReview keys on
+        // `=== true`, so a truthy non-bool (1, "done") would clear the entry
+        // from the pending queue WITHOUT an adminAuditLog entry, and an
+        // un-review (true→false) had no audit trail either. No client surface
+        // un-reviews; resurfacing on a crisis EDIT is done by the server
+        // (Admin SDK merge of reviewed:false, bypasses rules), so forbidding
+        // the client-side flip closes the asymmetry outright.
         // (b) reviewedBy (when changed) is pinned to the caller so the
         // audit entry can't attribute the review to a different admin.
         // Mirrors the reports reviewedBy pin and users restrictedBy pin.
-        && (!('reviewed' in request.resource.data.keys())
-            || request.resource.data.reviewed is bool)
+        && (!('reviewed' in request.resource.data.diff(resource.data).affectedKeys())
+            || request.resource.data.reviewed == true)
         && (!('reviewedBy' in request.resource.data.diff(resource.data).affectedKeys())
             || request.resource.data.reviewedBy == request.auth.uid);
       allow delete: if isAdmin();

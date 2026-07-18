@@ -1774,6 +1774,51 @@ document.getElementById("signOutBtn").onclick = async () => {
     location.hash = "#/signin";
 };
 
+// Policy re-acceptance gate (2026-07-18 re-audit): web parity for
+// ContentView's blocking fullScreenCover. A signed-in account whose stored
+// acceptedPolicyVersion is behind POLICY_VERSION must re-accept before the
+// app routes anywhere. Signup stamps the current version, so this only fires
+// for accounts that predate a policy bump. Declining signs out — the account
+// and content persist so they can return and accept later.
+function renderPolicyReacceptGate(uid) {
+    const ck = el("input", { type: "checkbox", id: "reacceptCk" });
+    const err = el("div", {});
+    const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;", disabled: "" }, "i agree and continue");
+    ck.onchange = () => { if (ck.checked) btn.removeAttribute("disabled"); else btn.setAttribute("disabled", ""); };
+    btn.onclick = async () => {
+        if (!ck.checked) return;
+        btn.disabled = true;
+        try {
+            await setDoc(doc(db, "users", uid), {
+                acceptedPolicyVersion: POLICY_VERSION,
+                acceptedPolicyAt: serverTimestamp(),
+            }, { merge: true });
+            // Full re-boot so listeners/badges start on the normal path.
+            location.reload();
+        } catch (e) {
+            err.replaceChildren(errorBox("couldn't save your acceptance — check your connection and try again."));
+            btn.disabled = false;
+        }
+    };
+    mount.replaceChildren(
+        el("div", { class: "auth-card" },
+            el("h1", { style: "font-size:28px;" }, "our terms have changed"),
+            el("p", { class: "note" },
+                "please review and accept the updated ",
+                el("a", { class: "plain", href: "https://www.toskaapp.com/terms.html", target: "_blank" }, "terms of service"),
+                " and ",
+                el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"),
+                " to keep using toska."),
+            el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "reacceptCk" },
+                ck, el("span", {}, "i confirm i'm 17 or older and i accept the updated terms and privacy policy")),
+            err,
+            el("div", { style: "margin-top:6px;" }, btn),
+            el("p", { class: "note", style: "margin-top:20px;" },
+                el("a", { class: "plain", href: "#/signin", onclick: async () => { await signOut(auth); } }, "i don't agree — sign me out")),
+        )
+    );
+}
+
 onAuthStateChanged(auth, async (user) => {
     const prev = me;
     me = user;
@@ -1798,6 +1843,12 @@ onAuthStateChanged(auth, async (user) => {
         }
         if (u.data().confirmedAdult !== true) {
             httpsCallable(functions, "confirmAdult")({}).catch(e => console.warn("confirmAdult deferred", e?.code));
+        }
+        // Block routing until the stored policy version catches up (see
+        // renderPolicyReacceptGate). Missing field reads as 0 → gated.
+        if ((u.data().acceptedPolicyVersion ?? 0) < POLICY_VERSION) {
+            renderPolicyReacceptGate(user.uid);
+            return;
         }
     } catch (e) { console.warn("verify failed, continuing", e?.code); }
     initWrites(db, user.uid);

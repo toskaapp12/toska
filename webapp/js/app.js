@@ -724,7 +724,7 @@ function viewSignUp() {
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "create account");
     btn.onclick = async () => {
         err.replaceChildren();
-        if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 18 or older.")); return; }
+        if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 17 or older.")); return; }
         if (!terms.checked) { err.replaceChildren(errorBox("please read and accept the terms and privacy policy to continue.")); return; }
         btn.disabled = true;
         signupInProgress = true;

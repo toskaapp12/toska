@@ -302,7 +302,12 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: authCodeKey,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            // ThisDeviceOnly (2026-07-19 security pass): the Apple auth code is a
+            // device-local credential — it must never ride an encrypted backup or
+            // migrate to another device. ...ThisDeviceOnly keeps background access
+            // (still available after first unlock) while excluding the item from
+            // backups/restore, closing a cross-device credential-exfil path.
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)

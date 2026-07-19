@@ -1,10 +1,11 @@
 # toska — Privacy Policy
 
-**Version 1.0 — Effective July 17, 2026**
+**Version 2.0 — Effective July 19, 2026**
 **Operator / data controller: SALTE DEVELOPMENT LLC**
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v2.0 (2026-07-19): Co-versioned with Terms of Service v2.0 for joint re-acceptance. No reduction in your privacy: added an explicit Global Privacy Control / Do-Not-Track statement (§8), clarified that we honor opt-out preference signals, and confirmed our breach-notification and data-minimization commitments. Data practices are otherwise unchanged from v1.0.
 > - v1.0 (2026-07-17): First versioned release. Supersedes the web policy dated April 17, 2026. Substantive corrections from that text: removed references to "messages" (direct messages were removed from the app in May 2026 and no message data is collected), corrected the Giphy description (searches are proxied through our server), added the full data inventory (drafts, mood/stage, usage-streak days, prompt responses), stated exact retention windows, and added the "what anonymous actually means" section.
 
 toska is built around pseudonymity. We collect as little as we can, we never sell your data, and this policy is written to match what the code actually does — no more, no less.
@@ -87,7 +88,9 @@ Available to **everyone, in-app, today** — no forms, no email needed:
 - **Analytics opt-out:** Settings → Privacy.
 - **Sharing opt-out:** Settings → Privacy.
 
-If you're in the EU/EEA/UK, these mechanisms are how we honor GDPR access, portability, erasure, and rectification requests; if you're in California, they cover CCPA access and deletion (we do not sell or "share" personal information as the CCPA defines those terms, and we likely fall below the CCPA's covered-business thresholds — we honor the rights regardless). You can also email salte@saltedevelopments.com for anything the in-app tools don't cover, and we'll respond within 30 days. toska is US-based and your data is processed on Google Cloud infrastructure in the United States; by using toska from outside the US you understand your data is transferred there.
+**Do Not Track / Global Privacy Control:** because we do no cross-app or cross-site tracking and serve no advertising, there is nothing to track across sites. We do not sell or "share" personal information, so there is no such activity to opt out of; the in-app analytics opt-out (Settings → Privacy) turns off the only optional collection we do. We treat a browser Global Privacy Control (GPC) or Do-Not-Track signal on our websites as a valid opt-out preference.
+
+If you're in the EU/EEA/UK, these mechanisms are how we honor GDPR access, portability, erasure, and rectification requests; if you're in California, they cover CCPA/CPRA access, deletion, correction, and opt-out rights (we do not sell or "share" personal information as those laws define the terms, and we likely fall below the covered-business thresholds — we honor the rights regardless, and we do not discriminate against you for exercising them). You can also email salte@saltedevelopments.com for anything the in-app tools don't cover, and we'll respond within 30 days. toska is US-based and your data is processed on Google Cloud infrastructure in the United States; by using toska from outside the US you understand your data is transferred there.
 
 ## 9. Legal requests
 

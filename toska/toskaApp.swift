@@ -224,9 +224,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
+// Privacy shield shown over the whole UI whenever the app is not active
+// (2026-07-19 security pass). iOS snapshots the current screen for the app
+// switcher when the app backgrounds/deactivates; for a sensitive anonymous app
+// that snapshot can leak a private post/reply the user was reading or writing.
+// This opaque branded cover ensures the app-switcher card shows only the toska
+// wordmark, never content.
+private struct PrivacyShieldView: View {
+    var body: some View {
+        ZStack {
+            Color(red: 0.043, green: 0.039, blue: 0.063).ignoresSafeArea() // #0b0a10
+            Text("toska")
+                .font(.custom("Newsreader-Medium", size: 34))
+                .foregroundColor(Color(red: 0.427, green: 0.333, blue: 0.788).opacity(0.9))
+        }
+    }
+}
+
 @main
 struct toskaApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
+
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
             WindowGroup {
@@ -252,6 +271,15 @@ struct toskaApp: App {
                     // reachable via the www CNAME.
                     .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                         handleUniversalLink(activity)
+                    }
+                    // App-switcher snapshot privacy: cover the UI the instant the
+                    // scene stops being active so the OS snapshot captures only the
+                    // shield, not the user's content. No animation — it must be in
+                    // place before iOS takes the snapshot.
+                    .overlay {
+                        if scenePhase != .active {
+                            PrivacyShieldView()
+                        }
                     }
             }
         }

@@ -1011,7 +1011,12 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 // consent-gated sharing uses, honest expiring-post mechanics, Texas governing
 // law, $100 liability floor. Bumping this triggers the blocking re-acceptance
 // cover for every user whose acceptedPolicyVersion is lower (ContentView).
-let currentPolicyVersion = 2
+// v3 (2026-07-19): security & legal hardening round — Terms v2.0 adds binding
+// individual arbitration + class-action/jury waiver (30-day opt-out, Texas
+// small-claims + IP carve-outs), hardened warranty/liability/indemnification
+// + release between users + 1-year limitations period; Privacy co-versioned to
+// v2.0 (GPC/DNT statement). Material change → re-acceptance required.
+let currentPolicyVersion = 3
 
 let toskaSupportEmail = "salte@saltedevelopments.com"
 

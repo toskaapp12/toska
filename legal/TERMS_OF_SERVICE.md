@@ -129,7 +129,7 @@ Some jurisdictions don't allow the exclusion of certain warranties or the limita
 
 ## 15. Changes to these terms
 
-We may update these terms. Each version has a number and date. If we make material changes, the app will show you the new version and ask you to accept before you continue using toska; your acceptance (version and timestamp) is recorded on your account. If you decline, you'll be signed out — your account and content are kept so you can return and accept later, or delete your account.
+We may update these terms **at any time, in our sole discretion.** Each version has a number and date. If we make material changes, the app will show you the new version and ask you to accept before you continue using toska; your acceptance (version and timestamp) is recorded on your account. Non-material changes take effect when posted, and your continued use of toska means you accept the current terms. If you decline, you'll be signed out — your account and content are kept so you can return and accept later, or delete your account.
 
 ## 16. Apple App Store terms
 

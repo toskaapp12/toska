@@ -378,8 +378,13 @@ final class WalkthroughUITests: XCTestCase {
 
     func test05_postDetailInteractions() throws {
         try requireFeed()
-        // Post rows are Buttons labelled "handle, age, text, tag" — open the
-        // first, scroll-searching (the seeded post can sit below the fold).
+        // Fixture: a post containing "first light, honestly" authored by a
+        // DIFFERENT account (test05 likes it, test14 reports it — both are blocked
+        // on your own post: self-like guard + report hidden on own-post). Seed it
+        // FRESH before the suite so feed drift can't bury it below findRow's
+        // bounded scroll-search:
+        //   cd firestore-tests && node seed-walkthrough-fixtures.mjs
+        // Post rows are Buttons labelled "handle, age, text, tag".
         let firstPost = findRow(matching: NSPredicate(
             format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"))
         XCTAssertNotNil(firstPost, "No post row found in feed")
@@ -628,9 +633,9 @@ final class WalkthroughUITests: XCTestCase {
         try requireFeed()
         // The ••• menu lives on the post DETAIL header, not on feed rows —
         // open a post first (mirrors test05_postDetailInteractions).
-        // Scroll-search like test05 — after test13/13b the fresh long posts
-        // occupy the top of for-you and the seeded row sits below the fold,
-        // where a bare firstMatch query never materializes it.
+        // Requires the "first light, honestly" fixture authored by a DIFFERENT
+        // account (report is hidden on your own post) and seeded FRESH so feed
+        // drift doesn't bury it: `node firestore-tests/seed-walkthrough-fixtures.mjs`.
         let firstPost = findRow(matching: NSPredicate(
             format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"))
         XCTAssertNotNil(firstPost, "No post row found in feed")

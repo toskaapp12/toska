@@ -22,6 +22,13 @@ struct ExplorePost {
             if blockedUserIds.contains(authorId) { throw ExplorePostError.blocked }
             if let originalAuthorId = data["originalAuthorId"] as? String,
                blockedUserIds.contains(originalAuthorId) { throw ExplorePostError.blocked }
+            // Parity with the main feed's filterBlocked, which drops flagged==true
+            // posts (2026-07-19 audit): explore/search/trending queried only on
+            // moderationStatus, so a server-flagged-but-still-live post would slip
+            // onto discovery surfaces the feed hides. Not reachable today (every
+            // flag path also sets pending_review and the go-live rule forbids
+            // live+flagged), but kept in parity as defense-in-depth.
+            if data["flagged"] as? Bool == true { throw ExplorePostError.blocked }
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         self.id = doc.documentID
         self.handle = data["authorHandle"] as? String ?? "anonymous"

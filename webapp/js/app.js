@@ -767,7 +767,7 @@ function viewSignUp() {
             el("div", { class: "field" }, el("label", {}, "email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pwField(pw)),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "adultCk" },
-                adult, el("span", {}, "i confirm i'm 18 or older")),
+                adult, el("span", {}, "i confirm i'm 17 or older")),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:10px 0 14px; cursor:pointer;", for: "termsCk" },
                 terms, el("span", {},
                     "i have read and agree to the ",

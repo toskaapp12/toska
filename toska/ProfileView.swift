@@ -1898,6 +1898,15 @@ fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost?
     if let expiresAt = (data["expiresAt"] as? Timestamp)?.dateValue(), expiresAt <= Date() {
         return nil
     }
+    // Block filter (M-2, 2026-07-19 audit): the feed/explore/profile surfaces all
+    // strip a blocked author's content, but the saved/liked reverse indices did
+    // not — a post the viewer saved or liked BEFORE blocking its author kept
+    // rendering in those tabs (and opened in PostDetailView). Single choke point:
+    // both loaders and the per-doc fallback build rows through here. Covers
+    // reposts via originalAuthorId (the byline the row renders).
+    if BlockedUsersCache.shared.isBlocked(data["authorId"] as? String ?? "") { return nil }
+    if let originalAuthorId = data["originalAuthorId"] as? String,
+       BlockedUsersCache.shared.isBlocked(originalAuthorId) { return nil }
     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
     return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
 }

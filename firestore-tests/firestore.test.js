@@ -302,6 +302,35 @@ describe("baseline sanity", () => {
   });
 });
 
+describe("post create: gifUrl host-lock (audit 2026-07-19)", () => {
+  beforeEach(async () => { await setUserDoc("alice"); });
+
+  function postWithGif(gifUrl) {
+    return env.authenticatedContext("alice").firestore()
+      .collection("posts").doc("g1").set({
+        authorId: "alice", authorHandle: "handle_alice", text: "with a gif",
+        createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+        gifUrl,
+      });
+  }
+
+  it("allows a real giphy gifUrl", async () => {
+    await assertSucceeds(postWithGif("https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/giphy.gif"));
+  });
+  it("allows a giphy subdomain variant (i.giphy.com)", async () => {
+    await assertSucceeds(postWithGif("https://i.giphy.com/media/xyz/200.gif"));
+  });
+  it("DENIES a non-giphy gifUrl (viewer-IP beacon)", async () => {
+    await assertFails(postWithGif("https://evil.example.com/beacon.gif"));
+  });
+  it("DENIES a look-alike host (evilgiphy.com)", async () => {
+    await assertFails(postWithGif("https://evilgiphy.com/x.gif"));
+  });
+  it("DENIES a data: URI gifUrl", async () => {
+    await assertFails(postWithGif("data:image/gif;base64,AAAAAAAA"));
+  });
+});
+
 describe("post create: expiresAt bounded to the near future (audit 2026-07-17)", () => {
   // expiresAt is computed from the DEVICE clock (whisper +1h, midnight ≤
   // ~24h+DST). The rule bounds it to request.time + 26h so a skewed clock or

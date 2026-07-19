@@ -1445,7 +1445,7 @@
         async function unrestrictUser(userId) {
             if (!confirm("unrestrict this user? they'll be able to post again.")) return;
             try {
-                await updateDoc(doc(db, "users", userId), { restricted: false, restrictedAt: serverTimestamp(), restrictedBy: auth.currentUser.uid });
+                await updateDoc(doc(db, "users", userId), { restricted: false, restrictedAt: serverTimestamp(), restrictedBy: auth.currentUser.uid, restrictedUntil: deleteField() });
                 document.getElementById(`user-${userId}`)?.remove();
                 refreshCounts();
                 showToast("user unrestricted");

@@ -236,6 +236,12 @@ struct PostDetailView: View {
                             }
                             fetchReplies()
                             if !authorId.isEmpty {
+                                // M-2 (2026-07-19 audit): opening a thread whose
+                                // author you've already blocked (e.g. from the
+                                // Saved/Liked tab) must not render their content.
+                                // The .userBlocked receiver only covers blocking
+                                // WHILE viewing; this covers already-blocked-on-open.
+                                if BlockedUsersCache.shared.isBlocked(authorId) { dismiss(); return }
                                 authorUserId = authorId
                                 isAuthorIdLoading = false
                             } else {
@@ -1747,6 +1753,10 @@ struct PostDetailView: View {
                     return
                 }
                 authorUserId = data["authorId"] as? String ?? ""
+                // M-2 (2026-07-19 audit): the post whose author we just resolved
+                // may be one the viewer already blocked (opened by id with no
+                // author passed in). Leave rather than render blocked content.
+                if !authorUserId.isEmpty, BlockedUsersCache.shared.isBlocked(authorUserId) { dismiss(); return }
                 isAuthorIdLoading = false
             }
         }

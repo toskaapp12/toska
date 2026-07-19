@@ -862,6 +862,17 @@ service cloud.firestore {
             || request.resource.data.tag in [
                  'longing', 'numb', 'anger', 'regret', 'acceptance',
                  'confusion', 'unsent', 'moving on', 'still love you'])
+        // gifUrl host-lock (2026-07-19 audit): gifUrl is rendered as an image by
+        // every viewer's client. The web is protected by an img-src CSP, but iOS
+        // has no CSP — a tampered client could store gifUrl = an attacker URL and
+        // every iOS viewer's device would fetch it, leaking viewer IPs (a
+        // deanonymization beacon in an anonymity-first app). Constrain to a giphy
+        // host + length cap; both legit writers only ever store giphyProxy media
+        // URLs (https://media*.giphy.com/...). Optional: absent is allowed.
+        && (!('gifUrl' in request.resource.data.keys())
+            || (request.resource.data.gifUrl is string
+                && request.resource.data.gifUrl.size() <= 500
+                && request.resource.data.gifUrl.matches('https://([a-z0-9-]+[.])+giphy[.]com/.*')))
         // createdAt pinned to server time. Drafts/circles/reports already
         // enforce this; the three highest-volume write paths (posts/replies/
         // messages) didn't, which let a tampered client backdate posts to
@@ -1186,6 +1197,13 @@ service cloud.firestore {
           && (!('authorHandle' in request.resource.data.keys())
               || request.resource.data.authorHandle ==
                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle)
+          // gifUrl host-lock — mirrors the post-create clause (2026-07-19 audit):
+          // constrain a reply's gifUrl to a giphy host + length cap so a tampered
+          // client can't turn it into a viewer-IP beacon on iOS (no CSP there).
+          && (!('gifUrl' in request.resource.data.keys())
+              || (request.resource.data.gifUrl is string
+                  && request.resource.data.gifUrl.size() <= 500
+                  && request.resource.data.gifUrl.matches('https://([a-z0-9-]+[.])+giphy[.]com/.*')))
           && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         // Text-size cap mirrored from create. Without it, an author could
         // edit a 500-char reply into multi-KB content and bypass both the

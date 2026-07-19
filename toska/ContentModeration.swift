@@ -1137,9 +1137,11 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "curb stomp", "slit your throat", "bash your head",
         "put a bullet", "put you in the ground",
     ]
-    for phrase in threatPhrases {
-        if normalized.contains(phrase) { return .threat }
-    }
+    // Route through crisisPhraseMatch (2026-07-19 audit) so threat detection has
+    // the SAME de-leet/de-confusable/de-space normalization the server applies via
+    // matchesCrisisPhrase(MOD_THREAT) — otherwise obfuscated threats the server
+    // holds ("k i l l you", leet forms) passed the client with no warning.
+    if crisisPhraseMatch(text, threatPhrases) { return .threat }
 
     // --- Directed self-harm encouragement (not emotional venting) ---
     let harassmentPhrases = [
@@ -1154,12 +1156,10 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "go away and never come back",
         "no one will miss you", "noone will miss you",
     ]
-    for phrase in harassmentPhrases {
-        if normalized.contains(phrase) { return .harassment }
-    }
-    for phrase in harassmentPhrases {
-        if noSpaces.contains(phrase.replacingOccurrences(of: " ", with: "")) { return .harassment }
-    }
+    // Same parity fix as threat above: matchesCrisisPhrase(MOD_HARASSMENT) on the
+    // server de-leets/de-spaces, so "ky5" / "k i l l yourself" were held server-
+    // side but slipped the client's plain contains(). crisisPhraseMatch mirrors it.
+    if crisisPhraseMatch(text, harassmentPhrases) { return .harassment }
 
     // --- Sexual content ---
     let sexualPatterns = [

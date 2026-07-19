@@ -21,6 +21,14 @@ enum ShareConsent {
                                isMidnight: Bool) -> URL? {
         guard isShareable, !isLetter, !isWhisper, !isMidnight,
               !postId.isEmpty else { return nil }
+        // Reply-repost rows carry {reposterUid}_replyrepost_{replyId}: there is
+        // no /p/ POST target for a reposted reply (the reply isn't a standalone
+        // shareable post), and the id embeds the reposter's uid. The "_repost_"
+        // strip below does NOT match "_replyrepost_" (the char before "repost" is
+        // "y"), so without this guard the raw uid-bearing id rode the public URL —
+        // the same anonymity leak the "_repost_" strip closes for post-reposts.
+        // Suppress the public link entirely, exactly as replies do.
+        if postId.contains("_replyrepost_") { return nil }
         // Repost rows carry the composite doc id ({reposterUid}_repost_{originalId}).
         // The server 301s it to the original anyway, but the composite id embeds
         // the reposter's uid — identity never rides a public URL, so link straight

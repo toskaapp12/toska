@@ -226,6 +226,12 @@ struct ContentView: View {
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftText)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.composeDraftTag)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.pushPrimerShown)
+            // 2026-07-19 audit: device-global keys that leaked across accounts on a
+            // shared device. hasBeenAskedForReview let account B inherit A's "already
+            // asked for App Store review" throttle; savedScrollPostId left B's feed
+            // anchored at A's last-viewed post. Scrub both on sign-out.
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.hasBeenAskedForReview)
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.savedScrollPostId)
         }
         .onReceive(NotificationCenter.default.publisher(for: .authSessionExpired)) { _ in
             verifyTask?.cancel()

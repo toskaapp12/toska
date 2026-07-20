@@ -3170,6 +3170,14 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
     notification: { title, body }, data: dataPayload, tokens,
   });
   console.log(`${logLabel}: sent to ${resp.successCount}/${tokens.length} admin devices`);
+  // Log the per-token failure reason. This is a safety-critical path — when a
+  // crisis page can't be delivered, the SPECIFIC FCM error (APNs credential vs
+  // unregistered token vs sender mismatch) is what an operator needs to fix it.
+  resp.responses.forEach((r, i) => {
+    if (!r.success) {
+      console.warn(`${logLabel}: token[${i}] send failed: ${r.error?.code} — ${(r.error?.message || "").slice(0, 160)}`);
+    }
+  });
   if (resp.successCount === 0) {
     throw new Error(`${logLabel}: all ${tokens.length} sends failed`);
   }

@@ -157,6 +157,7 @@ struct SavedReply: Identifiable, Equatable {
     let postId: String      // parent post id (for navigation on tap)
     let replyText: String
     let replyHandle: String
+    let authorId: String    // MED-P3-1: reply author uid, for block-filtering the Saved tab ("" if pre-fix doc)
     let savedAt: Date
 }
 
@@ -170,6 +171,7 @@ struct LikedReply: Identifiable, Equatable {
     let postId: String
     let replyText: String
     let replyHandle: String
+    let authorId: String    // MED-P3-1: reply author uid, for block-filtering the Liked tab ("" if pre-fix doc)
     let likedAt: Date
 }
 

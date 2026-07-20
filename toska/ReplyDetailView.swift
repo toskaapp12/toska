@@ -332,6 +332,16 @@ struct ReplyDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
             dismiss()
         }
+        // LOW-P3-5 (2026-07-20 launch audit): if the FOCAL reply's author gets
+        // blocked (from this view's block button, or elsewhere while open),
+        // leave — the snapshot only re-filters CHILDREN, so the focal node would
+        // otherwise keep rendering a blocked author. Mirrors PostDetailView:279.
+        .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+            if let blockedId = notif.userInfo?["userId"] as? String,
+               !blockedId.isEmpty, blockedId == replyAuthorId {
+                dismiss()
+            }
+        }
         .hidesAppTabBar()
         .overlay {
             if showGentleCheck {
@@ -689,6 +699,7 @@ struct ReplyDetailView: View {
         PostInteractionManager.toggleReplySave(
             postId: postId, replyId: child.id,
             replyText: child.text, replyHandle: child.handle,
+            replyAuthorId: child.authorId,
             currentlySaved: child.isSaved
         ) { newSaved in
             mutateChild(child.id) { $0.isSaved = newSaved }
@@ -731,6 +742,7 @@ struct ReplyDetailView: View {
         PostInteractionManager.toggleReplySave(
             postId: postId, replyId: reply.id,
             replyText: replyText, replyHandle: replyHandle,
+            replyAuthorId: replyAuthorId,
             currentlySaved: isSaved
         ) { newSaved in
             isSaved = newSaved

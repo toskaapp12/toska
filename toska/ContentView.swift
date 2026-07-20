@@ -255,6 +255,12 @@ struct ContentView: View {
             // Mirror the explicit sign-out path: clear the push-primer flag so the
             // next account on this shared device gets a fresh primer.
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.pushPrimerShown)
+            // LOW-P3-3 (2026-07-20 launch audit): the explicit sign-out path also
+            // clears these two, but the expiry path missed them — so on a shared
+            // device a token-expiry logout let the next account inherit User A's
+            // App-Store-review throttle and land at A's last-viewed post. Mirror it.
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.hasBeenAskedForReview)
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.savedScrollPostId)
             // Invalidate the FCM device token. Unlike the explicit sign-out paths,
             // expiry has no chance to await the wipe while authenticated — but
             // clearFCMToken's deleteToken step is auth-free and rotates the device

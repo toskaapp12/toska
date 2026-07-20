@@ -491,6 +491,29 @@ describe("Schema locks: owner-tree reverse indices reject scratch fields", () =>
       postId: "p1", replyText: "be kind", replyHandle: "handle_x", createdAt: serverTimestamp(), trusted: true,
     }));
   });
+  // MED-P3-1 (2026-07-20 launch audit): authorId is now an accepted OPTIONAL
+  // field on the reply reverse indices so the Saved/Liked tabs can block-filter.
+  it("MED-P3-1: likedReplies create WITH authorId is accepted", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertSucceeds(db.collection("users").doc("u").collection("likedReplies").doc("r1").set({
+      postId: "p1", replyText: "be kind", replyHandle: "handle_x", authorId: "victimUid", createdAt: serverTimestamp(),
+    }));
+  });
+  it("MED-P3-1: savedReplies create WITH authorId is accepted", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertSucceeds(db.collection("users").doc("u").collection("savedReplies").doc("r1").set({
+      postId: "p1", replyText: "be kind", replyHandle: "handle_x", authorId: "victimUid", createdAt: serverTimestamp(),
+    }));
+  });
+  it("MED-P3-1: likedReplies authorId must be a string (non-string DENIED)", async () => {
+    await seedUser("u");
+    const db = env.authenticatedContext("u").firestore();
+    await assertFails(db.collection("users").doc("u").collection("likedReplies").doc("r1").set({
+      postId: "p1", replyText: "be kind", replyHandle: "handle_x", authorId: 123, createdAt: serverTimestamp(),
+    }));
+  });
   it("savedReplies create with an oversized replyText is DENIED", async () => {
     await seedUser("u");
     const db = env.authenticatedContext("u").firestore();

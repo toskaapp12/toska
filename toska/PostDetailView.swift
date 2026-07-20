@@ -815,28 +815,35 @@ struct PostDetailView: View {
                            .accessibilityLabel("Reply")
                            .frame(maxWidth: .infinity)
 
-                           Button { toggleLike() } label: {
-                               Image(systemName: isLiked ? "heart.fill" : "heart")
-                                   .font(.system(size: 15, weight: isLiked ? .medium : .light))
-                                   .foregroundColor(isLiked ? Color.toskaWhisperPink : Color.toskaTextLight)
-                           }
-                           .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                           .accessibilityValue("\(formatFull(likeCount)) people felt this")
-                           .frame(maxWidth: .infinity)
+                           // LOW-P3-7 (2026-07-20 launch audit): hide like + repost
+                           // on your OWN post. Both are no-ops on own content
+                           // (PostInteractionManager guards + rules deny self-like/
+                           // self-repost), and the reply row already hides them on
+                           // own replies — this makes the post row consistent.
+                           if !isOwnPost {
+                               Button { toggleLike() } label: {
+                                   Image(systemName: isLiked ? "heart.fill" : "heart")
+                                       .font(.system(size: 15, weight: isLiked ? .medium : .light))
+                                       .foregroundColor(isLiked ? Color.toskaWhisperPink : Color.toskaTextLight)
+                               }
+                               .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                               .accessibilityValue("\(formatFull(likeCount)) people felt this")
+                               .frame(maxWidth: .infinity)
 
-                           Button { repostPost() } label: {
-                               Image(systemName: "arrow.2.squarepath")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isReposted ? Color.toskaMovingOnGreen : Color.toskaTextLight)
+                               Button { repostPost() } label: {
+                                   Image(systemName: "arrow.2.squarepath")
+                                       .font(.system(size: 15, weight: .light))
+                                       .foregroundColor(isReposted ? Color.toskaMovingOnGreen : Color.toskaTextLight)
+                               }
+                               .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+                               .frame(maxWidth: .infinity)
+                               // Whispers can't be reposted (ephemeral — the copy would
+                               // outlive the original). Midnight posts are caught by the
+                               // tap-time fetch in PostInteractionManager.repost; the
+                               // detail view doesn't carry that flag.
+                               .disabled(isWhisper)
+                               .opacity(isWhisper ? 0.3 : 1.0)
                            }
-                           .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
-                           .frame(maxWidth: .infinity)
-                           // Whispers can't be reposted (ephemeral — the copy would
-                           // outlive the original). Midnight posts are caught by the
-                           // tap-time fetch in PostInteractionManager.repost; the
-                           // detail view doesn't carry that flag.
-                           .disabled(isWhisper)
-                           .opacity(isWhisper ? 0.3 : 1.0)
 
                            Button { toggleSave() } label: {
                                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
@@ -1580,6 +1587,7 @@ struct PostDetailView: View {
             replyId: reply.id,
             replyText: reply.text,
             replyHandle: reply.handle,
+            replyAuthorId: reply.authorId,
             currentlySaved: currentlySaved
         ) { newSaved in
             mutateReplyInTree(replyId: replyId) { r in

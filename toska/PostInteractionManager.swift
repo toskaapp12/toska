@@ -758,12 +758,16 @@ class PostInteractionManager {
         // Same trade-off as toggleReplySave — stale on reply edit, acceptable
         // for v1.0. The tap path fetches fresh parent-post data so the
         // thread view always reflects current state.
-        let likedReplyPayload: [String: Any] = [
+        var likedReplyPayload: [String: Any] = [
             "postId": postId,
             "replyText": replyText,
             "replyHandle": replyHandle,
             "createdAt": FieldValue.serverTimestamp()
         ]
+        // MED-P3-1: snapshot the reply author's uid so the "liked" tab can drop
+        // this row once the owner blocks that author (the block promise covers
+        // replies too). Owner-only doc; rules allow the optional field.
+        if !replyAuthorId.isEmpty { likedReplyPayload["authorId"] = replyAuthorId }
 
         // Optimistic update
         onUpdate(LikeResult(isLiked: newLiked, newCount: newCount))
@@ -817,6 +821,7 @@ class PostInteractionManager {
         replyId: String,
         replyText: String,
         replyHandle: String,
+        replyAuthorId: String = "",
         currentlySaved: Bool,
         onUpdate: @escaping (Bool) -> Void
     ) {
@@ -852,12 +857,15 @@ class PostInteractionManager {
         // reply doc. Stale-on-edit is an accepted trade-off for v1.0 —
         // the alternative (fetch the reply on every saved-tab load) is
         // ~N extra reads per visit and reply text edits are rare.
-        let savePayload: [String: Any] = [
+        var savePayload: [String: Any] = [
             "postId": postId,
             "replyText": replyText,
             "replyHandle": replyHandle,
             "createdAt": FieldValue.serverTimestamp()
         ]
+        // MED-P3-1: snapshot the reply author's uid so the "saved" tab can drop
+        // this row once the owner blocks that author. Owner-only; optional.
+        if !replyAuthorId.isEmpty { savePayload["authorId"] = replyAuthorId }
 
         db.runTransaction({ transaction, errorPointer in
             let existing: DocumentSnapshot

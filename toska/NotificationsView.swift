@@ -335,6 +335,16 @@ struct NotificationsView: View {
             stopListeningToNotifications()
             notifications = []
         }
+        // LOW-P3-4 (2026-07-20 launch audit): re-filter on an in-session block,
+        // mirroring the feed (FeedView.swift:465). The snapshot map filters
+        // blocked actors, but a block landing while sitting on this tab left the
+        // blocked user's existing rows on screen until the next delta. Prune in
+        // place now so they drop immediately.
+        .onReceive(NotificationCenter.default.publisher(for: .userBlocked)) { notif in
+            if let userId = notif.userInfo?["userId"] as? String, !userId.isEmpty {
+                notifications.removeAll { $0.fromUserId == userId }
+            }
+        }
         // Tap-active-bell-to-pop-to-root. MainTabView posts this when the
         // bell is tapped while .notifications is already the selected tab.
         // Reset every push / sheet binding here so the user lands back on

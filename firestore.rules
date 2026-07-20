@@ -61,20 +61,22 @@ service cloud.firestore {
     }
 
     // Server-side enforcement of the adult-confirmation gate. iOS displays
-    // an age-confirmation gate during OnboardingView before the first post,
-    // and recordPolicyAcceptance() writes `confirmedAdult: true` on the
-    // user doc once the user accepts. Previously these checks ran only on
-    // the iOS client — a tampered build that skipped OnboardingView could
-    // post without ever seeing (let alone confirming) the adult-content
-    // notice. This function moves that enforcement to the rules layer so
-    // every "publishing" write (post / reply / DM message / circle
-    // message) requires the field to be true on the caller's user doc.
+    // an age-confirmation gate during OnboardingView before the first post.
+    // confirmedAdult is SERVER-OWNED: the ONLY writer is the confirmAdult
+    // Cloud Function (Admin SDK, bypasses rules), invoked after the age gate;
+    // the client can never write confirmedAdult/confirmedAdultAt itself (the
+    // create rule denies it at :277 and the update deny-list forbids it at
+    // :311). Previously these checks ran only on the iOS client — a tampered
+    // build that skipped OnboardingView could post without ever seeing (let
+    // alone confirming) the adult-content notice. This function moves that
+    // enforcement to the rules layer so every "publishing" write (post /
+    // reply) requires the field to be true on the caller's user doc.
     //
     // NOT applied to: user-doc create (the doc has to exist before
-    // confirmedAdult can be set), user-doc update (so OnboardingView can
-    // set it), likes/saves/follows/blocks (consumption + relationship
-    // actions, not publishing), notifications (already covered by per-
-    // type predicates).
+    // confirmedAdult can be set), user-doc update (the client updates other
+    // fields; confirmedAdult stays server-only), likes/saves/follows/blocks
+    // (consumption + relationship actions, not publishing), notifications
+    // (already covered by per-type predicates).
     //
     // Costs: shares the same get() lookup as notRestricted() within a
     // single rule evaluation, so per-write Firestore read cost is unchanged.
@@ -637,29 +639,41 @@ service cloud.firestore {
       // a user's reply-engagement history is theirs and only theirs.
       // Schema locks (2026-06-11 security re-review, defense-in-depth): the
       // reply reverse indices carry { postId, replyText, replyHandle,
-      // createdAt } (PostInteractionManager). hasOnly + size caps + the
-      // request.time pin stop scratch-field injection and oversized-payload
-      // storage abuse in the owner's own tree.
+      // authorId, createdAt } (PostInteractionManager). hasOnly + size caps +
+      // the request.time pin stop scratch-field injection and oversized-
+      // payload storage abuse in the owner's own tree.
+      // MED-P3-1 (2026-07-20 launch audit): `authorId` (the reply author's uid)
+      // is OPTIONAL and snapshotted at save/like time so the Saved/Liked tabs
+      // can drop a reply once the owner blocks its author — closing the gap
+      // where a blocked author's saved/liked REPLY kept rendering (the promise
+      // is "you won't see their posts OR replies"). Owner-only data, so no pin
+      // is needed: a wrong authorId only mis-filters the owner's OWN view (no
+      // cross-user impact). Pre-fix docs lack the field and simply aren't
+      // block-filterable (they render as before) — a benign, self-healing tail.
       match /likedReplies/{replyId} {
         allow read, delete: if isOwner(userId);
         allow create: if isOwner(userId)
-          && request.resource.data.keys().hasOnly(['postId', 'replyText', 'replyHandle', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['postId', 'replyText', 'replyHandle', 'authorId', 'createdAt'])
           && request.resource.data.createdAt == request.time
           && request.resource.data.replyText is string
           && request.resource.data.replyText.size() <= 500
           && request.resource.data.replyHandle is string
-          && request.resource.data.replyHandle.size() <= 40;
+          && request.resource.data.replyHandle.size() <= 40
+          && (!('authorId' in request.resource.data.keys())
+              || request.resource.data.authorId is string);
       }
 
       match /savedReplies/{replyId} {
         allow read, delete: if isOwner(userId);
         allow create: if isOwner(userId)
-          && request.resource.data.keys().hasOnly(['postId', 'replyText', 'replyHandle', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['postId', 'replyText', 'replyHandle', 'authorId', 'createdAt'])
           && request.resource.data.createdAt == request.time
           && request.resource.data.replyText is string
           && request.resource.data.replyText.size() <= 500
           && request.resource.data.replyHandle is string
-          && request.resource.data.replyHandle.size() <= 40;
+          && request.resource.data.replyHandle.size() <= 40
+          && (!('authorId' in request.resource.data.keys())
+              || request.resource.data.authorId is string);
       }
 
       match /blocked/{blockedId} {

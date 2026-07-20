@@ -27,9 +27,9 @@ export const FIREBASE_CONFIG = IS_PROD ? PROD : STAGING;
 // reCAPTCHA Enterprise site key — App Check (prod only; staging is unenforced).
 export const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
 
-// Keep in lockstep with the iOS app's currentPolicyVersion.
-// v2 (2026-07-17): legal v1.0 shipped (17+, Texas, liability cap, no-AI-
-// training). The signup consent links to the CURRENT terms/privacy pages, so
-// stamping the current number is correct — lagging at 1 made every web signup
-// redundantly re-accept the same policy on their first iOS launch.
+// Keep in lockstep with the iOS app's currentPolicyVersion (= 3).
+// v3 (2026-07-19): Terms/Privacy v2.0 (binding arbitration §14, GPC/DNT). The
+// signup consent links to the CURRENT terms/privacy pages, so stamping the
+// current number is correct — lagging behind made every web signup redundantly
+// re-accept the same policy on their first iOS launch.
 export const POLICY_VERSION = 3;

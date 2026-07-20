@@ -791,12 +791,18 @@ struct ProfileView: View {
             let results: [SavedReply] = snap.documents.compactMap { doc in
                 let data = doc.data()
                 guard let postId = data["postId"] as? String, !postId.isEmpty else { return nil }
+                let authorId = data["authorId"] as? String ?? ""
+                // MED-P3-1: drop a saved reply whose author the owner has blocked
+                // (the block promise covers replies). Pre-fix docs have no
+                // authorId ("") and aren't filterable — they render as before.
+                if !authorId.isEmpty, BlockedUsersCache.shared.isBlocked(authorId) { return nil }
                 let savedAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 return SavedReply(
                     id: doc.documentID,
                     postId: postId,
                     replyText: data["replyText"] as? String ?? "",
                     replyHandle: data["replyHandle"] as? String ?? "anonymous",
+                    authorId: authorId,
                     savedAt: savedAt
                 )
             }
@@ -887,12 +893,17 @@ struct ProfileView: View {
             let results: [LikedReply] = snap.documents.compactMap { doc in
                 let data = doc.data()
                 guard let postId = data["postId"] as? String, !postId.isEmpty else { return nil }
+                let authorId = data["authorId"] as? String ?? ""
+                // MED-P3-1: drop a liked reply whose author the owner has blocked.
+                // Pre-fix docs have no authorId ("") and render as before.
+                if !authorId.isEmpty, BlockedUsersCache.shared.isBlocked(authorId) { return nil }
                 let likedAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 return LikedReply(
                     id: doc.documentID,
                     postId: postId,
                     replyText: data["replyText"] as? String ?? "",
                     replyHandle: data["replyHandle"] as? String ?? "anonymous",
+                    authorId: authorId,
                     likedAt: likedAt
                 )
             }

@@ -294,12 +294,19 @@ struct OnboardingView: View {
                     // Mark the user adult-confirmed via the confirmAdult
                     // Cloud Function. firestore.rules denies clients from
                     // writing `confirmedAdult` directly, so this is the
-                    // only legitimate path. Failure is logged but does
-                    // not block progression — the next launch's
-                    // checkAcceptanceStatus will re-show the gate if the
-                    // server write didn't land.
+                    // only legitimate path.
+                    // MED-P3-2 (2026-07-20 launch audit): mirror CreateAccountView —
+                    // set the recentlyConfirmedAdult flag AND kick off the awaited
+                    // call (which retries once on the signup-race). Previously this
+                    // used the flag-less fire-and-forget, so a SIWA/Google user's
+                    // first post could hit hasConfirmedAdult() before the field
+                    // landed. The policy-acceptance screen that follows gives the
+                    // call time to complete; ComposeView's post-tap retry
+                    // (ComposeView.swift:1171) is the final backstop.
                     if let uid = Auth.auth().currentUser?.uid {
-                        confirmAdultServerSideFireAndForget(uid: uid)
+                        UserDefaults.standard.set(
+                            true, forKey: UserDefaultsKeys.recentlyConfirmedAdult(uid: uid))
+                        Task { try? await confirmAdultServerSide(uid: uid) }
                     }
                     showAgeGate = false
                     showPolicyAcceptance = true

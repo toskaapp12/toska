@@ -23,8 +23,9 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "toska-test";
 
 const fns = require("../functions/index.js");
 const { __test } = fns;
-const { db, FieldValue, setReplyPendingReview, setReplyLive, cleanupLikesForUid,
+const { db, FieldValue, Timestamp, setReplyPendingReview, setReplyLive, cleanupLikesForUid,
         cleanupRepliesForUid, clearPostSubtree, claimedTransaction, checkRateLimit,
+        pruneNotificationsOlderThan,
         isPostExplicitCrisis, isPostConcerning, computePostFlagReason,
         computeReplyFlagReason } = __test;
 
@@ -46,6 +47,39 @@ function replyRef(postId, replyId) {
 }
 
 beforeEach(async () => { await clearFirestore(); });
+
+// ─────────────────────────────────────────────────────────────────────
+// MED-1 fix: pruneOldNotifications — 90-day inbox retention (privacy policy)
+// ─────────────────────────────────────────────────────────────────────
+describe("MED-1 pruneNotificationsOlderThan", () => {
+  it("deletes notifications older than the cutoff, keeps recent ones, across users (collectionGroup)", async () => {
+    const old = Timestamp.fromDate(new Date(Date.now() - 100 * 24 * 60 * 60 * 1000)); // 100d
+    const recent = Timestamp.fromDate(new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)); // 10d
+    await db.collection("users").doc("alice").collection("notifications").doc("n_old")
+      .set({ type: "like", fromUserId: "x", createdAt: old });
+    await db.collection("users").doc("alice").collection("notifications").doc("n_new")
+      .set({ type: "like", fromUserId: "x", createdAt: recent });
+    await db.collection("users").doc("bob").collection("notifications").doc("n_old2")
+      .set({ type: "reply", fromUserId: "y", message: "old preview", createdAt: old });
+
+    const cutoff = Timestamp.fromDate(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
+    const { totalDeleted } = await pruneNotificationsOlderThan(cutoff);
+
+    assert.strictEqual(totalDeleted, 2, "both old notifications (across both users) pruned");
+    assert.strictEqual((await db.collection("users").doc("alice").collection("notifications").doc("n_old").get()).exists, false, "alice old gone");
+    assert.strictEqual((await db.collection("users").doc("bob").collection("notifications").doc("n_old2").get()).exists, false, "bob old gone (with its message preview)");
+    assert.strictEqual((await db.collection("users").doc("alice").collection("notifications").doc("n_new").get()).exists, true, "recent kept");
+  });
+
+  it("is a no-op when nothing is older than the cutoff", async () => {
+    await db.collection("users").doc("alice").collection("notifications").doc("n1")
+      .set({ type: "like", fromUserId: "x", createdAt: Timestamp.now() });
+    const cutoff = Timestamp.fromDate(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
+    const { totalDeleted } = await pruneNotificationsOlderThan(cutoff);
+    assert.strictEqual(totalDeleted, 0);
+    assert.strictEqual((await db.collection("users").doc("alice").collection("notifications").doc("n1").get()).exists, true);
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // M-1: setReplyPendingReview — recoverable hold

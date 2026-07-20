@@ -3505,6 +3505,55 @@ exports.cleanupProcessedTriggerEvents = onSchedule("every 24 hours", async () =>
   }
 });
 
+// Prune inbox notifications older than 90 days. The privacy policy
+// (legal/PRIVACY_POLICY.md §6, docs/privacy.html) states "Notifications in
+// your inbox — pruned after 90 days"; nothing else enforces that window (the
+// per-sender spam limiter only trims a burst, the deletion cascade only clears
+// a departed sender's notifications), so a reply notification's server-enriched
+// `message` text preview would otherwise persist in the recipient's inbox
+// forever. This keeps the written retention promise.
+//
+// A collectionGroup inequality on `createdAt` is served by the automatic
+// single-field index (collection-group scope) — no composite index needed.
+// Notifications have no onDelete trigger, so deletes carry no counter/side
+// effects. Bounded at 20 pages × 500 = 10k/run; the next daily run drains any
+// remainder, matching cleanupProcessedTriggerEvents.
+async function pruneNotificationsOlderThan(cutoff, maxPages = 20) {
+  let totalDeleted = 0;
+  for (let page = 0; page < maxPages; page++) {
+    let snap;
+    try {
+      snap = await db.collectionGroup("notifications")
+        .where("createdAt", "<", cutoff)
+        .limit(500)
+        .get();
+    } catch (err) {
+      console.warn("pruneOldNotifications query failed:", err.message);
+      return { totalDeleted, capHit: false };
+    }
+    if (snap.empty) break;
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    try {
+      await batch.commit();
+    } catch (err) {
+      console.warn("pruneOldNotifications batch failed:", err.message);
+      break;
+    }
+    totalDeleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return { totalDeleted, capHit: totalDeleted >= maxPages * 500 };
+}
+
+exports.pruneOldNotifications = onSchedule("every 24 hours", async () => {
+  const cutoff = Timestamp.fromDate(new Date(Date.now() - 90 * 24 * 60 * 60 * 1000));
+  const { totalDeleted } = await pruneNotificationsOlderThan(cutoff);
+  if (totalDeleted > 0) {
+    console.log(`pruneOldNotifications: deleted ${totalDeleted} notifications older than 90 days`);
+  }
+});
+
 exports.cleanupExpiredPosts = onSchedule("every 60 minutes", async () => {
   const now = Timestamp.now();
   console.log("Running expired post cleanup at:", now.toDate());
@@ -5086,6 +5135,7 @@ module.exports.__test = {
   db,
   FieldValue,
   Timestamp,
+  pruneNotificationsOlderThan,
   setReplyPendingReview,
   setReplyLive,
   setPendingReview,

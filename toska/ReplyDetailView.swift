@@ -375,6 +375,7 @@ struct ReplyDetailView: View {
             Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
             HStack(spacing: 8) {
                 TextField("say what you can't say anywhere else", text: $composerText, axis: .vertical)
+                .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
                     .font(ToskaFont.sans(13))
                     .focused($composerFocused)
                     .lineLimit(1...4)

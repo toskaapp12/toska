@@ -412,6 +412,7 @@ struct ComposeView: View {
                                                             .padding(.horizontal, 12)
                                                             .padding(.top, 4)
                                                             .frame(minHeight: 200)
+                                                            .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
                                                             .focused($textFocused)
                                                             // Drag down inside the editor to dismiss the
                                                             // keyboard. Replaces a blanket tap-to-dismiss

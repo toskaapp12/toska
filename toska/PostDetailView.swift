@@ -657,6 +657,7 @@ struct PostDetailView: View {
 
             HStack(spacing: 8) {
                 TextField("say something gently…", text: $replyText)
+                .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
                     .font(.system(size: 14))
                     .focused($replyFocused)
                     .padding(.horizontal, 16)
@@ -1972,6 +1973,7 @@ struct EditPostView: View {
                             .padding(.horizontal, 16).padding(.top, 16)
                     }
                     TextEditor(text: $editText)
+                    .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
                         .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text)
                         .lineSpacing(4).scrollContentBackground(.hidden)
                         .padding(.horizontal, 16).padding(.top, 8)

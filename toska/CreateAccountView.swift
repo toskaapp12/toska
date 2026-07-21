@@ -401,9 +401,9 @@ struct CreateAccountView: View {
                         "acceptedPolicyVersion": currentPolicyVersion,
                         "acceptedPolicyAt": FieldValue.serverTimestamp()
                     ])
-                    try? await db.collection("users").document(uid)
-                        .collection("private").document("data")
-                        .setData(["email": trimmedEmail], merge: true)
+                    // Email-minimization (2026-07-21 privacy hardening): email is
+                    // NOT copied into Firestore — it lives only in Firebase Auth,
+                    // which has no join to a uid's posts. See AppleSignInHelper.
                     // Persist a local "just confirmed adult" flag NOW —
                     // before the server confirmAdult attempt — so that
                     // even if the Cloud Function call below fails (network

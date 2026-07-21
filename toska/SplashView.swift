@@ -237,11 +237,10 @@ struct SplashView: View {
             "hasCompletedOnboarding": false,
             "createdAt": FieldValue.serverTimestamp()
         ])
-        // Email lives in the owner-only private subcollection so it isn't
-        // exposed by the broader users-doc reads policy.
-        try? await db.collection("users").document(uid)
-            .collection("private").document("data")
-            .setData(["email": email], merge: true)
+        // Email-minimization (2026-07-21 privacy hardening): email is NOT copied
+        // into Firestore — it lives only in Firebase Auth (no join to a uid's
+        // posts). Settings/export read Auth.currentUser.email. See AppleSignInHelper.
+        _ = email
 
         UserHandleCache.shared.startListening()
         Telemetry.signupCompleted(method: method)

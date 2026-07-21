@@ -171,11 +171,13 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                     "hasCompletedOnboarding": false,
                     "createdAt": FieldValue.serverTimestamp()
                 ])
-                // Email lives in the owner-only private subcollection so
-                // it isn't exposed by the broader users-doc reads policy.
-                try? await db.collection("users").document(uid)
-                    .collection("private").document("data")
-                    .setData(["email": userEmail], merge: true)
+                // Email-minimization (2026-07-21 privacy hardening): the email is
+                // NOT copied into Firestore. It lives only in Firebase Auth (the
+                // login identity, a system separate from Firestore with no join to
+                // posts), so a Firestore breach can't link an email to a uid's
+                // posts. Settings display + data export read it from
+                // Auth.currentUser.email; nothing reads a Firestore copy.
+                _ = userEmail
                 UserHandleCache.shared.startListening()
                 Telemetry.signupCompleted(method: .apple)
                 NotificationCenter.default.post(

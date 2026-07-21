@@ -734,7 +734,10 @@ function viewSignUp() {
             created = true;
             const uid = cred.user.uid;
             await claimHandleAndCreateUserDoc(uid);
-            await setDoc(doc(db, "users", uid, "private", "data"), { email: email.value.trim() }, { merge: true });
+            // Email-minimization (2026-07-21 privacy hardening): email is NOT copied
+            // into Firestore — it lives only in Firebase Auth (no join to a uid's
+            // posts), which a Firestore breach can't touch. auth.currentUser.email is
+            // the source of truth for the rare places that need it.
             try {
                 await httpsCallable(functions, "confirmAdult")({});
             } catch (e) {

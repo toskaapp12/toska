@@ -2031,7 +2031,24 @@ exports.onLikeWritten = onDocumentCreated(
     const authorId = postData.authorId;
     if (!authorId) return;
 
-    const likeCount = postData.likeCount || 0;
+    // Milestone-race fix (2026-07-20 launch testing): the stored `likeCount` is
+    // maintained by a SEPARATE trigger (onLikeCreatedUpdateCounts) on this SAME
+    // like-create event, so reading it here almost always returns the PRE-
+    // increment value (off by one) — a post hitting exactly 10 likes read as 9,
+    // so the milestone notification never fired. Count the likes subcollection
+    // directly: at this trigger the just-created like doc already exists, so the
+    // count is the true current total (10 at the 10th like). Falls back to the
+    // stored value + 1 (accounting for this like's pending increment) if the
+    // aggregate read fails. Confirmed live: a live multi-user test showed a post
+    // reaching 10 likes produced NO milestone before this change.
+    let likeCount;
+    try {
+      const agg = await postRef.collection("likes").count().get();
+      likeCount = Number(agg.data().count);
+    } catch (err) {
+      console.warn(`onLikeWritten likes count failed for ${postId}, falling back:`, err.message);
+      likeCount = (postData.likeCount || 0) + 1;
+    }
 
     const milestones = [10, 25, 50, 100, 250, 500, 1000];
     if (!milestones.includes(likeCount)) return;

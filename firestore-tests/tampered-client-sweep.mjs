@@ -109,8 +109,13 @@ try {
     await denied(`own-post like + ${JSON.stringify(extra)} (no block)`, () => setDoc(doc(sB.db, `posts/${postB}/likes/${B}`), { createdAt: serverTimestamp(), ...extra }));
   }
 
-  console.log("\n=== CONTROL: B's own legitimate writes succeed ===");
-  await allowed("B can like their own post (clean)", () => setDoc(doc(sB.db, `posts/${postB}/likes/${B}`), { createdAt: serverTimestamp() }));
+  console.log("\n=== CONTROL: B's legitimate writes succeed ===");
+  // Self-like is now DENIED by the F-P2-1 guard, so the legitimate-like control
+  // must be a CROSS-USER like. Unblock B first (A blocked B at setup), then B
+  // likes A's post — the real "a normal like succeeds" control.
+  await aDb.doc(`users/${A}/blocked/${B}`).delete().catch(() => {});
+  await new Promise((r) => setTimeout(r, 2500));
+  await allowed("B can like ANOTHER user's post (clean, unblocked)", () => setDoc(doc(sB.db, `posts/${postA}/likes/${B}`), { createdAt: serverTimestamp() }));
   await allowed("B can save A's post (saved is owner-tree)", () => setDoc(doc(sB.db, `users/${B}/saved/${postA}`), { createdAt: serverTimestamp() }));
 
   // cleanup

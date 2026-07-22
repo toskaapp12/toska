@@ -17,6 +17,25 @@ struct AnniversaryPostData {
     let milestoneLabel: String
 }
 
+// MARK: - Interaction State Store
+//
+// H3-residual (2026-07-22 deep audit): a read-only mirror of the signed-in
+// user's liked/saved/reposted post-id sets, maintained by FeedViewModel's
+// snapshot listeners (FeedViewModel is the single writer — it mirrors every
+// mutation via didSet, including the sign-out clear). Discovery surfaces that
+// don't own a FeedViewModel (Explore, other-profile) read this to seed
+// FeedPostRow's isAlreadyLiked/isAlreadySaved/isAlreadyReposted — without it
+// those rows defaulted to false, so tapping the heart on an already-liked post
+// no-op'd once (count drift) and silently UNLIKED on the second tap.
+@MainActor
+final class InteractionStateStore: ObservableObject {
+    static let shared = InteractionStateStore()
+    @Published fileprivate(set) var likedPostIds: Set<String> = []
+    @Published fileprivate(set) var savedPostIds: Set<String> = []
+    @Published fileprivate(set) var repostedPostIds: Set<String> = []
+    private init() {}
+}
+
 // MARK: - FeedViewModel
 
 @MainActor
@@ -33,9 +52,18 @@ class FeedViewModel: ObservableObject {
         @Published var followingFetchIncomplete = false
 
     // MARK: - Post Metadata (per-post flags keyed by post ID)
-    @Published var repostedPostIds: Set<String> = []
-    @Published var likedPostIds: Set<String> = []
-    @Published var savedPostIds: Set<String> = []
+    // didSet mirrors keep InteractionStateStore in lockstep with every
+    // mutation path (snapshot listeners, handleInteractionChanged, the
+    // cancelAllTasks sign-out clear) — see the store's comment above.
+    @Published var repostedPostIds: Set<String> = [] {
+        didSet { InteractionStateStore.shared.repostedPostIds = repostedPostIds }
+    }
+    @Published var likedPostIds: Set<String> = [] {
+        didSet { InteractionStateStore.shared.likedPostIds = likedPostIds }
+    }
+    @Published var savedPostIds: Set<String> = [] {
+        didSet { InteractionStateStore.shared.savedPostIds = savedPostIds }
+    }
     @Published var postGifUrls: [String: String] = [:]
     var midnightPostIds: Set<String> = []
     var letterPostIds: Set<String> = []

@@ -198,7 +198,11 @@ struct FeedView: View {
     // new posts while the user is on the feed, surface a small pill
     // that scrolls to top + clears on tap. Hidden when count is 0.
     @ViewBuilder private var newPostsBanner: some View {
-            if newPostsBadgeCount > 0 {
+            // L4 (2026-07-22): the count tracks the FOR-YOU head (vm.posts), so
+            // only show it on that tab — on Following it advertised posts the
+            // visible list doesn't contain (and its scroll-to-top went nowhere
+            // useful). The count keeps accumulating; it shows on switch-back.
+            if newPostsBadgeCount > 0 && vm.selectedTab == 0 {
                 Button {
                     NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -589,6 +593,14 @@ struct FeedPostRow: View, Equatable {
     let time: String
     var postId: String = ""
     var authorId: String = ""
+    // M4 (2026-07-22): like/repost your OWN post are silent no-ops
+    // (PostInteractionManager guards + rules deny them) — hide the buttons the
+    // way PostDetailView does, instead of rendering dead taps. Rows built
+    // without authorId (empty string) keep the buttons: better a guarded no-op
+    // than hiding real actions on someone else's post.
+    var isOwnPost: Bool {
+        !authorId.isEmpty && authorId == Auth.auth().currentUser?.uid
+    }
     var isAlreadyReposted: Bool = false
     var isAlreadyLiked: Bool = false
     var isAlreadySaved: Bool = false
@@ -893,6 +905,16 @@ struct FeedPostRow: View, Equatable {
                                             .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
                                             .buttonStyle(ToskaTapStyle())
 
+                                            if isOwnPost {
+                                                // Own post: counts stay visible but read-only —
+                                                // unlike PostDetailView (which has a stats row and
+                                                // can hide these outright), the feed row's buttons
+                                                // ARE the count display.
+                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: false)
+                                                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                                actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "C25C7C")
+                                                    .accessibilityLabel(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                            } else {
                                             // repost
                                             Button { repostPost() } label: {
                                                 actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "3E9B72")
@@ -925,6 +947,7 @@ struct FeedPostRow: View, Equatable {
                                             .buttonStyle(ToskaTapStyle())
                                             .scaleEffect(likePulse ? 1.15 : 1.0)
                                             .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                            }
 
                                             // Flexible gap — pushes bookmark + share to
                                             // the trailing edge.
@@ -988,10 +1011,14 @@ struct FeedPostRow: View, Equatable {
                                                     .frame(height: 0.5)
                                             }
                 .contextMenu {
-                    Button {
-                        toggleLike()
-                    } label: {
-                        Label(isLiked ? "unlike" : "felt this", systemImage: isLiked ? "heart.slash" : "heart")
+                    // M4: like/repost are no-ops on your own post — omit them here
+                    // the same way the action bar renders them read-only.
+                    if !isOwnPost {
+                        Button {
+                            toggleLike()
+                        } label: {
+                            Label(isLiked ? "unlike" : "felt this", systemImage: isLiked ? "heart.slash" : "heart")
+                        }
                     }
 
                     Button {
@@ -1000,7 +1027,7 @@ struct FeedPostRow: View, Equatable {
                         Label(isSaved ? "unsave" : "save", systemImage: isSaved ? "bookmark.slash" : "bookmark")
                     }
 
-                    if !isRepostPost {
+                    if !isRepostPost && !isOwnPost {
                         Button {
                             repostPost()
                         } label: {
@@ -1133,6 +1160,12 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Like
         
         func toggleLike() {
+            // M4 (2026-07-22): the manager drops the toggle silently when
+            // offline — surface it as a warning buzz instead of a dead tap.
+            guard NetworkMonitor.shared.isConnected else {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return
+            }
             // N-7: arm the suppression window at tap time, re-arm on completion
             // (mirrors PostDetailView.toggleLike) so a feed refresh can't snap
             // the optimistic count back mid-round-trip.
@@ -1176,6 +1209,11 @@ struct FeedPostRow: View, Equatable {
         func repostPost() {
             // Can't repost a repost itself.
             guard !isRepostPost else { return }
+            // M4: same offline feedback as toggleLike — the manager no-ops.
+            guard NetworkMonitor.shared.isConnected else {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return
+            }
             // C-3: arm the suppression window so the feed listener echo doesn't
             // clobber the optimistic count (mirrors toggleLike).
             suppressRepostListenerUntil = Date().addingTimeInterval(2.0)
@@ -1220,8 +1258,12 @@ struct FeedPostRow: View, Equatable {
             
             func toggleSave() {
                 // Don't fire the confirm haptic when offline — the manager
-                // silently no-ops there, so the haptic was a false "saved" signal.
-                guard NetworkMonitor.shared.isConnected else { return }
+                // silently no-ops there, so the haptic was a false "saved"
+                // signal. M4: buzz a warning instead of dropping the tap dead.
+                guard NetworkMonitor.shared.isConnected else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    return
+                }
                 HapticManager.play(.feltThis)
                 PostInteractionManager.toggleSave(
                     postId: postId,
@@ -1437,7 +1479,16 @@ let sharedTags: [TagItem] = [
 // missing / seed-only tag.
 func tagSymbol(for tag: String?) -> String? {
     guard let tag = tag?.lowercased() else { return nil }
-    return sharedTags.first { $0.name == tag }?.icon
+    if let icon = sharedTags.first(where: { $0.name == tag })?.icon { return icon }
+    // L3 (2026-07-22): seed-only tags — they exist on seeded/legacy posts and
+    // in tagColor's palette but are deliberately NOT in sharedTags (adding
+    // them there would put them in the compose picker). Give them real icons
+    // so their avatars don't fall back to the generic quote glyph.
+    switch tag {
+    case "rebuilding": return "sunrise"
+    case "lonely":     return "moon"
+    default:           return nil
+    }
 }
 
 // The emotion-tinted avatar used across the feed, post detail, and profiles: a

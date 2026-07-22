@@ -2880,18 +2880,35 @@ function flagReasonToPendingReason(flagReason) {
 // Reply-reposts carry the REPLY's text, so post-level fan-out must skip them
 // (they match the originalPostId query too); onReplyUpdated fans out to them.
 async function fanOutToRepostCopies({ originalPostId, originalReplyId, shouldUpdate, update }) {
-  const query = originalReplyId
+  const base = originalReplyId
     ? db.collection("posts").where("originalReplyId", "==", originalReplyId).where("isRepost", "==", true)
     : db.collection("posts").where("originalPostId", "==", originalPostId).where("isRepost", "==", true);
-  const snap = await query.get();
-  let batch = db.batch(); let n = 0;
-  for (const doc of snap.docs) {
-    if (!originalReplyId && doc.data().originalReplyId) continue;
-    if (!shouldUpdate(doc.data())) continue;
-    batch.update(doc.ref, update);
-    if (++n % 400 === 0) { await batch.commit(); batch = db.batch(); }
+  // M3 (2026-07-22 deep audit): paginate instead of one unbounded get() — a
+  // viral original's edit/hold cascade could otherwise OOM/timeout the
+  // function and (with retry:true) redeliver forever. Cursor on __name__
+  // (equality filters sort by doc id implicitly, so no composite index).
+  // Page size stays under the 500-writes batch cap.
+  const PAGE = 300;
+  let n = 0;
+  let cursor = null;
+  for (;;) {
+    let q = base.orderBy("__name__").limit(PAGE);
+    if (cursor) q = q.startAfter(cursor);
+    const snap = await q.get();
+    if (snap.empty) break;
+    const batch = db.batch();
+    let inBatch = 0;
+    for (const doc of snap.docs) {
+      if (!originalReplyId && doc.data().originalReplyId) continue;
+      if (!shouldUpdate(doc.data())) continue;
+      batch.update(doc.ref, update);
+      inBatch++;
+    }
+    if (inBatch) await batch.commit();
+    n += inBatch;
+    cursor = snap.docs[snap.docs.length - 1];
+    if (snap.size < PAGE) break;
   }
-  if (n % 400 !== 0) await batch.commit();
   return n;
 }
 
@@ -5169,6 +5186,7 @@ module.exports.__test = {
   cleanupRepliesForUid,
   clearRepostsOfPost,
   clearPostSubtree,
+  fanOutToRepostCopies,
   claimedTransaction,
   checkRateLimit,
   // Moderation classifiers (pure — no Firestore). #1 crisis/abuse coverage.

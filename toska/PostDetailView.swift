@@ -710,17 +710,23 @@ struct PostDetailView: View {
                             }
                         }
                     }
+                // M4 (2026-07-22): enablement must mirror sendReply's guard
+                // (text >= 2 chars — rules require text on every reply, so a
+                // GIF alone can never send). The old `|| gif attached` condition
+                // lit the button for GIF-only / 1-char replies whose tap then
+                // silently returned.
+                let replyIsSendable = replyText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
                 Button { sendReply() } label: {
                     ZStack {
                         Circle()
-                            .fill((replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil) ? ToskaColor.input : ToskaColor.accent)
+                            .fill(replyIsSendable ? ToskaColor.accent : ToskaColor.input)
                             .frame(width: 40, height: 40)
                         Image(systemName: "arrow.up")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor((replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil) ? ToskaColor.text3 : .white)
+                            .foregroundColor(replyIsSendable ? .white : ToskaColor.text3)
                     }
                 }
-                .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && replyGifUrl == nil)
+                .disabled(!replyIsSendable)
             }
             .padding(.horizontal, 16)
                         .padding(.vertical, 8)

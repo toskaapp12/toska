@@ -1097,15 +1097,28 @@ struct SettingsView: View {
                 )
                 let stamp = ISO8601DateFormatter().string(from: Date())
                     .replacingOccurrences(of: ":", with: "-")
-                let url = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("toska-export-\(stamp).json")
-                try data.write(to: url, options: .atomic)
-                presentShareSheet(with: [url])
-                // Schedule cleanup. The share sheet runs modally; by the time
-                // this 5-minute window elapses the user has either copied the
-                // export to wherever they wanted or dismissed the sheet. The
-                // file shouldn't sit in temp containing the user's full data
-                // history indefinitely.
+                // Sweep any stale export a force-quit left behind before writing
+                // a new one — temp is the only place these ever live.
+                let tempDir = FileManager.default.temporaryDirectory
+                if let stale = try? FileManager.default.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) {
+                    for f in stale where f.lastPathComponent.hasPrefix("toska-export-") {
+                        try? FileManager.default.removeItem(at: f)
+                    }
+                }
+                var url = tempDir.appendingPathComponent("toska-export-\(stamp).json")
+                // The file carries the user's full history + real email — the
+                // same at-rest bar as DraftStore: encrypted-at-rest and never
+                // riding an iCloud/Finder backup.
+                try data.write(to: url, options: [.atomic, .completeFileProtection])
+                var resourceValues = URLResourceValues()
+                resourceValues.isExcludedFromBackup = true
+                try? url.setResourceValues(resourceValues)
+                // Delete as soon as the share sheet is dismissed (share targets
+                // have already copied the payload by then). The 5-minute timer
+                // stays as a backstop for paths where the handler never fires.
+                presentShareSheet(with: [url]) { _ in
+                    try? FileManager.default.removeItem(at: url)
+                }
                 Task.detached(priority: .background) {
                     try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000)
                     try? FileManager.default.removeItem(at: url)

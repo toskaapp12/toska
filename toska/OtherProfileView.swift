@@ -6,6 +6,9 @@ import FirebaseAuth
 struct OtherProfileView: View {
     let userId: String
     let handle: String
+    // H3-residual: seed rows with the user's real like/save/repost state so an
+    // already-liked post here can't be silently unliked (see InteractionStateStore).
+    @ObservedObject private var interactions = InteractionStateStore.shared
     @Environment(\.dismiss) var dismiss
     @State private var isFollowing = false
     @State private var posts: [OtherProfilePost] = []
@@ -189,7 +192,7 @@ struct OtherProfileView: View {
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(posts) { post in
-                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil)
+                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil)
                                     }
                                 }
                             }

@@ -1174,8 +1174,14 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "nsfw", "r34", "rule34", "rule 34",
         "hook ?up", "booty ?call",
     ]
-    for pattern in sexualPatterns {
-        if normalized.range(of: pattern, options: .regularExpression) != nil { return .sexual }
+    // Checked across all four forms (2026-07-22 M2): the server's MOD_SEXUAL now
+    // runs through matchesEvasionRegex (H2 fix), so "p o r n" / leet forms are
+    // held server-side — the client must warn on the same inputs or the user
+    // posts something that silently never goes live.
+    for form in forms {
+        for pattern in sexualPatterns {
+            if form.range(of: pattern, options: .regularExpression) != nil { return .sexual }
+        }
     }
 
     // --- Spam ---

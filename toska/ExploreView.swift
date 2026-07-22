@@ -56,6 +56,9 @@ struct FeelingPerson: Identifiable {
 
 @MainActor
 struct ExploreView: View {
+    // H3-residual: seed rows with the user's real like/save/repost state so an
+    // already-liked post here can't be silently unliked (see InteractionStateStore).
+    @ObservedObject private var interactions = InteractionStateStore.shared
     @State private var searchText = ""
     @State private var selectedTag: String? = nil
     @State private var tagPosts: [ExplorePost] = []
@@ -273,7 +276,7 @@ struct ExploreView: View {
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 8)
                                     ForEach(Array(searchResults.enumerated()), id: \.element.id) { index, post in
-                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id))
                                     }
                                 }
                             }
@@ -361,7 +364,7 @@ struct ExploreView: View {
                                         }.frame(maxWidth: .infinity).padding(.vertical, 60)
                                     } else {
                                         ForEach(Array(tagPosts.enumerated()), id: \.element.id) { index, post in
-                                            FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                            FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id))
                                         }
                                     }
                                 }
@@ -378,7 +381,7 @@ struct ExploreView: View {
                             } else {
                                 VStack(spacing: 0) {
                                     ForEach(Array(trendingPosts.enumerated()), id: \.element.id) { index, post in
-                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id))
                                     }
                                     if trendingLoadFailed && trendingPosts.isEmpty {
                                                                             ToskaErrorBanner("couldn't load trending — check your connection") {

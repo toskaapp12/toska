@@ -688,3 +688,48 @@ describe("#2 reply hold reason: link vs name", () => {
     assert.strictEqual(s.get("pendingReason"), "pii");
   }).timeout(8000);
 });
+
+// M3 (2026-07-22 deep audit): fanOutToRepostCopies is paginated (PAGE=300,
+// cursor on __name__) instead of one unbounded get(). Verify it still touches
+// EVERY matching copy across multiple pages, respects shouldUpdate, and skips
+// reply-reposts on a post-level fan-out.
+describe("M3 fanOutToRepostCopies pagination", () => {
+  it("updates all copies across >2 pages, honors filters", async () => {
+    const N = 650; // 3 pages at PAGE=300
+    let batch = db.batch(), inBatch = 0;
+    for (let i = 0; i < N; i++) {
+      batch.set(db.doc(`posts/m3copy${String(i).padStart(4, "0")}`), {
+        authorId: `u${i}`, text: "copy", isRepost: true, originalPostId: "m3orig",
+        moderationStatus: "live", repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date(),
+      });
+      if (++inBatch === 400) { await batch.commit(); batch = db.batch(); inBatch = 0; }
+    }
+    // One already-held copy (shouldUpdate must skip it) and one reply-repost
+    // (post-level fan-out must skip it even though originalPostId matches).
+    batch.set(db.doc("posts/m3held"), {
+      authorId: "uh", text: "copy", isRepost: true, originalPostId: "m3orig",
+      moderationStatus: "pending_review", repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date(),
+    });
+    batch.set(db.doc("posts/m3replyrepost"), {
+      authorId: "ur", text: "reply copy", isRepost: true, originalPostId: "m3orig", originalReplyId: "someReply",
+      moderationStatus: "live", repostCount: 0, likeCount: 0, replyCount: 0, createdAt: new Date(),
+    });
+    await batch.commit();
+
+    const n = await fns.__test.fanOutToRepostCopies({
+      originalPostId: "m3orig",
+      shouldUpdate: (d) => (d.moderationStatus || "live") === "live",
+      update: { moderationStatus: "pending_review", pendingReason: "original_held" },
+    });
+    assert.strictEqual(n, N, `should update exactly the ${N} live post-copies`);
+
+    const still = await db.collection("posts")
+      .where("originalPostId", "==", "m3orig")
+      .where("moderationStatus", "==", "live").get();
+    // Only the reply-repost may remain live.
+    assert.strictEqual(still.size, 1);
+    assert.strictEqual(still.docs[0].id, "m3replyrepost");
+    const held = await db.doc("posts/m3held").get();
+    assert.strictEqual(held.get("pendingReason"), undefined, "already-held copy untouched");
+  }).timeout(60000);
+});

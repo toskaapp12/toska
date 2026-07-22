@@ -233,10 +233,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 private struct PrivacyShieldView: View {
     var body: some View {
         ZStack {
-            Color(red: 0.043, green: 0.039, blue: 0.063).ignoresSafeArea() // #0b0a10
+            Color.white.ignoresSafeArea()
             Text("toska")
                 .font(.custom("Newsreader-Medium", size: 34))
-                .foregroundColor(Color(red: 0.427, green: 0.333, blue: 0.788).opacity(0.9))
+                .foregroundColor(Color(red: 0.427, green: 0.333, blue: 0.788))
         }
     }
 }

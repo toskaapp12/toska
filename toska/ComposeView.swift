@@ -79,6 +79,8 @@ struct ComposeView: View {
     @State private var postError = ""
     @State private var selectedGifUrl: String? = nil
     @State private var showGifPicker = false
+    // First-save-only: explains where the draft went (Settings › Drafts).
+    @State private var showDraftLocationHint = false
     @State private var expiresAtMidnight = false
     @State private var isWhisper = false
     @State private var isLetter = false
@@ -922,6 +924,11 @@ struct ComposeView: View {
         } message: {
             Text("your post mentions something that needs a quick check, so it'll appear once it's approved. you can still see it on your own profile in the meantime.")
         }
+        .alert("saved to drafts", isPresented: $showDraftLocationHint) {
+            Button("got it") { dismiss() }
+        } message: {
+            Text("find it anytime in settings › drafts — you can edit it or post it whenever you're ready.")
+        }
         } // close NavigationStack
     }
 
@@ -1056,7 +1063,15 @@ struct ComposeView: View {
                 draftText = ""
                 draftTag = ""
                 Telemetry.draftSaved(isUpdate: editingDraftId != nil)
-                dismiss()
+                // First time saving a NEW draft, explain where it lives before
+                // closing; the alert's button dismisses. Every save after that
+                // just closes silently (current behavior).
+                if editingDraftId == nil && !UserDefaults.standard.bool(forKey: UserDefaultsKeys.hasSeenDraftLocationHint) {
+                    UserDefaults.standard.set(true, forKey: UserDefaultsKeys.hasSeenDraftLocationHint)
+                    showDraftLocationHint = true
+                } else {
+                    dismiss()
+                }
             } catch {
                 print("⚠️ ComposeView.saveAsDraft failed: \(error)")
                 Telemetry.recordError(error, context: "ComposeView.saveAsDraft")

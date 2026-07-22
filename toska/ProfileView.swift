@@ -700,7 +700,7 @@ struct ProfileView: View {
                             ? pendingReasonLabelFor(data["pendingReason"] as? String)
                             : nil
                         let isCrisisHold = isPending && (data["pendingReason"] as? String) == "crisis"
-                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
+                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, promptDate: data["promptDate"] as? String, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
                     }
                 }
             }
@@ -1118,10 +1118,18 @@ struct ProfileView: View {
                                             .foregroundColor(ToskaColor.text3)
                                             .padding(.top, 4)
 
-                                            // Following / followers stats — both tappable to
-                                            // their lists (the user asked for the Twitter-style
-                                            // row). Count bold in the text color, label muted.
-                                            HStack(spacing: 16) {
+                                            // Stats row — posts · following · followers · felt.
+                                            // A calm, spaced row (following/followers tappable to
+                                            // their lists). Count bold in text color, label muted.
+                                            HStack(spacing: 18) {
+                                                HStack(spacing: 4) {
+                                                    Text("\(postCount)")
+                                                        .font(ToskaFont.sans(13, weight: .bold))
+                                                        .foregroundColor(ToskaColor.text)
+                                                    Text("posts")
+                                                        .font(ToskaFont.sans(13, weight: .regular))
+                                                        .foregroundColor(ToskaColor.text2)
+                                                }
                                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
                                                     HStack(spacing: 4) {
                                                         Text("\(followingCount)")
@@ -1142,8 +1150,16 @@ struct ProfileView: View {
                                                             .foregroundColor(ToskaColor.text2)
                                                     }
                                                 }
+                                                HStack(spacing: 4) {
+                                                    Text("\(totalLikes)")
+                                                        .font(ToskaFont.sans(13, weight: .bold))
+                                                        .foregroundColor(ToskaColor.text)
+                                                    Text("felt")
+                                                        .font(ToskaFont.sans(13, weight: .regular))
+                                                        .foregroundColor(ToskaColor.text2)
+                                                }
                                             }
-                                            .padding(.top, 4)
+                                            .padding(.top, 6)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, 16)
@@ -1199,7 +1215,7 @@ struct ProfileView: View {
                                                                                         if post.pendingReview {
                                                                                             PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
                                                                                         }
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost, promptText: FeedView.promptText(for: post.promptDate))
                                                                                     }
                                                                                 }
                                                                                 .buttonStyle(.plain)
@@ -1250,7 +1266,10 @@ struct ProfileView: View {
                                                                                 switch item {
                                                                                 case .post(let post):
                                                                                     Button { openSavedPost(post) } label: {
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                                                                        // H3 (deep audit): every post on the Liked tab IS liked, so seed
+                                                                                        // isAlreadyLiked=true — else the heart renders empty and a double-tap
+                                                                                        // silently unlikes it while drifting the count.
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyLiked: true)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let liked):
@@ -1277,7 +1296,10 @@ struct ProfileView: View {
                                                                                 switch item {
                                                                                 case .post(let post):
                                                                                     Button { openSavedPost(post) } label: {
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId)
+                                                                                        // H3 (deep audit): every post on the Saved tab IS saved, so seed
+                                                                                        // isAlreadySaved=true — else the bookmark renders empty and a
+                                                                                        // double-tap silently unsaves it.
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadySaved: true)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let saved):

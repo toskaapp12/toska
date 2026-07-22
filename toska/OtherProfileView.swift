@@ -90,6 +90,13 @@ struct OtherProfileView: View {
                         // calendar/join 8-9pt → 11pt; follow button text
                         // 12pt → 14pt with bigger pill.
                         VStack(alignment: .leading, spacing: 16) {
+                            // Matches your own profile's identity treatment.
+                            Text("anonymous")
+                                .font(ToskaFont.eyebrow)
+                                .textCase(.uppercase)
+                                .tracking(1.4)
+                                .foregroundColor(Color.toskaTimestamp)
+
                             if !joinedDate.isEmpty {
                                 HStack(spacing: 4) {
                                     Image(systemName: "calendar").font(.system(size: 10))
@@ -182,7 +189,7 @@ struct OtherProfileView: View {
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(posts) { post in
-                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId)
+                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil)
                                     }
                                 }
                             }
@@ -202,45 +209,52 @@ struct OtherProfileView: View {
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(userReplies) { reply in
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "arrowshape.turn.up.left")
+                                        VStack(alignment: .leading, spacing: 7) {
+                                            // Metadata row: who they replied to + when,
+                                            // on one tidy line (the time used to dangle
+                                            // under the reply, which read as clutter).
+                                            HStack(spacing: 5) {
+                                                Image(systemName: "arrowshape.turn.up.left.fill")
                                                     .font(.system(size: 8))
+                                                    .foregroundColor(Color.toskaBlue.opacity(0.55))
                                                 Text("replying to \(reply.parentHandle)")
                                                     .font(ToskaFont.sans(11, weight: .medium))
+                                                    .foregroundColor(Color.toskaTextLight)
+                                                Spacer(minLength: 8)
+                                                Text(reply.replyTime)
+                                                    .font(ToskaFont.sans(11, weight: .light))
+                                                    .foregroundColor(Color.toskaInactiveGray)
                                             }
-                                            .foregroundColor(Color.toskaTextLight)
-                                            
+
+                                            // The moment they replied to — subdued
+                                            // context, clearly secondary to the reply.
                                             Text(reply.parentText)
-                                                .font(ToskaFont.sans(11))
+                                                .font(ToskaFont.serifItalic(12))
                                                 .foregroundColor(Color.toskaTimestamp)
                                                 .lineLimit(2)
-                                            
-                                            HStack(spacing: 0) {
-                                                Rectangle()
-                                                    .fill(Color.toskaBlue.opacity(0.3))
+                                                .lineSpacing(2)
+
+                                            // The reply itself — the primary voice,
+                                            // set off with a clean accent rule.
+                                            HStack(alignment: .top, spacing: 10) {
+                                                RoundedRectangle(cornerRadius: 1)
+                                                    .fill(Color.toskaBlue.opacity(0.35))
                                                     .frame(width: 2)
-                                                    .padding(.trailing, 8)
-                                                
-                                                VStack(alignment: .leading, spacing: 4) {
-                                                    Text(reply.replyText)
-                                                        .font(ToskaFont.serif(13))
-                                                        .foregroundColor(Color.toskaTextDark)
-                                                        .lineSpacing(3)
-                                                    
-                                                    Text(reply.replyTime)
-                                                        .font(ToskaFont.sans(11, weight: .light))
-                                                        .foregroundColor(Color.toskaInactiveGray)
-                                                }
+                                                Text(reply.replyText)
+                                                    .font(ToskaFont.serif(14))
+                                                    .foregroundColor(Color.toskaTextDark)
+                                                    .lineSpacing(3)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                                Spacer(minLength: 0)
                                             }
-                                            .padding(.top, 4)
+                                            .padding(.top, 1)
                                         }
                                         .padding(.horizontal, 16)
-                                        .padding(.vertical, 12)
-                                        .background(LateNightTheme.cardBackground)
+                                        .padding(.vertical, 14)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                         .overlay(
                                             Rectangle()
-                                                .fill(Color.toskaBorderLight)
+                                                .fill(Color.toskaBorderLight.opacity(0.5))
                                                 .frame(height: 0.5),
                                             alignment: .bottom
                                         )
@@ -384,7 +398,7 @@ struct OtherProfileView: View {
                                                                 // someone's profile after it was hidden from the feed.
                                                                 if data["flagged"] as? Bool == true { return nil }
                                                                 let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                                                                return OtherProfilePost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt))
+                                                                return OtherProfilePost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), isRepost: data["isRepost"] as? Bool ?? false, originalHandle: data["originalHandle"] as? String)
                                                             }
                 }
             }
@@ -502,6 +516,8 @@ struct OtherProfileView: View {
                         }
                         return
                     }
+                    // Unfollow landed — tell the feed to drop their posts now.
+                    NotificationCenter.default.post(name: .userFollowingChanged, object: nil)
                 }
             } else {
                 // Follow: batch subcollection writes + atomic count increments.
@@ -546,6 +562,9 @@ struct OtherProfileView: View {
                             "postId": "", "isRead": false,
                             "createdAt": FieldValue.serverTimestamp()
                         ], merge: false)
+                    // Follow landed — tell the feed to pull this user's posts
+                    // into the Following tab now, not on next refresh.
+                    NotificationCenter.default.post(name: .userFollowingChanged, object: nil)
                     }
                 }
             }

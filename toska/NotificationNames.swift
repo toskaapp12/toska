@@ -44,6 +44,11 @@ extension NSNotification.Name {
         // the top via a ScrollViewReader anchor.
         static let scrollTopTabToTop  = NSNotification.Name("ScrollTopTabToTop")
         static let scrollProfileToTop = NSNotification.Name("ScrollProfileToTop")
+        // Posted by OtherProfileView.toggleFollow after a follow/unfollow
+        // commits. FeedView observes it and re-fetches the Following feed so a
+        // newly-followed user's posts appear immediately instead of only after
+        // the next pull-to-refresh (an unfollow likewise drops them).
+        static let userFollowingChanged = NSNotification.Name("UserFollowingChanged")
         // Posted by MainTabView when the user SWITCHES to the Top tab (not a
         // re-tap). MainTabView keeps every tab alive via the .opacity trick,
         // so TopView's onAppear fires only once per session — this is the

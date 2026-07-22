@@ -123,19 +123,19 @@ struct SettingsView: View {
                                 // this toggle is the consent for each, so the
                                 // scope can't live only in a one-time popup.
                                 toggleRow("allow sharing", subtitle: "let people share your words as image cards, and let a few be featured on toskaapp.com — always without your handle", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 toggleRow("show follower count", subtitle: "let others see how many people follow you", icon: "person.2.fill", iconColor: Color.toskaBlue, isOn: $settings.showFollowerCount)
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 toggleRow("share anonymous usage data", subtitle: "helps us fix bugs and improve the app. never includes what you wrote.", icon: "chart.bar.fill", iconColor: Color.toskaMidGray, isOn: $shareAnonymousUsage)
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 actionRow("view content policy", icon: "doc.text.fill", iconColor: Color.toskaMidGray) { showContentPolicy = true }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 actionRow("privacy policy", icon: "hand.raised.fill", iconColor: Color.toskaBlue) {
                                     if let url = URL(string: "https://www.toskaapp.com/privacy") {
                                         UIApplication.shared.open(url)
                                     }
                                 }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 actionRow("terms of service", icon: "doc.plaintext.fill", iconColor: Color.toskaMidGray) {
                                     if let url = URL(string: "https://www.toskaapp.com/terms") {
                                         UIApplication.shared.open(url)
@@ -155,17 +155,17 @@ struct SettingsView: View {
                                 // neighbor tiles; the plum accent matches the toggles' tint.
                                 toggleRow("push notifications", subtitle: "know when someone feels what you said", icon: "bell.badge.fill", iconColor: ToskaColor.accent, isOn: $settings.pushEnabled)
                                 if settings.pushEnabled {
-                                    Divider().padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                     miniToggle("likes", isOn: $settings.notifyLikes)
-                                    Divider().padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                     miniToggle("replies", isOn: $settings.notifyReplies)
-                                    Divider().padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                     miniToggle("reposts", isOn: $settings.notifyReposts)
-                                    Divider().padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                     miniToggle("saves", isOn: $settings.notifySaves)
-                                    Divider().padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                     miniToggle("new followers", isOn: $settings.notifyFollows)
-                                    Divider().padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                     miniToggle("milestones", isOn: $settings.notifyMilestones)
                                 }
                             }
@@ -178,7 +178,7 @@ struct SettingsView: View {
                             groupHeader("content")
                             VStack(spacing: 0) {
                                 toggleRow("gentle check-in", subtitle: "we'll check in on softer signals. crisis language always shows resources.", icon: "heart.text.square.fill", iconColor: Color.toskaWhisperPink, isOn: $settings.gentleCheckIn)
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 NavigationLink(destination: DraftsView()) {
                                     HStack(alignment: .top, spacing: 12) {
                                         settingsIcon("square.and.pencil", Color.toskaAccentGold)
@@ -198,7 +198,7 @@ struct SettingsView: View {
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 NavigationLink(destination: WeeklyRecapView().navigationBarHidden(true)) {
                                     HStack(alignment: .top, spacing: 12) {
                                         settingsIcon("calendar", Color.toskaAccentTan)
@@ -218,7 +218,7 @@ struct SettingsView: View {
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
                                     HStack(spacing: 12) {
                                         settingsIcon("person.2.fill", Color.toskaBlue)
@@ -233,7 +233,7 @@ struct SettingsView: View {
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
                                     HStack(spacing: 12) {
                                         settingsIcon("person.fill.checkmark", Color.toskaFollowGreen)
@@ -248,7 +248,7 @@ struct SettingsView: View {
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 NavigationLink(destination: BlockedUsersListView()) {
                                     HStack(spacing: 12) {
                                         settingsIcon("hand.raised.slash.fill", Color.toskaMidGray)
@@ -274,10 +274,10 @@ struct SettingsView: View {
                                                     VStack(spacing: 0) {
                                                         actionRow("change email", icon: "envelope.fill", iconColor: Color.toskaBlue) { showChangeEmail = true }
                                                         if Auth.auth().currentUser?.providerData.contains(where: { $0.providerID == "password" }) == true {
-                                                            Divider().padding(.leading, 52)
+                                                            Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                                             actionRow("change password", icon: "key.fill", iconColor: Color.toskaMidGray) { showChangePassword = true }
                                                         }
-                                                        Divider().padding(.leading, 52)
+                                                        Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                                         actionRow(isExporting ? "preparing export..." : "export my data", icon: "square.and.arrow.down.fill", iconColor: Color.toskaBlue) {
                                                             exportData()
                                                         }
@@ -320,7 +320,7 @@ struct SettingsView: View {
                                                             }
                                                         }
                                                         if providers.count == 1 && !providers.contains(where: { $0.providerID == "password" }) {
-                                                            Divider().padding(.leading, 52)
+                                                            Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                                             actionRow("add a backup sign-in", icon: "key.fill", iconColor: Color.toskaBlue) { showLinkBackup = true }
                                                         }
                                                     }
@@ -352,7 +352,7 @@ struct SettingsView: View {
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Divider().padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
                                 // MARK: - Delete Account
                                 Button {
                                     showDeleteAlert = true

@@ -471,7 +471,20 @@ struct FeedView: View {
                         vm.handleUserBlocked(userId: userId)
                     }
                 }
+        .onReceive(NotificationCenter.default.publisher(for: .userFollowingChanged)) { _ in
+                    // A follow/unfollow just committed on a profile — refresh the
+                    // Following tab so the change is reflected immediately.
+                    vm.fetchFollowingPosts()
+                }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    // If the app was backgrounded with the search bar open but no
+                    // query typed, iOS restores its keyboard on resume — the app
+                    // "opens with the keypad up." Collapse an empty search on
+                    // return so we always resume into the clean feed.
+                    if showSearch && searchText.isEmpty {
+                        searchFocused = false
+                        showSearch = false
+                    }
                     vm.handleForegroundReturn()
                 }
         .onReceive(NotificationCenter.default.publisher(for: .saveFeedScrollPosition)) { notif in
@@ -504,7 +517,8 @@ struct FeedView: View {
                 isShareable: data["isShareable"] as? Bool ?? true,
                 originalHandle: data["originalHandle"] as? String,
                 originalAuthorId: data["originalAuthorId"] as? String,
-                promptDate: data["promptDate"] as? String
+                promptDate: data["promptDate"] as? String,
+                isRepost: data["isRepost"] as? Bool ?? false
             )
         }
 
@@ -634,6 +648,8 @@ struct FeedPostRow: View, Equatable {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+                HStack(alignment: .top, spacing: 12) {
+                emotionAvatar(for: tag, size: 34)
                 VStack(alignment: .leading, spacing: 0) {
                 // Tapping the post content PUSHES PostDetailView in from the
                 // right (real navigation), not a modal pop-up. A
@@ -748,14 +764,12 @@ struct FeedPostRow: View, Equatable {
                                             // that used to sit below the post text. Report
                                             // / block moved to the long-press menu.
                                             if let tag = tag {
-                                                HStack(spacing: 4) {
-                                                    Circle()
-                                                        .fill(tagColor(for: tag))
-                                                        .frame(width: 6, height: 6)
-                                                    Text(tag)
-                                                        .font(ToskaFont.sans(13, weight: .medium))
-                                                        .foregroundColor(tagColor(for: tag))
-                                                }
+                                                Text(tag)
+                                                    .font(ToskaFont.sans(12, weight: .semibold))
+                                                    .foregroundColor(tagColor(for: tag))
+                                                    .padding(.horizontal, 10)
+                                                    .padding(.vertical, 4)
+                                                    .background(Capsule().fill(tagColor(for: tag).opacity(0.13)))
                                             }
                                         }
                                         .padding(.bottom, 8)
@@ -946,6 +960,7 @@ struct FeedPostRow: View, Equatable {
                                         .frame(maxWidth: .infinity)
                                         .padding(.top, ToskaSpace.sm)
                                     }
+                                }
                                 }
                                             // Span the full width so the whole card is one
                                             // tap target — without this the row is only as
@@ -1406,16 +1421,42 @@ struct TagItem {
 }
 
 let sharedTags: [TagItem] = [
-    TagItem(name: "longing", colorHex: "6E7BA0", icon: "moon.stars"),
-    TagItem(name: "numb", colorHex: "7C8A93", icon: "circle.dotted"),
-    TagItem(name: "anger", colorHex: "BC554F", icon: "flame"),
-    TagItem(name: "regret", colorHex: "7E6FC0", icon: "arrow.uturn.backward"),
-    TagItem(name: "acceptance", colorHex: "4E9B82", icon: "leaf"),
-    TagItem(name: "confusion", colorHex: "BE8E50", icon: "questionmark.circle"),
-    TagItem(name: "unsent", colorHex: "6B8AAE", icon: "envelope"),
-    TagItem(name: "moving on", colorHex: "4E9B88", icon: "arrow.right.circle"),
-    TagItem(name: "still love you", colorHex: "C56F82", icon: "heart"),
+    TagItem(name: "longing", colorHex: "8781A0", icon: "moon.stars"),
+    TagItem(name: "numb", colorHex: "8A8A92", icon: "circle.dotted"),
+    TagItem(name: "anger", colorHex: "A87F72", icon: "flame"),
+    TagItem(name: "regret", colorHex: "928AA6", icon: "arrow.uturn.backward"),
+    TagItem(name: "acceptance", colorHex: "7E9488", icon: "leaf"),
+    TagItem(name: "confusion", colorHex: "A79A80", icon: "questionmark.circle"),
+    TagItem(name: "unsent", colorHex: "7E8A9C", icon: "envelope"),
+    TagItem(name: "moving on", colorHex: "789690", icon: "arrow.right.circle"),
+    TagItem(name: "still love you", colorHex: "A98A93", icon: "heart"),
 ]
+
+// The SF Symbol for a tag — single source of truth (the same icon the compose
+// picker / Explore / onboarding show), so avatars match everywhere. nil for a
+// missing / seed-only tag.
+func tagSymbol(for tag: String?) -> String? {
+    guard let tag = tag?.lowercased() else { return nil }
+    return sharedTags.first { $0.name == tag }?.icon
+}
+
+// The emotion-tinted avatar used across the feed, post detail, and profiles: a
+// soft circle in the feeling's color carrying its icon (a plain circle when
+// untagged). Shared so every surface renders it identically.
+@ViewBuilder func emotionAvatar(for tag: String?, size: CGFloat = 34) -> some View {
+    let tint = tag.map { tagColor(for: $0) } ?? ToskaColor.accent
+    // Untagged (or a seed-only tag) → a neutral "written thought" quotation
+    // glyph in plum, so every avatar carries an icon rather than an empty circle.
+    let symbol = tagSymbol(for: tag) ?? "text.quote"
+    Circle()
+        .fill(tint.opacity(0.14))
+        .frame(width: size, height: size)
+        .overlay(
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.44, weight: .medium))
+                .foregroundColor(tint)
+        )
+}
 
 // MARK: - Shared Helpers
 
@@ -1447,26 +1488,23 @@ func timeOfDayLabel() -> String {
 // MARK: - Tag Color
 
 func tagColor(for tag: String) -> Color {
-    // 2026 de-plain pass: the emotion colors were so desaturated (and rendered
-    // at 16% opacity) that every tag washed out to the same gray — the feed read
-    // as colorless. These are modestly deepened so each emotion reads as a real,
-    // distinct hue while staying dusty/editorial, not neon. "numb" was missing
-    // from the palette entirely (fell back to gray); it now has its own cool
-    // slate. Kept in sync with sharedTags below.
-    // Mood color language (2026 design spec).
+    // 2026-07 palette "C" — muted / near-grey. Calm, restrained, editorial:
+    // each feeling is a desaturated neutral with only a whisper of hue, so the
+    // color never shouts (the icon + word carry the feeling). SINGLE SOURCE OF
+    // TRUTH with sharedTags below — the two are kept identical.
     switch tag {
-    case "longing": return Color(hex: "5E50A6")      // violet
-    case "rebuilding": return Color(hex: "3E7E5C")   // green
-    case "acceptance": return Color(hex: "3F6796")   // blue
-    case "lonely": return Color(hex: "5A6478")       // slate
-    case "numb": return Color(hex: "6F6B7B")         // neutral grey-violet
-    case "anger": return Color(hex: "BC554F")
-    case "regret": return Color(hex: "7E6FC0")
-    case "confusion": return Color(hex: "BE8E50")
-    case "unsent": return Color(hex: "6B8AAE")
-    case "moving on": return Color(hex: "3E7E5C")
-    case "still love you": return Color(hex: "C56F82")
-    default: return Color(hex: "6F6B7B")
+    case "longing":        return Color(hex: "8781A0")
+    case "rebuilding":     return Color(hex: "789690")
+    case "acceptance":     return Color(hex: "7E9488")
+    case "lonely":         return Color(hex: "7C8390")
+    case "numb":           return Color(hex: "8A8A92")
+    case "anger":          return Color(hex: "A87F72")
+    case "regret":         return Color(hex: "928AA6")
+    case "confusion":      return Color(hex: "A79A80")
+    case "unsent":         return Color(hex: "7E8A9C")
+    case "moving on":      return Color(hex: "789690")
+    case "still love you": return Color(hex: "A98A93")
+    default:               return Color(hex: "8A8A92")
     }
 }
 
@@ -1607,7 +1645,7 @@ struct FeedColumn: View {
                                                                                                                                                     .equatable()
                                                                                                                                                 } else {
                                                                                                                                                     FeedPostRow(
-                                                                                                                                                        handle: post.originalHandle ?? post.handle,
+                                                                                                                                                        handle: (post.isRepost ? (post.originalHandle ?? post.handle) : post.handle),
                                                                                                                                                         text: post.text,
                                                                                                                                                         tag: post.tag,
                                                                                                                                                         likes: post.likes,
@@ -1627,7 +1665,7 @@ struct FeedColumn: View {
                                                                                                                                                         isWhisperPost: vm.whisperPostIds.contains(post.id),
                                                                                                                                                         isLetterExpanded: vm.expandedLetterIds.contains(post.id),
                                                                                                                                                         onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
-                                                                                                                                                        reposterHandle: post.originalHandle != nil ? post.handle : nil,
+                                                                                                                                                        reposterHandle: (post.isRepost && post.originalHandle != nil) ? post.handle : nil,
                                                                                                                                                         promptText: FeedView.promptText(for: post.promptDate)
                                                                                                                                                                                                                                                                                                     )
                                                                                                                                                                                                                                                                                                     .equatable()

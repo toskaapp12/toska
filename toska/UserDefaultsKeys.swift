@@ -23,6 +23,9 @@ enum UserDefaultsKeys {
     // One draft at a time (the active compose sheet); cleared on successful post.
     static let composeDraftText = "toska_composeDraftText"
     static let composeDraftTag  = "toska_composeDraftTag"
+    // One-time: whether the user has been shown where saved drafts live
+    // (Settings › Drafts) after their first save.
+    static let hasSeenDraftLocationHint = "toska_hasSeenDraftLocationHint"
 
     // Push permission primer — shown once per install so the system prompt
     // doesn't fire cold. Cleared on sign-out so a different user signing in

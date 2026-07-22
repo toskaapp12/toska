@@ -735,38 +735,41 @@ struct PostDetailView: View {
 
     var postHeaderSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Button {
-                    if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
-                } label: {
-                    // De-emphasized handle (quiet gray, not accent) so the post
-                    // text leads — matches the feed.
-                    Text(handle)
-                        .font(ToskaFont.sans(15, weight: .medium))
-                        .foregroundColor(ToskaColor.text2)
-                }
-                if isOwnPost {
-                    Text("· you")
-                        .font(ToskaFont.sans(11, weight: .medium))
-                        .foregroundColor(ToskaColor.text3)
-                }
-                if let tag = tag {
-                    Text("·").font(ToskaFont.sans(11)).foregroundColor(Color.toskaDivider)
-                    // Softer filled chip (Capsule, medium weight, 0.16 fill) —
-                    // matches the feed tag chip vocabulary.
-                    Text(tag)
-                        .font(ToskaFont.sans(11, weight: .medium))
-                        .foregroundColor(tagColor(for: tag))
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(tagColor(for: tag).opacity(0.16))
-                        .clipShape(Capsule())
+            // Header mirrors the feed row: emotion avatar as the left anchor,
+            // handle + time stacked beside it, and the feeling as a pill on the
+            // trailing edge — so tapping into a post feels continuous with the feed.
+            HStack(alignment: .center, spacing: 11) {
+                emotionAvatar(for: tag, size: 38)
+                VStack(alignment: .leading, spacing: 2) {
+                    Button {
+                        if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(handle)
+                                .font(ToskaFont.sans(15, weight: .semibold))
+                                .foregroundColor(ToskaColor.text2)
+                            if isOwnPost {
+                                Text("· you")
+                                    .font(ToskaFont.sans(11, weight: .medium))
+                                    .foregroundColor(ToskaColor.text3)
+                            }
+                        }
+                    }
+                    Text(time)
+                        .font(ToskaFont.sans(12))
+                        .foregroundColor(ToskaColor.time)
                 }
                 Spacer()
-                Text(time)
-                    .font(ToskaFont.sans(12))
-                    .foregroundColor(ToskaColor.time)
+                if let tag = tag {
+                    Text(tag)
+                        .font(ToskaFont.sans(11, weight: .semibold))
+                        .foregroundColor(tagColor(for: tag))
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(tagColor(for: tag).opacity(0.14))
+                        .clipShape(Capsule())
+                }
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, 16)
 
             Text(postText)
                 .toskaPostDetailBody()

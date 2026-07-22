@@ -30,6 +30,11 @@ struct FeedPost: Identifiable, Equatable {
     // daily prompt. The feed renders such posts with the prompt shown in plum
     // above the person's reply, so prompt answers read as "prompt → reply".
     var promptDate: String? = nil
+    // True when the post doc has isRepost==true. H1 fix (2026-07-22): the feed
+    // byline must key on THIS, not on `originalHandle != nil` — otherwise a
+    // forged post (originalHandle set on a non-repost) renders under a victim's
+    // handle. Rules now also reject that write, but gating here is defense in depth.
+    var isRepost: Bool = false
 }
 
 /// Used in ProfileView for selectedPostData, NotificationsView, TopView
@@ -72,6 +77,10 @@ struct MyPost: Identifiable {
     let handle: String
     let isRepost: Bool
     let originalHandle: String?
+    // Set (yyyy-MM-dd) when this post answered that day's daily prompt.
+    // ProfileView passes FeedView.promptText(for:) into FeedPostRow so the
+    // author's own Posts tab shows "prompt → reply", matching the feed.
+    var promptDate: String? = nil
     // 2026-05-31: true when moderationStatus == "pending_review" on the
     // Firestore doc. ProfileView renders an "under review" banner above
     // these so the author knows the post is hidden from other users
@@ -101,6 +110,13 @@ struct OtherProfilePost: Identifiable {
     let reposts: Int
     let replies: Int
     let time: String
+    // True when this profile entry is a repost (isRepost on the doc). The
+    // profile author IS the reposter, so the row shows "@handle reposted"
+    // above the original words, matching the feed's repost presentation.
+    var isRepost: Bool = false
+    // Original author's handle (byline-only) when this is a repost. Its
+    // presence gates the reposterHandle passed to FeedPostRow.
+    var originalHandle: String? = nil
 }
 
 /// Used in TopView for ranked posts

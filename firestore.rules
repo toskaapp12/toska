@@ -922,6 +922,18 @@ service cloud.firestore {
         && (!('authorHandle' in request.resource.data.keys())
             || request.resource.data.authorHandle ==
                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle)
+        // H1 (2026-07-22 deep audit): the repost-only byline/link fields may
+        // appear ONLY on a declared repost. Otherwise a tampered client could
+        // set isRepost=false + originalHandle="@victim" — the repost validation
+        // below is skipped for non-reposts, yet the feed renders the
+        // originalHandle byline regardless of isRepost, forging authorship onto
+        // a real victim's handle in the global feed. Require these four fields
+        // ABSENT unless this is a declared repost (which then runs the pins below).
+        && (request.resource.data.get('isRepost', false) == true
+            || (!('originalHandle' in request.resource.data.keys())
+                && !('originalAuthorId' in request.resource.data.keys())
+                && !('originalPostId' in request.resource.data.keys())
+                && !('originalReplyId' in request.resource.data.keys())))
         // Repost lockdown. If this is a repost (isRepost=true with a non-empty
         // originalAuthorId), the rule must:
         //   1. block-check: original author can't have blocked the reposter

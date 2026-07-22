@@ -483,9 +483,9 @@ struct NotificationsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+                .padding(.vertical, 17)
                 .background(notif.isUnread ? ToskaColor.accent.opacity(0.045) : Color.clear)
-                .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 0.5), alignment: .bottom)
+                .overlay(Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5), alignment: .bottom)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

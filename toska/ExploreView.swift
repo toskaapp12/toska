@@ -206,10 +206,10 @@ struct ExploreView: View {
                                                             }
                                                         }
                                                         .foregroundColor(Color(hex: tag.colorHex))
-                                                        .padding(.horizontal, 8)
+                                                        .padding(.horizontal, 12)
                                                         .padding(.vertical, 8)
-                                                        .background(Color(hex: tag.colorHex).opacity(0.06))
-                                                        .cornerRadius(16)
+                                                        .background(Color(hex: tag.colorHex).opacity(0.09))
+                                                        .clipShape(Capsule())
                                                     }
                                                     .id(tag.name)
                                                 }

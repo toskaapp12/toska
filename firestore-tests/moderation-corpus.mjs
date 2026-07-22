@@ -42,6 +42,13 @@ const CASES = [
   ["post your booty call", "sexual_content"],
   ["rule34 stuff", "sexual_content"],
   ["cum on me", "sexual_content"],
+  // ── must FLAG: evasions the server used to miss (H2, 2026-07-22 deep audit) ──
+  // These are exactly the forms the iOS client blocks but the SERVER (the real
+  // trust boundary, and the edit re-moderation path) let through until the
+  // hate/sexual lists were routed through the evasion normalizer.
+  ["you dirty s p i c", "hate_speech"],   // single-letter-spaced slur
+  ["you dirty sp1c", "hate_speech"],      // leet slur
+  ["you dirty spіс", "hate_speech"],      // homoglyph slur (Cyrillic і U+0456 + с U+0441)
   // ── must NOT flag: grief / idiom false-positives ──
   ["i got so suspicious of him", null],       // "spic" substring
   ["auspicious new start", null],

@@ -471,12 +471,23 @@ struct TopPeriodColumn: View {
         NavigationLink {
             detail(for: post)
         } label: {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("most felt \(period.heroSuffix)")
-                    .font(ToskaFont.eyebrow)
-                    .textCase(.uppercase)
-                    .tracking(1.4)
-                    .foregroundColor(ToskaColor.accent)
+            VStack(alignment: .leading, spacing: 14) {
+                // Avatar + handle header so the #1 hero matches the ranked rows
+                // below it; the "most felt" eyebrow sits beside the avatar.
+                HStack(spacing: 11) {
+                    emotionAvatar(for: post.tag, size: 38)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("most felt \(period.heroSuffix)")
+                            .font(ToskaFont.eyebrow)
+                            .textCase(.uppercase)
+                            .tracking(1.4)
+                            .foregroundColor(ToskaColor.accent)
+                        Text(post.handle)
+                            .font(ToskaFont.sans(13, weight: .semibold))
+                            .foregroundColor(ToskaColor.text2)
+                    }
+                    Spacer()
+                }
 
                 Text(post.text)
                     .font(ToskaFont.serif(20))
@@ -515,41 +526,46 @@ struct TopPeriodColumn: View {
         NavigationLink {
             detail(for: post)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 11) {
                 Text(String(format: "%02d", rank))
-                    .font(ToskaFont.serifItalic(15))
+                    .font(ToskaFont.serifItalic(17))
                     .foregroundColor(ToskaColor.text3)
-                    .frame(width: 24, alignment: .leading)
+                    .frame(width: 22, alignment: .leading)
+                    .padding(.top, 4)
 
-                VStack(alignment: .leading, spacing: 8) {
+                emotionAvatar(for: post.tag, size: 34)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 7) {
+                        Text(post.handle)
+                            .font(ToskaFont.sans(13, weight: .semibold))
+                            .foregroundColor(ToskaColor.text2)
+                        if let tag = post.tag {
+                            Text(tag)
+                                .font(ToskaFont.sans(11, weight: .semibold))
+                                .foregroundColor(tagColor(for: tag))
+                                .padding(.horizontal, 8).padding(.vertical, 3)
+                                .background(tagColor(for: tag).opacity(0.14))
+                                .clipShape(Capsule())
+                        }
+                    }
                     Text(post.text)
                         .font(ToskaFont.serif(16))
                         .foregroundColor(ToskaColor.text)
                         .lineSpacing(3)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
-
-                    HStack(spacing: 8) {
-                        if let tag = post.tag {
-                            Image(systemName: ToskaEmotion.icon(tag))
-                                .font(.system(size: 11))
-                                .foregroundColor(tagColor(for: tag))
-                            Text(tag)
-                                .font(ToskaFont.sans(13, weight: .medium))
-                                .foregroundColor(tagColor(for: tag))
-                            Text("·")
-                                .font(ToskaFont.sans(12))
-                                .foregroundColor(ToskaColor.text3)
-                        }
-                        Text("\(formatCount(post.likes)) felt this")
-                            .font(ToskaFont.sans(12))
-                            .foregroundColor(ToskaColor.text2)
+                    HStack(spacing: 5) {
+                        Image(systemName: "heart.fill").font(.system(size: 12))
+                        Text("\(formatCount(post.likes))").font(ToskaFont.sans(12, weight: .medium))
                     }
+                    .foregroundColor(ToskaColor.badge)
                 }
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.vertical, 18)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

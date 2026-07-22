@@ -22,22 +22,22 @@ struct ContentView: View {
         Group {
             if isLoading || showVerifyError {
                 ZStack {
-                    Color.toskaBlue.ignoresSafeArea()
+                    Color.white.ignoresSafeArea()
                     if showVerifyError {
                         VStack(spacing: 16) {
                             Text("t")
                                 .font(ToskaFont.serifItalic(42))
-                                .foregroundColor(.white)
+                                .foregroundColor(ToskaColor.accent)
                             Text(Auth.auth().currentUser != nil
                                  ? "setting up your account"
                                  : "couldn't connect")
                                 .font(ToskaFont.sans(13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(Color(hex: "1a1c22"))
                             Text(Auth.auth().currentUser != nil
                                  ? "this sometimes takes a moment after creating or restoring an account — tap retry"
                                  : "check your connection and try again")
                                 .font(ToskaFont.sans(12))
-                                .foregroundColor(.white.opacity(0.4))
+                                .foregroundColor(Color(hex: "1a1c22").opacity(0.45))
                             Button {
                                 showVerifyError = false
                                 isLoading = true
@@ -47,10 +47,10 @@ struct ContentView: View {
                             } label: {
                                 Text("retry")
                                     .font(ToskaFont.sans(13, weight: .medium))
-                                    .foregroundColor(Color.toskaBlue)
+                                    .foregroundColor(.white)
                                     .padding(.horizontal, 28)
                                     .padding(.vertical, 10)
-                                    .background(Color.white)
+                                    .background(ToskaColor.accent)
                                     .cornerRadius(20)
                             }
                             .padding(.top, 4)
@@ -70,7 +70,7 @@ struct ContentView: View {
                             } label: {
                                 Text("back to login")
                                     .font(ToskaFont.sans(12))
-                                    .foregroundColor(.white.opacity(0.6))
+                                    .foregroundColor(Color(hex: "1a1c22").opacity(0.55))
                             }
                             .padding(.top, 2)
                         }
@@ -78,9 +78,9 @@ struct ContentView: View {
                         VStack(spacing: 20) {
                             Text("t")
                                 .font(ToskaFont.serifItalic(42))
-                                .foregroundColor(.white)
+                                .foregroundColor(ToskaColor.accent)
                             ProgressView()
-                                .tint(.white.opacity(0.4))
+                                .tint(ToskaColor.accent.opacity(0.5))
                         }
                     }
                 }
@@ -232,6 +232,9 @@ struct ContentView: View {
             // anchored at A's last-viewed post. Scrub both on sign-out.
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.hasBeenAskedForReview)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.savedScrollPostId)
+            // L2 (2026-07-22 deep audit): scrub the one-time draft-location hint
+            // flag too, so the next account on a shared device still gets the hint.
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.hasSeenDraftLocationHint)
         }
         .onReceive(NotificationCenter.default.publisher(for: .authSessionExpired)) { _ in
             verifyTask?.cancel()
@@ -261,6 +264,9 @@ struct ContentView: View {
             // App-Store-review throttle and land at A's last-viewed post. Mirror it.
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.hasBeenAskedForReview)
             UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.savedScrollPostId)
+            // L2 (2026-07-22 deep audit): scrub the one-time draft-location hint
+            // flag too, so the next account on a shared device still gets the hint.
+            UserDefaults.standard.removeObject(forKey: UserDefaultsKeys.hasSeenDraftLocationHint)
             // Invalidate the FCM device token. Unlike the explicit sign-out paths,
             // expiry has no chance to await the wipe while authenticated — but
             // clearFCMToken's deleteToken step is auth-free and rotates the device

@@ -360,6 +360,23 @@ function matchesCrisisPhrase(rawText, list) {
   });
 }
 
+// H2 (2026-07-22 deep audit): MOD_HATE / MOD_SEXUAL are REGEX lists (not phrase
+// strings), so they can't be passed to matchesCrisisPhrase directly. Previously
+// they only ran against bare lowercased text, so spaced ("n i g g e r"),
+// homoglyph ("nіgger", Cyrillic і), and zero-width-split slurs — which the iOS
+// client hard-blocks — slipped past the SERVER (the real trust boundary) and
+// the edit re-moderation path, publishing live. Run the regex against the same
+// normalized forms the crisis matcher uses: lowercased raw AND
+// aggressiveNormalizeForNameMatch (unicode-fold + de-leet + zero-width strip +
+// single-letter-chain collapse). The regex stay \b-anchored, so matching the
+// normalized form does NOT reintroduce the "spic inside suspicious" false
+// positives (the normalized form preserves word structure).
+function matchesEvasionRegex(rawText, regexList) {
+  const raw = rawText || "";
+  const forms = [raw.toLowerCase(), aggressiveNormalizeForNameMatch(raw)];
+  return regexList.some((re) => forms.some((f) => re.test(f)));
+}
+
 function isPostExplicitCrisis(rawText) {
   return matchesCrisisPhrase(rawText, MOD_EXPLICIT_CRISIS);
 }
@@ -380,7 +397,7 @@ const SPAM_PATTERNS = [
 function computePostFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
   if (SPAM_PATTERNS.some((p) => p.test(text))) return "spam_or_commercial";
-  if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
+  if (matchesEvasionRegex(rawText, MOD_HATE)) return "hate_speech";
   // 2026-05-31: added MOD_HARASSMENT for posts. Previously only replies
   // checked it (computeReplyFlagReason at line 2350), so a user could
   // publish a top-level post with "kys" / "drink bleach" and have it
@@ -392,7 +409,7 @@ function computePostFlagReason(rawText) {
   // abuse ("ky5", "k i l l yourself") is caught, not just literal substrings.
   if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
   if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
-  if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
+  if (matchesEvasionRegex(rawText, MOD_SEXUAL)) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";
   return null;
@@ -404,12 +421,12 @@ function isPostConcerning(rawText) {
 
 function computeReplyFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
-  if (MOD_HATE.some((p) => p.test(text))) return "hate_speech";
+  if (matchesEvasionRegex(rawText, MOD_HATE)) return "hate_speech";
   // Threat BEFORE harassment, same as computePostFlagReason: identical text
   // must triage to the same (more severe) category on both surfaces.
   if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
   if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
-  if (MOD_SEXUAL.some((p) => p.test(text))) return "sexual_content";
+  if (matchesEvasionRegex(rawText, MOD_SEXUAL)) return "sexual_content";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";
   return null;

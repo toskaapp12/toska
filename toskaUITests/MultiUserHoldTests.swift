@@ -18,7 +18,10 @@ final class MultiUserHoldTests: XCTestCase {
     func test_holdOnSharedPost() throws {
         let env = ProcessInfo.processInfo.environment
         let email = env["TOSKA_EMAIL"] ?? "salinarotess+nice@gmail.com"
-        let pw = env["TOSKA_PW"] ?? "[REDACTED-ROTATED]"
+        // No fallback (2026-07-22 leak) — pass TEST_RUNNER_TOSKA_PW to xcodebuild.
+        guard let pw = env["TOSKA_PW"] ?? env["TOSKA_STAGING_TEST_PW"] else {
+            throw XCTSkip("TOSKA_PW not set — see .local-credentials.md")
+        }
         let postText = env["TOSKA_POST_TEXT"] ?? "midnight check-in, all of us"
         let holdSeconds = UInt32(env["TOSKA_HOLD_SECONDS"] ?? "300") ?? 300
 

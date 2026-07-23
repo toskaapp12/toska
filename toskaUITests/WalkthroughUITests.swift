@@ -241,7 +241,12 @@ final class WalkthroughUITests: XCTestCase {
         email.typeText("salinarotess+nice@gmail.com")
         let password = app.secureTextFields["passwordField"]
         password.tap()
-        password.typeText("[REDACTED-ROTATED]")
+        // Never hardcode (2026-07-22 leak) — pass TEST_RUNNER_TOSKA_STAGING_TEST_PW.
+        guard let stagingPw = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
+            XCTFail("TOSKA_STAGING_TEST_PW not set — see .local-credentials.md")
+            return
+        }
+        password.typeText(stagingPw)
         snap("02b-credentials-entered")
         app.buttons["signInButton"].tap()
 
@@ -263,7 +268,11 @@ final class WalkthroughUITests: XCTestCase {
             XCTAssertTrue(waitFor(email, 8), "Email field missing")
             email.tap(); email.typeText("salinarotess+nice@gmail.com")
             let pw = app.secureTextFields["passwordField"]
-            pw.tap(); pw.typeText("[REDACTED-ROTATED]")
+            guard let stagingPw = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
+                XCTFail("TOSKA_STAGING_TEST_PW not set — see .local-credentials.md")
+                return
+            }
+            pw.tap(); pw.typeText(stagingPw)
             app.buttons["signInButton"].tap()
         }
         XCTAssertTrue(waitFor(feedView, 30), "Feed didn't load initially")

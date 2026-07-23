@@ -47,3 +47,7 @@ firebase-debug.*.log
 
 # Build artifacts / scratch archives (never commit — may bundle plists)
 *.zip
+
+# Internal ops/audit docs + credentials must never be public (GitGuardian incident 2026-07-22)
+/*.md
+.local-credentials.md

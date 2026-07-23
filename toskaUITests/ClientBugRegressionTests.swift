@@ -138,7 +138,14 @@ final class ClientBugRegressionTests: XCTestCase {
             email.typeText("salinarotess+nice@gmail.com")
             let password = app.secureTextFields["passwordField"]
             password.tap()
-            password.typeText("[REDACTED-ROTATED]")
+            // Never hardcode (2026-07-22 leak). Pass via the test runner:
+            // xcodebuild test ... TEST_RUNNER_TOSKA_STAGING_TEST_PW=<pw>
+            // (current value in ~/Desktop/toska/.local-credentials.md).
+            guard let stagingPw = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
+                XCTFail("TOSKA_STAGING_TEST_PW not set — pass TEST_RUNNER_TOSKA_STAGING_TEST_PW to xcodebuild")
+                return
+            }
+            password.typeText(stagingPw)
             app.buttons["signInButton"].tap()
         }
         try XCTSkipUnless(waitFor(feedView, 30), "Feed not visible — not logged in?", file: file, line: line)

@@ -29,7 +29,12 @@ final class CrossSurfaceTests: XCTestCase {
             XCTAssertTrue(waitFor(email, 8), "Email field missing")
             email.tap(); email.typeText("salinarotess+nice@gmail.com")
             let pw = app.secureTextFields["passwordField"]
-            pw.tap(); pw.typeText("[REDACTED-ROTATED]")
+            // Never hardcode (2026-07-22 leak) — see ClientBugRegressionTests.
+            guard let stagingPw = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
+                XCTFail("TOSKA_STAGING_TEST_PW not set — pass TEST_RUNNER_TOSKA_STAGING_TEST_PW to xcodebuild")
+                return
+            }
+            pw.tap(); pw.typeText(stagingPw)
             app.buttons["signInButton"].tap()
         }
         XCTAssertTrue(waitFor(feedView, 30), "Feed didn't load")

@@ -21,7 +21,10 @@ import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/fir
 
 const CFG = { apiKey: 'AIzaSyCTGuUzy9maPF84fZh5gD_-eZ2qkie75OQ', authDomain: 'toskastaging.firebaseapp.com', projectId: 'toskastaging' };
 const B_EMAIL = 'salinarotess+webv1rb70g8@gmail.com';
-const B_PASS = '[REDACTED-ROTATED]';
+// Never hardcode this (2026-07-22 GitGuardian leak). Current value lives in
+// ~/Desktop/toska/.local-credentials.md (gitignored).
+const B_PASS = process.env.TOSKA_STAGING_TEST_PW_B;
+if (!B_PASS) { console.error('set TOSKA_STAGING_TEST_PW_B (see .local-credentials.md)'); process.exit(1); }
 const FIXTURE_ID = 'wt_fixture_firstlight';
 const FIXTURE_TEXT = 'first light, honestly';
 

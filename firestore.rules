@@ -761,9 +761,15 @@ service cloud.firestore {
     // functions/backfillHandles.js. The account-deletion cascade
     // (onUserDocDeleted) releases the row server-side.
     match /handles/{handleLower} {
-      // Readable so signup flows can pre-check availability; handles are
-      // public on every post byline anyway, and the row holds nothing else.
-      allow read: if isAuth();
+      // Point reads (get) stay open so a signup flow can pre-check a specific
+      // handle's availability. LIST is denied: the registry maps EVERY handle
+      // to its uid, so a collection scan would hand any authed user a complete
+      // user directory — including accounts that have never posted. (Posts
+      // expose authorId+handle only for people who chose to post; the registry
+      // must not widen that.) The users-create rule's getAfter() binding is
+      // rules-engine evaluation, not a client read, so it is unaffected.
+      allow get: if isAuth();
+      allow list: if false;
       allow create: if isAuth()
         && request.resource.data.keys().hasOnly(['uid'])
         && request.resource.data.uid == request.auth.uid

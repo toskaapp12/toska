@@ -232,6 +232,18 @@ describe("baseline sanity", () => {
       const m = env.authenticatedContext("mallory").firestore();
       await assertSucceeds(m.collection("handles").doc("alice123").get());
     });
+
+    it("registry LIST is denied — no user-directory enumeration", async () => {
+      // The registry maps every handle to its uid; a collection scan would
+      // hand any authed user a complete directory of ALL accounts, including
+      // ones that never posted. Point gets stay open (test above); list is
+      // closed.
+      await seedRegistryRow("alice123", "alice");
+      await seedRegistryRow("bob456", "bob");
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(m.collection("handles").get());
+      await assertFails(m.collection("handles").limit(1).get());
+    });
   });
 
   // S-1 (2026-06-16): the create path must reject a forged non-zero counter.

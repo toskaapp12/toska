@@ -1428,6 +1428,20 @@ describe("post delete: author or admin only", () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(b.collection("posts").doc("p1").delete());
   });
+
+  it("allows an admin to stamp-then-delete another user's post (inline admin delete)", async () => {
+    // Exact sequence FeedPostRow.adminDeletePost / PostDetailView.adminDeletePost
+    // (and AdminModerationView.deletePost) perform: stamp deletedBy/deletedAt so
+    // auditPostDeletion attributes the acting admin, then delete the doc.
+    await setUserDoc("alice");
+    await setAdmin("mod");
+    await setPost("p1", "alice");
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("posts").doc("p1").update({
+      deletedBy: "mod", deletedAt: serverTimestamp(),
+    }));
+    await assertSucceeds(m.collection("posts").doc("p1").delete());
+  });
 });
 
 describe("reply update + delete", () => {

@@ -123,6 +123,7 @@ struct PostDetailView: View {
     @State private var liveListener: ListenerRegistration? = nil
     @State private var suppressListenerUntil: Date = .distantPast
     @State private var showDeleteAlert = false
+    @State private var showAdminDeleteAlert = false
     @State private var showEditSheet = false
     @State private var editText = ""
     @State private var isDeleting = false
@@ -303,6 +304,12 @@ struct PostDetailView: View {
                         } message: {
                             Text("this is permanent. it'll be gone for everyone.")
                         }
+            .alert("delete this post for everyone?", isPresented: $showAdminDeleteAlert) {
+                            Button("cancel", role: .cancel) {}
+                            Button("delete (admin)", role: .destructive) { adminDeletePost() }
+                        } message: {
+                            Text("removes the post and its replies permanently. this action is recorded in the admin audit log.")
+                        }
             .alert("user blocked", isPresented: $showBlockedAlert) {
                 Button("ok") { dismiss() }
             } message: { Text("you won't see posts from this person anymore.") }
@@ -461,6 +468,17 @@ struct PostDetailView: View {
                                 blockUser()
                             } label: {
                                 Label("block", systemImage: "person.slash")
+                            }
+                            // Admin-only removal of someone else's post from
+                            // right here — mirrors FeedPostRow's context-menu
+                            // item. firestore.rules enforces the admin gate
+                            // server-side; this button is convenience only.
+                            if AdminManager.shared.isAdmin && !postId.isEmpty {
+                                Button(role: .destructive) {
+                                    showAdminDeleteAlert = true
+                                } label: {
+                                    Label("delete post (admin)", systemImage: "trash")
+                                }
                             }
                         }
                     } label: {
@@ -1301,6 +1319,40 @@ struct PostDetailView: View {
                 // a user who deletes their daily-prompt response sees the
                 // response card stuck on the deleted text until the next
                 // pull-to-refresh.
+                NotificationCenter.default.post(
+                    name: .postDeleted,
+                    object: nil,
+                    userInfo: ["postId": postId]
+                )
+                dismiss()
+            } catch {
+                isDeleting = false
+                deleteError = "couldn't delete — \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Admin-only removal of another user's post. Unlike the own-post
+    /// deletePost() above, this does NO client-side reply/like cleanup —
+    /// the like docs belong to other users and an admin batch-delete of
+    /// them would permission-fail and abort the whole delete. The server
+    /// triggers (onPostDeletedCleanupSubtree / -Reposts) own the cascade.
+    /// deletedBy/deletedAt are stamped first so auditPostDeletion records
+    /// the acting admin off the pre-delete snapshot, exactly like
+    /// AdminModerationView.deletePost.
+    private func adminDeletePost() {
+        guard AdminManager.shared.isAdmin, !postId.isEmpty, !isDeleting,
+              let adminUid = Auth.auth().currentUser?.uid else { return }
+        isDeleting = true
+        let ref = Firestore.firestore().collection("posts").document(postId)
+        Task { @MainActor in
+            do {
+                try await ref.updateData([
+                    "deletedBy": adminUid,
+                    "deletedAt": FieldValue.serverTimestamp(),
+                ])
+                try await ref.delete()
+                isDeleting = false
                 NotificationCenter.default.post(
                     name: .postDeleted,
                     object: nil,

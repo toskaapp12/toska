@@ -354,6 +354,11 @@ struct MainTabView: View {
         .onAppear {
             print("⚡️ MainTabView appeared")
             startUnreadListener()
+            // Resolve admin status at app entry (one admins/{uid} doc read,
+            // owner-readable per rules) so the admin-only delete items in the
+            // feed/post-detail menus appear without first visiting Settings —
+            // previously SettingsView.onAppear was the only refresh() caller.
+            AdminManager.shared.refresh()
             // Drain any push-tap intent that fired before this view's
             // NotificationCenter observers were attached (cold-launch race).
             // PushNotificationManager stashes the intent in pendingIntent;

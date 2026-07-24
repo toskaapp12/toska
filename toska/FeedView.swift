@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 @preconcurrency import FirebaseFirestore
 
 /*
@@ -657,6 +658,7 @@ struct FeedPostRow: View, Equatable {
             @State private var showShareCard = false
         @State private var showReportSheet = false
         @State private var showBlockConfirm = false
+        @State private var showAdminDeleteConfirm = false
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -1053,6 +1055,17 @@ struct FeedPostRow: View, Equatable {
                         Button(role: .destructive) { showBlockConfirm = true } label: {
                             Label("block \(handle)", systemImage: "person.slash")
                         }
+                        // Admin-only: remove someone else's post right from the
+                        // feed instead of routing through report → moderation
+                        // queue. Gated by the same admins/{uid} doc the
+                        // moderation row in Settings uses; firestore.rules
+                        // independently enforces it server-side, so this button
+                        // is convenience, not the security boundary.
+                        if AdminManager.shared.isAdmin && !postId.isEmpty {
+                            Button(role: .destructive) { showAdminDeleteConfirm = true } label: {
+                                Label("delete post (admin)", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .onAppear {
@@ -1140,6 +1153,45 @@ struct FeedPostRow: View, Equatable {
                                 } message: {
                                     Text("you wont see their posts or replies. they wont be notified.")
                                 }
+                                .confirmationDialog(
+                                    "delete this post for everyone?",
+                                    isPresented: $showAdminDeleteConfirm,
+                                    titleVisibility: .visible
+                                ) {
+                                    Button("delete (admin)", role: .destructive) { adminDeletePost() }
+                                    Button("cancel", role: .cancel) {}
+                                } message: {
+                                    Text("removes the post and its replies permanently. this action is recorded in the admin audit log.")
+                                }
+    }
+
+    /// Admin-only removal of another user's post, straight from the feed.
+    /// Two-step mirror of AdminModerationView.deletePost: stamp deletedBy/
+    /// deletedAt first so auditPostDeletion logs the acting admin off the
+    /// pre-delete snapshot, then delete. Server triggers clean up the reply
+    /// subtree, likes, and repost copies — no client-side cascade (the
+    /// own-post path's like cleanup would permission-fail for an admin).
+    private func adminDeletePost() {
+        guard AdminManager.shared.isAdmin, !postId.isEmpty,
+              let adminUid = Auth.auth().currentUser?.uid else { return }
+        let ref = Firestore.firestore().collection("posts").document(postId)
+        Task { @MainActor in
+            do {
+                try await ref.updateData([
+                    "deletedBy": adminUid,
+                    "deletedAt": FieldValue.serverTimestamp(),
+                ])
+                try await ref.delete()
+                // Same signal the own-post delete path sends — strips the post
+                // from the in-memory feed and any cached cards immediately.
+                NotificationCenter.default.post(name: .postDeleted, object: nil,
+                                                userInfo: ["postId": postId])
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } catch {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                Telemetry.recordError(error, context: "FeedPostRow.adminDeletePost")
+            }
+        }
     }
     
     // MARK: - Action Label

@@ -3555,11 +3555,17 @@ exports.cleanupProcessedTriggerEvents = onSchedule("every 24 hours", async () =>
 // `message` text preview would otherwise persist in the recipient's inbox
 // forever. This keeps the written retention promise.
 //
-// A collectionGroup inequality on `createdAt` is served by the automatic
-// single-field index (collection-group scope) — no composite index needed.
-// Notifications have no onDelete trigger, so deletes carry no counter/side
-// effects. Bounded at 20 pages × 500 = 10k/run; the next daily run drains any
-// remainder, matching cleanupProcessedTriggerEvents.
+// The collectionGroup inequality on `createdAt` needs an EXPLICIT
+// collection-group single-field index — the automatic single-field indexes are
+// collection-scope only and do NOT cover collectionGroup() queries. That index
+// is declared in firestore.indexes.json (fieldOverrides → notifications /
+// createdAt, COLLECTION_GROUP ASCENDING; the COLLECTION ASC+DESC entries there
+// preserve the per-user NotificationsView createdAt-DESC ordering the override
+// would otherwise disable). Without it this query throws FAILED_PRECONDITION,
+// which the catch below swallows — pruning silently no-ops and the 90-day
+// retention promise goes unmet. Notifications have no onDelete trigger, so
+// deletes carry no counter/side effects. Bounded at 20 pages × 500 = 10k/run;
+// the next daily run drains any remainder, matching cleanupProcessedTriggerEvents.
 async function pruneNotificationsOlderThan(cutoff, maxPages = 20) {
   let totalDeleted = 0;
   for (let page = 0; page < maxPages; page++) {

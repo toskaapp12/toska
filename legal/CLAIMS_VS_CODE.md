@@ -21,4 +21,11 @@ Every user-facing claim about privacy, anonymity, expiration, deletion, or safet
 | 15 | Web terms §7 license: "display, distribute, and share … for promotional purposes (such as shareable post cards)" | License scope | **MISLEADING (over-broad)** | "Promotional purposes" is wider than what the app does or the intimacy warrants. v1.0 Terms §7 narrows to: in-service display + the two consent-gated mechanisms (share cards, website featuring), nothing else. |
 | 16 | In-app age gate: "toska is for 17 and up" vs. audit brief's "18+" | Age floor | **CONSISTENT at 17+ in all code/copy** | Not a code/copy mismatch — a decision mismatch with the owner's stated assumption. See OPEN_ITEMS. |
 
+### 2026-07-27 full-audit corrections
+
+| # | Where | Claim | Verdict | Basis / action taken |
+|---|---|---|---|---|
+| 17 | Privacy §1 + §7 (privacy.html + PRIVACY_POLICY.md) | Email stored "in your private, owner-only profile area" / deletion removes an "email copy" | **WAS STALE — FIXED 2026-07-27** | The 2026-07-21 email-minimization stopped copying email into Firestore; it lives ONLY in Firebase Auth (app.js signup writes no email; SettingsView treats Auth as sole source; anonymity-probe prod proved 13/13 user docs + 24/24 posts PII-clean, email present only in Auth). Docs reworded to "Firebase Auth only — never copied into our post/profile database"; the deletion cascade now attributes email to "your Firebase Auth account." |
+| 18 | Privacy §4 featuring (privacy.html + PRIVACY_POLICY.md) | Website featuring shows "words, tag, and felt-count **only**" | **WAS IMPRECISE — FIXED 2026-07-27** | publicFeed/index.html also render an approximate age ("3h ago") and share pages a month label. Not an identifier, but "only" over-enumerated. Reworded to add "and an approximate age." |
+
 **Summary: no FALSE claims in the shipping app, and all MISLEADING items are now FIXED** — #3 in app copy (ships with v1.2), #12/#15 via the regenerated web pages (live on next push). The remaining TRUE\* nuances are stated plainly in the v1.0 Terms/Privacy documents.

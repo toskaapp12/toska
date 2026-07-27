@@ -97,7 +97,7 @@
         <h2>1. What we collect</h2>
         <p>Everything below is collected only because a feature needs it. We collect <strong>no</strong> real name, phone number, location, contacts, photos, camera data, or advertising identifiers, and the app contains no ad SDKs and does no cross-app tracking.</p>
         <ul>
-            <li><strong>Email address</strong> &mdash; sign-in, password reset, account recovery, support. Stored with Firebase Auth and in your private, owner-only profile area.</li>
+            <li><strong>Email address</strong> &mdash; sign-in, password reset, account recovery, support. Stored with Firebase Auth only &mdash; it is never copied into our post/profile database.</li>
             <li><strong>Random handle</strong> &mdash; your display identity (generated; never your real name).</li>
             <li><strong>Posts, replies, reflections, prompt responses</strong> &mdash; the app itself.</li>
             <li><strong>Drafts</strong> &mdash; posts you saved but didn't publish (only you can read them).</li>
@@ -123,7 +123,7 @@
         <p>To run the app (feeds, threads, notifications), personalize your feed, detect and act on content that violates the Terms, keep the service safe (report review, crisis-content review, abuse rate-limiting), and fix crashes. <strong>We do not sell, rent, or share your personal data with advertisers or data brokers, we do not use your data for advertising at all, and we do not use your content to train AI models or allow anyone else to.</strong></p>
 
         <h2>4. Public sharing of posts (your control)</h2>
-        <p>If your <strong>allow sharing</strong> setting is on (default on; Settings &rarr; Privacy): other users can render a post of yours as a share-card image &mdash; words and feeling tag only, never your handle; and a small number of posts, hand-picked by us, may appear on toskaapp.com and its share pages &mdash; same rule: words, tag, and felt-count only, no handle, no identifier, no profile link.</p>
+        <p>If your <strong>allow sharing</strong> setting is on (default on; Settings &rarr; Privacy): other users can render a post of yours as a share-card image &mdash; words and feeling tag only, never your handle; and a small number of posts, hand-picked by us, may appear on toskaapp.com and its share pages &mdash; same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.</p>
         <p>Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website. Letters and expiring posts are never shareable regardless of this setting.</p>
 
         <h2>5. Third-party services</h2>
@@ -147,7 +147,7 @@
         </ul>
 
         <h2>7. Account deletion &mdash; exactly what it deletes</h2>
-        <p>Deleting your account (Settings) starts an automated server-side cascade that removes: your profile and handle, private profile data (email copy, mood, stage, settings, push token), posts, replies, likes and their effect on counts, saves, reposts, follows/followers, blocks, drafts, streak days, notifications you received, notifications you triggered in other users' inboxes, and your authentication account. Sign-in-with-Apple tokens are revoked with Apple. The cascade retries hourly until complete if any step fails. What survives: reports about content (for safety), our internal moderation-action log, and backup copies until they age out. The live-database cascade typically completes within minutes.</p>
+        <p>Deleting your account (Settings) starts an automated server-side cascade that removes: your profile and handle, private profile data (mood, stage, settings, push token), posts, replies, likes and their effect on counts, saves, reposts, follows/followers, blocks, drafts, streak days, notifications you received, notifications you triggered in other users' inboxes, and your authentication account (which is where your email lives). Sign-in-with-Apple tokens are revoked with Apple. The cascade retries hourly until complete if any step fails. What survives: reports about content (for safety), our internal moderation-action log, and backup copies until they age out. The live-database cascade typically completes within minutes.</p>
 
         <h2>8. Your rights</h2>
         <p>Available to everyone, in-app, today: <strong>export my data</strong> (Settings &mdash; a JSON file of everything you've authored and own), <strong>deletion</strong> (per-item and full-account), <strong>correction</strong> (edit posts/replies, change email), <strong>analytics opt-out</strong>, and <strong>sharing opt-out</strong>.</p>

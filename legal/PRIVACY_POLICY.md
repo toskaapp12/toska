@@ -16,7 +16,7 @@ Everything below is collected only because a feature needs it. We collect **no**
 
 | Data | Why | Where it lives |
 |---|---|---|
-| Email address | Sign-in, password reset, account recovery, support | Firebase Auth; a copy in your private, owner-only profile area |
+| Email address | Sign-in, password reset, account recovery, support | Firebase Auth only — never copied into our post/profile database |
 | Random handle | Your display identity (generated; never your real name) | Database (public) |
 | Posts, replies, reflections, prompt responses | The app itself | Database (visible per feature rules) |
 | Drafts | Posts you saved but didn't publish | Database (only you can read them) |
@@ -46,7 +46,7 @@ To run the app (feeds, threads, notifications), personalize your feed, detect an
 If your **allow sharing** setting is on (default on; Settings → Privacy):
 
 - other users can render a post of yours as a **share-card image** — words and feeling tag only, never your handle or any identifier;
-- a small number of posts, hand-picked by us, may appear on **toskaapp.com** and its share pages — same rule: words, tag, and felt-count only, no handle, no identifier, no profile link.
+- a small number of posts, hand-picked by us, may appear on **toskaapp.com** and its share pages — same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.
 
 Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website. Letters and expiring posts are never shareable regardless of this setting.
 
@@ -74,7 +74,7 @@ No other third party receives user data. There are no ad networks, no data broke
 
 ## 7. Account deletion — exactly what it deletes
 
-Deleting your account (Settings → delete account) starts an automated server-side cascade that removes: your profile and handle, private profile data (email copy, mood, stage, settings, push token), posts, replies, likes and their effect on counts, saves, reposts, follows/followers, blocks, drafts, streak days, notifications you received, notifications you triggered in other users' inboxes, and your Firebase Auth account. Sign-in-with-Apple tokens are revoked with Apple. The cascade retries hourly until complete if any step fails. What survives: reports about content (for safety), the admin action log, and backup copies until they age out (§6). We aim for the live-database cascade to complete within minutes, not days.
+Deleting your account (Settings → delete account) starts an automated server-side cascade that removes: your profile and handle, private profile data (mood, stage, settings, push token), posts, replies, likes and their effect on counts, saves, reposts, follows/followers, blocks, drafts, streak days, notifications you received, notifications you triggered in other users' inboxes, and your Firebase Auth account (which is where your email lives). Sign-in-with-Apple tokens are revoked with Apple. The cascade retries hourly until complete if any step fails. What survives: reports about content (for safety), the admin action log, and backup copies until they age out (§6). We aim for the live-database cascade to complete within minutes, not days.
 
 You can also delete or edit any individual post or reply anywhere it appears, and export your data (§8).
 

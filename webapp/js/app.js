@@ -87,6 +87,19 @@ function el(tag, attrs = {}, ...children) {
 }
 const spinner = () => el("span", { class: "spinner" });
 
+// F12 (2026-07-27 full-audit): client-side giphy host-lock, mirroring the
+// server rule (firestore.rules gifUrl matches `https://…giphy.com/…`) and the
+// img-src CSP. A stored post's gifUrl is attacker-controllable if the server
+// lock ever regresses; rendering an arbitrary host as an <img src> would leak
+// every viewer's IP (a deanonymization beacon). Only render the image when the
+// URL is a giphy host; otherwise drop it silently. Belt-and-suspenders behind
+// the server lock + the img-src CSP that already blocks non-giphy/data hosts.
+const GIPHY_HOST = /^https:\/\/([a-z0-9-]+\.)+giphy\.com\//i;
+function gifImg(url, style) {
+    if (typeof url !== "string" || !GIPHY_HOST.test(url)) return null;
+    return el("img", { src: url, loading: "lazy", style, alt: "gif" });
+}
+
 function relTime(ts) {
     if (!ts?.toDate) return "";
     const s = (Date.now() - ts.toDate().getTime()) / 1000;
@@ -628,7 +641,7 @@ function postRow(id, d) {
         d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle ?? "anonymous"} reposted`) : null,
         meta,
         el("div", { class: "post-text" }, d.text ?? ""),
-        d.gifUrl ? el("img", { src: d.gifUrl, loading: "lazy", style: "max-width:100%; border-radius:12px; margin-top:12px;", alt: "gif" }) : null,
+        gifImg(d.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
         statsRow(d),
     );
 }
@@ -1233,7 +1246,7 @@ async function viewPost(postId) {
                 ephemeralChip(d)),
             (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
             el("div", { class: "post-text", style: "font-size:19px;" }, d.text ?? ""),
-            d.gifUrl ? el("img", { src: d.gifUrl, style: "max-width:100%; border-radius:10px; margin-top:10px;", alt: "gif" }) : null,
+            gifImg(d.gifUrl, "max-width:100%; border-radius:10px; margin-top:10px;"),
             statsRow(d),
         );
 
@@ -1569,7 +1582,7 @@ function renderThread(container, all, parentId, depth, onReplyTo) {
                 el("span", {}, relTime(r.createdAt))),
             isPending ? pendingBanner() : null,
             el("div", { class: "post-text" }, r.text ?? ""),
-            r.gifUrl ? el("img", { src: r.gifUrl, loading: "lazy", style: "max-width:100%; border-radius:10px; margin-top:8px;", alt: "gif" }) : null,
+            gifImg(r.gifUrl, "max-width:100%; border-radius:10px; margin-top:8px;"),
             stats,
         ));
         renderThread(container, all, r.id, depth + 1, onReplyTo);

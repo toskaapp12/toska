@@ -123,7 +123,7 @@ struct GifPickerView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)], spacing: 4) {
-                        ForEach(gifs) { gif in
+                        ForEach(Array(gifs.enumerated()), id: \.element.id) { index, gif in
                             Button {
                                 onSelect(gif.url)
                                 dismiss()
@@ -153,6 +153,11 @@ struct GifPickerView: View {
                                 }
                                 .cornerRadius(6)
                             }
+                            // F5 (2026-07-27 full-audit): the cell's only content
+                            // is an AsyncImage, so VoiceOver announced a bare
+                            // "button" with no description. Give each an ordinal
+                            // label so the grid is navigable.
+                            .accessibilityLabel("gif \(index + 1)")
                         }
                     }
                     .padding(.horizontal, 8)

@@ -22,10 +22,13 @@ struct WeeklyRecapView: View {
                 HStack {
                     Spacer()
                     Button { dismiss() } label: {
+                        // F6 (2026-07-27 full-audit): 32pt hit area was below the
+                        // 44pt minimum; keep the 14pt glyph, enlarge the target.
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .light))
                             .foregroundColor(.white.opacity(0.3))
-                            .frame(width: 32, height: 32)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("close")
                 }

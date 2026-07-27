@@ -909,6 +909,18 @@ service cloud.firestore {
         && (!('expiresAt' in request.resource.data.keys())
             || (request.resource.data.expiresAt is timestamp
                 && request.resource.data.expiresAt < request.time + duration.value(26, 'h')))
+        // F2 (2026-07-27 full-audit): the ephemeral flags MUST be real bools.
+        // The requires-expiresAt gate below keys on `.get('isWhisper', false)
+        // == true`; a NON-bool value (e.g. isWhisper: "x") makes `== true`
+        // false, so the gate is skipped and a permanent post lands wearing the
+        // "disappears" badge on any surface that treats the field truthily —
+        // the exact bypass the gate was written to close. Both legit writers
+        // only ever store genuine bools (ComposeView, webapp writes.js), so
+        // type-locking is transparent. Reject a non-bool at create.
+        && (!('isWhisper' in request.resource.data.keys())
+            || request.resource.data.isWhisper is bool)
+        && (!('isMidnightPost' in request.resource.data.keys())
+            || request.resource.data.isMidnightPost is bool)
         // 2026-07-17 re-audit: the ephemeral flags REQUIRE expiresAt. Both
         // legit compose paths always set it (ComposeView.swift:1141-1151,
         // webapp writes.js); without this a tampered client could mint a

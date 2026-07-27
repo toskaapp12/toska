@@ -245,6 +245,16 @@ struct AnniversaryCardView: View {
               !isSaving else { return }
         let trimmedReflection = reflectionText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedReflection.isEmpty else { return }
+        // F4 (2026-07-27 full-audit): offline, Firestore's async setData never
+        // resolves (the write sits durably queued and only completes on server
+        // ack), so the catch below never runs — isSaving would stick true and
+        // the spinner hang forever with no feedback. Fail fast, exactly like
+        // SettingsView.saveSettings / EditReplyView. The reflection isn't lost:
+        // the user can retry once back online.
+        guard NetworkMonitor.shared.isConnected else {
+            saveError = "you're offline — that didn't save. try again when you're back."
+            return
+        }
         isSaving = true
         saveError = ""
         Task { @MainActor in

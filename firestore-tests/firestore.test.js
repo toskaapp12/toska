@@ -394,6 +394,26 @@ describe("post create: expiresAt bounded to the near future (audit 2026-07-17)",
       isMidnightPost: true,
     }));
   });
+  // F2 (2026-07-27 full-audit): a NON-BOOL ephemeral flag must be rejected —
+  // otherwise isWhisper:"x" reads false at the `== true` gate and skips the
+  // requires-expiresAt check, minting a permanent post that a truthy-check
+  // renderer badges "disappears". Type-lock closes the confusion.
+  it("rejects a non-bool isWhisper (type-confusion, no expiresAt)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("posts").doc("p_wstr").set({
+      authorId: "alice", authorHandle: "handle_alice", text: "hello world",
+      createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+      isWhisper: "x",
+    }));
+  });
+  it("rejects a non-bool isMidnightPost (type-confusion, no expiresAt)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("posts").doc("p_mstr").set({
+      authorId: "alice", authorHandle: "handle_alice", text: "hello world",
+      createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+      isMidnightPost: 1,
+    }));
+  });
 });
 
 describe("post create: client moderationStatus is start-hidden only (audit 2026-06-01)", () => {

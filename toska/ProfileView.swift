@@ -98,9 +98,14 @@ struct ProfileView: View {
                     // Messages envelope removed when DMs were cut. Only
                     // settings remains in the trailing slot.
                     Button { showSettings = true } label: {
+                        // F6 (2026-07-27 full-audit): the bare 18pt image gave a
+                        // ~18pt hit area (below the 44pt minimum) — mirror the
+                        // fix OtherProfileView already applied to its ellipsis.
                         Image(systemName: "gearshape")
                             .font(.system(size: 18, weight: .regular))
                             .foregroundColor(ToskaColor.text)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("settings")
                 }

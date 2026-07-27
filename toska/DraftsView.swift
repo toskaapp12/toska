@@ -29,10 +29,12 @@ struct DraftsView: View {
     // H2: surface a load failure instead of showing the "nothing saved" empty
     // state when the drafts read actually errored.
     @State private var draftsLoadFailed = false
+    @State private var deleteError: String = ""   // F7: user-facing delete failure
 
     var body: some View {
             ZStack {
                 LateNightTheme.background.ignoresSafeArea()
+                // F7 (2026-07-27 full-audit) anchor — see .alert below.
 
                 if draftsLoadFailed && drafts.isEmpty {
                     VStack {
@@ -107,6 +109,10 @@ struct DraftsView: View {
             }
         .onAppear { startListening() }
         .onDisappear { stopListening() }
+        .alert("couldn't delete", isPresented: .init(
+            get: { !deleteError.isEmpty }, set: { if !$0 { deleteError = "" } })) {
+            Button("ok") { deleteError = "" }
+        } message: { Text(deleteError) }
     }
 
     private func startListening() {
@@ -151,7 +157,15 @@ struct DraftsView: View {
             .collection("drafts").document(draftId)
             .delete { error in
                 if let error = error {
+                    // F7 (2026-07-27 full-audit): the swipe-delete failure was
+                    // only print-logged (a no-op in release), so a real
+                    // permission/backend error left the draft silently
+                    // un-deleted. Surface it + buzz so the user knows to retry.
                     print("⚠️ DraftsView delete failed: \(error)")
+                    Task { @MainActor in
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                        deleteError = "couldn't delete that draft — try again in a moment."
+                    }
                 }
             }
     }

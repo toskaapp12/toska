@@ -133,6 +133,20 @@
 
     <div class="toast" id="toast"></div>
 
+    <script>
+        // F10 (2026-07-27 full-audit) — clickjacking frame-buster. GitHub Pages
+        // cannot set an HTTP X-Frame-Options / CSP header, and `frame-ancestors`
+        // is spec-IGNORED inside a <meta> CSP, so this admin dashboard has no
+        // header-level anti-framing. Bust out of any frame so an attacker can't
+        // overlay the moderation controls under a decoy page and trick a
+        // logged-in admin into clicking through a destructive action. Runs
+        // before the module below (classic script, executes synchronously in
+        // document order).
+        if (window.top !== window.self) {
+            try { window.top.location = window.self.location; }
+            catch (e) { document.documentElement.style.display = "none"; }
+        }
+    </script>
     <script type="module">
         // ============================================================
         // SECURITY NOTE — admin.html

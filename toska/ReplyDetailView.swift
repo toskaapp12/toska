@@ -49,6 +49,7 @@ struct ReplyDetailView: View {
     @State private var postError: String? = nil
     @State private var showGentleCheck = false
     @State private var gentleCheckLevel: CrisisLevel = .soft
+    @State private var gentleCheckTopic: CrisisTopic? = nil
     @State private var crisisConfirmed = false
     @State private var showContentWarning = false
     @State private var contentWarningMessage = ""
@@ -348,6 +349,7 @@ struct ReplyDetailView: View {
                 CrisisCheckInView(
                     isPresented: $showGentleCheck,
                     level: gentleCheckLevel,
+                    topic: gentleCheckTopic,
                     onProceed: { crisisConfirmed = true; sendReply() }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -571,6 +573,7 @@ struct ReplyDetailView: View {
         // rail. onProceed sets crisisConfirmed and re-enters to actually post.
         if !crisisConfirmed, let level = crisisCheckLevelRespectingSetting(for: trimmed) {
             gentleCheckLevel = level
+            gentleCheckTopic = crisisTopic(for: trimmed)
             showGentleCheck = true
             return
         }

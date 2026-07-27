@@ -36,7 +36,27 @@ const CASES = [
   ["you deserve to suffer", "harassment"],
   ["go hang yourself", "harassment"],
   ["kys", "harassment"],
+  // NCII / revenge-porn + doxxing threats (2026-07-27)
+  ["im going to leak your nudes everywhere", "harassment"],
+  ["ill post your nudes online for everyone", "harassment"],
+  ["i still have your nudes remember", "harassment"],
+  ["im going to dox you", "harassment"],
+  ["everyone gets to see when i post your address", "harassment"],
+  ["ill reveal your identity to your boss", "harassment"],
   // ── must FLAG: sexual ──
+  // minor-safety: underage self-disclosure (2026-07-27) → held for review
+  ["im 15 years old and going through a breakup", "minor_safety"],
+  ["i am 14 years old", "minor_safety"],
+  ["im a minor and scared to tell anyone", "minor_safety"],
+  ["im not 18 yet but", "minor_safety"],
+  ["i am in 8th grade", "minor_safety"],
+  // minor-safety FP guards (must NOT flag)
+  ["im 15 minutes late to everything", null],
+  ["our relationship is 9 years old", null],
+  ["my dog is 14 years old", null],
+  ["i am 25 years old and lost", null],
+  ["back in high school this happened to me", null],
+
   ["send nudes", "sexual_content"],
   ["lets hook up tonight", "sexual_content"],
   ["post your booty call", "sexual_content"],
@@ -65,6 +85,9 @@ const CASES = [
   ["i want to die alone", null],              // grief, routes to crisis not threat/harassment
   ["i just want some acceptance", null],
   ["we should talk it out", null],
+  // 2026-07-27 algospeak — harassment-lane FP guards (kys word-boundary fix)
+  ["the sky is the limit for us", null],      // "sky's"->"skys" no longer trips kys
+  ["i love these grippy socks in winter", null], // no harassment/hate from grippy sock
 ];
 
 let failed = 0;

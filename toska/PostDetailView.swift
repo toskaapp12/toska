@@ -144,6 +144,7 @@ struct PostDetailView: View {
     @State private var showReplyGentleCheck = false
     @State private var pendingReplyText = ""
     @State private var replyGentleCheckLevel: CrisisLevel = .soft
+    @State private var replyGentleCheckTopic: CrisisTopic? = nil
     @State private var replyGifUrl: String? = nil
     @State private var showReplyGifPicker = false
     // Edit / delete for the viewer's own reply, from the reply context menu.
@@ -333,6 +334,7 @@ struct PostDetailView: View {
                 Button("reply anyway", role: .destructive) {
                     if let level = crisisCheckLevelRespectingSetting(for: pendingReplyText) {
                         replyGentleCheckLevel = level
+                        replyGentleCheckTopic = crisisTopic(for: pendingReplyText)
                         showReplyGentleCheck = true
                     } else {
                         postReplyNow(pendingReplyText)
@@ -344,6 +346,7 @@ struct PostDetailView: View {
                     CrisisCheckInView(
                         isPresented: $showReplyGentleCheck,
                         level: replyGentleCheckLevel,
+                        topic: replyGentleCheckTopic,
                         onProceed: { postReplyNow(pendingReplyText) }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
@@ -1846,6 +1849,7 @@ struct PostDetailView: View {
         }
         if containsNameOrIdentifyingInfo(trimmed) { pendingReplyText = trimmed; showReplyNameWarning = true; return }
         if let level = crisisCheckLevelRespectingSetting(for: trimmed) {
+            replyGentleCheckTopic = crisisTopic(for: trimmed)
             pendingReplyText = trimmed
             replyGentleCheckLevel = level
             showReplyGentleCheck = true
@@ -1979,6 +1983,7 @@ struct EditPostView: View {
     @State private var editContentWarningMessage = ""
     @State private var showGentleCheck = false
     @State private var editGentleCheckLevel: CrisisLevel = .soft
+    @State private var editGentleCheckTopic: CrisisTopic? = nil
     @State private var isSaving = false
     @State private var saveError = ""
 
@@ -2095,6 +2100,7 @@ struct EditPostView: View {
             Button("save anyway", role: .destructive) {
                 showNameWarning = false
                 if let level = crisisCheckLevelRespectingSetting(for: editText) {
+            editGentleCheckTopic = crisisTopic(for: editText)
                     editGentleCheckLevel = level
                     showGentleCheck = true
                 } else {
@@ -2107,6 +2113,7 @@ struct EditPostView: View {
                 CrisisCheckInView(
                     isPresented: $showGentleCheck,
                     level: editGentleCheckLevel,
+                    topic: editGentleCheckTopic,
                     onProceed: { saveEdit() }
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))

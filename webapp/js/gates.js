@@ -88,7 +88,34 @@ function crisisLines() {
     return [["findahelpline.com", "findahelpline.com — free support, wherever you are"]];
 }
 
-function crisisCheckIn(level) {
+// 2026-07-27 topic-specific support (mirror of CrisisLines.topicResources /
+// crisisTopic in ContentModeration.swift). When the concern is an SA/DV
+// disclosure, show the matching hotline ABOVE the general lines. Word-boundary
+// so "sa"/"csa"/"dv" don't fire inside innocent words. US-specific with an
+// international-directory fallback. Client-only UX; no server parity pin.
+function crisisTopic(text) {
+    const t = (text || "").toLowerCase();
+    const saRe = /\b(sa|csa|sexual assault|sexually assaulted|assaulted me|raped me|was raped|molested me)\b/;
+    const dvRe = /\b(dv|domestic violence|domestic abuse|abusive relationship|he hit me|she hit me|he abused me|he beat me)\b/;
+    if (saRe.test(t)) return "sexual_assault";
+    if (dvRe.test(t)) return "domestic_violence";
+    return null;
+}
+function topicLines(topic) {
+    const region = (navigator.language ?? "").split("-")[1]?.toUpperCase() ?? "";
+    const us = region === "US";
+    if (topic === "sexual_assault") {
+        return us ? ["call 800 656 4673 — RAINN, national sexual assault hotline", "chat online at hotline.rainn.org"]
+                  : ["find a sexual assault helpline at findahelpline.com"];
+    }
+    if (topic === "domestic_violence") {
+        return us ? ["call 800 799 7233 — national domestic violence hotline", "text START to 88788"]
+                  : ["find a domestic abuse helpline at findahelpline.com"];
+    }
+    return [];
+}
+
+function crisisCheckIn(level, topic = null) {
     return new Promise((resolve) => {
         const explicit = level === "explicit";
         const { card, close, overlay } = modal({ dismissable: !explicit });
@@ -99,7 +126,8 @@ function crisisCheckIn(level) {
                 ? "what you wrote sounds serious. you don't have to go through this alone."
                 : "this sounds like it's coming from a heavy place. that's okay."),
             el("div", { class: "crisis-lines" },
-                crisisLines().map(([, label]) => el("div", { class: "crisis-line" }, label))),
+                [...topicLines(topic).map((label) => el("div", { class: "crisis-line" }, label)),
+                 ...crisisLines().map(([, label]) => el("div", { class: "crisis-line" }, label))]),
             el("div", { class: "modal-actions" },
                 // deliberately quiet — the check-in must never feel like a wall
                 el("button", { class: "btn quiet", onclick: () => { close(); resolve("proceed"); } },
@@ -116,7 +144,10 @@ function crisisCheckIn(level) {
 export async function runGates(text, { isReply = false } = {}) {
     let willBeHeld = false;
     const reason = isReply ? computeReplyFlagReason(text) : computePostFlagReason(text);
-    if (reason && reason !== "personal_information") {
+    // minor_safety is held silently server-side (no user-facing dialog — the
+    // admin reviews the account per ToS); personal_information has its own
+    // anonymity dialog below. Both skip the generic violation dialog.
+    if (reason && reason !== "personal_information" && reason !== "minor_safety") {
         const r = await violationDialog(reason);
         if (r === "edit") return { ok: false, willBeHeld };
         willBeHeld = true;
@@ -126,15 +157,16 @@ export async function runGates(text, { isReply = false } = {}) {
         if (r === "edit") return { ok: false, willBeHeld };
         willBeHeld = true;
     }
+    const topic = crisisTopic(text);
     if (isPostExplicitCrisis(text)) {
-        const r = await crisisCheckIn("explicit");
+        const r = await crisisCheckIn("explicit", topic);
         if (r !== "proceed") return { ok: false, willBeHeld };
         // Crisis REPLIES deliberately go live server-side (a reach-out
         // shouldn't be censored) — only posts are held. Don't promise a
         // review that won't happen.
         if (!isReply) willBeHeld = true;
     } else if (isPostConcerning(text)) {
-        const r = await crisisCheckIn("soft");
+        const r = await crisisCheckIn("soft", topic);
         if (r !== "proceed") return { ok: false, willBeHeld };
         if (!isReply) willBeHeld = true;
     }

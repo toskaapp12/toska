@@ -205,6 +205,20 @@ const MOD_HARASSMENT = [
   "you deserve to suffer", "you deserve to die",
   "go away and never come back",
   "no one will miss you", "noone will miss you",
+  // 2026-07-27 NCII / revenge-porn threats (breakup-specific harm). Threatening
+  // to leak/post an ex's intimate images. Distinctive multi-word phrases, so
+  // substring-safe. Held for review like other harassment.
+  "leak your nudes", "post your nudes", "share your nudes", "expose your nudes",
+  "post your nudes online", "send your nudes to everyone", "leak your pics",
+  "leak your photos", "post your private pics", "still have your nudes",
+  "everyone will see your nudes", "revenge porn", "post the pics you sent",
+  // 2026-07-27 doxxing / expose-an-ex threats. The PII detector catches actual
+  // addresses/numbers/socials; these catch the THREAT-to-expose intent.
+  "dox you", "doxx you", "expose you online", "expose you to everyone",
+  "post your address", "share your address", "post your number",
+  "post your real name", "reveal your identity", "expose your identity",
+  "everyone will know where you live", "tell everyone where you live",
+  "post where you work", "everyone will know who you really are",
 ];
 
 // Explicit, high-urgency crisis statements — held AND page admins
@@ -222,6 +236,11 @@ const MOD_CRISIS_EXPLICIT = [
   // 2026-07-17 red-team extension: gerund form — word-boundary matching means
   // "unalive" does NOT match "unaliving" ("thinking about unaliving tonight").
   "unaliving",
+  // 2026-07-27 algospeak extension (explicit — unambiguous suicide references):
+  // "sewerslide" (suicide), "self deletion"/"self delete" (self-deletion coded
+  // form). Distinctive multi-char forms, safe as substrings.
+  "sewerslide", "sewer slide", "self deletion", "self-deletion", "self delete",
+  "self deleting",
   "hang myself", "hanging myself", "neck myself",
   // ending my life
   "end my life", "ending my life", "end it all", "ending it all",
@@ -309,6 +328,20 @@ const MOD_CRISIS_SOFT = [
   "no reason to keep going", "no reason to go on",
   // farewell-note shape ("this is my goodbye post, don't try to find me")
   "this is my goodbye",
+  // 2026-07-27 algospeak extension (SOFT — held for review + gentle check-in,
+  // never paged; over-hold is the safe direction). These are matched as
+  // standalone word-boundary tokens by matchesCrisisPhrase (pNoSpace <= 3), so
+  // they do NOT fire inside innocent words:
+  //   "sa"/"s.a." (sexual assault), "csa" (childhood SA), "dv" (domestic
+  //   violence) — survivor DISCLOSURES: routed here (support + review), never
+  //   to the abuse-takedown lane. "sh" (self-harm) shorthand.
+  //   ("si" for suicidal ideation deliberately EXCLUDED — collides with the
+  //   very common Spanish "si"/"sí".)
+  // "yeet myself" (flippant kms shorthand) + "grippy sock" (psych-ward
+  // hospitalization reference) are distinctive multi-char coded forms.
+  // (pro-ED tags proana/thinspo etc. were considered but EXCLUDED: the
+  // space-stripped fallback collides them with "pro analyst"/"thin spot".)
+  "sa", "csa", "dv", "sh", "yeet myself", "grippy sock",
 ];
 
 // Derived so MOD_EXPLICIT_CRISIS is, by construction, a subset of
@@ -338,6 +371,21 @@ function foldAmbiguousIL(s) {
   return s.replace(/[1!|il]/g, "l");
 }
 
+// 2026-07-27 algospeak hardening — evasions the normalizer didn't defeat:
+// (a) repeated-character padding ("suuuuicide", "kmsss", "dieee"); collapse 3+
+//     identical chars to one. 3+ (not 2+) leaves real doubles ("kill","really")
+//     untouched.
+// (b) crisis-only extra de-leet for glyphs NOT in the shared NAME_LEET_MAP
+//     (kept out of the name/PII path to avoid FP there): 6/9->g and (/<->c, so
+//     "9rippy sock" / "sui(ide" normalize. Deliberately NOT 2 (means "to"/"too"
+//     far more than "z") or + (rare, ambiguous).
+function collapseRepeats(s) {
+  return s.replace(/(.)\1{2,}/g, "$1");
+}
+function deLeetCrisisExtra(s) {
+  return s.replace(/[69]/g, "g").replace(/[(<]/g, "c");
+}
+
 function matchesCrisisPhrase(rawText, list) {
   const raw = rawText || "";
   const lowered = raw.toLowerCase();
@@ -348,15 +396,33 @@ function matchesCrisisPhrase(rawText, list) {
   // both inputs go through foldAmbiguousIL from their own starting points.
   const folded = foldAmbiguousIL(aggressiveNormalizeForNameMatch(foldAmbiguousIL(raw)));
   const foldedNoSpace = folded.replace(/[^a-z0-9]/g, "");
+  // Algospeak forms: repeated-char + extra-leet collapsed (normalized already
+  // de-spaced initialisms like "s . a" -> "sa", so word-boundary checks below
+  // can find them).
+  const collapsed = collapseRepeats(deLeetCrisisExtra(normalized));
   return list.some((phrase) => {
+    const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
+    // Short tokens / initialisms (sa, sh, dv, csa, kms, kys) are matched ONLY as
+    // standalone word-boundary tokens — a bare substring "sa" fires inside
+    // "salsa/visa/usa", "sh" inside "wish", "kys" inside "sky's"->"skys". The
+    // \b anchor makes them safe; the normalized + collapsed forms let "s.a."
+    // and "s a" reach the same token. (This also FIXES the pre-existing
+    // "sky's -> skys" harassment false positive the old substring path had.)
+    if (pNoSpace.length <= 3) {
+      const re = new RegExp("\\b" + pNoSpace + "\\b");
+      return re.test(lowered) || re.test(normalized) || re.test(collapsed);
+    }
     if (lowered.includes(phrase) || normalized.includes(phrase)) return true;
     if (folded.includes(foldAmbiguousIL(phrase))) return true;
+    // Padding/leet-collapsed form for longer coded words ("unaliiive",
+    // "sewersl1de" -> handled via folded, "9rippy sock").
+    if (collapsed.includes(phrase)) return true;
     // Space/punct-insensitive fallback, length-guarded so short tokens
-    // (e.g. "kms") don't false-positive against arbitrary letter runs.
-    const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
+    // don't false-positive against arbitrary letter runs.
     if (pNoSpace.length < 6) return false;
     return noSpace.includes(pNoSpace) ||
-      foldedNoSpace.includes(foldAmbiguousIL(pNoSpace));
+      foldedNoSpace.includes(foldAmbiguousIL(pNoSpace)) ||
+      collapseRepeats(noSpace).includes(pNoSpace);
   });
 }
 
@@ -394,8 +460,27 @@ const SPAM_PATTERNS = [
   /\b(onlyfans|only fans)\b/i,
 ];
 
+// 2026-07-27 minor-safety: first-person underage self-disclosure on a 17+ app.
+// Held for review (NOT deleted) so an admin can verify and act per the ToS
+// ("we remove accounts we discover to be underage"). Tight, first-person,
+// FP-guarded — "im 15 minutes late", "relationship is 9 years old", "im 25",
+// high-school reminiscing all stay clear. NOTE: this is detection only; the
+// account-removal POLICY and any legal reporting pipeline are owner decisions.
+function isUnderageDisclosure(rawText) {
+  const t = (rawText || "").toLowerCase();
+  if (/\b(i'?m|i am)\s+(a\s+)?(minor|underage)\b/.test(t)) return true;
+  if (/\bi'?m\s+not\s+(even\s+)?(18|eighteen)\b/.test(t)) return true;
+  if (/\b(i'?m|i am)\s+(1[0-6])\s*(years?\s*old|yo\b|yrs?\s*old)/.test(t)) return true;
+  if (/\b(i'?m|i am)\s+in\s+(middle school|junior high|[678](th)?\s*grade)\b/.test(t)) return true;
+  return false;
+}
+
 function computePostFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
+  // Minor-safety FIRST — it takes precedence over every other category so an
+  // underage disclosure (esp. co-occurring with anything sexual) surfaces as
+  // the urgent review reason, not a milder label.
+  if (isUnderageDisclosure(rawText)) return "minor_safety";
   if (SPAM_PATTERNS.some((p) => p.test(text))) return "spam_or_commercial";
   if (matchesEvasionRegex(rawText, MOD_HATE)) return "hate_speech";
   // 2026-05-31: added MOD_HARASSMENT for posts. Previously only replies
@@ -421,6 +506,7 @@ function isPostConcerning(rawText) {
 
 function computeReplyFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
+  if (isUnderageDisclosure(rawText)) return "minor_safety";
   if (matchesEvasionRegex(rawText, MOD_HATE)) return "hate_speech";
   // Threat BEFORE harassment, same as computePostFlagReason: identical text
   // must triage to the same (more severe) category on both surfaces.
@@ -453,4 +539,5 @@ module.exports = {
   computePostFlagReason,
   isPostConcerning,
   computeReplyFlagReason,
+  isUnderageDisclosure,
 };

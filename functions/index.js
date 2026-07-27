@@ -2854,6 +2854,7 @@ function flagReasonToPendingReason(flagReason) {
     case "personal_information": return "pii";
     case "contains_link": return "abuse_link";
     case "spam_or_commercial": return "abuse_spam";
+    case "minor_safety": return "minor_safety";
     default: return "abuse";
   }
 }
@@ -3254,7 +3255,13 @@ exports.onReplyCreatedAlertAdmins = onDocumentCreated(
 async function applyReplyModeration(postId, replyId, flagReason) {
   if (!flagReason) return;
   const replyRef = db.collection("posts").doc(postId).collection("replies").doc(replyId);
-  if (flagReason === "personal_information" || flagReason === "contains_link") {
+  if (flagReason === "minor_safety") {
+    // 2026-07-27 minor-safety: HOLD (never hard-delete) so an admin reviews the
+    // underage disclosure and acts on the account per ToS. Distinct pendingReason
+    // so the admin queue surfaces it as urgent.
+    await setReplyPendingReview(replyRef, "minor_safety");
+    console.log(`Reply ${replyId} on post ${postId} HELD — minor-safety review`);
+  } else if (flagReason === "personal_information" || flagReason === "contains_link") {
     // M-1: high-false-positive categories (names/links) get a recoverable
     // HOLD (hidden pending admin review) rather than the old visible-but-
     // flagged state — consistent with validateReply and posts. pendingReason

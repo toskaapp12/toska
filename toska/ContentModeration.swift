@@ -40,6 +40,10 @@ let explicitCrisisPhrases = [
     // 2026-07-17 red-team extension: gerund form — word-boundary matching means
     // "unalive" does NOT match "unaliving" ("thinking about unaliving tonight").
     "unaliving",
+    // 2026-07-27 algospeak extension (explicit — unambiguous suicide references).
+    // Mirror of index.js MOD_CRISIS_EXPLICIT.
+    "sewerslide", "sewer slide", "self deletion", "self-deletion", "self delete",
+    "self deleting",
     "hang myself", "hanging myself", "neck myself",
     // ending my life
     "end my life", "ending my life", "end it all", "ending it all",
@@ -106,6 +110,12 @@ let softConcernPhrases = [
     "no reason to keep going", "no reason to go on",
     // farewell-note shape ("this is my goodbye post, don't try to find me")
     "this is my goodbye",
+    // 2026-07-27 algospeak extension (SOFT — held + gentle check-in, never
+    // paged). Short tokens (sa/csa/dv/sh) are word-boundary matched by
+    // crisisPhraseMatch so they don't fire inside innocent words. SA/CSA/DV are
+    // survivor DISCLOSURES routed to support+review, never abuse-takedown.
+    // ("si" excluded — collides with Spanish "si"/"sí".) Mirror of index.js.
+    "sa", "csa", "dv", "sh", "yeet myself", "grippy sock",
 ]
 
 // Back-compat alias so existing call sites that only care about "is it
@@ -144,6 +154,19 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
     func foldAmbiguousIL(_ s: String) -> String {
         String(s.map { "1!|il".contains($0) ? "l" : $0 })
     }
+    // 2026-07-27 algospeak hardening — mirror of moderationLogic.js:
+    // (a) collapse 3+ repeated chars ("suuuuicide" -> "suicide"); 3+ leaves real
+    //     doubles untouched. (b) crisis-only extra de-leet 6/9->g, (/<->c.
+    func collapseRepeats(_ s: String) -> String {
+        s.replacingOccurrences(of: "(.)\\1{2,}", with: "$1", options: .regularExpression)
+    }
+    func deLeetExtra(_ s: String) -> String {
+        var r = s
+        for (from, to) in [("6", "g"), ("9", "g"), ("(", "c"), ("<", "c")] {
+            r = r.replacingOccurrences(of: from, with: to)
+        }
+        return r
+    }
     let lowered = text.lowercased()
     let normalized = aggressiveNormalizeForNameMatch(text)
     let noSpace = noSpaceOf(normalized)
@@ -152,12 +175,25 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
     // inputs go through foldAmbiguousIL from their own starting points.
     let folded = foldAmbiguousIL(aggressiveNormalizeForNameMatch(foldAmbiguousIL(text)))
     let foldedNoSpace = noSpaceOf(folded)
+    let collapsed = collapseRepeats(deLeetExtra(normalized))
     for phrase in list {
+        let pNoSpace = String(phrase.filter { $0.isLetter || $0.isNumber }).lowercased()
+        // Short tokens / initialisms (sa, sh, dv, csa, kms, kys) match ONLY as
+        // standalone word-boundary tokens — a bare "sa" fires inside
+        // "salsa/visa/usa", "kys" inside "sky's"->"skys". Mirror of the server.
+        if pNoSpace.count <= 3 {
+            let pattern = "\\b\(pNoSpace)\\b"
+            for form in [lowered, normalized, collapsed] {
+                if form.range(of: pattern, options: .regularExpression) != nil { return true }
+            }
+            continue
+        }
         if lowered.contains(phrase) || normalized.contains(phrase) { return true }
         if folded.contains(foldAmbiguousIL(phrase)) { return true }
-        let pNoSpace = phrase.filter { $0.isLetter || $0.isNumber }
+        if collapsed.contains(phrase) { return true }
         if pNoSpace.count >= 6 &&
-            (noSpace.contains(pNoSpace) || foldedNoSpace.contains(foldAmbiguousIL(pNoSpace))) { return true }
+            (noSpace.contains(pNoSpace) || foldedNoSpace.contains(foldAmbiguousIL(pNoSpace))
+             || collapseRepeats(noSpace).contains(pNoSpace)) { return true }
     }
     return false
 }
@@ -165,6 +201,32 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
 func crisisLevel(for text: String) -> CrisisLevel? {
     if crisisPhraseMatch(text, explicitCrisisPhrases) { return .explicit }
     if crisisPhraseMatch(text, softConcernPhrases) { return .soft }
+    return nil
+}
+
+// 2026-07-27: topic-specific crisis resources. When the concern is a sexual-
+// assault or domestic-violence disclosure (not general suicidal distress), the
+// check-in should surface RAINN / the DV hotline, not just 988. Client-only
+// (the check-in is compose-time UX); uses the same word-boundary matcher so
+// "sa"/"csa"/"dv" don't fire inside innocent words. Kept OUT of the crisis-parity
+// pin (that pins only the held/paged lists); mirrored in webapp/js/gates.js.
+enum CrisisTopic {
+    case sexualAssault
+    case domesticViolence
+}
+
+private let sexualAssaultTerms = [
+    "sa", "csa", "sexual assault", "sexually assaulted", "assaulted me",
+    "raped me", "he raped me", "she raped me", "was raped", "molested me",
+]
+private let domesticViolenceTerms = [
+    "dv", "domestic violence", "domestic abuse", "abusive relationship",
+    "he hit me", "she hit me", "he abused me", "she abused me", "he beat me",
+]
+
+func crisisTopic(for text: String) -> CrisisTopic? {
+    if crisisPhraseMatch(text, sexualAssaultTerms) { return .sexualAssault }
+    if crisisPhraseMatch(text, domesticViolenceTerms) { return .domesticViolence }
     return nil
 }
 
@@ -1155,6 +1217,17 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "you deserve to suffer", "you deserve to die",
         "go away and never come back",
         "no one will miss you", "noone will miss you",
+        // 2026-07-27 NCII / revenge-porn threats (mirror of index.js MOD_HARASSMENT).
+        "leak your nudes", "post your nudes", "share your nudes", "expose your nudes",
+        "post your nudes online", "send your nudes to everyone", "leak your pics",
+        "leak your photos", "post your private pics", "still have your nudes",
+        "everyone will see your nudes", "revenge porn", "post the pics you sent",
+        // 2026-07-27 doxxing / expose-an-ex threats.
+        "dox you", "doxx you", "expose you online", "expose you to everyone",
+        "post your address", "share your address", "post your number",
+        "post your real name", "reveal your identity", "expose your identity",
+        "everyone will know where you live", "tell everyone where you live",
+        "post where you work", "everyone will know who you really are",
     ]
     // Same parity fix as threat above: matchesCrisisPhrase(MOD_HARASSMENT) on the
     // server de-leets/de-spaces, so "ky5" / "k i l l yourself" were held server-

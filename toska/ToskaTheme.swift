@@ -489,6 +489,33 @@ enum CrisisLines {
         }
     }
 
+    /// 2026-07-27: topic-specific support lines (sexual assault / domestic
+    /// violence), shown ABOVE the general crisis lines when the check-in was
+    /// triggered by an SA/DV disclosure. US-specific numbers with an
+    /// international-directory fallback (same "no dead numbers abroad" rule as
+    /// `resources`). Mirrored in webapp/js/gates.js topicLines().
+    static func topicResources(_ topic: CrisisTopic) -> [CrisisResource] {
+        let region = Locale.current.region?.identifier ?? ""
+        switch topic {
+        case .sexualAssault:
+            if region == "US" {
+                return [
+                    CrisisResource(label: "call 800 656 4673", sublabel: "RAINN — national sexual assault hotline", url: "tel://8006564673", icon: "phone.fill"),
+                    CrisisResource(label: "chat online with RAINN", sublabel: "confidential, 24/7", url: "https://hotline.rainn.org/online", icon: "message.fill"),
+                ]
+            }
+            return [CrisisResource(label: "find a sexual assault helpline", sublabel: "international directory", url: "https://findahelpline.com/i/topics/sexual-abuse", icon: "globe")]
+        case .domesticViolence:
+            if region == "US" {
+                return [
+                    CrisisResource(label: "call 800 799 7233", sublabel: "national domestic violence hotline", url: "tel://8007997233", icon: "phone.fill"),
+                    CrisisResource(label: "text START to 88788", sublabel: "same hotline, by text", url: "sms:88788?body=START", icon: "text.bubble.fill"),
+                ]
+            }
+            return [CrisisResource(label: "find a domestic abuse helpline", sublabel: "international directory", url: "https://findahelpline.com/i/topics/abuse-domestic-violence", icon: "globe")]
+        }
+    }
+
     /// Short emergency-call hint used in the policy text. Localized regions
     /// have their own emergency numbers (911 in US/CA, 999 in UK/IE, 000 in
     /// AU, 111 in NZ). EU countries can dial 112.
@@ -830,6 +857,10 @@ extension Color {
 struct CrisisCheckInView: View {
     @Binding var isPresented: Bool
     let level: CrisisLevel
+    /// 2026-07-27: when the concern is a sexual-assault or domestic-violence
+    /// disclosure, show the matching support line (RAINN / DV hotline) ABOVE the
+    /// general crisis lines. nil (default) = general lines only, unchanged.
+    var topic: CrisisTopic? = nil
     /// Called if the user taps "im okay, share it" — i.e. they've seen the
     /// resources and still want to proceed. Matches best practice: interrupt,
     /// offer help, but don't block the user from expressing themselves.
@@ -863,6 +894,18 @@ struct CrisisCheckInView: View {
                     .padding(.horizontal, 4)
 
                 VStack(spacing: 6) {
+                    // Topic-specific support first (SA/DV disclosures), so the
+                    // most relevant line is the most prominent.
+                    if let topic = topic {
+                        ForEach(CrisisLines.topicResources(topic), id: \.url) { resource in
+                            resourceRow(
+                                icon: resource.icon,
+                                label: resource.label,
+                                sublabel: resource.sublabel,
+                                url: resource.url
+                            )
+                        }
+                    }
                     // Region-aware. CrisisLines.resources picks the right
                     // hotlines for the user's locale (988 in US/CA, 116 123
                     // in UK/IE, 13 11 14 in AU, etc.). For unsupported

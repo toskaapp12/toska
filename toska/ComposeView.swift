@@ -59,6 +59,7 @@ struct ComposeView: View {
     // Severity tier chosen when the check-in is opened, so the modal can
     // adapt its copy/behavior. Explicit tier shows even if gentleCheckIn is off.
     @State private var gentleCheckLevel: CrisisLevel = .soft
+    @State private var gentleCheckTopic: CrisisTopic? = nil  // SA/DV → topic resources
     @State private var showNameWarning = false
     @State private var showContentWarning = false
     // Set when a post will be held for review server-side (pending_review), so
@@ -618,6 +619,7 @@ struct ComposeView: View {
                 CrisisCheckInView(
                     isPresented: $showGentleCheck,
                     level: gentleCheckLevel,
+                    topic: gentleCheckTopic,
                     // Crisis/concerning content is held for review server-side, so
                     // flag it before posting to surface the "under review" notice.
                     onProceed: { postWillBeHeld = true; postNow() }
@@ -674,6 +676,7 @@ struct ComposeView: View {
                                     showNameWarning = true
                                 } else if let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
                                     gentleCheckLevel = level
+                                    gentleCheckTopic = crisisTopic(for: trimmedText)
                                     showGentleCheck = true
                                 } else {
                                     postNow()
@@ -739,6 +742,7 @@ struct ComposeView: View {
                             postWillBeHeld = true
                             if let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
                                 gentleCheckLevel = level
+                                gentleCheckTopic = crisisTopic(for: trimmedText)
                                 showGentleCheck = true
                             } else {
                                 postNow()
@@ -1003,6 +1007,7 @@ struct ComposeView: View {
         if !trimmedText.isEmpty && containsNameOrIdentifyingInfo(trimmedText) { showNameWarning = true; return }
         if !trimmedText.isEmpty, let level = crisisCheckLevelRespectingSetting(for: trimmedText) {
             gentleCheckLevel = level
+            gentleCheckTopic = crisisTopic(for: trimmedText)
             showGentleCheck = true
         } else {
             // A concerning post is HELD server-side even when the gentle check-in

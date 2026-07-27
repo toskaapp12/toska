@@ -54,6 +54,25 @@ const CRISIS_CORPUS = [
   ["i could die of embarrassment", "none"],// idiom
   ["1 more day and then i'm free!", "none"],// benign digit/! — no over-detection
   ["he broke my heart!!! i hate this", "none"], // benign ! run
+  // 2026-07-27 algospeak — true positives
+  ["thinking about sewerslide tonight", "explicit"], // suicide algospeak
+  ["i keep thinking about self deletion", "explicit"],
+  ["im suuuuicidal rn", "explicit"],       // repeated-char padding
+  ["dealing with sa from my ex", "soft"],  // SA disclosure (word-boundary)
+  ["he did s.a. to me", "soft"],           // dotted initialism
+  ["still processing my csa", "soft"],
+  ["finally leaving a dv situation", "soft"],
+  ["struggling with sh again", "soft"],    // self-harm shorthand
+  ["back in my 9rippy sock era", "soft"],  // 9->g leet + coded term
+  ["might just yeet myself lol", "soft"],
+  // 2026-07-27 algospeak — false-positive guards (must stay "none")
+  ["salsa dancing then visa paperwork", "none"], // sa inside salsa/visa
+  ["moving back to the usa", "none"],
+  ["i wish i could sleep, my sister called", "none"], // sh in wish, si in sister
+  ["the sky is the limit for us", "none"], // kys/sky FP fix
+  ["shes a pro analyst at a thin spot", "none"], // proana/thinspo space-strip FP
+  ["i wanted him to stay", "none"],        // ed in wanted
+  ["si tu quieres podemos hablar", "none"],// Spanish "si" not flagged
 ];
 
 // Shared corpus: [text, expected]  — expected is the agreed verdict both layers

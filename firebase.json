@@ -30,7 +30,11 @@
       },
       {
         "source": "/p/**",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=300, s-maxage=600" }]
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=600" },
+          { "key": "Referrer-Policy", "value": "no-referrer" },
+          { "key": "Content-Security-Policy", "value": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }
+        ]
       },
       {
         "source": "/og/**",

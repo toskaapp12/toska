@@ -3180,6 +3180,14 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
     console.log(`${logLabel}: tripped explicit-crisis but no admin uids configured`);
     return;
   }
+  // Email backup channel (independent of FCM): a structured tag the
+  // "Toska — crisis post (email backup)" Cloud Monitoring policy alerts on, so
+  // a crisis page reaches the admin by email even if every FCM push fails or
+  // the admin's phone is off. Emitted after the dedup gate, before the send,
+  // so a total FCM failure still triggers the email. Neutral — only the label
+  // (postId), no post content (L-1: content stays off notification surfaces);
+  // the admin taps into the crisis queue in admin.html to read it.
+  console.log(JSON.stringify({ tag: "crisis_needs_review", label: logLabel }));
   const tokens = [];
   for (const uid of adminUids) {
     // Same legacy fallback as sendPushNotification: tokens moved to the

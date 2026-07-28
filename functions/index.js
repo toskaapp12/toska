@@ -3526,6 +3526,70 @@ exports.checkReportSLA = onSchedule("every 60 minutes", async () => {
   }));
 });
 
+// ============================================================
+// abuseSpikeWatch — hourly anomaly detector for moderation spikes
+//
+// The per-artifact triggers (onPostCreated moderation, crisis paging) see one
+// item at a time; they can't see PATTERNS. This catches the two that matter:
+//   - one author flooding held content (spammer / targeted-harassment burst)
+//   - a global surge of auto-held posts (coordinated campaign / brigading)
+// Emits structured INFO logs (console.log, NOT console.error — so it does not
+// trip the broad function-error alert); the "Toska — abuse spike" Cloud
+// Monitoring policy matches the tag and emails the admin. Same log→alert
+// pattern as checkReportSLA. Thresholds are conservative — tune from real
+// volume. Equality-only query (auto single-field index) + in-code time
+// window, so no composite index is required.
+// ============================================================
+exports.abuseSpikeWatch = onSchedule("every 60 minutes", async () => {
+  const AUTHOR_THRESHOLD = 5;   // held posts from ONE author in the window
+  const GLOBAL_THRESHOLD = 20;  // held posts total in the window
+  const cutoffMs = Date.now() - 60 * 60 * 1000;
+
+  let snap;
+  try {
+    snap = await db.collection("posts")
+      .where("moderationStatus", "==", "pending_review")
+      .limit(500)
+      .get();
+  } catch (err) {
+    console.warn("abuseSpikeWatch query failed:", err.message);
+    return;
+  }
+
+  const byAuthor = new Map();
+  let recentTotal = 0;
+  snap.forEach((doc) => {
+    const d = doc.data();
+    const heldAtMs = d.pendingDetectedAt?.toMillis?.() ?? d.createdAt?.toMillis?.() ?? 0;
+    if (heldAtMs < cutoffMs) return; // only the last hour
+    recentTotal++;
+    const a = d.authorId || "unknown";
+    byAuthor.set(a, (byAuthor.get(a) || 0) + 1);
+  });
+
+  if (recentTotal === 0) return;
+
+  for (const [authorId, count] of byAuthor) {
+    if (count >= AUTHOR_THRESHOLD) {
+      console.log(JSON.stringify({
+        tag: "abuse_spike_author",
+        authorId,
+        heldInLastHour: count,
+        threshold: AUTHOR_THRESHOLD,
+      }));
+    }
+  }
+
+  if (recentTotal >= GLOBAL_THRESHOLD) {
+    console.log(JSON.stringify({
+      tag: "abuse_spike_global",
+      heldInLastHour: recentTotal,
+      distinctAuthors: byAuthor.size,
+      threshold: GLOBAL_THRESHOLD,
+    }));
+  }
+});
+
 exports.cleanupProcessedTriggerEvents = onSchedule("every 24 hours", async () => {
   const now = Timestamp.now();
   let totalDeleted = 0;

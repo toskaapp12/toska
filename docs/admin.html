@@ -125,6 +125,7 @@
             <button role="tab" aria-selected="false" data-tab="flagged">flagged posts<span class="tab-count" data-count="flagged" hidden></span></button>
             <button role="tab" aria-selected="false" data-tab="crisis">crisis<span class="tab-count" data-count="crisis" hidden></span></button>
             <button role="tab" aria-selected="false" data-tab="restricted">restricted users<span class="tab-count" data-count="restricted" hidden></span></button>
+            <button role="tab" aria-selected="false" data-tab="audit">audit log</button>
         </div>
         <div class="content" id="content" role="tabpanel" aria-live="polite">
             <div class="loading">loading...</div>
@@ -567,7 +568,49 @@
             else if (currentTab === "flagged") await loadFlagged(content);
             else if (currentTab === "crisis") await loadCrisis(content);
             else if (currentTab === "restricted") await loadRestricted(content);
+            else if (currentTab === "audit") await loadAuditLog(content);
             refreshCounts();
+        }
+
+        // --- Audit log ---
+        //
+        // Read-only history of admin actions, straight out of the server-only
+        // adminAuditLog collection (write: Admin SDK only; read: admins). Two
+        // entry shapes are normalized here:
+        //   - adminDeleteAccount callable: { action, targetUid, actedBy, reason }
+        //   - trigger audits (post.delete/approve/unflag, restrict, report.*,
+        //     reply/crisis reviews): { action, adminUid, targetType, targetId,
+        //     targetHandle, before, after }
+        // Newest first. This is the "prove I deleted an account / removed a
+        // post" surface — a deleted account shows up here even though it's gone
+        // from every other tab.
+        async function loadAuditLog(container) {
+            try {
+                const snap = await getDocs(query(collection(db, "adminAuditLog"), orderBy("createdAt", "desc"), limit(100)));
+                if (snap.empty) { emptyState(container, "no audit entries", "no admin actions recorded yet"); return; }
+                container.replaceChildren();
+                container.appendChild(queueHeading("audit log"));
+                snap.forEach(docSnap => {
+                    const e = docSnap.data();
+                    const when = e.createdAt?.toDate?.() ? timeAgo(e.createdAt.toDate()) : "";
+                    const actor = e.actedBy || e.adminUid || "—";
+                    const targetId = e.targetUid || e.targetId || null;
+                    const meta = [];
+                    if (e.targetType) meta.push(`type: ${e.targetType}`);
+                    if (e.targetHandle) meta.push(`handle: ${e.targetHandle}`);
+                    if (targetId) meta.push(`target: ${targetId}`);
+                    meta.push(`by: ${actor}`);
+                    if (e.reason) meta.push(`reason: ${e.reason}`);
+                    container.appendChild(renderCard({
+                        id: `audit-${docSnap.id}`,
+                        headerLeft: [span("card-type type-user", e.action || "action")],
+                        time: when,
+                        meta,
+                    }));
+                });
+            } catch (err) {
+                emptyState(container, "error loading audit log", err.message);
+            }
         }
 
         // --- Pending review ---

@@ -4848,6 +4848,95 @@ exports.confirmAdult = onCall(
 );
 
 // ============================================================
+// adminDeleteAccount — admin-initiated full account deletion
+//
+// The moderation dashboard (docs/admin.html) can already RESTRICT a user
+// (freeze posting) via a plain users/{uid} write. This callable is the
+// stronger action: permanently DELETE an account — used for underage users
+// (Terms §2: "we remove accounts we discover to be underage") and other
+// terminate-worthy violations.
+//
+// Why a callable and not a direct client write: deleting a user requires
+// removing the Firebase Auth user (Admin SDK only) AND deleting the
+// users/{uid} doc. The rules deliberately do NOT let an admin delete another
+// user's doc (G-2 self-delete-escape guard covers deletes), so this runs
+// server-side with the Admin SDK, which bypasses rules.
+//
+// Sequence mirrors the in-app SettingsView.deleteAccount ordering:
+//   1. delete the Auth user (so the cascade sees auth/user-not-found)
+//   2. delete users/{uid} → fires onUserDocDeleted, which cascades full
+//      content cleanup (posts, replies, likes, saves, follows, notifications,
+//      reposts, conversations, blocked-index) exactly as a self-delete does.
+//   3. write an adminAuditLog entry (attribution is trusted here — it comes
+//      from request.auth.uid, not client-supplied data).
+//
+// Gating: App Check enforced + caller must be admins/{uid}.role == "admin"
+// (the SAME predicate as rules isAdmin()). Refuses to delete the caller's own
+// account or any other admin account through this path.
+exports.adminDeleteAccount = onCall(
+  { enforceAppCheck: true },
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) {
+      throw new HttpsError("unauthenticated", "must be signed in");
+    }
+
+    // Admin gate — mirror rules isAdmin(): admins/{uid}.role == "admin".
+    const callerAdmin = await db.collection("admins").doc(callerUid).get();
+    if (!callerAdmin.exists || callerAdmin.get("role") !== "admin") {
+      throw new HttpsError("permission-denied", "admin only");
+    }
+
+    const targetUid = request.data?.uid;
+    if (typeof targetUid !== "string" || !targetUid) {
+      throw new HttpsError("invalid-argument", "missing uid");
+    }
+    if (targetUid === callerUid) {
+      throw new HttpsError("failed-precondition", "cannot delete your own account here");
+    }
+    // Never let this path delete another admin — admin removal is an
+    // out-of-band operation, not a dashboard button.
+    const targetAdmin = await db.collection("admins").doc(targetUid).get();
+    if (targetAdmin.exists) {
+      throw new HttpsError("failed-precondition", "target is an admin");
+    }
+
+    const reason = typeof request.data?.reason === "string"
+      ? request.data.reason.slice(0, 200)
+      : "";
+
+    // 1. Delete the Auth user. Absorb user-not-found so a re-invocation after
+    //    a partial prior failure still completes (idempotent).
+    try {
+      await getAuth().deleteUser(targetUid);
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") {
+        console.error("adminDeleteAccount auth delete failed:", err.message);
+        throw new HttpsError("internal", "auth deletion failed");
+      }
+    }
+
+    // 2. Delete the user doc → onUserDocDeleted cascades content cleanup.
+    try {
+      await db.collection("users").doc(targetUid).delete();
+    } catch (err) {
+      console.error("adminDeleteAccount user-doc delete failed:", err.message);
+      throw new HttpsError("internal", "user doc deletion failed");
+    }
+
+    // 3. Audit (trusted attribution from request.auth).
+    await writeAuditEntry({
+      action: "adminDeleteAccount",
+      targetUid,
+      actedBy: callerUid,
+      reason,
+    });
+
+    return { ok: true };
+  }
+);
+
+// ============================================================
 // Admin audit log
 //
 // Mirrors admin-initiated writes to a write-once adminAuditLog collection

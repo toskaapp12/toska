@@ -184,6 +184,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
 
         // Web app config (NOT iOS). App Check is registered per-app, so
         // the dashboard needs its own Web appId — using the iOS appId
@@ -252,6 +253,8 @@
 
         const auth = getAuth(app);
         const db = getFirestore(app);
+        // us-central1 (default) — where adminDeleteAccount is deployed.
+        const functions = getFunctions(app);
         let currentTab = "reports";
 
         // --- DOM helpers ---
@@ -326,6 +329,35 @@
             btn.textContent = "restrict author";
             btn.setAttribute("aria-label", `restrict author ${handle || authorId}`);
             btn.addEventListener("click", () => restrictUserDirect(authorId, handle || ""));
+            return btn;
+        }
+
+        // deleteAccountDirect / deleteAccountButton — the stronger sibling of
+        // restrict. Calls the admin-only adminDeleteAccount callable, which
+        // deletes the Auth user + the users/{uid} doc (firing the full
+        // onUserDocDeleted content cascade). Primary use: underage accounts
+        // (Terms §2). Irreversible — double-guarded with a confirm + reason.
+        async function deleteAccountDirect(userId, handle) {
+            if (!userId) return;
+            if (!confirm(`PERMANENTLY DELETE the account ${handle || userId}?\n\nThis erases their profile and ALL their posts, replies, likes, saves, and data. It cannot be undone.`)) return;
+            const reason = prompt("reason (optional — e.g. 'underage'):", "underage") || "";
+            try {
+                await httpsCallable(functions, "adminDeleteAccount")({ uid: userId, reason });
+                refreshCounts();
+                showToast(`${handle || "account"} deleted`);
+                const card = document.getElementById(`user-${userId}`);
+                if (card) card.remove();
+            } catch (e) {
+                showToast("error: " + (e?.message || "delete failed"));
+            }
+        }
+
+        function deleteAccountButton(authorId, handle) {
+            if (!authorId) return null;
+            const btn = el("button", "btn-remove");
+            btn.textContent = "delete account";
+            btn.setAttribute("aria-label", `delete account ${handle || authorId}`);
+            btn.addEventListener("click", () => deleteAccountDirect(authorId, handle || ""));
             return btn;
         }
 
@@ -661,7 +693,7 @@
                             typeof p.autoHiddenReportCount === "number"
                                 ? `reports: ${p.autoHiddenReportCount}` : null,
                         ],
-                        actions: [approveBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                        actions: [approveBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle), deleteAccountButton(p.authorId, p.authorHandle)],
                     });
                     container.appendChild(card);
                 });
@@ -771,7 +803,7 @@
                             `by: ${r.authorHandle || "unknown"}`,
                             `on post by: ${r.parentPostHandle || "unknown"}`,
                         ],
-                        actions: [approveBtn, deleteBtn, restrictAuthorButton(r.authorId, r.authorHandle)],
+                        actions: [approveBtn, deleteBtn, restrictAuthorButton(r.authorId, r.authorHandle), deleteAccountButton(r.authorId, r.authorHandle)],
                     });
                     container.appendChild(card);
                 });
@@ -960,7 +992,7 @@
                                 `likes: ${p.likeCount || 0}`,
                                 `replies: ${p.replyCount || 0}`,
                             ],
-                            actions: [reviewedBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                            actions: [reviewedBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle), deleteAccountButton(p.authorId, p.authorHandle)],
                         });
                         container.appendChild(card);
                     });
@@ -999,7 +1031,7 @@
                                 `by: ${r.authorHandle || "unknown"}`,
                                 `on post by: ${r.parentPostHandle || "unknown"}`,
                             ],
-                            actions: [reviewedBtn, deleteBtn, restrictAuthorButton(r.authorId, r.authorHandle)],
+                            actions: [reviewedBtn, deleteBtn, restrictAuthorButton(r.authorId, r.authorHandle), deleteAccountButton(r.authorId, r.authorHandle)],
                         });
                         container.appendChild(card);
                     });
@@ -1273,7 +1305,7 @@
                             `likes: ${p.likeCount || 0}`,
                             `replies: ${p.replyCount || 0}`,
                         ],
-                        actions: [unflagBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle)],
+                        actions: [unflagBtn, deleteBtn, restrictAuthorButton(p.authorId, p.authorHandle), deleteAccountButton(p.authorId, p.authorHandle)],
                     });
                     container.appendChild(card);
                 });
@@ -1312,7 +1344,7 @@
                             `posts: ${u.postCount || 0}`,
                             `followers: ${u.followerCount || 0}`,
                         ],
-                        actions: [unrestrictBtn],
+                        actions: [unrestrictBtn, deleteAccountButton(d.id, u.handle)],
                     });
                     container.appendChild(card);
                 });

@@ -77,6 +77,12 @@ let explicitCrisisPhrases = [
     "je veux mourir", "me suicider", "je vais me suicider",
     "mettre fin a mes jours", "mettre fin à mes jours",
     "veux me faire du mal", "vais me faire du mal", "envie de me faire du mal",
+    // 2026-07-28 method-language extension (A.5 #3, EXPLICIT). Mirror of
+    // functions/moderationLogic.js MOD_CRISIS_EXPLICIT — keep in exact sync
+    // (crisis-parity pins list equality).
+    "shoot myself", "blow my brains out",
+    "slit my wrists", "cut my wrists", "slitting my wrists",
+    "want to overdose", "going to overdose", "gonna overdose",
 ]
 
 let softConcernPhrases = [
@@ -116,6 +122,18 @@ let softConcernPhrases = [
     // survivor DISCLOSURES routed to support+review, never abuse-takedown.
     // ("si" excluded — collides with Spanish "si"/"sí".) Mirror of index.js.
     "sa", "csa", "dv", "sh", "yeet myself", "grippy sock",
+    // 2026-07-28 method/planning/goodbye extension (A.5 #3 — SOFT). Mirror of
+    // functions/moderationLogic.js MOD_CRISIS_SOFT — keep in exact sync
+    // (crisis-parity pins list equality). See the server comment for the
+    // tiering rationale + deliberate exclusions (gun-to-my-head idiom,
+    // goodbye note/letter = core breakup use-case, etc.).
+    "overdose", "overdosing", "od",
+    "bottle of pills", "take all my pills", "took all my pills", "swallow all my pills",
+    "drown myself", "noose",
+    "jump off a bridge", "jump off the roof", "jump in front of a",
+    "tonights the night", "tonight's the night", "wrote my note", "writing my note",
+    "last night on earth", "wont be here tomorrow", "won't be here tomorrow",
+    "by the time you read this", "goodbye forever",
 ]
 
 // Back-compat alias so existing call sites that only care about "is it

@@ -289,6 +289,13 @@ const MOD_CRISIS_EXPLICIT = [
   "je veux mourir", "me suicider", "je vais me suicider",
   "mettre fin a mes jours", "mettre fin à mes jours",
   "veux me faire du mal", "vais me faire du mal", "envie de me faire du mal",
+  // 2026-07-28 method-language extension (A.5 #3, EXPLICIT — unambiguous
+  // self-directed intent, same precedent as "hang myself"/"cut myself"; the
+  // hyperbole profile of "shoot myself" matches the accepted one of "kill
+  // myself"). Ambiguous/idiom-prone method language went to the SOFT tier.
+  "shoot myself", "blow my brains out",
+  "slit my wrists", "cut my wrists", "slitting my wrists",
+  "want to overdose", "going to overdose", "gonna overdose",
 ];
 
 // Softer distress / hopelessness — held for review (concerningContent) but
@@ -342,6 +349,23 @@ const MOD_CRISIS_SOFT = [
   // (pro-ED tags proana/thinspo etc. were considered but EXCLUDED: the
   // space-stripped fallback collides them with "pro analyst"/"thin spot".)
   "sa", "csa", "dv", "sh", "yeet myself", "grippy sock",
+  // 2026-07-28 method/planning/goodbye extension (A.5 #3 — SOFT: real signal
+  // but hyperbole/idiom/third-person-capable; held + gentle check-in, never
+  // paged). "od" is a <=3-char token so it word-boundary matches like "kms".
+  // Pills phrases are soft because "took all my pills" is also literal
+  // medication-compliance talk; "drown myself" is soft because "drowning
+  // myself in work/wine" is common grief prose. Deliberate EXCLUSIONS:
+  // "gun to my head" (dominant use is the idiom), "goodbye note"/"goodbye
+  // letter" (writing a goodbye letter to an ex is a core use-case of this
+  // app), bare "drowning in" (pure idiom), "whole bottle" (wine posts),
+  // "end it tonight" ("end it" = the relationship here).
+  "overdose", "overdosing", "od",
+  "bottle of pills", "take all my pills", "took all my pills", "swallow all my pills",
+  "drown myself", "noose",
+  "jump off a bridge", "jump off the roof", "jump in front of a",
+  "tonights the night", "tonight's the night", "wrote my note", "writing my note",
+  "last night on earth", "wont be here tomorrow", "won't be here tomorrow",
+  "by the time you read this", "goodbye forever",
 ];
 
 // Derived so MOD_EXPLICIT_CRISIS is, by construction, a subset of

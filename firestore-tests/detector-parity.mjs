@@ -73,6 +73,26 @@ const CRISIS_CORPUS = [
   ["shes a pro analyst at a thin spot", "none"], // proana/thinspo space-strip FP
   ["i wanted him to stay", "none"],        // ed in wanted
   ["si tu quieres podemos hablar", "none"],// Spanish "si" not flagged
+  // 2026-07-28 A.5 #3 method/planning/goodbye extension — true positives
+  ["im going to shoot myself", "explicit"],
+  ["might as well blow my brains out", "explicit"],
+  ["i want to slit my wrists", "explicit"],
+  ["i just want to overdose", "explicit"],
+  ["thinking about taking a bottle of pills", "soft"],
+  ["maybe ill just od tonight", "soft"],   // word-boundary token like kms
+  ["i could jump off a bridge", "soft"],
+  ["keep thinking about a noose", "soft"],
+  ["tonights the night, wrote my note already", "soft"],
+  ["tonight's the night and im at peace", "soft"],
+  ["this is my last night on earth", "soft"],
+  ["by the time you read this ill be gone", "soft"],
+  // A.5 #3 false-positive guards (deliberate exclusions must stay "none")
+  ["gun to my head i couldnt say why we broke up", "none"], // idiom
+  ["wrote a goodbye letter to my ex today", "none"], // core breakup use-case
+  ["ive been drowning in work since she left", "none"], // idiom
+  ["thats a hard pill to swallow", "none"],
+  ["we drank the whole bottle of wine", "none"],
+  ["ready to jump back into dating", "none"],
 ];
 
 // Shared corpus: [text, expected]  — expected is the agreed verdict both layers

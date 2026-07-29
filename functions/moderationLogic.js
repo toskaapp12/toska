@@ -382,6 +382,13 @@ function foldAmbiguousIL(s) {
 function collapseRepeats(s) {
   return s.replace(/(.)\1{2,}/g, "$1");
 }
+// 2026-07-28 (A.5 #2): 3+ repeats → 2, not 1. Needed by the regex lane where
+// several slur patterns REQUIRE a doubled letter (n[i1!]gg, f[a@]gg):
+// collapsing "nigggger" to one g ("niger") makes those regexes MISS, while
+// keeping two ("nigger") matches. Same rule iOS collapseForModeration uses.
+function collapseRepeatsKeepDouble(s) {
+  return s.replace(/(.)\1{2,}/g, "$1$1");
+}
 function deLeetCrisisExtra(s) {
   return s.replace(/[69]/g, "g").replace(/[(<]/g, "c");
 }
@@ -437,9 +444,25 @@ function matchesCrisisPhrase(rawText, list) {
 // single-letter-chain collapse). The regex stay \b-anchored, so matching the
 // normalized form does NOT reintroduce the "spic inside suspicious" false
 // positives (the normalized form preserves word structure).
+// 2026-07-28 (A.5 #2): align with the crisis/threat matcher — apply the same
+// algospeak pass (deLeetCrisisExtra + repeat-collapse) so padded ("spiiiic",
+// "nigggger", "nuuuudes") and extra-leet ("9ook", "(oon") evasion can't slip
+// the hate/sexual lane the way it already can't slip crisis/threat. TWO
+// collapsed forms are required: 3+→1 restores vowel padding ("spiiiic"→
+// "spic") but breaks doubled-letter slur regexes when the double itself is
+// padded, so a 3+→2 form covers those (see collapseRepeatsKeepDouble).
+// Extra forms only ADD detection; word structure is preserved and the
+// patterns stay \b-anchored, so the idiom/substring FP guards above hold.
 function matchesEvasionRegex(rawText, regexList) {
   const raw = rawText || "";
-  const forms = [raw.toLowerCase(), aggressiveNormalizeForNameMatch(raw)];
+  const normalized = aggressiveNormalizeForNameMatch(raw);
+  const deLeeted = deLeetCrisisExtra(normalized);
+  const forms = [
+    raw.toLowerCase(),
+    normalized,
+    collapseRepeats(deLeeted),
+    collapseRepeatsKeepDouble(deLeeted),
+  ];
   return regexList.some((re) => forms.some((f) => re.test(f)));
 }
 

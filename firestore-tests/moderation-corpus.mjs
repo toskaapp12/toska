@@ -90,6 +90,20 @@ const CASES = [
   ["you dirty s p i c", "hate_speech"],   // single-letter-spaced slur
   ["you dirty sp1c", "hate_speech"],      // leet slur
   ["you dirty spіс", "hate_speech"],      // homoglyph slur (Cyrillic і U+0456 + с U+0441)
+  // 2026-07-28 A.5 #2: matchesEvasionRegex now applies the crisis-lane
+  // algospeak pass (deLeetCrisisExtra + BOTH repeat-collapses) to hate/sexual
+  ["you dirty spiiiic", "hate_speech"],   // vowel padding (3+→1 collapse)
+  ["you dirty spiccc", "hate_speech"],    // trailing padding
+  ["you faggg", "hate_speech"],           // padded doubled-letter slur (3+→2 collapse — 3+→1 would MISS)
+  ["you 9ook", "hate_speech"],            // extra de-leet 9→g
+  ["you dirty (oon", "hate_speech"],      // extra de-leet (→c
+  ["send nuuuudes", "sexual_content"],    // padded sexual demand
+  // A.5 #2 FP guards: innocent emphasis padding must NOT flag
+  ["im soooo tired of all this", null],
+  ["hope we can meet sooooon", null],
+  ["that summer was coooool", null],
+  ["im crying :((( over him", null],
+  ["ughhh i miss him", null],
   // ── must NOT flag: grief / idiom false-positives ──
   ["i got so suspicious of him", null],       // "spic" substring
   ["auspicious new start", null],

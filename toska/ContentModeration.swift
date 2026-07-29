@@ -1140,18 +1140,51 @@ private func collapseForModeration(_ text: String) -> String {
     return result
 }
 
+// 2026-07-28 (server A.5 #2 parity): mirror of server collapseRepeats — 3+
+// identical chars → ONE, restoring vowel-padded words ("spiiiic" → "spic")
+// that the keep-two collapse above can't ("spiic" misses \bsp[i1]ck?\b).
+// Both collapsed forms are checked; this one covers padding inside the
+// single-letter parts of a pattern, collapseForModeration covers patterns
+// that REQUIRE a doubled letter ("nigggger" → "nigger").
+private func collapseSinglesForModeration(_ text: String) -> String {
+    text.replacingOccurrences(of: "(.)\\1{2,}", with: "$1", options: .regularExpression)
+}
+
+// 2026-07-28: mirror of server deLeetCrisisExtra — glyphs NOT in the shared
+// homoglyph map: 6/9 → g ("9ook"), ( and < → c ("(oon"). Applied before the
+// collapse passes, same order as the server.
+private func deLeetExtraForModeration(_ text: String) -> String {
+    var result = ""
+    result.reserveCapacity(text.count)
+    for ch in text {
+        switch ch {
+        case "6", "9": result.append("g")
+        case "(", "<": result.append("c")
+        default: result.append(ch)
+        }
+    }
+    return result
+}
+
 private func stripSpaces(_ text: String) -> String {
     text.replacingOccurrences(of: " ", with: "")
 }
 
 func contentViolation(in text: String) -> ContentViolationType? {
     let normalized = normalizeForModeration(text)
-    let collapsed = collapseForModeration(normalized)
+    // 2026-07-28 (server A.5 #2 parity): the collapsed forms are built from
+    // the extra-de-leeted text (6/9→g, (/<→c) and a 3+→1 collapsed form is
+    // added, so leet+padding combos ("ni999er", "spiiiic", "9ook") are caught
+    // at compose time — matching the server, which would otherwise silently
+    // hold the post / hard-delete the reply.
+    let deLeeted = deLeetExtraForModeration(normalized)
+    let collapsed = collapseForModeration(deLeeted)
+    let collapsedSingle = collapseSinglesForModeration(deLeeted)
     let noSpaces = stripSpaces(normalized)
     let collapsedNoSpaces = stripSpaces(collapsed)
 
-    // Check all four forms for maximum evasion resistance
-    let forms = [normalized, collapsed, noSpaces, collapsedNoSpaces]
+    // Check all forms for maximum evasion resistance
+    let forms = [normalized, collapsed, collapsedSingle, noSpaces, collapsedNoSpaces]
 
     // --- Slurs and hate speech ---
     // Word-boundary-anchored slurs mirror the server MOD_HATE fix: unanchored,

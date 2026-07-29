@@ -1081,6 +1081,18 @@ class FeedViewModel: ObservableObject {
                                                 else if hoursAgo < 24 { score += 10 }
                                                 else { score += max(0, 5 - hoursAgo / 24) }
 
+                                                // Owner report (2026-07-29): your own just-composed post landed
+                                                // SECOND in the ranked For You feed — a 0-engagement brand-new
+                                                // post loses to any engaged recent one, which reads as "my post
+                                                // got buried" the moment you hit publish. Pin the author's own
+                                                // fresh post to the top briefly; after 15 minutes it competes
+                                                // like everything else.
+                                                if hoursAgo < 0.25,
+                                                   let selfUid = Auth.auth().currentUser?.uid,
+                                                   (data["authorId"] as? String) == selfUid {
+                                                    score += 1000
+                                                }
+
                                                 // Stage-aware time-decay floor. Default is 0.2 — older posts
                                                 // bottom out at 20% of fresh-engagement signal, which suits
                                                 // fresh-breakup users who want recent feeling. Users further out

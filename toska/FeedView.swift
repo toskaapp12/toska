@@ -388,6 +388,18 @@ struct FeedView: View {
             // (a composed post OR a repost). Re-baseline the new-posts banner so
             // it doesn't pop "1 new post" for the user's own content either way.
             vm.handleNewPostCreated()
+            // Owner report (2026-07-29): "my post doesn't show up until I
+            // refresh." The just-created post is pending_validation until
+            // validatePost promotes it (~1-3s server-side), and the feed
+            // query pins moderationStatus=="live" — so the instant refresh
+            // above can't see it yet. Two spaced follow-up fetches let it
+            // pop in on its own once the server flips it live.
+            Task {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                vm.handleNewPostCreated()
+                try? await Task.sleep(nanoseconds: 4_500_000_000)
+                vm.handleNewPostCreated()
+            }
             newPostsBadgeCount = 0
             previousPostCount = -1 // re-baseline on next .onChange tick
             // Only auto-scroll to the top for a freshly COMPOSED post (so they

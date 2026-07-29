@@ -253,6 +253,18 @@ struct ProfileView: View {
         // (before the Firestore transaction commits), so we re-fetch the affected
         // source a beat later to avoid racing the reverse-index write. Only tabs
         // already loaded are refreshed; unopened tabs fetch fresh on first view.
+        // Owner report (2026-07-29): deleting a post fired .postDeleted (the
+        // FEED strips it live) but the profile lists never subscribed — the
+        // deleted post stayed on the Posts/Saved/Liked tabs until a manual
+        // refresh. Strip it from every loaded list immediately. (Reposts OF a
+        // deleted original are cascade-deleted server-side and reconcile on
+        // the tab's next fetch.)
+        .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
+            guard let deletedId = notif.userInfo?["postId"] as? String else { return }
+            myPosts.removeAll { $0.id == deletedId }
+            savedPosts.removeAll { $0.id == deletedId }
+            likedPosts.removeAll { $0.id == deletedId }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
             guard let action = notif.userInfo?["action"] as? String else { return }
             let affected: Int       // which loaded-tab's data this touches

@@ -46,43 +46,81 @@ async function main() {
   const usersSnap = await db.collection("users").get();
   console.log(`${usersSnap.size} user docs to examine`);
 
+  // 2026-07-28 (A.5 #6): decide same-run duplicates BEFORE writing anything.
+  // Previously the winner of a same-run duplicate was whichever user doc
+  // iterated first (Firestore doc-id order), contradicting the header's
+  // "older account keeps the handle" policy. Group by lowercased handle and
+  // sort each group by createdAt (missing createdAt loses; a full tie falls
+  // back to doc-id order so re-runs are deterministic).
+  const byHandle = new Map();
   for (const userDoc of usersSnap.docs) {
-    const uid = userDoc.id;
-    const data = userDoc.data();
-    const handle = data.handle;
+    const handle = userDoc.data().handle;
     if (typeof handle !== "string" || !VALID_HANDLE.test(handle)) {
       invalid++;
-      console.warn(`INVALID handle on users/${uid}: ${JSON.stringify(handle)} — fix manually`);
+      console.warn(`INVALID handle on users/${userDoc.id}: ${JSON.stringify(handle)} — fix manually`);
       continue;
     }
-    const rowRef = db.collection("handles").doc(handle.toLowerCase());
-    const rowSnap = await rowRef.get();
-    if (rowSnap.exists) {
-      if (rowSnap.data().uid === uid) {
-        skipped++;
-        continue;
-      }
-      // Collision: decide by account age — older account keeps the handle.
+    const key = handle.toLowerCase();
+    if (!byHandle.has(key)) byHandle.set(key, []);
+    byHandle.get(key).push(userDoc);
+  }
+
+  for (const [key, docs] of byHandle) {
+    docs.sort((a, b) => {
+      const am = a.data().createdAt?.toMillis?.() ?? Infinity;
+      const bm = b.data().createdAt?.toMillis?.() ?? Infinity;
+      if (am !== bm) return am - bm;
+      return a.id < b.id ? -1 : 1;
+    });
+    const winner = docs[0];
+    for (const loser of docs.slice(1)) {
       collisions++;
-      const otherUid = rowSnap.data().uid;
-      const otherSnap = await db.collection("users").doc(otherUid).get();
-      const otherCreated = otherSnap.exists ? otherSnap.data().createdAt?.toMillis?.() : null;
-      const thisCreated = data.createdAt?.toMillis?.() ?? null;
       console.warn(
-        `COLLISION on "${handle}": row owned by ${otherUid} (createdAt ${otherCreated}), ` +
-        `also carried by ${uid} (createdAt ${thisCreated}). ` +
-        ((thisCreated != null && otherCreated != null && thisCreated < otherCreated)
-          ? `users/${uid} is OLDER — consider reassigning the row and re-handling ${otherUid}.`
-          : `row owner keeps it — users/${uid} needs a new handle.`)
+        `SAME-RUN COLLISION on "${key}": older users/${winner.id} keeps it — ` +
+        `users/${loser.id} (createdAt ${loser.data().createdAt?.toMillis?.() ?? "missing"}) needs a new handle.`
       );
-      continue;
     }
+
+    const rowRef = db.collection("handles").doc(key);
     if (DRY_RUN) {
-      created++;
+      const rowSnap = await rowRef.get();
+      if (!rowSnap.exists) created++;
+      else if (rowSnap.data().uid === winner.id) skipped++;
+      else await reportExistingRowCollision(key, rowSnap.data().uid, winner);
       continue;
     }
-    await rowRef.set({ uid });
-    created++;
+    // 2026-07-28 (A.5 #6): transactional create-if-absent. The old plain
+    // get()-then-set() could silently OVERWRITE a row a live signup claimed
+    // between the two reads — stealing the new user's handle. The transaction
+    // re-checks under lock and never overwrites an existing row.
+    const outcome = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(rowRef);
+      if (!snap.exists) {
+        tx.set(rowRef, { uid: winner.id });
+        return "created";
+      }
+      return snap.data().uid === winner.id ? "skipped" : `owned:${snap.data().uid}`;
+    });
+    if (outcome === "created") created++;
+    else if (outcome === "skipped") skipped++;
+    else await reportExistingRowCollision(key, outcome.slice("owned:".length), winner);
+  }
+
+  // Pre-existing-row collision (row already owned by a different uid):
+  // advisory only, per the header — renaming a user's identity is an owner
+  // decision, not a script's.
+  async function reportExistingRowCollision(handle, ownerUid, winnerDoc) {
+    collisions++;
+    const ownerSnap = await db.collection("users").doc(ownerUid).get();
+    const ownerCreated = ownerSnap.exists ? ownerSnap.data().createdAt?.toMillis?.() : null;
+    const winnerCreated = winnerDoc.data().createdAt?.toMillis?.() ?? null;
+    console.warn(
+      `COLLISION on "${handle}": row owned by ${ownerUid} (createdAt ${ownerCreated}), ` +
+      `also carried by ${winnerDoc.id} (createdAt ${winnerCreated}). ` +
+      ((winnerCreated != null && ownerCreated != null && winnerCreated < ownerCreated)
+        ? `users/${winnerDoc.id} is OLDER — consider reassigning the row and re-handling ${ownerUid}.`
+        : `row owner keeps it — users/${winnerDoc.id} needs a new handle.`)
+    );
   }
 
   console.log(`Done. rows ${DRY_RUN ? "would be " : ""}created: ${created}, already-correct: ${skipped}, collisions: ${collisions}, invalid handles: ${invalid}`);

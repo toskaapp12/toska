@@ -50,12 +50,33 @@ const CASES = [
   ["im a minor and scared to tell anyone", "minor_safety"],
   ["im not 18 yet but", "minor_safety"],
   ["i am in 8th grade", "minor_safety"],
+  // minor-safety hardening (2026-07-28, system-review A.5 #1): spelled ages,
+  // turning/turned framings, freshman/sophomore, 9th-10th grade, birth year
+  ["i am sixteen years old and this hurts", "minor_safety"],
+  ["im only fourteen years old", "minor_safety"],
+  ["im turning 15 next month and he left me", "minor_safety"],
+  ["i just turned 16 and had my first breakup", "minor_safety"],
+  ["i turn 14 next week", "minor_safety"],
+  ["im a freshman in high school and she dumped me", "minor_safety"],
+  ["i am a sophomore and we broke up", "minor_safety"],
+  ["im in 9th grade", "minor_safety"],
+  ["im a 7th grader", "minor_safety"],
+  [`i was born in ${new Date().getFullYear() - 12}`, "minor_safety"], // always age ~12
   // minor-safety FP guards (must NOT flag)
   ["im 15 minutes late to everything", null],
   ["our relationship is 9 years old", null],
   ["my dog is 14 years old", null],
   ["i am 25 years old and lost", null],
   ["back in high school this happened to me", null],
+  // hardening FP guards: threshold stays <17, college forms + reminiscing
+  // + third-person + non-age "turn" uses stay clear
+  ["im a freshman in college and still lost", null],
+  ["when i was 16 we started dating", null],
+  ["i had just turned 15 when we met back then", null],
+  ["my sister is turning 12 next week", null],
+  ["i turn on the tv to distract myself", null],
+  ["i was born in 1995", null],
+  ["im 17 years old", null], // 17 is a permitted user (ToS/Apple 17+)
 
   ["send nudes", "sexual_content"],
   ["lets hook up tonight", "sexual_content"],

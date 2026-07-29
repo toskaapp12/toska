@@ -466,12 +466,40 @@ const SPAM_PATTERNS = [
 // FP-guarded — "im 15 minutes late", "relationship is 9 years old", "im 25",
 // high-school reminiscing all stay clear. NOTE: this is detection only; the
 // account-removal POLICY and any legal reporting pipeline are owner decisions.
+//
+// 2026-07-28 hardening (system-review A.5 #1): added spelled-out ages,
+// "turning / just turned / i turn X next..." framings, freshman/sophomore
+// (college forms excluded), 9th–10th grade + "Nth grader", and first-person
+// birth-year disclosure with a dynamic cutoff. The threshold deliberately
+// stays UNDER 17 (ToS/Apple 17+ line): a stated "i'm 17" is a permitted user
+// and is NOT flagged; 11th/12th grade and "i'm in high school" are excluded
+// for the same reason (often 17+). Past-tense reminiscing ("when i was 16",
+// "i had just turned 15") stays clear because every framing requires
+// present-tense first-person adjacency.
+const UNDERAGE_AGE =
+  "(?:1[0-6]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen)";
+const UNDERAGE_PATTERNS = [
+  /\b(i'?m|i am)\s+(a\s+)?(minor|underage)\b/,
+  /\bi'?m\s+not\s+(even\s+)?(18|eighteen)\b/,
+  new RegExp(
+    "\\b(i'?m|i am)\\s+(only\\s+|just\\s+)?" + UNDERAGE_AGE +
+    "\\s*(years?\\s*old|yo\\b|yrs?\\s*old)"),
+  /\b(i'?m|i am)\s+in\s+(middle school|junior high|[6-9](th)?\s*grade|10(th)?\s*grade|(sixth|seventh|eighth|ninth|tenth)\s*grade)\b/,
+  new RegExp("\\b(i'?m|i am)\\s+turning\\s+" + UNDERAGE_AGE + "\\b"),
+  new RegExp("\\bi\\s+just\\s+turned\\s+" + UNDERAGE_AGE + "\\b"),
+  new RegExp("\\bi\\s+turn\\s+" + UNDERAGE_AGE + "\\s+(next|this|in|on)\\b"),
+  /\b(i'?m|i am)\s+an?\s+(freshman|sophomore)\b(?!\s+(in|at)\s+(community\s+)?(college|university|uni)\b)/,
+  /\b(i'?m|i am)\s+an?\s+([6-9]|10)(th)?[\s-]*grader\b/,
+];
+const UNDERAGE_BORN_RE = /\b(i\s+was|i'?m|i\s+am)\s+born\s+in\s+((19|20)\d{2})\b/;
+
 function isUnderageDisclosure(rawText) {
   const t = (rawText || "").toLowerCase();
-  if (/\b(i'?m|i am)\s+(a\s+)?(minor|underage)\b/.test(t)) return true;
-  if (/\bi'?m\s+not\s+(even\s+)?(18|eighteen)\b/.test(t)) return true;
-  if (/\b(i'?m|i am)\s+(1[0-6])\s*(years?\s*old|yo\b|yrs?\s*old)/.test(t)) return true;
-  if (/\b(i'?m|i am)\s+in\s+(middle school|junior high|[678](th)?\s*grade)\b/.test(t)) return true;
+  if (UNDERAGE_PATTERNS.some((re) => re.test(t))) return true;
+  // Birth year >= (currentYear - 16) guarantees age <= 16 even after this
+  // year's birthday — never goes stale, never flags a possible 17-year-old.
+  const born = UNDERAGE_BORN_RE.exec(t);
+  if (born && Number(born[2]) >= new Date().getFullYear() - 16) return true;
   return false;
 }
 

@@ -9,11 +9,24 @@
 const { createCanvas, GlobalFonts } = require("@napi-rs/canvas");
 const path = require("path");
 
-GlobalFonts.registerFromPath(path.join(__dirname, "fonts", "Newsreader.ttf"), "Newsreader");
+// 2026-07-28 (A.5 #5): registration must not be able to take down the card
+// endpoint — a missing/corrupt bundled font previously failed at module load,
+// 500ing EVERY og:image. Degrade to the system face instead (an off-brand
+// card beats a broken unfurl on every shared link). Handles both failure
+// modes: a throw AND registerFromPath's boolean-false return.
+function registerFontSafe(file, family) {
+  try {
+    const ok = GlobalFonts.registerFromPath(path.join(__dirname, "fonts", file), family);
+    if (ok === false) console.warn(`shareCard: font ${family} did not register — cards fall back to the system face`);
+  } catch (err) {
+    console.warn(`shareCard: font ${family} failed to register — cards fall back to the system face:`, err.message);
+  }
+}
+registerFontSafe("Newsreader.ttf", "Newsreader");
 // Monochrome emoji fallback (OFL) — post text carries emoji often; without a
 // fallback family they rasterize as tofu boxes. The monochrome glyphs render
 // in the ink color, matching the card's editorial look.
-GlobalFonts.registerFromPath(path.join(__dirname, "fonts", "NotoEmoji.ttf"), "Noto Emoji");
+registerFontSafe("NotoEmoji.ttf", "Noto Emoji");
 const QUOTE_FONT = (size) => `${size}px Newsreader, "Noto Emoji"`;
 
 const W = 1200;
@@ -33,11 +46,20 @@ function wrapLines(ctx, text, maxWidth) {
   let line = "";
   for (const word of words) {
     const probe = line ? `${line} ${word}` : word;
-    if (ctx.measureText(probe).width <= maxWidth || !line) {
-      line = probe;
-    } else {
-      lines.push(line);
-      line = word;
+    if (ctx.measureText(probe).width <= maxWidth) { line = probe; continue; }
+    if (line) { lines.push(line); line = ""; }
+    if (ctx.measureText(word).width <= maxWidth) { line = word; continue; }
+    // 2026-07-28 (A.5 #5): a single unbroken token wider than the box used to
+    // become one overflowing line ("|| !line") and bleed past the card edge.
+    // Hard-break it by characters instead — mid-token breaks are ugly, but a
+    // 2000-char keyboard-mash is already not prose.
+    for (const ch of word) {
+      if (line && ctx.measureText(line + ch).width > maxWidth) {
+        lines.push(line);
+        line = ch;
+      } else {
+        line += ch;
+      }
     }
   }
   if (line) lines.push(line);

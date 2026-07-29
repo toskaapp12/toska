@@ -30,3 +30,24 @@ test("edge cases render without throwing", () => {
     pngInfo(buf);
   }
 });
+
+// 2026-07-28 (A.5 #5): a single unbroken token wider than the box must be
+// hard-broken by characters — every wrapped line must actually fit maxWidth.
+test("wrapLines hard-breaks unbroken tokens to fit the box", () => {
+  const { wrapLines } = require("./shareCard");
+  const { createCanvas } = require("@napi-rs/canvas");
+  const ctx = createCanvas(1200, 630).getContext("2d");
+  ctx.font = "64px Newsreader";
+  const maxWidth = 1200 - 96 * 2;
+  for (const text of ["x".repeat(500), "short then " + "y".repeat(300) + " after"]) {
+    const lines = wrapLines(ctx, text, maxWidth);
+    for (const line of lines) {
+      assert.ok(
+        ctx.measureText(line).width <= maxWidth,
+        `line overflows box: ${line.length} chars, ${ctx.measureText(line).width}px`
+      );
+    }
+    // Round-trip: no characters lost by the breaker.
+    assert.equal(lines.join("").replace(/ /g, ""), text.replace(/ /g, ""));
+  }
+});

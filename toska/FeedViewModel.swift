@@ -678,6 +678,16 @@ class FeedViewModel: ObservableObject {
                 dragOffset = 0
             }
 
+    // 2026-07-29 sync sweep: refetch after a post edit commits. Lives here
+    // (not inline in FeedView) because the extra closure tipped FeedView's
+    // modifier chain over the type-checker's complexity limit.
+    func handlePostEdited() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            self.fetchPosts()
+        }
+    }
+
     func handleNewPostCreated() {
         fetchPosts()
         // Refresh the prompt-response state — if the new post WAS today's

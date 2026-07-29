@@ -415,6 +415,11 @@ struct FeedView: View {
         // stays on screen with the deleted text until pull-to-refresh.
         // Also strip the deleted post from the in-memory feed so it
         // disappears from the list immediately.
+        // 2026-07-29 sync sweep: an edited post's text updates in the feed
+        // without pull-to-refresh (rows come from one-shot fetches).
+        .onReceive(NotificationCenter.default.publisher(for: .postEdited)) { _ in
+            vm.handlePostEdited()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
             guard let deletedId = notif.userInfo?["postId"] as? String else { return }
             if vm.todaysPromptResponse?.id == deletedId {

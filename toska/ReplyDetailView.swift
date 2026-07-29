@@ -764,6 +764,10 @@ struct ReplyDetailView: View {
                     if let err = err {
                         deleteError = "couldn't delete — \(err.localizedDescription)"
                     } else {
+                        // Profile tabs are one-shot fetches (2026-07-29 sync
+                        // sweep) — see PostDetailView.deleteReply.
+                        NotificationCenter.default.post(name: .replyDeleted, object: nil,
+                                                        userInfo: ["replyId": reply.id])
                         dismiss()
                     }
                 }

@@ -265,6 +265,35 @@ struct ProfileView: View {
             savedPosts.removeAll { $0.id == deletedId }
             likedPosts.removeAll { $0.id == deletedId }
         }
+        // 2026-07-29 sync sweep: reply deleted anywhere (thread or nested
+        // detail) vanishes from the profile's reply lists immediately.
+        .onReceive(NotificationCenter.default.publisher(for: .replyDeleted)) { notif in
+            guard let replyId = notif.userInfo?["replyId"] as? String else { return }
+            myReplies.removeAll { $0.id == replyId }
+            savedReplies.removeAll { $0.id == replyId }
+            likedReplies.removeAll { $0.id == replyId }
+        }
+        // 2026-07-29 sync sweep: text edits refetch the affected loaded tab
+        // (same 700ms settle delay as postInteractionChanged — the write has
+        // just committed and refetch races the server timestamp otherwise).
+        .onReceive(NotificationCenter.default.publisher(for: .postEdited)) { _ in
+            guard loadedTabs.contains(0) else { return }
+            let uid = Auth.auth().currentUser?.uid
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                guard Auth.auth().currentUser?.uid == uid else { return }
+                loadMyPosts()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .replyEdited)) { _ in
+            guard loadedTabs.contains(3) else { return }
+            let uid = Auth.auth().currentUser?.uid
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                guard Auth.auth().currentUser?.uid == uid else { return }
+                loadMyReplies()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .postInteractionChanged)) { notif in
             guard let action = notif.userInfo?["action"] as? String else { return }
             let affected: Int       // which loaded-tab's data this touches
@@ -1872,6 +1901,11 @@ struct EditReplyView: View {
                     }
                     replyText = trimmed
                     onSave()
+                    // Shared editor (thread + profile call sites): threads
+                    // self-heal via listeners, the profile Replies tab is a
+                    // one-shot fetch (2026-07-29 sync sweep).
+                    NotificationCenter.default.post(name: .replyEdited, object: nil,
+                                                    userInfo: ["replyId": replyId])
                     dismiss()
                 }
             }

@@ -1639,6 +1639,12 @@ struct PostDetailView: View {
                         print("⚠️ deleteReply failed: \(error)")
                         Telemetry.recordError(error, context: "PostDetailView.deleteReply")
                         deleteReplyError = "couldn't delete — try again"
+                    } else {
+                        // This thread self-heals via the reply listener; the
+                        // profile's Replies/Saved/Liked tabs are one-shot
+                        // fetches and need the signal (2026-07-29 sync sweep).
+                        NotificationCenter.default.post(name: .replyDeleted, object: nil,
+                                                        userInfo: ["replyId": replyId])
                     }
                 }
             }
@@ -2163,7 +2169,15 @@ struct EditPostView: View {
             Task { @MainActor in
                 isSaving = false
                 if let error = error { saveError = "couldn't save — \(error.localizedDescription)" }
-                else { currentText = editText; dismiss() }
+                else {
+                    currentText = editText
+                    // Feed / Top / profile Posts tab are one-shot fetches and
+                    // kept showing the pre-edit text until manual refresh
+                    // (2026-07-29 sync sweep).
+                    NotificationCenter.default.post(name: .postEdited, object: nil,
+                                                    userInfo: ["postId": postId])
+                    dismiss()
+                }
             }
         }
     }

@@ -82,6 +82,15 @@ struct TopView: View {
                 cache[key]?.removeAll { $0.authorId == blockedId }
             }
         }
+        // 2026-07-29 sync sweep: a deleted post leaves the trending board
+        // immediately (the cache otherwise served it until its staleness
+        // window expired). Same in-place strip as the block handler above.
+        .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
+            guard let deletedId = notif.userInfo?["postId"] as? String, !deletedId.isEmpty else { return }
+            for key in cache.keys {
+                cache[key]?.removeAll { $0.id == deletedId }
+            }
+        }
         // Freshness triggers. onAppear fires only once per session (MainTabView
         // keeps the tab alive via .opacity), so these are the real re-entry
         // signals: switching back to this tab, and returning from background.

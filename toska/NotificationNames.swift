@@ -12,6 +12,16 @@ extension NSNotification.Name {
     // todaysPromptResponse) can invalidate themselves instead of waiting
     // until the next pull-to-refresh.
     static let postDeleted         = NSNotification.Name("PostDeleted")
+    // Cross-screen sync family (2026-07-29 owner report: "changes must show
+    // up with no refresh needed"). Thread views self-heal via their reply
+    // snapshot listeners; these exist for the ONE-SHOT-fetch screens
+    // (profile tabs, feed, top board) that would otherwise go stale.
+    // Posted on successful reply deletion. userInfo: ["replyId": String]
+    static let replyDeleted        = NSNotification.Name("ReplyDeleted")
+    // Posted on successful post text edit. userInfo: ["postId": String]
+    static let postEdited          = NSNotification.Name("PostEdited")
+    // Posted on successful reply text edit. userInfo: ["replyId": String]
+    static let replyEdited         = NSNotification.Name("ReplyEdited")
     static let scrollFeedToTop     = NSNotification.Name("ScrollFeedToTop")
     static let dismissAllSheets    = NSNotification.Name("DismissAllSheets")
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")

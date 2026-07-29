@@ -54,6 +54,23 @@ service cloud.firestore {
     // to write rules that actually need to honor the restriction
     // (posts/replies/messages create — not reads, not block/unblock,
     // not unfollow, not delete-own-content).
+    //
+    // KNOWN READ-LEAK, DEFERRED (2026-07-28 system-review §8#2 / A.5 #9):
+    // restricted / restrictedUntil / restrictedBy / confirmedAdult(At) live
+    // on the world-readable users/{uid} doc, so any authenticated user can
+    // see who is restricted, until when, by which admin, and adult-gate
+    // state. Low severity, real. The fix (move to users/{uid}/private/data)
+    // is BLOCKED on the shipped client: v1.1 build 72 (in App Review) reads
+    // confirmedAdult from the MAIN doc to gate onboarding
+    // (ContentView/OnboardingView), the iOS + web admin dashboards QUERY
+    // users.where(restricted==true) (can't query a subcollection field this
+    // way), and iOS admin restrict actions write restrictedBy/At to the main
+    // doc. Migration plan for a v1.2+ client: (1) client reads private/data
+    // with main-doc fallback + admin dashboards move to an admin-only index,
+    // (2) dual-write window (confirmAdult + restrict paths write both),
+    // (3) backfill, (4) rules flip these helpers to the private doc and the
+    // update legs reject the main-doc fields. Do NOT attempt the move while
+    // any live client depends on the main-doc fields.
     function notRestricted() {
       return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
         || !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restricted', false)
@@ -889,10 +906,13 @@ service cloud.firestore {
         // deanonymization beacon in an anonymity-first app). Constrain to a giphy
         // host + length cap; both legit writers only ever store giphyProxy media
         // URLs (https://media*.giphy.com/...). Optional: absent is allowed.
+        // 2026-07-28 (A.5 #10): explicitly anchored. matches() is already
+        // full-match in rules semantics, so this is convention-alignment with
+        // validHandle (zero behavior change), not a fix.
         && (!('gifUrl' in request.resource.data.keys())
             || (request.resource.data.gifUrl is string
                 && request.resource.data.gifUrl.size() <= 500
-                && request.resource.data.gifUrl.matches('https://([a-z0-9-]+[.])+giphy[.]com/.*')))
+                && request.resource.data.gifUrl.matches('^https://([a-z0-9-]+[.])+giphy[.]com/.*$')))
         // createdAt pinned to server time. Drafts/circles/reports already
         // enforce this; the three highest-volume write paths (posts/replies/
         // messages) didn't, which let a tampered client backdate posts to
@@ -1244,10 +1264,11 @@ service cloud.firestore {
           // gifUrl host-lock — mirrors the post-create clause (2026-07-19 audit):
           // constrain a reply's gifUrl to a giphy host + length cap so a tampered
           // client can't turn it into a viewer-IP beacon on iOS (no CSP there).
+          // 2026-07-28 (A.5 #10): anchored — see the post-create clause note.
           && (!('gifUrl' in request.resource.data.keys())
               || (request.resource.data.gifUrl is string
                   && request.resource.data.gifUrl.size() <= 500
-                  && request.resource.data.gifUrl.matches('https://([a-z0-9-]+[.])+giphy[.]com/.*')))
+                  && request.resource.data.gifUrl.matches('^https://([a-z0-9-]+[.])+giphy[.]com/.*$')))
           && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         // Text-size cap mirrored from create. Without it, an author could
         // edit a 500-char reply into multi-KB content and bypass both the

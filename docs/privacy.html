@@ -143,6 +143,7 @@
             <li>Notifications in your inbox: pruned after 90 days.</li>
             <li>Reports and moderation records: retained after content deletion for safety, abuse-pattern, and legal-defense purposes.</li>
             <li>Admin action log: retained as an internal accountability record; contains no post content beyond what moderation required.</li>
+            <li>Re-registration block list: if we remove an account for serious violations (including underage use), we retain a one-way cryptographic hash of its sign-in identifiers (email address and Apple/Google account identifier) to prevent the removed account from re-registering. The hashes cannot be reversed to reveal the identifier; no plaintext identifier is retained. <em>(Added 2026-07-29.)</em></li>
             <li>Backups: point-in-time 7 days; daily backups 7 days; weekly backups 8 weeks &mdash; deleted data ages out of all backups within about 60 days.</li>
         </ul>
 

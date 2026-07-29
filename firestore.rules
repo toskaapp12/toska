@@ -1591,6 +1591,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // bannedIdentities/{hash} — block-re-signup ban registry (2026-07-29).
+    // One-way HMAC hashes only (no plaintext identifiers); written by the
+    // adminDeleteAccount callable, read by the blockBannedSignups blocking
+    // function — both Admin SDK. NO client access in either direction, even
+    // for admins: the dashboard has no use for it, and an admin-readable
+    // hash list would only add leak surface.
+    match /bannedIdentities/{hash} {
+      allow read, write: if false;
+    }
+
     match /crisisReplyQueue/{entryId} {
       allow read: if isAdmin();
       allow create: if false;

@@ -2311,6 +2311,28 @@ describe("A.5 #9 (2026-07-28): restrictedUsers index is admin-read, server-write
   });
 });
 
+describe("block-re-signup (2026-07-29): bannedIdentities is server-only", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setAdmin("mod");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("bannedIdentities").doc("somehash").set({ kind: "email" });
+    });
+  });
+
+  it("DENIED: non-admin cannot read or write", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("bannedIdentities").doc("somehash").get());
+    await assertFails(a.collection("bannedIdentities").doc("newhash").set({ kind: "email" }));
+  });
+  it("DENIED: even an admin cannot read, list, or delete", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("bannedIdentities").doc("somehash").get());
+    await assertFails(m.collection("bannedIdentities").limit(5).get());
+    await assertFails(m.collection("bannedIdentities").doc("somehash").delete());
+  });
+});
+
 describe("C-1 (2026-07-17): crisisReplyQueue is admin-only", () => {
   beforeEach(async () => {
     await setUserDoc("alice");

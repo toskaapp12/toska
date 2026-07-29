@@ -808,3 +808,69 @@ describe("mirrorModerationState — private mirror + restrictedUsers index", () 
     assert.strictEqual((await db.doc("restrictedUsers/mm3").get()).exists, false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Block-re-signup (2026-07-29): identity hashing + blockBannedSignups.
+// ─────────────────────────────────────────────────────────────────────
+describe("block-re-signup — bannedIdentities helpers + blocking function", () => {
+  const { identityHash, extractIdentities } = require("../functions/bannedIdentities");
+  const PEPPER = "test-pepper";
+  before(() => { process.env.BANNED_ID_PEPPER = PEPPER; });
+
+  it("extractIdentities: email + provider uids, normalized + deduped", () => {
+    const ids = extractIdentities({
+      email: " Bad.Actor@Example.com ",
+      providerData: [
+        { providerId: "google.com", uid: "g-123", email: "bad.actor@example.com" },
+        { providerId: "apple.com", uid: "a-456", email: "relay@privaterelay.appleid.com" },
+        { providerId: "password", uid: "bad.actor@example.com" },
+      ],
+    });
+    assert.deepStrictEqual(ids, [
+      { kind: "email", value: "bad.actor@example.com" },
+      { kind: "google.com", value: "g-123" },
+      { kind: "apple.com", value: "a-456" },
+      { kind: "email", value: "relay@privaterelay.appleid.com" },
+    ]);
+  });
+
+  it("identityHash is stable, keyed, and non-reversing", () => {
+    const h = identityHash(PEPPER, "email", "x@y.z");
+    assert.strictEqual(h, identityHash(PEPPER, "email", "x@y.z"));
+    assert.notStrictEqual(h, identityHash("other-pepper", "email", "x@y.z"));
+    assert.notStrictEqual(h, identityHash(PEPPER, "google.com", "x@y.z"));
+    assert.ok(/^[a-f0-9]{64}$/.test(h));
+    assert.ok(!h.includes("x@y.z"));
+  });
+
+  it("blockBannedSignups rejects a banned email and allows a clean one", async () => {
+    await db.collection("bannedIdentities").doc(identityHash(PEPPER, "email", "banned@example.com"))
+      .set({ kind: "email" });
+    let rejected = null;
+    try {
+      await fns.blockBannedSignups.run({ data: { email: "banned@example.com", providerData: [] } });
+    } catch (e) { rejected = e; }
+    assert.ok(rejected, "banned email must be rejected");
+    assert.match(String(rejected.message || rejected), /account cannot be created/);
+    // clean signup passes
+    await fns.blockBannedSignups.run({ data: { email: "fresh@example.com", providerData: [] } });
+  });
+
+  it("blockBannedSignups rejects a banned Google uid even with a NEW email", async () => {
+    await db.collection("bannedIdentities").doc(identityHash(PEPPER, "google.com", "g-banned"))
+      .set({ kind: "google.com" });
+    let rejected = null;
+    try {
+      await fns.blockBannedSignups.run({ data: {
+        email: "totally-new@example.com",
+        providerData: [{ providerId: "google.com", uid: "g-banned" }],
+      } });
+    } catch (e) { rejected = e; }
+    assert.ok(rejected, "banned provider uid must be rejected regardless of email");
+  });
+
+  it("blockBannedSignups is a no-op for empty event data (fail-open shape)", async () => {
+    await fns.blockBannedSignups.run({ data: null });
+    await fns.blockBannedSignups.run({ data: { providerData: [] } });
+  });
+});

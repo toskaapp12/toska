@@ -36,6 +36,12 @@ const db = getFirestore();
 // never lives in source control or function logs. Set with:
 //   firebase functions:secrets:set GIPHY_KEY
 const GIPHY_KEY = defineSecret("GIPHY_KEY");
+// Block-re-signup (2026-07-29): HMAC pepper for the bannedIdentities one-way
+// hashes (see bannedIdentities.js). Set per-project via
+// `firebase functions:secrets:set BANNED_ID_PEPPER`.
+const BANNED_ID_PEPPER = defineSecret("BANNED_ID_PEPPER");
+const { beforeUserCreated, HttpsError: IdentityHttpsError } = require("firebase-functions/v2/identity");
+const { identityHash, extractIdentities } = require("./bannedIdentities");
 
 // ============================================================
 // Helper functions
@@ -4920,6 +4926,42 @@ exports.confirmAdult = onCall(
 );
 
 // ============================================================
+// blockBannedSignups — Identity Platform blocking function (2026-07-29).
+// Runs synchronously before ANY account creation (email, Google, Apple);
+// rejects when the new account's email or Apple/Google provider uid matches a
+// bannedIdentities hash captured by adminDeleteAccount. Registered into the
+// project's "Before account creation" slot automatically on deploy (requires
+// the Identity Platform upgrade, done 2026-07-29).
+//
+// FAIL-OPEN on infrastructure errors: a bug or Firestore outage in this
+// function must degrade to "bans not enforced for that signup", never to
+// "nobody can create an account" (blocking functions fail-closed by default,
+// so every non-rejection error is caught). The deliberate rejection is the
+// only thrown error, with a neutral message — silent-removal policy, the
+// banned user isn't told why.
+exports.blockBannedSignups = beforeUserCreated(
+  { secrets: [BANNED_ID_PEPPER] },
+  async (event) => {
+    try {
+      const user = event.data;
+      if (!user) return;
+      const ids = extractIdentities(user);
+      if (ids.length === 0) return;
+      const pepper = BANNED_ID_PEPPER.value();
+      const refs = ids.map((id) =>
+        db.collection("bannedIdentities").doc(identityHash(pepper, id.kind, id.value)));
+      const snaps = await db.getAll(...refs);
+      if (snaps.some((s) => s.exists)) {
+        console.log(`blockBannedSignups: rejected signup matching ${snaps.filter((s) => s.exists).length} banned identity hash(es)`);
+        throw new IdentityHttpsError("permission-denied", "account cannot be created");
+      }
+    } catch (err) {
+      if (err instanceof IdentityHttpsError) throw err;
+      console.error("blockBannedSignups check failed (failing open):", err.message);
+    }
+  },
+);
+
 // adminDeleteAccount — admin-initiated full account deletion
 //
 // The moderation dashboard (docs/admin.html) can already RESTRICT a user
@@ -4946,7 +4988,7 @@ exports.confirmAdult = onCall(
 // (the SAME predicate as rules isAdmin()). Refuses to delete the caller's own
 // account or any other admin account through this path.
 exports.adminDeleteAccount = onCall(
-  { enforceAppCheck: true },
+  { enforceAppCheck: true, secrets: [BANNED_ID_PEPPER] },
   async (request) => {
     const callerUid = request.auth?.uid;
     if (!callerUid) {
@@ -4976,6 +5018,40 @@ exports.adminDeleteAccount = onCall(
     const reason = typeof request.data?.reason === "string"
       ? request.data.reason.slice(0, 200)
       : "";
+
+    // 0.5 — Block-re-signup (2026-07-29): capture the account's sign-in
+    // identities as one-way HMAC hashes BEFORE deletion. Ordering matters:
+    // after the Auth delete the identities are gone forever, so a capture
+    // failure throws (the admin retries the whole deletion — the earlier
+    // steps are idempotent). Absorb user-not-found: a re-invocation after a
+    // partial prior failure already captured on the first pass.
+    try {
+      const userRecord = await getAuth().getUser(targetUid).catch((err) => {
+        if (err.code === "auth/user-not-found") return null;
+        throw err;
+      });
+      if (userRecord) {
+        const pepper = BANNED_ID_PEPPER.value();
+        const batch = db.batch();
+        for (const id of extractIdentities(userRecord)) {
+          batch.set(
+            db.collection("bannedIdentities").doc(identityHash(pepper, id.kind, id.value)),
+            {
+              kind: id.kind, // which identifier class the hash came from — NO plaintext
+              bannedAt: FieldValue.serverTimestamp(),
+              bannedBy: callerUid,
+              targetUid,
+              reason,
+            },
+            { merge: true },
+          );
+        }
+        await batch.commit();
+      }
+    } catch (err) {
+      console.error("adminDeleteAccount identity capture failed:", err.message);
+      throw new HttpsError("internal", "identity capture failed — retry the deletion");
+    }
 
     // 1. Delete the Auth user. Absorb user-not-found so a re-invocation after
     //    a partial prior failure still completes (idempotent).

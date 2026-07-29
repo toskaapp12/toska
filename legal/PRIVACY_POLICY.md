@@ -70,6 +70,7 @@ No other third party receives user data. There are no ad networks, no data broke
 | Drafts | Until you delete them or your account |
 | Reports and moderation records | Retained after content deletion for safety, abuse-pattern, and legal-defense purposes |
 | Admin action log | Retained (internal accountability record; contains no post content beyond what moderation required) |
+| Re-registration block list | If we remove an account for serious violations (including underage use), we retain a **one-way cryptographic hash** of its sign-in identifiers (email address and Apple/Google account identifier) to prevent the removed account from re-registering. The hashes cannot be reversed to reveal the identifier; no plaintext identifier is retained. *(Added 2026-07-29.)* |
 | Backups | Point-in-time 7 days; daily backups 7 days; weekly backups 8 weeks — deleted data ages out of all backups within **~60 days** |
 
 ## 7. Account deletion — exactly what it deletes

@@ -51,6 +51,16 @@ jobs:
       working-directory: firestore-tests
       run: npm install --no-audit --no-fund
 
+    # crisis-parity.mjs (part of test:pins) requires ../functions/index.js to
+    # read the deployed crisis lists, and index.js needs firebase-functions
+    # et al from functions/node_modules. Without this install the job dies
+    # with "Cannot find module 'firebase-functions/v2/firestore'" — the exact
+    # pre-existing failure that had CI red on main since the pin was added
+    # (found 2026-07-28 while promoting detector-parity, A.5 #8).
+    - name: Install Cloud Functions dependencies
+      working-directory: functions
+      run: npm install --no-audit --no-fund
+
     - name: Run rules unit tests
       working-directory: firestore-tests
       # Calls the package.json `test` script so CI uses the exact same

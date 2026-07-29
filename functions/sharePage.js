@@ -153,11 +153,16 @@ ${body}
 
 // The rendered share page. `post` has already passed evaluateSharePage.
 function renderPostHtml(postId, post, { indexable, createdAtMs }) {
-  const canonicalUrl = `${CANONICAL_ORIGIN}/p/${postId}`;
+  // 2026-07-28 (A.5 #4): escape postId for parity with renderSitemapXml.
+  // The caller gates on isValidDocId ([A-Za-z0-9_-]), so this is a no-op for
+  // every id that can reach here — defense-in-depth only, so the HTML-safety
+  // of this template doesn't depend on a gate in a different function.
+  const safePostId = escapeHtml(postId);
+  const canonicalUrl = `${CANONICAL_ORIGIN}/p/${safePostId}`;
   const title = escapeHtml(excerpt(post.text, 70)) + " — toska";
   const description = escapeHtml(excerpt(post.text, 200));
   const robots = indexable ? "index, follow" : "noindex";
-  const cardUrl = `${CANONICAL_ORIGIN}/og/${postId}.png`;
+  const cardUrl = `${CANONICAL_ORIGIN}/og/${safePostId}.png`;
   const head = `<link rel="canonical" href="${canonicalUrl}">
 <meta property="og:site_name" content="toska">
 <meta property="og:type" content="article">

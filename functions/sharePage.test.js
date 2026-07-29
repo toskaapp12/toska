@@ -148,6 +148,14 @@ test("rendered page: XSS via text/tag is escaped", () => {
   assert.ok(!html.includes("<b>"));
 });
 
+test("rendered page: XSS via postId is escaped (A.5 #4 defense-in-depth)", () => {
+  // isValidDocId blocks these ids upstream; the template must not depend on it.
+  const hostileId = '"><script>alert(1)</script>';
+  const html = renderPostHtml(hostileId, livePost(), { indexable: false, createdAtMs: NOW });
+  assert.ok(!html.includes("<script>"));
+  assert.ok(html.includes("&lt;script&gt;")); // escaped form present in the URLs
+});
+
 test("not-found page is noindex", () => {
   const html = renderNotFoundHtml();
   assert.ok(html.includes('content="noindex"'));

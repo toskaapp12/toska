@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — function error (all other functions)",
+  "documentation": {
+    "content": "A non-core Cloud Function logged an ERROR (severity>=ERROR), excluding the three watched by 'Toska — critical function error' (validatePost / onUserDocDeleted / sendPushNotification) and benign self-retrying logs ('will retry'). This is the broad net that catches silent failures in scheduled / maintenance / moderation functions — e.g. pruneOldNotifications and checkReportSLA, both of which failed silently in July 2026. Open the named function's logs for the traceback.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "ERROR on any other function",
+      "conditionMatchedLog": {
+        "filter": "severity>=ERROR AND resource.type=\"cloud_run_revision\" AND NOT resource.labels.service_name=(\"validatepost\" OR \"onuserdocdeleted\" OR \"sendpushnotification\") AND NOT \"will retry\""
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "3600s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

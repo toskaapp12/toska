@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — crisis post (email backup)",
+  "documentation": {
+    "content": "A crisis post/reply was detected and admins were paged (tag crisis_needs_review). This email is the BACKUP channel to the FCM push — it fires even if every push fails or the admin's phone is off. Open the crisis queue in admin.html (the 'label' field is the postId reference; no post content is in this alert by design). This is the highest-priority queue.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "crisis needs review",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.tag=\"crisis_needs_review\""
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "300s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

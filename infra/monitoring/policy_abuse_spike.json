@@ -1,0 +1,20 @@
+{
+  "displayName": "Toska — abuse spike",
+  "documentation": {
+    "content": "abuseSpikeWatch (hourly) detected a moderation anomaly: either ONE author flooded held content (tag abuse_spike_author) or a GLOBAL surge of auto-held posts (tag abuse_spike_global). Likely a spammer, a targeted-harassment burst, or a coordinated campaign. Open the pending/flagged queues in admin.html; the log entry names the authorId and the count. Tune AUTHOR_THRESHOLD / GLOBAL_THRESHOLD in functions/index.js if noisy.",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "abuse spike detected",
+      "conditionMatchedLog": {
+        "filter": "jsonPayload.tag=(\"abuse_spike_author\" OR \"abuse_spike_global\")"
+      }
+    }
+  ],
+  "alertStrategy": {
+    "notificationRateLimit": { "period": "3600s" }
+  },
+  "notificationChannels": ["__CHANNEL__"]
+}

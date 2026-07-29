@@ -19,6 +19,15 @@ policy per alert, plus a script that creates them.
 | `policy_pending_deletion_stuck.json` | an account deletion is retried/stuck | `monitorPendingDeletions` → `"Retry failed for pending deletion"` |
 | `policy_crisis_paging.json` | crisis admin-paging fails or is misconfigured | `onPostCreatedAlertAdmins` → `textPayload =~ "crisis-alert: (failed to alert admins|tripped explicit-crisis but no)"` |
 | `policy_critical_fn_errors.json` | a load-bearing function logs an ERROR | severity≥ERROR on `validatePost` / `onUserDocDeleted` / `sendPushNotification` |
+| `policy_fn_errors_all_other.json` | any OTHER function logs an ERROR (broad net) | severity≥ERROR on every function except the three above, excluding "will retry" |
+| `policy_abuse_spike.json` | per-author or global surge of auto-held content | `abuseSpikeWatch` → `jsonPayload.tag="abuse_spike_author"` / `"abuse_spike_global"` |
+| `policy_crisis_email_backup.json` | a crisis post/reply was detected (email backup to the FCM page) | `pageAdminsForCrisis` → `jsonPayload.tag="crisis_needs_review"` |
+
+> The three policies above were first created live via gcloud on 2026-07-28
+> (session work) and exported here afterward; the live prod policies and these
+> JSONs are in sync as of that date. The prod web uptime check
+> ("Uptime failure — toska prod web") is console-managed and intentionally not
+> in this directory.
 
 ## Deploy
 

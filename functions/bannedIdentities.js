@@ -10,7 +10,12 @@
 const crypto = require("crypto");
 
 function identityHash(pepper, kind, value) {
-  return crypto.createHmac("sha256", pepper).update(`${kind}:${value}`).digest("hex");
+  // trim(): Secret Manager values set via piped stdin can carry a trailing
+  // newline, and an invisible whitespace difference silently changes every
+  // hash (found the hard way on the 2026-07-29 staging probe — the deployed
+  // pepper had "\n", the capture-side one didn't, and no signup ever
+  // matched). Trimming at the single chokepoint makes both sides immune.
+  return crypto.createHmac("sha256", String(pepper).trim()).update(`${kind}:${value}`).digest("hex");
 }
 
 // Extract the durable sign-in identities from an Auth user record (Admin SDK

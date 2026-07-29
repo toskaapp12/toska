@@ -3,6 +3,9 @@ name: CI
 # Runs on every PR and on every push to main. Catches:
 #   - broken firestore.rules (the unit-test suite under firestore-tests/)
 #   - syntax errors in Cloud Functions JS that would silently fail to deploy
+#   - Swift↔JS moderation-detector divergence (detector-parity, macOS lane)
+#   - GDPR deletion-cascade residue on staging (inert until WIF SA is set up
+#     — see the deletion-cascade-staging job's comment)
 # Does not yet build the iOS app — that needs GoogleService-Info.plist
 # decoded from a secret on a macOS runner. RUNBOOK.md describes the
 # setup if/when we want to add it.
@@ -111,6 +114,85 @@ jobs:
       # The package.json script's macOS openjdk PATH prefix is harmless on
       # Linux since setup-java already put Java 21 on PATH.
       run: npm test
+
+  # 2026-07-28 (system-review A.5 #8): the Swift↔JS parity pin, promoted from
+  # manual-only. It extracts the REAL name detector + crisis matcher from
+  # toska/ContentModeration.swift, compiles them with swiftc (hence the macOS
+  # runner), and runs the shared corpora through Swift AND JS — so a server
+  # moderation change that diverges the hand-mirrored iOS side now fails CI
+  # instead of waiting for someone to remember the manual run. Zero npm deps:
+  # node builtins + swiftc only.
+  detector-parity:
+    name: Swift-JS detector parity (macOS)
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node 22
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Run detector-parity pin
+      working-directory: firestore-tests
+      run: node detector-parity.mjs
+
+  # 2026-07-28 (system-review A.5 #8): the GDPR deletion-cascade probe against
+  # LIVE STAGING, promoted from manual-only — the launch-critical "no residue
+  # after account deletion" guarantee gets re-proven on every push to main.
+  #
+  # INERT until the owner completes two one-time steps:
+  #   1. Create the probe service account + WIF binding on toskastaging
+  #      (same keyless WIF pattern as deploy-rules-staging above — the org
+  #      policy blocks JSON keys anyway). The probe creates/deletes staging
+  #      Auth users and writes/deletes Firestore docs, so it needs:
+  #        gcloud iam service-accounts create github-actions-staging-probes \
+  #          --project=toskastaging
+  #        gcloud projects add-iam-policy-binding toskastaging \
+  #          --member="serviceAccount:github-actions-staging-probes@toskastaging.iam.gserviceaccount.com" \
+  #          --role=roles/datastore.owner
+  #        gcloud projects add-iam-policy-binding toskastaging \
+  #          --member="serviceAccount:github-actions-staging-probes@toskastaging.iam.gserviceaccount.com" \
+  #          --role=roles/firebaseauth.admin
+  #        gcloud iam service-accounts add-iam-policy-binding \
+  #          github-actions-staging-probes@toskastaging.iam.gserviceaccount.com \
+  #          --project=toskastaging --role=roles/iam.workloadIdentityUser \
+  #          --member="principalSet://iam.googleapis.com/projects/260913424323/locations/global/workloadIdentityPools/github-actions/attribute.repository/toskaapp12/toska"
+  #   2. Set repo variable RUN_STAGING_PROBES=true (Settings → Secrets and
+  #      variables → Actions → Variables).
+  # Push-to-main only (WIF id-tokens aren't issuable from fork PRs, and PR
+  # runs shouldn't touch live staging).
+  deletion-cascade-staging:
+    name: GDPR deletion-cascade probe (staging)
+    runs-on: ubuntu-latest
+    needs: rules-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.RUN_STAGING_PROBES == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node 22
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        cache-dependency-path: firestore-tests/package-lock.json
+
+    - name: Install test dependencies
+      working-directory: firestore-tests
+      run: npm install --no-audit --no-fund
+
+    - name: Auth to Google Cloud via Workload Identity Federation
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: projects/260913424323/locations/global/workloadIdentityPools/github-actions/providers/github
+        service_account: github-actions-staging-probes@toskastaging.iam.gserviceaccount.com
+
+    - name: Run deletion-cascade probe against staging
+      working-directory: firestore-tests
+      run: node deletion-cascade.mjs
 
   # Auto-deploys firestore.rules to staging on every push to main, gated
   # on the rules-tests job passing. Closes the staging-drift gap surfaced

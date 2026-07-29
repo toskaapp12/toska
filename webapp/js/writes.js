@@ -30,15 +30,30 @@ export async function myHandle() {
     return handle;
 }
 // Mirrors notRestricted() in firestore.rules: restricted==true blocks unless
-// restrictedUntil exists and is in the past. Reads the cached user doc — a
+// restrictedUntil exists and is in the past. Reads the cached docs — a
 // mid-session restriction is still caught server-side by the rules.
+// A.5 #9 migration: the private/data mirror (mirrorModerationState) wins when
+// it carries the field — post-flip the main-doc copy is gone. UX-only check;
+// rules enforce either way, so a failed private read just falls back.
+let cachedPrivate = null;
+async function myPrivate() {
+    if (cachedPrivate) return cachedPrivate;
+    try {
+        const p = await getDoc(doc(db, "users", uid, "private", "data"));
+        cachedPrivate = p.exists() ? p.data() : {};
+    } catch { cachedPrivate = {}; }
+    return cachedPrivate;
+}
 export async function isRestricted() {
     const p = await myProfile();
-    if (p.restricted !== true) return false;
-    const until = p.restrictedUntil?.toDate?.();
+    const priv = await myPrivate();
+    const restricted = priv.restricted !== undefined ? priv.restricted : p.restricted;
+    const untilRaw = priv.restricted !== undefined ? priv.restrictedUntil : p.restrictedUntil;
+    if (restricted !== true) return false;
+    const until = untilRaw?.toDate?.();
     return !until || until > new Date();
 }
-export function resetWriteCaches() { cachedProfile = null; inFlight.clear(); }
+export function resetWriteCaches() { cachedProfile = null; cachedPrivate = null; inFlight.clear(); }
 
 // in-flight + rate-limit guards, per iOS PostInteractionManager
 const inFlight = new Set();

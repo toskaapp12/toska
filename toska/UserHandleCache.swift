@@ -32,11 +32,18 @@ class UserHandleCache {
     // future stage-aware surfaces) can read it without their own listener.
     // nil for accounts that pre-date the stage step or skipped it.
     private(set) var breakupStage: String? = nil
-    // Backing store: what the user doc says. Consumers read `isRestricted`
+    // Backing store: what the docs say. Consumers read `isRestricted`
     // below, which applies the restrictedUntil auto-expiry so a user whose
     // 48-hour system-restriction has elapsed is no longer gated even if the
     // server hasn't cleaned up the boolean yet.
+    // A.5 #9 migration: private/data values (mirrored by
+    // mirrorModerationState) take precedence; main-doc values are the
+    // fallback until the phase-4 rules flip.
     private var rawIsRestricted: Bool = false
+    private var legacyIsRestricted: Bool = false
+    private var legacyRestrictedUntil: Date? = nil
+    private var privateIsRestricted: Bool? = nil
+    private var privateRestrictedUntil: Date? = nil
     // Auto-restrict expiry timestamp set by Cloud Functions. Admin
     // restrictions leave this nil (restriction is indefinite until the admin
     // clears it). System ("repeat offender") restrictions set it to +48h.
@@ -79,8 +86,12 @@ class UserHandleCache {
                             self.handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
                             self.allowSharing = snapshot?.data()?["allowSharing"] as? Bool ?? true
                             self.legacyGentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool ?? true
-                            self.rawIsRestricted = snapshot?.data()?["restricted"] as? Bool ?? false
-                            self.restrictedUntil = (snapshot?.data()?["restrictedUntil"] as? Timestamp)?.dateValue()
+                            // A.5 #9 migration: legacy source — private/data
+                            // (below) wins when it carries the fields, same
+                            // precedence pattern as gentleCheckIn.
+                            self.legacyIsRestricted = snapshot?.data()?["restricted"] as? Bool ?? false
+                            self.legacyRestrictedUntil = (snapshot?.data()?["restrictedUntil"] as? Timestamp)?.dateValue()
+                            self.recomputeRestriction()
                             self.recomputeGentleCheckIn()
                         }
                     }
@@ -93,6 +104,13 @@ class UserHandleCache {
                             guard let self, self.currentUid == capturedUid else { return }
                             self.privateGentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool
                             self.breakupStage = snapshot?.data()?["breakupStage"] as? String
+                            // A.5 #9 migration: private mirror wins when
+                            // present (mirrorModerationState keeps it current);
+                            // main-doc values remain the fallback until the
+                            // phase-4 rules flip removes them.
+                            self.privateIsRestricted = snapshot?.data()?["restricted"] as? Bool
+                            self.privateRestrictedUntil = (snapshot?.data()?["restrictedUntil"] as? Timestamp)?.dateValue()
+                            self.recomputeRestriction()
                             self.recomputeGentleCheckIn()
                         }
                     }
@@ -100,6 +118,11 @@ class UserHandleCache {
 
     private func recomputeGentleCheckIn() {
         gentleCheckIn = privateGentleCheckIn ?? legacyGentleCheckIn
+    }
+
+    private func recomputeRestriction() {
+        rawIsRestricted = privateIsRestricted ?? legacyIsRestricted
+        restrictedUntil = (privateIsRestricted != nil) ? privateRestrictedUntil : legacyRestrictedUntil
     }
 
     func stopListening() {
@@ -114,6 +137,10 @@ class UserHandleCache {
         legacyGentleCheckIn = true
         rawIsRestricted = false
         restrictedUntil = nil
+        legacyIsRestricted = false
+        legacyRestrictedUntil = nil
+        privateIsRestricted = nil
+        privateRestrictedUntil = nil
         breakupStage = nil
         currentUid = nil
     }

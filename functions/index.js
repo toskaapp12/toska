@@ -5092,6 +5092,57 @@ exports.auditUserRestriction = onDocumentUpdated(
   }
 );
 
+// 2026-07-28 A.5 #9 migration (phase 2 — dual-write): mirror the moderation /
+// adult-gate state from the world-readable users/{uid} doc into
+// users/{uid}/private/data, and maintain the admin-only restrictedUsers/{uid}
+// dashboard index (firestore.rules match block of the same name). Every
+// writer (confirmAdult callable, system auto-restrict, admin.html / iOS admin
+// restrict+unrestrict) writes the MAIN doc, so this single trigger keeps both
+// mirrors current without touching any writer; the eventual phase-4 rules
+// flip then only changes readers. restrictedBy is mirrored only when PRESENT:
+// auditUserRestriction scrubs it from the main doc right after attribution
+// (M-1), and that scrub must not erase the private copy — the scrub event
+// changes no other mirrored field, so the change-guard skips it entirely
+// (no ping-pong writes). The guard also makes this a cheap no-op on the
+// high-frequency counter-bump updates every user doc receives.
+exports.mirrorModerationState = onDocumentWritten(
+  { document: "users/{userId}", retry: true },
+  async (event) => {
+    const userId = event.params.userId;
+    const rowRef = db.collection("restrictedUsers").doc(userId);
+    if (!event.data?.after?.exists) {
+      // User doc deleted → drop the index row. (users/{uid}/private/* is
+      // removed by the onUserDocDeleted cascade; this row lives outside the
+      // user tree, so it's cleaned here — keeps the deletion-cascade probe's
+      // "no residue" sweep honest.)
+      await rowRef.delete().catch((err) => console.warn(`mirrorModerationState(${userId}): row cleanup failed:`, err.message));
+      return;
+    }
+    const after = event.data.after.data() || {};
+    const before = event.data.before?.exists ? event.data.before.data() : {};
+    const MIRRORED = ["restricted", "restrictedAt", "restrictedUntil", "confirmedAdult", "confirmedAdultAt"];
+    const key = (v) => (v && typeof v.toMillis === "function") ? `t:${v.toMillis()}` : JSON.stringify(v === undefined ? null : v);
+    const changed = MIRRORED.some((f) => key(before[f]) !== key(after[f]))
+      || (after.restrictedBy != null && key(before.restrictedBy) !== key(after.restrictedBy));
+    if (!changed) return;
+    const mirror = {};
+    for (const f of MIRRORED) mirror[f] = after[f] === undefined ? FieldValue.delete() : after[f];
+    if (after.restrictedBy != null) mirror.restrictedBy = after.restrictedBy;
+    await db.doc(`users/${userId}/private/data`).set(mirror, { merge: true });
+    if (after.restricted === true) {
+      const row = {
+        handle: after.handle ?? null,
+        restrictedAt: after.restrictedAt ?? null,
+        restrictedUntil: after.restrictedUntil ?? null,
+      };
+      if (after.restrictedBy != null) row.restrictedBy = after.restrictedBy;
+      await rowRef.set(row, { merge: true });
+    } else {
+      await rowRef.delete();
+    }
+  }
+);
+
 // Audit crisis-reply reviews. Replaces the old on-doc crisisReviewedBy stamp
 // (which sat on a world-readable live reply — C-1 2026-07-17): the review now
 // flips `reviewed` on the admin-only crisisReplyQueue entry, so the actor uid

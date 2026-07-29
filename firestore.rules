@@ -65,12 +65,23 @@ service cloud.firestore {
     // (ContentView/OnboardingView), the iOS + web admin dashboards QUERY
     // users.where(restricted==true) (can't query a subcollection field this
     // way), and iOS admin restrict actions write restrictedBy/At to the main
-    // doc. Migration plan for a v1.2+ client: (1) client reads private/data
-    // with main-doc fallback + admin dashboards move to an admin-only index,
-    // (2) dual-write window (confirmAdult + restrict paths write both),
-    // (3) backfill, (4) rules flip these helpers to the private doc and the
-    // update legs reject the main-doc fields. Do NOT attempt the move while
-    // any live client depends on the main-doc fields.
+    // doc. Migration plan: (1) client reads private/data with main-doc
+    // fallback + admin dashboards move to an admin-only index,
+    // (2) dual-write window (mirror trigger), (3) backfill, (4) rules flip
+    // these helpers to the private doc and the update legs reject the
+    // main-doc fields. Do NOT attempt the move while any live client
+    // depends on the main-doc fields.
+    //
+    // STATUS 2026-07-29: phases 1-3 EXECUTED — mirrorModerationState
+    // (functions/index.js) mirrors the fields to users/{uid}/private/data
+    // and maintains the restrictedUsers/{uid} admin index on every user-doc
+    // write; existing users backfilled; admin.html + iOS v1.2 +
+    // webapp read private-first / query restrictedUsers. ONLY phase 4 (the
+    // flip in THIS file: point notRestricted()/hasConfirmedAdult() at
+    // private/data — which then also needs an owner-write deny-list on
+    // private/data for these fields, since the owner can write that doc —
+    // and reject/remove the main-doc fields) remains, gated on build 72 no
+    // longer being a live client.
     function notRestricted() {
       return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
         || !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restricted', false)
@@ -1568,6 +1579,18 @@ service cloud.firestore {
     // mark them reviewed (or prune orphans whose reply was deleted). The
     // update is key-constrained so a compromised admin session can't
     // repoint an entry at a different reply.
+    // restrictedUsers/{uid} — server-maintained admin dashboard index
+    // (2026-07-28 A.5 #9 migration, phase: dashboards stop querying
+    // users.where(restricted==true) so the eventual field move off the
+    // world-readable user doc doesn't break them). Rows are written/deleted
+    // ONLY by the mirrorModerationState trigger (Admin SDK); carries
+    // {handle, restrictedAt, restrictedUntil, restrictedBy} — admin-only
+    // read keeps restrictedBy (an admin uid) off every public surface.
+    match /restrictedUsers/{userId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /crisisReplyQueue/{entryId} {
       allow read: if isAdmin();
       allow create: if false;

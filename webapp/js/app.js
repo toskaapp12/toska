@@ -1858,7 +1858,17 @@ onAuthStateChanged(auth, async (user) => {
             return;
         }
         if (u.data().confirmedAdult !== true) {
-            httpsCallable(functions, "confirmAdult")({}).catch(e => console.warn("confirmAdult deferred", e?.code));
+            // A.5 #9 migration: the field is moving to private/data — consult
+            // the mirror before re-firing confirmAdult (post-flip the main-doc
+            // field is gone; read only in the unconfirmed case).
+            let confirmed = false;
+            try {
+                const priv = await getDoc(doc(db, "users", user.uid, "private", "data"));
+                confirmed = priv.exists() && priv.data().confirmedAdult === true;
+            } catch { /* fall through — re-firing confirmAdult is harmless */ }
+            if (!confirmed) {
+                httpsCallable(functions, "confirmAdult")({}).catch(e => console.warn("confirmAdult deferred", e?.code));
+            }
         }
         // Block routing until the stored policy version catches up (see
         // renderPolicyReacceptGate). Missing field reads as 0 → gated.

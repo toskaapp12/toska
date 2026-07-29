@@ -495,7 +495,11 @@
                 // own tab). C-1: counted from the admin-only crisisReplyQueue
                 // (reviewed==false is exact, not an upper bound like before).
                 crisisReplies: query(collection(db, "crisisReplyQueue"), where("reviewed", "==", false)),
-                restricted: query(collection(db, "users"), where("restricted", "==", true)),
+                // A.5 #9 (2026-07-28): counted from the server-maintained
+                // admin-only restrictedUsers index, not users.where(restricted)
+                // — so the eventual move of `restricted` off the public user
+                // doc doesn't break this dashboard.
+                restricted: query(collection(db, "restrictedUsers")),
             };
         }
 
@@ -1361,7 +1365,12 @@
 
         async function loadRestricted(container) {
             try {
-                const q = query(collection(db, "users"), where("restricted", "==", true), limit(50));
+                // A.5 #9 (2026-07-28): read the server-maintained admin-only
+                // restrictedUsers index (mirrorModerationState trigger), not
+                // users.where(restricted==true) — decouples the dashboard from
+                // the public user doc ahead of the field move. The user doc is
+                // still fetched per row (admin read) for the count metadata.
+                const q = query(collection(db, "restrictedUsers"), limit(50));
                 const snap = await getDocs(q);
 
                 if (snap.empty) {
@@ -1371,9 +1380,11 @@
 
                 container.replaceChildren();
                 container.appendChild(queueHeading("restricted users"));
-                snap.forEach(d => {
-                    const u = d.data();
-                    const restrictedAtStr = u.restrictedAt?.toDate?.() ? timeAgo(u.restrictedAt.toDate()) : "";
+                for (const d of snap.docs) {
+                    const row = d.data();
+                    let u = {};
+                    try { u = (await getDoc(doc(db, "users", d.id))).data() || {}; } catch { /* deleted user; row cleanup is async */ }
+                    const restrictedAtStr = row.restrictedAt?.toDate?.() ? timeAgo(row.restrictedAt.toDate()) : "";
 
                     const unrestrictBtn = el("button", "btn-dismiss");
                     unrestrictBtn.textContent = "unrestrict";
@@ -1381,16 +1392,16 @@
 
                     const card = renderCard({
                         id: `user-${d.id}`,
-                        headerLeft: [span("card-type type-user", u.handle || "unknown")],
+                        headerLeft: [span("card-type type-user", row.handle || u.handle || "unknown")],
                         time: restrictedAtStr,
                         meta: [
                             `posts: ${u.postCount || 0}`,
                             `followers: ${u.followerCount || 0}`,
                         ],
-                        actions: [unrestrictBtn, deleteAccountButton(d.id, u.handle)],
+                        actions: [unrestrictBtn, deleteAccountButton(d.id, row.handle || u.handle)],
                     });
                     container.appendChild(card);
-                });
+                }
             } catch (e) {
                 emptyState(container, "error loading users", e.message);
             }

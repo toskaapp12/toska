@@ -409,7 +409,11 @@ struct AdminModerationView: View {
     private func loadUsers() {
         guard queue == .restricted else { return }
         let token = loadToken
-        db.collection("users").whereField("restricted", isEqualTo: true).limit(to: 50).getDocuments { snap, _ in
+        // A.5 #9 migration: read the server-maintained admin-only
+        // restrictedUsers index (mirrorModerationState trigger) instead of
+        // users.where(restricted==true), so the eventual move of `restricted`
+        // off the public user doc doesn't break this tab.
+        db.collection("restrictedUsers").limit(to: 50).getDocuments { snap, _ in
             Task { @MainActor in
                 guard self.loadToken == token else { return }
                 self.users = (snap?.documents ?? []).map { d in
@@ -435,7 +439,7 @@ struct AdminModerationView: View {
         let query: Query
         switch q {
         case .reports:    query = db.collection("reports").whereField("status", isEqualTo: "pending")
-        case .restricted: query = db.collection("users").whereField("restricted", isEqualTo: true)
+        case .restricted: query = db.collection("restrictedUsers") // A.5 #9: admin index, not the public user docs
         default:          query = postsQuery(q)
         }
         query.count.getAggregation(source: .server) { snap, _ in

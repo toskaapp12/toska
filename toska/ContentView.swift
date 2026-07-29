@@ -440,7 +440,19 @@ struct ContentView: View {
                 // setting up your account" error — reposts and other paths
                 // gave no signal. Fire confirmAdult here on next launch so any
                 // stuck account self-heals as soon as App Check works.
-                let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                var confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                // A.5 #9 migration: the field is moving to users/{uid}/private/
+                // data (mirrorModerationState keeps the mirror current). Consult
+                // the private mirror before treating the account as unconfirmed
+                // — after the phase-4 flip the main-doc field is gone entirely.
+                // Only read when the main doc says false/absent, so the common
+                // path costs no extra read.
+                if !confirmedAdult {
+                    let priv = try? await Firestore.firestore()
+                        .collection("users").document(uid)
+                        .collection("private").document("data").getDocumentAsync()
+                    if let p = priv?.data()?["confirmedAdult"] as? Bool { confirmedAdult = p }
+                }
                 if hasCompletedOnboarding, !confirmedAdult {
                     confirmAdultServerSideFireAndForget(uid: uid)
                 }

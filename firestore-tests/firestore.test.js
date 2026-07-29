@@ -2280,6 +2280,37 @@ describe("C-1 (2026-07-17): admin go-live must scrub moderation markers", () => 
   });
 });
 
+describe("A.5 #9 (2026-07-28): restrictedUsers index is admin-read, server-write only", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setAdmin("mod");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("restrictedUsers").doc("baduser").set({
+        handle: "baduser", restrictedAt: new Date(), restrictedBy: "system",
+      });
+    });
+  });
+
+  it("DENIED: non-admin cannot read a row (would leak restrictedBy admin uid)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("restrictedUsers").doc("baduser").get());
+  });
+  it("DENIED: non-admin cannot list the index", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("restrictedUsers").limit(10).get());
+  });
+  it("DENIED: even an admin cannot write a row (server-only via mirror trigger)", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertFails(m.collection("restrictedUsers").doc("someone").set({ handle: "someone" }));
+    await assertFails(m.collection("restrictedUsers").doc("baduser").delete());
+  });
+  it("allows admin read + list", async () => {
+    const m = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(m.collection("restrictedUsers").doc("baduser").get());
+    await assertSucceeds(m.collection("restrictedUsers").limit(10).get());
+  });
+});
+
 describe("C-1 (2026-07-17): crisisReplyQueue is admin-only", () => {
   beforeEach(async () => {
     await setUserDoc("alice");

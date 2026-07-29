@@ -733,3 +733,78 @@ describe("M3 fanOutToRepostCopies pagination", () => {
     assert.strictEqual(held.get("pendingReason"), undefined, "already-held copy untouched");
   }).timeout(60000);
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// A.5 #9 (2026-07-28): mirrorModerationState — dual-write of moderation /
+// adult-gate state to private/data + the restrictedUsers admin index.
+// ─────────────────────────────────────────────────────────────────────
+describe("mirrorModerationState — private mirror + restrictedUsers index", () => {
+  const change = (b, a) => ({
+    before: { exists: b !== null, data: () => b || {} },
+    after:  { exists: a !== null, data: () => a || {} },
+  });
+  const run = (uid, b, a, id) =>
+    fns.mirrorModerationState.run({ id, data: change(b, a), params: { userId: uid } });
+
+  it("restrict: mirrors fields to private/data and creates the index row", async () => {
+    const until = new Date(Date.now() + 48 * 3600e3);
+    await run("mm1",
+      { handle: "mm1", restricted: false, confirmedAdult: true },
+      { handle: "mm1", restricted: true, restrictedAt: new Date(), restrictedUntil: until, restrictedBy: "system", confirmedAdult: true },
+      "mm-e1");
+    const priv = await db.doc("users/mm1/private/data").get();
+    assert.strictEqual(priv.get("restricted"), true);
+    assert.strictEqual(priv.get("restrictedBy"), "system");
+    assert.strictEqual(priv.get("confirmedAdult"), true);
+    const row = await db.doc("restrictedUsers/mm1").get();
+    assert.strictEqual(row.exists, true);
+    assert.strictEqual(row.get("handle"), "mm1");
+    assert.strictEqual(row.get("restrictedBy"), "system");
+  });
+
+  it("restrictedBy scrub event does NOT erase the private copy (change-guard skips)", async () => {
+    const base = { handle: "mm1", restricted: true, confirmedAdult: true };
+    // Self-contained: restrict first (writes restrictedBy to private), then
+    // replay the auditUserRestriction scrub event (restrictedBy deleted from
+    // the main doc, nothing else changed).
+    await run("mm1", { handle: "mm1", restricted: false }, { ...base, restrictedBy: "system" }, "mm-e2a");
+    await run("mm1", { ...base, restrictedBy: "system" }, { ...base }, "mm-e2");
+    const priv = await db.doc("users/mm1/private/data").get();
+    assert.strictEqual(priv.get("restrictedBy"), "system", "scrub must not clear private attribution");
+    assert.strictEqual((await db.doc("restrictedUsers/mm1").get()).exists, true);
+  });
+
+  it("unrestrict: mirror updates and the index row is removed", async () => {
+    await run("mm1",
+      { handle: "mm1", restricted: true, confirmedAdult: true },
+      { handle: "mm1", restricted: false, restrictedAt: new Date(), confirmedAdult: true },
+      "mm-e3");
+    const priv = await db.doc("users/mm1/private/data").get();
+    assert.strictEqual(priv.get("restricted"), false);
+    assert.strictEqual((await db.doc("restrictedUsers/mm1").get()).exists, false);
+  });
+
+  it("confirmAdult write is mirrored", async () => {
+    await run("mm2", { handle: "mm2" }, { handle: "mm2", confirmedAdult: true, confirmedAdultAt: new Date() }, "mm-e4");
+    const priv = await db.doc("users/mm2/private/data").get();
+    assert.strictEqual(priv.get("confirmedAdult"), true);
+    assert.ok(priv.get("confirmedAdultAt"));
+    assert.strictEqual((await db.doc("restrictedUsers/mm2").get()).exists, false, "no index row for unrestricted user");
+  });
+
+  it("counter-bump update is a no-op (change-guard)", async () => {
+    await db.doc("users/mm2/private/data").set({ marker: "untouched" }, { merge: true });
+    await run("mm2",
+      { handle: "mm2", confirmedAdult: true, postCount: 1 },
+      { handle: "mm2", confirmedAdult: true, postCount: 2 },
+      "mm-e5");
+    const priv = await db.doc("users/mm2/private/data").get();
+    assert.strictEqual(priv.get("marker"), "untouched");
+  });
+
+  it("user-doc delete removes the index row", async () => {
+    await db.doc("restrictedUsers/mm3").set({ handle: "mm3" });
+    await run("mm3", { handle: "mm3", restricted: true }, null, "mm-e6");
+    assert.strictEqual((await db.doc("restrictedUsers/mm3").get()).exists, false);
+  });
+});

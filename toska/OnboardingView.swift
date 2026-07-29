@@ -420,7 +420,18 @@ struct OnboardingView: View {
                 let snapshot = try await Firestore.firestore()
                     .collection("users").document(uid).getDocumentAsync()
                 let data = snapshot.data() ?? [:]
-                let confirmedAdult = (data["confirmedAdult"] as? Bool ?? false) || recentlyConfirmedAdult
+                var confirmedAdult = (data["confirmedAdult"] as? Bool ?? false) || recentlyConfirmedAdult
+                // A.5 #9 migration: consult the private/data mirror before
+                // showing the gate — post-flip the main-doc field is gone.
+                // Read only in the unconfirmed case (no extra read on the
+                // common path); failure leaves confirmedAdult false → the
+                // gate shows, which is the safe direction.
+                if !confirmedAdult {
+                    let priv = try? await Firestore.firestore()
+                        .collection("users").document(uid)
+                        .collection("private").document("data").getDocumentAsync()
+                    if let p = priv?.data()?["confirmedAdult"] as? Bool { confirmedAdult = p }
+                }
                 let acceptedVersion = data["acceptedPolicyVersion"] as? Int ?? 0
                 // Consume the recently-confirmed flag ONLY now that the read
                 // succeeded. Consuming it up-front (before the Task) meant a

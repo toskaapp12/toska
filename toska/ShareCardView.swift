@@ -762,7 +762,12 @@ struct ShareCardView: View {
                 // quoteMaxHeight (to 96%); the minimumScaleFactor is a final
                 // belt-and-suspenders against any SwiftUI-vs-UIKit rounding so a
                 // long message can NEVER clip — the whole point of this rewrite.
-                .minimumScaleFactor(0.7)
+                // 2026-07-30 owner: the card must NEVER truncate — a 500-word
+                // letter shrinks until it fits, period. 0.7 wasn't enough when
+                // the UIKit measurement and SwiftUI layout disagreed at large
+                // user-selected sizes; 0.15 makes overflow physically
+                // impossible within the measured range.
+                .minimumScaleFactor(0.15)
                 .padding(.horizontal, textPadding)
                 .frame(maxHeight: quoteMaxHeight)
 
@@ -855,8 +860,8 @@ struct ShareCardView: View {
         let maxW = cardSize.width - 2 * textPadding
         // Fit to 96% of the box: a small safety margin so any SwiftUI-vs-UIKit
         // sub-pixel layout difference can't tip a fitted size into a clip.
-        let maxH = quoteMaxHeight * 0.96
-        var lo: CGFloat = 8, hi = maxFontSize, best: CGFloat = 8
+        let maxH = quoteMaxHeight * 0.93
+        var lo: CGFloat = 5, hi = maxFontSize, best: CGFloat = 5
         // 14 iterations resolves to <0.01pt over the [8, 24] range.
         for _ in 0..<14 {
             let mid = (lo + hi) / 2

@@ -785,7 +785,7 @@ struct FeedPostRow: View, Equatable {
                                                     .foregroundColor(tagColor(for: tag))
                                                     .padding(.horizontal, 10)
                                                     .padding(.vertical, 4)
-                                                    .background(Capsule().fill(tagColor(for: tag).opacity(0.13)))
+                                                    .background(Capsule().fill(tagColor(for: tag).opacity(0.18)))
                                             }
                                         }
                                         .padding(.bottom, 8)
@@ -1007,7 +1007,7 @@ struct FeedPostRow: View, Equatable {
                                             // press highlight still lives in FeedRowPressStyle
                                             // on the content link.
                                             .padding(.horizontal, 16)
-                                            .padding(.vertical, 16)
+                                            .padding(.vertical, 19)
                                             .contentShape(Rectangle())
                                             .overlay(alignment: .bottom) {
                                                 Rectangle()
@@ -1557,7 +1557,7 @@ func tagSymbol(for tag: String?) -> String? {
     // glyph in plum, so every avatar carries an icon rather than an empty circle.
     let symbol = tagSymbol(for: tag) ?? "text.quote"
     Circle()
-        .fill(tint.opacity(0.14))
+        .fill(tint.opacity(0.22))
         .frame(width: size, height: size)
         .overlay(
             Image(systemName: symbol)

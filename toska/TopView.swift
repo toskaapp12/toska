@@ -519,6 +519,11 @@ struct TopPeriodColumn: View {
                         Text("felt this")
                             .font(ToskaFont.sans(13))
                             .foregroundColor(ToskaColor.text2)
+                        if post.reposts > 0 {
+                            Text("· \(formatCount(post.reposts)) reposts")
+                                .font(ToskaFont.sans(13))
+                                .foregroundColor(ToskaColor.text2)
+                        }
                     }
                 }
             }
@@ -568,6 +573,10 @@ struct TopPeriodColumn: View {
                     HStack(spacing: 5) {
                         Image(systemName: "heart.fill").font(.system(size: 12))
                         Text("\(formatCount(post.likes))").font(ToskaFont.sans(12, weight: .medium))
+                        if post.reposts > 0 {
+                            Image(systemName: "arrow.2.squarepath").font(.system(size: 11)).padding(.leading, 6)
+                            Text("\(formatCount(post.reposts))").font(ToskaFont.sans(12, weight: .medium))
+                        }
                     }
                     .foregroundColor(ToskaColor.badge)
                 }

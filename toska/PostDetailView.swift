@@ -831,6 +831,8 @@ struct PostDetailView: View {
                             // whole tree; fall back to (and never drop below) the server
                             // `replies` value we opened with.
                             statLabel(count: replyList.isEmpty ? replies : max(replies, countAllReplies(replyList)), label: "replies")
+                            // 2026-07-30 owner: show reposts alongside felt/replies.
+                            statLabel(count: reposts, label: "reposts")
                             Spacer()
                         }
                         .padding(.bottom, 8)

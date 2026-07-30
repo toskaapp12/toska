@@ -678,6 +678,29 @@ class FeedViewModel: ObservableObject {
                 dragOffset = 0
             }
 
+    // Take-a-break nudge (2026-07-30 owner change): was a 15-minute session
+    // timer that popped mid-scroll and shoved the layout down — read as a
+    // glitch. Now it appears only on RAPID POSTING (a 2nd composed post
+    // within 60s of the previous one — the actual spiraling signal the
+    // nudge was meant for; reposts don't count) and auto-hides after 10s.
+    // Tap still dismisses immediately.
+    @Published var showTakeBreakBanner = false
+    private var lastComposeAt: Date? = nil
+    private var breakBannerHideTask: Task<Void, Never>? = nil
+
+    func registerComposeForBreakNudge() {
+        let now = Date()
+        defer { lastComposeAt = now }
+        guard let last = lastComposeAt, now.timeIntervalSince(last) < 60 else { return }
+        showTakeBreakBanner = true
+        breakBannerHideTask?.cancel()
+        breakBannerHideTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled else { return }
+            self.showTakeBreakBanner = false
+        }
+    }
+
     // 2026-07-30 owner re-report ("post still takes seconds + a refresh"):
     // even with post-compose refetches, the post only appears once
     // validatePost promotes it pending_validation→live — a function cold

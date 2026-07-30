@@ -58,7 +58,10 @@ enum ToskaFont {
     // Serif — content only (the locked ramp)
     static var screenTitle: Font    { serifMedium(24) }   // 24 / 500, tracking -0.5, lowercase
     static var greeting: Font       { serifItalic(18) }   // italic 18 / 400
-    static var postBody: Font       { serif(16) }         // 16 / 400 reading body
+    // 2026-07-30 owner feedback: Newsreader 400 at 16px reads faint/airy —
+    // "not engaging". Medium cut puts real ink on the page at the same size;
+    // color was already near-black, weight was the problem.
+    static var postBody: Font       { serifMedium(16) }   // 16 / 500 reading body
     static var postDetailBody: Font { serif(22) }         // 22 / 400, line-height 1.45
     static var replyBody: Font      { serif(16) }         // 16 / 400, line-height 1.5
 

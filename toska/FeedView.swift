@@ -49,8 +49,8 @@ struct FeedView: View {
     // doomscrolling is real and the brand wedge is that we don't pretend
     // engagement is universally good. Task arms on onAppear, cancels on
     // onDisappear so tabbing away resets the timer cleanly.
-    @State private var takeBreakBannerShown = false
-    @State private var takeBreakTask: Task<Void, Never>? = nil
+    // Take-a-break banner state now lives in FeedViewModel (2026-07-30):
+    // trigger changed from a 15-minute session timer to rapid-posting.
     // "X new posts" Twitter-style banner. Increments when the Firestore
     // listener delivers more posts than were previously in vm.posts.
     // Tapping scrolls to top + clears the badge. Initialized to -1 so the
@@ -154,16 +154,17 @@ struct FeedView: View {
 
     // MARK: - Take-a-break banner
     //
-    // Soft, non-modal. Shows after 15 minutes of continuous time on
-    // the feed; tap dismisses. Specific to the mental-health-
-    // adjacent brand: heartbreak doomscrolling is real and the
-    // wedge is that we don't pretend engagement is universally
-    // good. The banner doesn't gate anything — just a gentle ask.
+    // Soft, non-modal. 2026-07-30 owner change: shows only on RAPID
+    // POSTING (2nd composed post within 60s — see
+    // FeedViewModel.registerComposeForBreakNudge), auto-hides after
+    // 10s; tap dismisses. Specific to the mental-health-adjacent
+    // brand: the nudge is for spiraling, not for merely being here.
+    // The banner doesn't gate anything — just a gentle ask.
     @ViewBuilder private var takeBreakBanner: some View {
-            if takeBreakBannerShown {
+            if vm.showTakeBreakBanner {
                 Button {
                     withAnimation(.easeInOut(duration: 0.25)) {
-                        takeBreakBannerShown = false
+                        vm.showTakeBreakBanner = false
                     }
                     HapticManager.play(.tabSwitch)
                 } label: {
@@ -331,30 +332,10 @@ struct FeedView: View {
                                                  } else {
                                                      print("⚡️ FeedView onAppear — skipped, hasLoadedOnce already true")
                                                  }
-                                                 // Arm the take-a-break gentle reminder. 15 minutes
-                                                 // of session time → soft banner. MainTabView keeps
-                                                 // FeedView alive across tab switches via .opacity,
-                                                 // so onAppear here only fires on first feed mount
-                                                 // (cold launch or post-sign-in) — the timer keeps
-                                                 // ticking when the user is on other tabs, which
-                                                 // matches the "you've been here a while" intent
-                                                 // better than a per-tab-visit reset would. Sign-out
-                                                 // tears down MainTabView entirely, firing
-                                                 // onDisappear below and cancelling cleanly.
-                                                 takeBreakTask?.cancel()
-                                                 if !takeBreakBannerShown {
-                                                     takeBreakTask = Task { @MainActor in
-                                                         try? await Task.sleep(nanoseconds: 15 * 60 * 1_000_000_000)
-                                                         guard !Task.isCancelled else { return }
-                                                         withAnimation(.easeInOut(duration: 0.3)) {
-                                                             takeBreakBannerShown = true
-                                                         }
-                                                     }
-                                                 }
-                                             }
-                                             .onDisappear {
-                                                 takeBreakTask?.cancel()
-                                                 takeBreakTask = nil
+                                                 // Take-a-break arming removed (2026-07-30): the
+                                                 // 15-minute session timer popped the banner
+                                                 // mid-scroll — trigger is now rapid posting, wired
+                                                 // in the .newPostCreated handler below.
                                              }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
                                                  print("⚡️ AuthDidVerify received in FeedView — hasLoadedOnce: \(vm.hasLoadedOnce), posts.count: \(vm.posts.count)")
@@ -410,6 +391,7 @@ struct FeedView: View {
             // updates in place and the user keeps their scroll position.
             let isRepost = (notif.userInfo?["isRepost"] as? Bool) ?? false
             if !isRepost {
+                vm.registerComposeForBreakNudge()
                 NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
             }
         }
@@ -1029,7 +1011,10 @@ struct FeedPostRow: View, Equatable {
                                             .contentShape(Rectangle())
                                             .overlay(alignment: .bottom) {
                                                 Rectangle()
-                                                    .fill(ToskaColor.divider.opacity(0.5))
+                                                    // 2026-07-30 owner feedback: 0.5 opacity on the
+                                                    // already-pale divider nearly vanished — "very
+                                                    // slightly more viewable".
+                                                    .fill(ToskaColor.divider.opacity(0.8))
                                                     .frame(height: 0.5)
                                             }
                 .contextMenu {

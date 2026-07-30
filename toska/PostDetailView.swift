@@ -423,7 +423,7 @@ struct PostDetailView: View {
 
     var mainContent: some View {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 // Header — ToskaHeader with the ellipsis menu in the trailing
                 // slot. The swipe-down-to-dismiss gesture is preserved on the
@@ -2002,7 +2002,7 @@ struct EditPostView: View {
 
     var body: some View {
         ZStack {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
@@ -2381,7 +2381,7 @@ struct SwipeToReplyRow: View {
             .padding(.leading, 18 + indent)
             .padding(.trailing, 16)
             .padding(.vertical, 16)
-            .background(LateNightTheme.background)
+            .background(LateNightTheme.feedBackground)
             .contentShape(Rectangle())
         } // end NavigationLink label
         // .plain so the row content is rendered as-is instead of in the

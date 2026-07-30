@@ -73,7 +73,7 @@ struct ReplyDetailView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            LateNightTheme.background.ignoresSafeArea()
+            LateNightTheme.feedBackground.ignoresSafeArea()
             VStack(spacing: 0) {
                 ToskaHeader(title: "post", onBack: { dismiss() }) {
                     if !replyAuthorId.isEmpty {

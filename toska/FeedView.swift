@@ -387,6 +387,9 @@ struct FeedView: View {
             // Refresh the feed so the just-created content lands in real time
             // (a composed post OR a repost). Re-baseline the new-posts banner so
             // it doesn't pop "1 new post" for the user's own content either way.
+            // 2026-07-30: instant local echo — all guard logic lives in the
+            // view model (keeps this closure inside the type-checker limit).
+            vm.insertOptimisticPost(from: notif.userInfo)
             vm.handleNewPostCreated()
             // Owner report (2026-07-29): "my post doesn't show up until I
             // refresh." The just-created post is pending_validation until

@@ -1172,7 +1172,8 @@ struct ComposeView: View {
                 postData["isMidnightPost"] = true
             }
 
-            db.collection("posts").addDocument(data: postData) { error in
+            var newPostRef: DocumentReference? = nil
+            newPostRef = db.collection("posts").addDocument(data: postData) { error in
                 Task { @MainActor in
                     self.isPosting = false
                     if let error = error {
@@ -1242,7 +1243,18 @@ struct ComposeView: View {
                                 }
                             }
                         }
-                        NotificationCenter.default.post(name: .newPostCreated, object: nil)
+                        // 2026-07-30 owner re-report: carry the new post's
+                        // content so FeedViewModel can show a LOCAL ECHO
+                        // instantly — the server's pending_validation→live
+                        // promotion (sometimes a slow cold start) otherwise
+                        // keeps the post invisible past every refetch.
+                        NotificationCenter.default.post(name: .newPostCreated, object: nil, userInfo: [
+                            "postId": newPostRef?.documentID ?? "",
+                            "text": trimmedText,
+                            "tag": self.selectedTag ?? "",
+                            "held": self.postWillBeHeld,
+                            "ephemeral": self.isWhisper || self.expiresAtMidnight,
+                        ])
                         if self.postWillBeHeld {
                             // Held for review — tell the user before leaving the
                             // composer. The alert's "ok" completes the dismiss.

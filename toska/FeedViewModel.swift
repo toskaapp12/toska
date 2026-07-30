@@ -678,6 +678,48 @@ class FeedViewModel: ObservableObject {
                 dragOffset = 0
             }
 
+    // 2026-07-30 owner re-report ("post still takes seconds + a refresh"):
+    // even with post-compose refetches, the post only appears once
+    // validatePost promotes it pending_validation→live — a function cold
+    // start can outlast every scheduled refetch. Local ECHO instead: the
+    // author's own post is inserted at the top of the feed instantly, then
+    // reconciled against every subsequent fetch — replaced by the server
+    // copy when it lands, expired quietly (120s) in the rare case the
+    // server held it after all (the compose flow already told the author).
+    // Held/ephemeral posts are excluded (they have their own UX).
+    private var optimisticEcho: [(post: FeedPost, at: Date)] = []
+
+    func insertOptimisticPost(from userInfo: [AnyHashable: Any]?) {
+        guard let id = userInfo?["postId"] as? String, !id.isEmpty,
+              let text = userInfo?["text"] as? String,
+              (userInfo?["held"] as? Bool) != true,
+              (userInfo?["ephemeral"] as? Bool) != true,
+              !posts.contains(where: { $0.id == id }) else { return }
+        let tagRaw = userInfo?["tag"] as? String
+        let echo = FeedPost(id: id,
+                            handle: UserHandleCache.shared.handle,
+                            text: text,
+                            tag: (tagRaw?.isEmpty ?? true) ? nil : tagRaw,
+                            likes: 0, reposts: 0, replies: 0,
+                            time: "now",
+                            authorId: Auth.auth().currentUser?.uid ?? "",
+                            isShareable: false)
+        optimisticEcho.append((echo, Date()))
+        posts.insert(echo, at: 0)
+    }
+
+    // Re-apply unresolved echoes after each wholesale posts refresh.
+    private func mergeOptimisticEcho() {
+        optimisticEcho.removeAll { Date().timeIntervalSince($0.at) > 120 }
+        var kept: [(post: FeedPost, at: Date)] = []
+        for pair in optimisticEcho {
+            if posts.contains(where: { $0.id == pair.post.id }) { continue } // server copy landed
+            posts.insert(pair.post, at: 0)
+            kept.append(pair)
+        }
+        optimisticEcho = kept
+    }
+
     // 2026-07-29 sync sweep: refetch after a post edit commits. Lives here
     // (not inline in FeedView) because the extra closure tipped FeedView's
     // modifier chain over the type-checker's complexity limit.
@@ -1169,6 +1211,9 @@ class FeedViewModel: ObservableObject {
 
                 if !newPosts.isEmpty {
                                                                                                                             self.posts = newPosts
+                                                                                                                            // Re-apply the author's own not-yet-promoted post
+                                                                                                                            // (local echo) after the wholesale replace above.
+                                                                                                                            self.mergeOptimisticEcho()
                                                                                                                             self.hasLoadedOnce = true
                                                                                                                             // Cursor must track Firestore's query order (createdAt DESC),
                                                                                                                             // not our client-side score rank. Using topDocs.last previously

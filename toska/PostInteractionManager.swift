@@ -958,11 +958,23 @@ class PostInteractionManager {
             let freshReplyText = replySnap?.data()?["text"] as? String ?? replyText
             let freshReplyAuthorId = replySnap?.data()?["authorId"] as? String ?? replyAuthorId
             var resolvedReplyHandle: String? = nil
+            // Share-consent stamp (2026-07-30 share-card review): reply-reposts
+            // used to hardcode isShareable:true, so reposting a reply LAUNDERED
+            // a non-consenting author's words into a feed row with a live share
+            // button (direct reply shares check allowSharing at tap time; the
+            // repost path never did). Stamp from the author's live setting off
+            // the SAME user-doc read that resolves the handle. Fail CLOSED
+            // (unreadable/missing doc → false), mirroring ShareConsent — the
+            // rules pin allows understating shareability but never overstating.
+            var replyAuthorAllowsSharing = false
             if !freshReplyAuthorId.isEmpty,
                let authorSnap = try? await db.collection("users").document(freshReplyAuthorId).getDocumentAsync(),
-               let liveHandle = authorSnap.data()?["handle"] as? String,
-               !liveHandle.isEmpty {
-                resolvedReplyHandle = liveHandle
+               let authorData = authorSnap.data() {
+                replyAuthorAllowsSharing = authorData["allowSharing"] as? Bool ?? true
+                if let liveHandle = authorData["handle"] as? String,
+                   !liveHandle.isEmpty {
+                    resolvedReplyHandle = liveHandle
+                }
             }
 
             let newRepostRef = db.collection("posts")

@@ -1054,7 +1054,22 @@ service cloud.firestore {
                      !('originalHandle' in request.resource.data.keys())
                   || request.resource.data.originalHandle ==
                        get(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)).data.handle
-                ))
+                )
+                // isShareable pin (2026-07-30 share-card review): mirrors the
+                // post-repost pin below, but replies carry no denormalized
+                // isShareable, so pin against the reply AUTHOR's live
+                // allowSharing. One-directional: understating (false) is always
+                // allowed — the honest client fails closed when it can't read
+                // the author's user doc — but stamping true requires the
+                // author's consent, so a tampered client can't hand a
+                // non-consenting author's words a live share button (the feed's
+                // reply-repost rows gate their share button on this field).
+                // exists() guards orphaned authors (deleted accounts): their
+                // replies stay repostable, just never shareable. The get() is
+                // the same cached user doc as the originalHandle pin above.
+                && (request.resource.data.get('isShareable', true) != true
+                    || (exists(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId))
+                        && get(/databases/$(database)/documents/users/$(request.resource.data.originalAuthorId)).data.get('allowSharing', true) == true)))
             || (
                request.resource.data.get('originalPostId', '') is string
             && request.resource.data.originalPostId.size() > 0

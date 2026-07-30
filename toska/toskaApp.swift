@@ -247,6 +247,13 @@ struct toskaApp: App {
 
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        #if DEBUG
+        // No-op unless SHARECARD_MATRIX_OUT is set in the environment.
+        Task { @MainActor in ShareCardMatrixHarness.runIfRequested() }
+        #endif
+    }
+
     var body: some Scene {
             WindowGroup {
                 ContentView()

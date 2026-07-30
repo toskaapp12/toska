@@ -2039,6 +2039,74 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
       })
     );
   });
+
+  // isShareable pin on reply-reposts (2026-07-30 share-card review). Replies
+  // carry no denormalized isShareable, so the pin checks the reply AUTHOR's
+  // live allowSharing. One-directional: false is always accepted (honest
+  // clients fail closed when the author doc is unreadable); true requires
+  // the author's consent — without this a tampered client could stamp
+  // isShareable:true and hand a non-consenting author's words a live share
+  // button on the feed's reply-repost row.
+  const replyRepostDoc = (overrides = {}) => ({
+    authorId: "bob",
+    authorHandle: "handle_bob",
+    text: "a reply",
+    createdAt: serverTimestamp(),
+    likeCount: 0,
+    repostCount: 0,
+    replyCount: 0,
+    isRepost: true,
+    originalPostId: "p_orig",
+    originalReplyId: "r1",
+    originalAuthorId: "alice",
+    originalHandle: "handle_alice",
+    ...overrides,
+  });
+
+  it("rejects a reply-repost claiming isShareable when the reply author has sharing OFF", async () => {
+    await setUserDoc("alice", { allowSharing: false });
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: true }))
+    );
+  });
+
+  it("rejects a reply-repost with isShareable ABSENT when the reply author has sharing OFF (absent defaults true)", async () => {
+    await setUserDoc("alice", { allowSharing: false });
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("p_repost").set(replyRepostDoc())
+    );
+  });
+
+  it("allows a reply-repost stamped isShareable:false when the reply author has sharing OFF", async () => {
+    await setUserDoc("alice", { allowSharing: false });
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: false }))
+    );
+  });
+
+  it("allows a reply-repost with isShareable:true when the reply author allows sharing", async () => {
+    await setUserDoc("alice", { allowSharing: true });
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: true }))
+    );
+  });
+
+  it("allows understating — isShareable:false even when the author allows sharing (fail-closed client path)", async () => {
+    await setUserDoc("alice", { allowSharing: true });
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: false }))
+    );
+  });
 });
 
 describe("notification create: message field is server-only (audit P1 2026-05-08)", () => {

@@ -558,6 +558,11 @@ describe("#3a reply-repost is denied for a held reply", () => {
   const REPLY_TEXT = "the original reply text";
   async function setup(modStatus) {
     await seedUser("reposter", { handle: "handle_reposter" });
+    // The reply AUTHOR's user doc must exist: the isShareable pin
+    // (2026-07-30 share-card review) lets a reply-repost claim shareability
+    // (or omit the field, which defaults true) only when the author's live
+    // allowSharing permits it — a missing author doc fails closed.
+    await seedUser("ra", { handle: "handle_ra" });
     await seedPost("op", "origauthor");
     await seedReplyDoc("op", "orr", "ra", { text: REPLY_TEXT, moderationStatus: modStatus });
   }

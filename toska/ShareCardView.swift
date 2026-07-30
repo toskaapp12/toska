@@ -759,7 +759,7 @@ struct ShareCardView: View {
                 .lineSpacing(lineSpacing)
                 .multilineTextAlignment(textAlignment)
                 // fittedFontSize already MEASURED that the text fits within
-                // quoteMaxHeight (to 96%); the minimumScaleFactor is a final
+                // quoteMaxHeight (to 93%); the minimumScaleFactor is a final
                 // belt-and-suspenders against any SwiftUI-vs-UIKit rounding so a
                 // long message can NEVER clip — the whole point of this rewrite.
                 // 2026-07-30 owner: the card must NEVER truncate — a 500-word
@@ -769,7 +769,17 @@ struct ShareCardView: View {
                 // impossible within the measured range.
                 .minimumScaleFactor(0.15)
                 .padding(.horizontal, textPadding)
-                .frame(maxHeight: quoteMaxHeight)
+                // FIXED height, not maxHeight (2026-07-30 matrix harness): in
+                // floor-bound cases (text so long even 5pt doesn't fit — only
+                // reachable beyond the 500-char post limit) Text's scale-factor
+                // sizing reported MORE than the maxHeight cap, and the overflow
+                // pushed the footer rule + wordmark off the card bottom. With a
+                // fixed frame the footer's slot is arithmetic: quote mark +
+                // this + footer ≤ card height, always; the text scales itself
+                // into the frame via minimumScaleFactor. +3pt cushions
+                // SwiftUI-vs-UIKit rounding; for all fitting text this equals
+                // the old reported size (ideal height), so layout is unchanged.
+                .frame(height: fittedQuoteHeight)
 
             Spacer(minLength: 0).frame(maxHeight: .infinity)
 
@@ -803,12 +813,42 @@ struct ShareCardView: View {
         }
     }
 
+    /// cardDecorations constrained to the card's bounds. The raw decoration
+    /// ellipses are LARGER than the card (glow bleeds past the edges by
+    /// design); unconstrained they inflate the ZStack's union size past
+    /// cardSize, and the card body then lays out against the UNION — on wide
+    /// cards (260pt tall vs 320pt+ ellipse stacks, plus 400pt+ ellipses on
+    /// square unsent/blush) that pushed the footer rule + wordmark below the
+    /// visible card in both preview and export (found by the 2026-07-30
+    /// matrix harness). Frame + clip pins the union to the card so the body
+    /// always lays out in true card coordinates.
+    var boundedCardDecorations: some View {
+        cardDecorations
+            .frame(width: cardSize.width, height: cardSize.height)
+            .clipped()
+    }
+
     var cardPreview: some View {
         ZStack {
             cardBackground
-            cardDecorations
+            boundedCardDecorations
             cardBody
         }
+        // Lay the preview out at the EXACT export size (the sheet then
+        // scales it down visually). Without this the ZStack inherits the
+        // ScrollView's proposal and the body could lay out at a different
+        // height than the exported image — the preview and export must share
+        // identical geometry, not just identical content.
+        .frame(width: cardSize.width, height: cardSize.height)
+        // The card is fixed-size artwork: its quote is auto-fitted by
+        // fittedFontSize, which measures with FIXED UIFont sizes. But
+        // Font.custom (Georgia/Georgia-Italic) and ToskaFont.sans scale with
+        // Dynamic Type, while ImageRenderer runs in a default environment —
+        // so without this pin, a non-default text size renders the preview
+        // bigger than the measurement AND differently from the export.
+        // Pinning .large keeps preview == measurement == export on every
+        // device setting. (Sheet chrome outside the card keeps Dynamic Type.)
+        .dynamicTypeSize(.large)
     }
 
     var quoteMark: String { "\u{201C}" }
@@ -858,7 +898,7 @@ struct ShareCardView: View {
     var fittedFontSize: CGFloat {
         guard !text.isEmpty else { return maxFontSize }
         let maxW = cardSize.width - 2 * textPadding
-        // Fit to 96% of the box: a small safety margin so any SwiftUI-vs-UIKit
+        // Fit to 93% of the box: a small safety margin so any SwiftUI-vs-UIKit
         // sub-pixel layout difference can't tip a fitted size into a clip.
         let maxH = quoteMaxHeight * 0.93
         var lo: CGFloat = 5, hi = maxFontSize, best: CGFloat = 5
@@ -872,6 +912,16 @@ struct ShareCardView: View {
             }
         }
         return best
+    }
+
+    /// The quote frame's exact height: measured height at the fitted size
+    /// (plus a rounding cushion), clamped to the budget. See the .frame note
+    /// in cardBody for why this is a fixed height rather than a maxHeight.
+    var fittedQuoteHeight: CGFloat {
+        guard !text.isEmpty else { return quoteMaxHeight }
+        let maxW = cardSize.width - 2 * textPadding
+        return min(measuredQuoteHeight(fontSize: fittedFontSize, width: maxW) + 3,
+                   quoteMaxHeight)
     }
 
     private func measuringUIFont(size: CGFloat) -> UIFont {
@@ -1078,20 +1128,25 @@ struct ShareCardView: View {
 
     // MARK: - Render Full-Size Card
 
-    @MainActor func renderCardImage() -> UIImage? {
+    @MainActor func renderCardImage(scale: CGFloat = 3.0) -> UIImage? {
         // Exact same content as the live preview (cardBody) at the full card
         // size — the exported image is byte-for-byte what the user previewed,
         // and cardBody's fittedFontSize guarantees the quote never clips.
         let fullCard = ZStack {
             cardBackground
-            cardDecorations
+            boundedCardDecorations
             cardBody
         }
         .frame(width: cardSize.width, height: cardSize.height)
+        // Pin Dynamic Type to match the preview (cardPreview pins the same):
+        // ImageRenderer runs in a default environment, so without this an
+        // accessibility text size would scale the card chrome in one surface
+        // but not the other.
+        .dynamicTypeSize(.large)
         .environment(\.colorScheme, isDarkStyle ? .dark : .light)
 
         let renderer = ImageRenderer(content: fullCard)
-        renderer.scale = 3.0
+        renderer.scale = scale
         return renderer.uiImage
     }
 
@@ -1166,6 +1221,68 @@ struct ShareCardView: View {
         }
     }
 }
+
+#if DEBUG
+// Harness-only construction: seeds every composer control so the matrix
+// harness (ShareCardMatrixHarness) can sweep style/font/size/alignment/ratio
+// through the real render path. Lives in a same-file extension so it can
+// reach the private @State vars WITHOUT suppressing the memberwise init the
+// production call sites use.
+extension ShareCardView {
+    init(text: String, handle: String, feltCount: Int, tag: String?,
+         shareURL: URL? = nil, matrixStyle: Int, font: Int, size: Int,
+         alignment: Int, ratio: Int, showFeltCount: Bool = true) {
+        self.text = text
+        self.handle = handle
+        self.feltCount = feltCount
+        self.tag = tag
+        self.shareURL = shareURL
+        _selectedStyle = State(initialValue: matrixStyle)
+        _selectedFont = State(initialValue: font)
+        _selectedSize = State(initialValue: size)
+        _selectedAlignment = State(initialValue: alignment)
+        _selectedRatio = State(initialValue: ratio)
+        _showFeltCount = State(initialValue: showFeltCount)
+    }
+
+    /// Exact copies of cardBody's footer / quote-mark subtrees, for the
+    /// harness layout probe (measuring each element's unconstrained height).
+    var footerProbe: some View {
+        VStack(spacing: 6) {
+            if feltCount > 0 {
+                Text("\(formatCount(feltCount)) felt this")
+                    .font(ToskaFont.sans(11, weight: .medium))
+                    .foregroundColor(accentColor.opacity(0.35))
+            }
+            Rectangle()
+                .fill(accentColor.opacity(isDarkStyle ? 0.1 : 0.08))
+                .frame(width: 24, height: 0.5)
+                .padding(.vertical, 3)
+            HStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(accentColor.opacity(isDarkStyle ? 0.12 : 0.08))
+                    .frame(width: 14, height: 14)
+                    .overlay(
+                        Text("t")
+                            .font(.custom("Georgia-Italic", size: 10))
+                            .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
+                    )
+                Text("toska")
+                    .font(.custom("Georgia-Italic", size: 12))
+                    .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
+            }
+        }
+        .padding(.bottom, selectedRatio == 2 ? 10 : 20)
+    }
+
+    var quoteMarkProbe: some View {
+        Text(quoteMark)
+            .font(.custom("Georgia", size: selectedRatio == 2 ? 24 : 34))
+            .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
+            .padding(.bottom, 2)
+    }
+}
+#endif
 
 // MARK: - Share Button Press Style
 // Tactile spring press for the platform share buttons — scales + dims briefly

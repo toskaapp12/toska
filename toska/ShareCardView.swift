@@ -81,6 +81,10 @@ struct ShareCardView: View {
     // Defaults to true (matches previous always-on-when-> 0 behavior), but
     // users sharing a post they want to feel less performative can hide it.
     @State private var showFeltCount = true
+    // "custom" mood (2026-07-31 owner): a user-picked flat background color.
+    // selectedStyle == customStyle activates it; ink/accents adapt to the
+    // color's brightness (customColorIsDark) so any pick stays legible.
+    @State private var customColor: Color = Color(hex: "35284f")
     @State private var showCopied = false
     @State private var showCopiedLink = false
     @State private var showSharedConfirmation = false
@@ -111,19 +115,35 @@ struct ShareCardView: View {
     // isDark / brandTextColor …) is keyed to the original index and untouched.
     let styleDisplayOrder = [8, 9, 10, 11, 12, 0, 1, 2, 3, 4, 5, 6, 7]
     let fonts = ["serif", "sans", "mono", "hand"]
-    let ratios = ["story", "square", "wide"]
+    // Two social-native shapes only (2026-07-31 owner): story (9:16 — IG/
+    // TikTok stories) and square (1:1 — feed posts). The old landscape
+    // "wide" fit no social surface and carried its own layout special-cases.
+    let ratios = ["story", "square"]
+
+    /// Sentinel style index for the user-picked custom color (one past the
+    /// last named mood).
+    static let customStyle = 13
 
     /// Explicit dark-mood index set. Dark moods: 0...7 (2am, dusk, numb, bruise,
     /// ashes, unsent, alone, hollow); light moods: 8...12 (dawn, paper, blush,
     /// sage, frost). Replaces the brittle `selectedStyle < 7` cutoff so inserting
-    /// a mood can't silently flip a card's color scheme.
-    func isDark(_ index: Int) -> Bool { index <= 7 }
+    /// a mood can't silently flip a card's color scheme. The custom mood is
+    /// dark or light depending on the picked color's brightness.
+    func isDark(_ index: Int) -> Bool {
+        index == Self.customStyle ? customColorIsDark : index <= 7
+    }
+
+    /// Relative luminance of the custom color — decides whether the card
+    /// dresses it with light ink (dark ground) or dark ink (light ground).
+    var customColorIsDark: Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(customColor).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.55
+    }
 
     var cardSize: CGSize {
         switch selectedRatio {
-        case 0: return CGSize(width: 390, height: 690)
         case 1: return CGSize(width: 390, height: 390)
-        case 2: return CGSize(width: 390, height: 260)
         default: return CGSize(width: 390, height: 690)
         }
     }
@@ -503,10 +523,64 @@ struct ShareCardView: View {
                     .accessibilityLabel(styles[index])
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
+
+                customSwatch
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 4)
         }
+    }
+
+    /// The "custom" chip at the end of the mood row. The whole chip is a
+    /// system ColorPicker (stretched invisibly over the swatch art), so a tap
+    /// opens the iOS color wheel directly; picking a color selects the custom
+    /// mood. A simultaneous tap gesture selects it immediately as well, so
+    /// returning to an already-picked color doesn't require re-picking.
+    private var customSwatch: some View {
+        let isSelected = selectedStyle == Self.customStyle
+        return VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(customColor)
+                    .frame(width: 54, height: 54)
+                Image(systemName: "paintpalette")
+                    .font(.system(size: 15, weight: .light))
+                    .foregroundColor(customColorIsDark ? .white.opacity(0.75) : .black.opacity(0.5))
+                ColorPicker("", selection: $customColor, supportsOpacity: false)
+                    .labelsHidden()
+                    .scaleEffect(2.2)
+                    .frame(width: 54, height: 54)
+                    .clipped()
+                    .opacity(0.02)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.black.opacity(0.10), lineWidth: 0.5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? composerAccent : Color.clear, lineWidth: 2)
+                    .padding(-3)
+            )
+            .scaleEffect(isSelected ? 1.08 : 1.0)
+            .simultaneousGesture(TapGesture().onEnded {
+                HapticManager.play(.tabSwitch)
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedStyle = Self.customStyle
+                }
+            })
+            .onChange(of: customColor) { _, _ in
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    selectedStyle = Self.customStyle
+                }
+            }
+
+            Text("custom")
+                .font(ToskaFont.sans(11, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? Color(hex: "1a1720") : Color(hex: "8a8790"))
+        }
+        .accessibilityLabel("Custom color")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     /// One compact toolbar: font cycle | size segments | alignment segments.
@@ -649,7 +723,7 @@ struct ShareCardView: View {
 
     func fontPickerFont(_ index: Int) -> Font {
         switch index {
-        case 0: return .custom("Georgia-Italic", size: 10)
+        case 0: return .custom("Newsreader-Medium", size: 10)
         case 1: return .system(size: 10, weight: .medium)
         case 2: return .system(size: 10, weight: .regular, design: .monospaced)
         case 3: return .system(size: 10, weight: .regular, design: .serif)
@@ -659,11 +733,15 @@ struct ShareCardView: View {
 
     func quoteFont(size: CGFloat) -> Font {
         switch selectedFont {
-        case 0: return .custom("Georgia", size: size)
+        // Newsreader-Medium, not Georgia (2026-07-31): the brand serif the
+        // post was already rendered in everywhere else (feed, detail, web,
+        // OG link-preview card). Medium cut per the 2026-07-30 postBody
+        // decision — Regular reads faint at reading sizes.
+        case 0: return .custom("Newsreader-Medium", size: size)
         case 1: return .system(size: size, weight: .light)
         case 2: return .system(size: size, weight: .regular, design: .monospaced)
         case 3: return .custom("Georgia-Italic", size: size)
-        default: return .custom("Georgia", size: size)
+        default: return .custom("Newsreader-Medium", size: size)
         }
     }
 
@@ -708,6 +786,10 @@ struct ShareCardView: View {
         case 10: return Color.toskaWhisperPink      // blush
         case 11: return Color.toskaFollowGreen      // sage
         case 12: return Color.toskaUnsentBlue       // frost
+        // custom — neutral accent derived from the ground's brightness, so
+        // tag/felt/rule/glow chrome stays quiet on any user-picked color.
+        case Self.customStyle:
+            return customColorIsDark ? Color(hex: "cfc4e8") : Color(hex: "4a4258")
         default: return Color.toskaBlue
         }
     }
@@ -730,7 +812,7 @@ struct ShareCardView: View {
             // Vertically CENTERED (equal spacers) — quote dead-center, footer below.
             Spacer(minLength: 0).frame(maxHeight: .infinity)
 
-            if let tag, !tag.isEmpty, selectedRatio != 2 {
+            if let tag, !tag.isEmpty {
                 HStack(spacing: 4) {
                     Circle()
                         .fill(accentColor.opacity(0.4))
@@ -749,7 +831,7 @@ struct ShareCardView: View {
             }
 
             Text(quoteMark)
-                .font(.custom("Georgia", size: selectedRatio == 2 ? 24 : 34))
+                .font(.custom("Newsreader-Medium", size: 34))
                 .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
                 .padding(.bottom, 2)
 
@@ -801,15 +883,15 @@ struct ShareCardView: View {
                         .frame(width: 14, height: 14)
                         .overlay(
                             Text("t")
-                                .font(.custom("Georgia-Italic", size: 10))
+                                .font(.custom("Newsreader-Italic", size: 10))
                                 .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
                         )
                     Text("toska")
-                        .font(.custom("Georgia-Italic", size: 12))
+                        .font(.custom("Newsreader-Italic", size: 12))
                         .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                 }
             }
-            .padding(.bottom, selectedRatio == 2 ? 10 : 20)
+            .padding(.bottom, 20)
         }
     }
 
@@ -880,13 +962,13 @@ struct ShareCardView: View {
     // minimumScaleFactor on the Text, this GUARANTEES even a 500-char post
     // always fits, in any ratio.
     var quoteMaxHeight: CGFloat {
-        cardSize.height - (selectedRatio == 2 ? 120 : 215)
+        cardSize.height - 215
     }
 
     /// Largest font the card would ever use (short posts). The fit search below
     /// scales DOWN from here for longer text. Wide cards get a smaller ceiling
     /// (least vertical room). `sizeMultiplier` applies the user's size control.
-    var maxFontSize: CGFloat { (selectedRatio == 2 ? 20 : 24) * sizeMultiplier }
+    var maxFontSize: CGFloat { 24 * sizeMultiplier }
 
     /// The font size the quote is ACTUALLY drawn at — computed by MEASURING the
     /// text (UIKit boundingRect) and binary-searching the largest point size at
@@ -929,7 +1011,9 @@ struct ShareCardView: View {
         case 1: return .systemFont(ofSize: size, weight: .light)
         case 2: return .monospacedSystemFont(ofSize: size, weight: .regular)
         case 3: return UIFont(name: "Georgia-Italic", size: size) ?? .italicSystemFont(ofSize: size)
-        default: return UIFont(name: "Georgia", size: size) ?? .systemFont(ofSize: size)
+        // MUST name the same face quoteFont draws with — the fit engine
+        // measures with this font, and a mismatch reopens the truncation gap.
+        default: return UIFont(name: "Newsreader-Medium", size: size) ?? .systemFont(ofSize: size)
         }
     }
 
@@ -955,13 +1039,11 @@ struct ShareCardView: View {
     }
 
     var lineSpacing: CGFloat {
-        let base: CGFloat = selectedRatio == 2 ? 3 : (text.count > 200 ? 5 : 7)
+        let base: CGFloat = text.count > 200 ? 5 : 7
         return base * sizeMultiplier
     }
 
-    var textPadding: CGFloat {
-        selectedRatio == 2 ? 20 : 30
-    }
+    var textPadding: CGFloat { 30 }
 
     var textAlignment: TextAlignment {
         switch selectedAlignment {
@@ -992,6 +1074,7 @@ struct ShareCardView: View {
         case 10: LinearGradient(colors: [Color(hex: "f5e8ec"), Color(hex: "f0dce2"), Color(hex: "ecdae0")], startPoint: .top, endPoint: .bottom) // blush
         case 11: LinearGradient(colors: [Color(hex: "e8f0ec"), Color(hex: "dce8e2"), Color(hex: "d4e0da")], startPoint: .top, endPoint: .bottom) // sage
         case 12: LinearGradient(colors: [Color(hex: "e8eef5"), Color(hex: "dce4f0"), Color(hex: "d4dcea")], startPoint: .top, endPoint: .bottom) // frost
+        case Self.customStyle: customColor                                                                                                  // custom — user-picked flat
         default: Color(hex: "08080a")
         }
     }
@@ -1118,6 +1201,8 @@ struct ShareCardView: View {
         case 10: return Color(hex: "5a3040")             // blush
         case 11: return Color(hex: "2a4038")             // sage
         case 12: return Color(hex: "2a3548")             // frost
+        case Self.customStyle:                           // custom — ink adapts to ground
+            return customColorIsDark ? .white.opacity(0.85) : Color(hex: "241f2b")
         default: return .white.opacity(0.75)
         }
     }
@@ -1231,7 +1316,8 @@ struct ShareCardView: View {
 extension ShareCardView {
     init(text: String, handle: String, feltCount: Int, tag: String?,
          shareURL: URL? = nil, matrixStyle: Int, font: Int, size: Int,
-         alignment: Int, ratio: Int, showFeltCount: Bool = true) {
+         alignment: Int, ratio: Int, showFeltCount: Bool = true,
+         customColor: Color? = nil) {
         self.text = text
         self.handle = handle
         self.feltCount = feltCount
@@ -1243,44 +1329,11 @@ extension ShareCardView {
         _selectedAlignment = State(initialValue: alignment)
         _selectedRatio = State(initialValue: ratio)
         _showFeltCount = State(initialValue: showFeltCount)
-    }
-
-    /// Exact copies of cardBody's footer / quote-mark subtrees, for the
-    /// harness layout probe (measuring each element's unconstrained height).
-    var footerProbe: some View {
-        VStack(spacing: 6) {
-            if feltCount > 0 {
-                Text("\(formatCount(feltCount)) felt this")
-                    .font(ToskaFont.sans(11, weight: .medium))
-                    .foregroundColor(accentColor.opacity(0.35))
-            }
-            Rectangle()
-                .fill(accentColor.opacity(isDarkStyle ? 0.1 : 0.08))
-                .frame(width: 24, height: 0.5)
-                .padding(.vertical, 3)
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(accentColor.opacity(isDarkStyle ? 0.12 : 0.08))
-                    .frame(width: 14, height: 14)
-                    .overlay(
-                        Text("t")
-                            .font(.custom("Georgia-Italic", size: 10))
-                            .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
-                    )
-                Text("toska")
-                    .font(.custom("Georgia-Italic", size: 12))
-                    .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
-            }
+        if let customColor {
+            _customColor = State(initialValue: customColor)
         }
-        .padding(.bottom, selectedRatio == 2 ? 10 : 20)
     }
 
-    var quoteMarkProbe: some View {
-        Text(quoteMark)
-            .font(.custom("Georgia", size: selectedRatio == 2 ? 24 : 34))
-            .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
-            .padding(.bottom, 2)
-    }
 }
 #endif
 

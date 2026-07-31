@@ -59,6 +59,9 @@ enum ShareCardMatrixHarness {
               tag: nil),
     ]
 
+    static let styleNames = ["2am", "dusk", "numb", "bruise", "ashes", "unsent", "alone", "hollow", "dawn", "paper", "blush", "sage", "frost"]
+    static let ratioNames = ["story", "square"]
+
     static func run(outDir: String) {
         let fm = FileManager.default
         try? fm.createDirectory(atPath: outDir, withIntermediateDirectories: true)
@@ -66,13 +69,12 @@ enum ShareCardMatrixHarness {
         let fontNames = ["serif", "sans", "mono", "hand"]
         let sizeNames = ["S", "M", "L"]
         let alignNames = ["L", "C", "R"]
-        let ratioNames = ["story", "square", "wide"]
 
         // ---- Main truncation matrix: per (text, ratio) contact sheet.
         // Rows = 4 fonts; columns = 3 sizes × 3 alignments. Style fixed to
         // dawn (8, default) — truncation is style-independent.
         for stress in texts {
-            for ratio in 0..<3 {
+            for ratio in 0..<ratioNames.count {
                 var cells: [(row: Int, col: Int, image: UIImage, label: String)] = []
                 for font in 0..<4 {
                     for size in 0..<3 {
@@ -100,7 +102,6 @@ enum ShareCardMatrixHarness {
         // ---- Style legibility sheet: all 13 moods, medium text, story ratio.
         let styleText = texts[2]
         var styleCells: [(row: Int, col: Int, image: UIImage, label: String)] = []
-        let styleNames = ["2am", "dusk", "numb", "bruise", "ashes", "unsent", "alone", "hollow", "dawn", "paper", "blush", "sage", "frost"]
         for style in 0..<13 {
             let view = ShareCardView(
                 text: styleText.text, handle: "harness", feltCount: 23400,
@@ -112,11 +113,34 @@ enum ShareCardMatrixHarness {
         }
         writeSheet(cells: styleCells, rows: 2, cols: 7, path: "\(outDir)/styles_all13.png")
 
+        // ---- Custom-color legibility: user-picked grounds across the
+        // brightness range — ink/accents must adapt (dark → light text,
+        // light → dark text) and the footer must stay intact.
+        let customs: [(String, Color)] = [
+            ("nearblack", Color(red: 0.04, green: 0.04, blue: 0.05)),
+            ("hotpink", Color(red: 0.91, green: 0.12, blue: 0.55)),
+            ("midblue", Color(red: 0.23, green: 0.35, blue: 0.60)),
+            ("butter", Color(red: 0.96, green: 0.91, blue: 0.78)),
+            ("white", Color(red: 0.98, green: 0.98, blue: 0.98)),
+        ]
+        var customCells: [(row: Int, col: Int, image: UIImage, label: String)] = []
+        for (i, (name, color)) in customs.enumerated() {
+            let view = ShareCardView(
+                text: styleText.text, handle: "harness", feltCount: 2437,
+                tag: styleText.tag, matrixStyle: ShareCardView.customStyle,
+                font: 0, size: 1, alignment: 1, ratio: 1, customColor: color)
+            if let img = view.renderCardImage(scale: 1.0) {
+                customCells.append((0, i, img, name))
+            }
+        }
+        writeSheet(cells: customCells, rows: 1, cols: customs.count,
+                   path: "\(outDir)/custom_colors.png")
+
         // ---- Full-scale singles for the riskiest combos (eyeball at 3x).
         let singles: [(Int, Int, Int, Int, Int, Int)] = [
             // (textKey-index, style, font, size, align, ratio)
-            (1, 1, 0, 2, 1, 2),   // max post, dusk, serif, LARGE, center, WIDE — least room
-            (7, 8, 2, 2, 1, 2),   // 2000-char letter, mono, LARGE, WIDE — worst case
+            (1, 1, 0, 2, 1, 1),   // max post, dusk, serif, LARGE, center, SQUARE
+            (7, 8, 2, 2, 1, 1),   // 2000-char letter, mono, LARGE, SQUARE — worst case
             (3, 0, 3, 2, 0, 1),   // unbroken token, 2am, hand, LARGE, left, square
             (4, 2, 0, 2, 1, 0),   // emoji, numb, serif, LARGE, story
             (6, 7, 0, 1, 2, 0),   // RTL, hollow, serif, M, right-aligned, story
@@ -135,85 +159,6 @@ enum ShareCardMatrixHarness {
 
         try? report.joined(separator: "\n")
             .write(toFile: "\(outDir)/fitted_report.tsv", atomically: true, encoding: .utf8)
-
-        // ---- Layout probe: measure cardBody's IDEAL height (width fixed,
-        // height unconstrained) for the wide-footer displacement bug, and
-        // diff variants to identify the oversized element.
-        var probe: [String] = []
-        func idealHeight(_ v: some View) -> CGFloat {
-            let r = ImageRenderer(content: v.frame(width: 390))
-            r.scale = 1.0
-            return r.uiImage?.size.height ?? -1
-        }
-        let base = ShareCardView(text: texts[1].text, handle: "h", feltCount: 999,
-                                 tag: texts[1].tag, matrixStyle: 1, font: 0,
-                                 size: 2, alignment: 1, ratio: 2)
-        probe.append("wide serif L: fitted=\(base.fittedFontSize) quoteFrame=\(base.fittedQuoteHeight) quoteMax=\(base.quoteMaxHeight)")
-        probe.append("cardBody ideal height (wide, felt on): \(idealHeight(base.cardBody))")
-        let noFelt = ShareCardView(text: texts[1].text, handle: "h", feltCount: 0,
-                                   tag: texts[1].tag, matrixStyle: 1, font: 0,
-                                   size: 2, alignment: 1, ratio: 2)
-        probe.append("cardBody ideal height (wide, felt off): \(idealHeight(noFelt.cardBody))")
-        let story = ShareCardView(text: texts[1].text, handle: "h", feltCount: 999,
-                                  tag: texts[1].tag, matrixStyle: 1, font: 0,
-                                  size: 2, alignment: 1, ratio: 0)
-        probe.append("cardBody ideal height (story, felt on): \(idealHeight(story.cardBody)) (card 690)")
-        // Element-level: footer VStack alone at unconstrained height.
-        probe.append("footer-only ideal (wide): \(idealHeight(base.footerProbe))")
-        probe.append("quotemark-only ideal (wide): \(idealHeight(base.quoteMarkProbe))")
-        try? probe.joined(separator: "\n")
-            .write(toFile: "\(outDir)/layout_probe.txt", atomically: true, encoding: .utf8)
-
-        // ---- Tinted diagnostics: replica of cardBody with per-element
-        // backgrounds, rendered with and without cardDecorations, to see
-        // exactly which element lands where on the wide card.
-        func diagBody(_ v: ShareCardView, text: String) -> some View {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0).frame(maxHeight: .infinity)
-                    .background(Color.green.opacity(0.35))
-                v.quoteMarkProbe.background(Color.yellow.opacity(0.45))
-                Text(text)
-                    .font(v.quoteFont(size: v.fittedFontSize))
-                    .foregroundColor(v.textColor)
-                    .lineSpacing(v.lineSpacing)
-                    .multilineTextAlignment(v.textAlignment)
-                    .minimumScaleFactor(0.15)
-                    .padding(.horizontal, v.textPadding)
-                    .frame(height: v.fittedQuoteHeight)
-                    .background(Color.red.opacity(0.35))
-                Spacer(minLength: 0).frame(maxHeight: .infinity)
-                    .background(Color.blue.opacity(0.35))
-                v.footerProbe.background(Color.orange.opacity(0.55))
-            }
-        }
-        let diagView = ShareCardView(text: texts[1].text, handle: "h", feltCount: 999,
-                                     tag: texts[1].tag, matrixStyle: 1, font: 0,
-                                     size: 2, alignment: 1, ratio: 2)
-        let withDeco = ZStack {
-            diagView.cardBackground
-            diagView.cardDecorations
-            diagBody(diagView, text: texts[1].text)
-        }
-        .frame(width: diagView.cardSize.width, height: diagView.cardSize.height)
-        .environment(\.colorScheme, .dark)
-        let withoutDeco = ZStack {
-            diagView.cardBackground
-            diagBody(diagView, text: texts[1].text)
-        }
-        .frame(width: diagView.cardSize.width, height: diagView.cardSize.height)
-        .environment(\.colorScheme, .dark)
-        let realNoDiag = diagView.renderCardImage(scale: 2.0)
-        for (name, view) in [("diag_wide_with_deco", AnyView(withDeco)),
-                             ("diag_wide_no_deco", AnyView(withoutDeco))] {
-            let r = ImageRenderer(content: view)
-            r.scale = 2.0
-            if let d = r.uiImage?.pngData() {
-                try? d.write(to: URL(fileURLWithPath: "\(outDir)/\(name).png"))
-            }
-        }
-        if let d = realNoDiag?.pngData() {
-            try? d.write(to: URL(fileURLWithPath: "\(outDir)/diag_wide_real.png"))
-        }
     }
 
     /// Composites cell images into a labeled grid sheet PNG.

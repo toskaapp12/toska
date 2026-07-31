@@ -551,7 +551,11 @@ struct ShareCardView: View {
                 customSwatch
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 4)
+            // Room for the SELECTED chip: 1.08 scale + the accent ring drawn
+            // at padding(-3) overhang the 54pt chip by ~7pt top and bottom,
+            // and the horizontal ScrollView clips its content — 4pt used to
+            // shave the top of the ring off (owner report, build 78).
+            .padding(.vertical, 12)
         }
     }
 

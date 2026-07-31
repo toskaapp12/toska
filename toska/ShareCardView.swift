@@ -795,17 +795,22 @@ struct ShareCardView: View {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { showFragmentPicker.toggle() }
             } label: {
+                // "Fragment active" means cardText actually differs from the
+                // full post — selecting EVERY sentence falls back to the full
+                // post (cardText), so the label must not claim a fragment then.
+                let effectiveCount = selectedSentences.filter { $0 < sentences.count }.count
+                let fragmentActive = effectiveCount > 0 && effectiveCount < sentences.count
                 HStack(spacing: 4) {
                     Image(systemName: "text.quote")
                         .font(.system(size: 9, weight: .semibold))
-                    Text(selectedSentences.isEmpty
-                         ? "share just a line"
-                         : "sharing \(min(selectedSentences.count, sentences.count)) of \(sentences.count) lines")
+                    Text(fragmentActive
+                         ? "sharing \(effectiveCount) of \(sentences.count) lines"
+                         : "share just a line")
                         .font(ToskaFont.sans(11, weight: .medium))
                     Image(systemName: showFragmentPicker ? "chevron.up" : "chevron.down")
                         .font(.system(size: 8, weight: .semibold))
                 }
-                .foregroundColor(selectedSentences.isEmpty ? Color(hex: "8a8790") : composerAccent)
+                .foregroundColor(fragmentActive ? composerAccent : Color(hex: "8a8790"))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(showFragmentPicker ? "Hide line picker" : "Share just a line")

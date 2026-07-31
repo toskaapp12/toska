@@ -174,7 +174,7 @@ struct ShareCardView: View {
     // MARK: - Fragment Sharing
     // A 500-char post shrinks to ~9pt to fit the card — nobody shares that.
     // The user can instead pick the line(s) that matter ("share just a
-    // line"); the card, sticker, and copy-text all follow the selection.
+    // line"); the card follows the selection.
     // Skipped sentences between selected ones become an ellipsis, the
     // honest mark of an excerpt.
 
@@ -264,7 +264,7 @@ struct ShareCardView: View {
                     .accessibilityLabel("Close")
                     Spacer()
                     Text("share this")
-                        .font(.custom("Georgia-Italic", size: 13))
+                        .font(.custom("Newsreader-Italic", size: 13))
                         .foregroundColor(Color(hex: "1a1720"))
                     Spacer()
                     Image(systemName: "xmark")
@@ -444,7 +444,7 @@ struct ShareCardView: View {
                     Text(savedToPhotos
                          ? "saved to your photos"
                          : "someone's going to feel less alone\nbecause of what you just shared")
-                        .font(.custom("Georgia-Italic", size: 15))
+                        .font(.custom("Newsreader-Italic", size: 15))
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
@@ -503,8 +503,24 @@ struct ShareCardView: View {
     /// backdrop (backgroundFor) with a small highlight-color dot; the selected
     /// chip gets a 2px accent ring + a slight scale-up.
     private var moodSwatchRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 13) {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                moodSwatchContent
+            }
+            .onAppear {
+                // The persisted look can select a chip past the fold (dusk,
+                // 2am, custom all live late in the row) — without this the
+                // sheet opens showing no selection at all. Jump (not animate)
+                // so it reads as "opened here", not "scrolled away".
+                if selectedStyle != styleDisplayOrder.first {
+                    proxy.scrollTo(selectedStyle, anchor: .center)
+                }
+            }
+        }
+    }
+
+    private var moodSwatchContent: some View {
+        HStack(spacing: 13) {
                 ForEach(styleDisplayOrder, id: \.self) { index in
                     let isSelected = selectedStyle == index
                     Button {
@@ -549,6 +565,7 @@ struct ShareCardView: View {
                 }
 
                 customSwatch
+                    .id(Self.customStyle)
             }
             .padding(.horizontal, 24)
             // Room for the SELECTED chip: 1.08 scale + the accent ring drawn
@@ -556,7 +573,6 @@ struct ShareCardView: View {
             // and the horizontal ScrollView clips its content — 4pt used to
             // shave the top of the ring off (owner report, build 78).
             .padding(.vertical, 12)
-        }
     }
 
     /// The "custom" chip at the end of the mood row: the current color as
@@ -609,7 +625,7 @@ struct ShareCardView: View {
     /// One compact toolbar: font cycle | size segments | alignment segments.
     private var typeToolbar: some View {
         HStack(spacing: 0) {
-            // Font cycle — tapping advances serif → sans → mono → hand.
+            // Font cycle — tapping advances serif → sans → typewriter → hand.
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     selectedFont = (selectedFont + 1) % fonts.count
@@ -1062,7 +1078,7 @@ struct ShareCardView: View {
         .frame(width: cardSize.width, height: cardSize.height)
         // The card is fixed-size artwork: its quote is auto-fitted by
         // fittedFontSize, which measures with FIXED UIFont sizes. But
-        // Font.custom (Georgia/Georgia-Italic) and ToskaFont.sans scale with
+        // Font.custom (the Newsreader faces) and ToskaFont.sans scale with
         // Dynamic Type, while ImageRenderer runs in a default environment —
         // so without this pin, a non-default text size renders the preview
         // bigger than the measurement AND differently from the export.
@@ -1104,8 +1120,8 @@ struct ShareCardView: View {
     }
 
     /// Largest font the card would ever use (short posts). The fit search below
-    /// scales DOWN from here for longer text. Wide cards get a smaller ceiling
-    /// (least vertical room). `sizeMultiplier` applies the user's size control.
+    /// scales DOWN from here for longer text. `sizeMultiplier` applies the
+    /// user's size control.
     var maxFontSize: CGFloat { 24 * sizeMultiplier }
 
     /// The font size the quote is ACTUALLY drawn at — computed by MEASURING the
@@ -1452,8 +1468,7 @@ struct ShareCardView: View {
 // Harness-only construction: seeds every composer control so the matrix
 // harness (ShareCardMatrixHarness) can sweep style/font/size/alignment/ratio
 // through the real render path. Lives in a same-file extension so it can
-// reach the private @State vars WITHOUT suppressing the memberwise init the
-// production call sites use.
+// reach the private @State vars.
 extension ShareCardView {
     init(text: String, handle: String, feltCount: Int, tag: String?,
          shareURL: URL? = nil, matrixStyle: Int, font: Int, size: Int,

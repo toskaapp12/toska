@@ -143,8 +143,12 @@ struct ShareCardView: View {
         d.set(selectedRatio, forKey: "toska_card_last_ratio")
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         UIColor(customColor).getRed(&r, green: &g, blue: &b, alpha: &a)
-        d.set(String(format: "%02x%02x%02x",
-                     Int(round(r * 255)), Int(round(g * 255)), Int(round(b * 255))),
+        // Clamp before formatting: the iOS wheel can hand back wide-gamut
+        // (P3) colors whose sRGB components land outside 0...1, and "%02x"
+        // of a component beyond 255 emits three digits — the stored string
+        // then fails the 6-char check on load and the color silently resets.
+        func c(_ v: CGFloat) -> Int { Int(round(min(max(v, 0), 1) * 255)) }
+        d.set(String(format: "%02x%02x%02x", c(r), c(g), c(b)),
               forKey: "toska_card_last_custom_hex")
     }
 
@@ -181,8 +185,10 @@ struct ShareCardView: View {
 
     /// The post split into sentence-ish fragments (terminator-greedy, so
     /// "i miss you..." stays one piece). Newlines end a fragment too.
+    /// Terminator set covers Arabic (؟) and CJK (。！？) punctuation so
+    /// non-Latin posts get the line picker too.
     var sentences: [String] {
-        guard let regex = try? NSRegularExpression(pattern: "[^.!?…\\n]+[.!?…]*") else { return [text] }
+        guard let regex = try? NSRegularExpression(pattern: "[^.!?…؟。！？\\n]+[.!?…؟。！？]*") else { return [text] }
         let ns = text as NSString
         return regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
             .map { ns.substring(with: $0.range).trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -655,9 +661,14 @@ struct ShareCardView: View {
                 Image(systemName: "paintpalette")
                     .font(.system(size: 15, weight: .light))
                     .foregroundColor(customColorIsDark ? .white.opacity(0.75) : .black.opacity(0.5))
+                // Modest scale only: .clipped() trims DRAWING, not hit-
+                // testing — at 2.2x the invisible picker's touch area bled
+                // over the neighboring mood chip and hijacked its taps.
+                // 1.45x covers the chip face; the simultaneous tap gesture
+                // below catches the corner slivers.
                 ColorPicker("", selection: $customColor, supportsOpacity: false)
                     .labelsHidden()
-                    .scaleEffect(2.2)
+                    .scaleEffect(1.45)
                     .frame(width: 54, height: 54)
                     .clipped()
                     .opacity(0.02)
@@ -1511,6 +1522,11 @@ struct ShareCardView: View {
             do { try data.write(to: url) } catch { return }
             persistCardLook()
             presentShareSheet(with: [url]) { completed in
+                // The handler fires on cancel too — either way, don't leave
+                // someone's grief sitting in tmp as a file (same posture as
+                // the expiring pasteboards). Share targets copy the data
+                // before this fires, so removal is safe.
+                try? FileManager.default.removeItem(at: url)
                 if completed {
                     Task { @MainActor in showPostShareConfirmation() }
                 }

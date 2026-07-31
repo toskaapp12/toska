@@ -356,7 +356,7 @@ struct ComposeView: View {
                     warningBanner(icon: "exclamationmark.octagon", text: "your account is under review. you cannot post right now.", color: "c45c5c")
                 }
                 if showRateLimitWarning {
-                    warningBanner(icon: "clock", text: "slow down. the feelings will still be there in 30 seconds.", color: "c49a6c")
+                    warningBanner(icon: "clock", text: "one breath between posts. you can share again in a moment.", color: "c49a6c")
                 }
                 // Show the offline warning whenever the network is actually
                 // down, not only after a failed post tap. Reading the

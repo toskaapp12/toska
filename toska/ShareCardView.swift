@@ -85,8 +85,6 @@ struct ShareCardView: View {
     // selectedStyle == customStyle activates it; ink/accents adapt to the
     // color's brightness (customColorIsDark) so any pick stays legible.
     @State private var customColor: Color = Color(hex: "35284f")
-    @State private var showCopied = false
-    @State private var showCopiedLink = false
     @State private var showSharedConfirmation = false
     @State private var savedToPhotos = false
     @State private var showSaveError = false
@@ -380,95 +378,6 @@ struct ShareCardView: View {
                         }
                         .padding(.horizontal, 20)
 
-                        // MARK: - Copy Text / Copy Link
-                        // Two quiet tertiary actions side by side (link only when a
-                        // public share page exists) so the Save/Share pills stay the
-                        // clear primary actions.
-                        HStack(spacing: 0) {
-                            Button {
-                                // N-6 (2026-06-09 re-review): grief text copied to the
-                                // pasteboard must not linger or sync off-device. Mirror
-                                // the image-share path's options — auto-expire after 5
-                                // min and keep it local (no Universal Clipboard hand-off
-                                // to the user's other Apple devices).
-                                UIPasteboard.general.setItems(
-                                    [["public.utf8-plain-text": "\"\(cardText)\"\n\n— someone on toska"]],
-                                    options: [
-                                        .expirationDate: Date().addingTimeInterval(300),
-                                        .localOnly: true,
-                                    ]
-                                )
-                                showCopied = true
-                                HapticManager.play(.feltThis)
-                                Task {
-                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                    showCopied = false
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
-                                        .font(.system(size: 11))
-                                    Text(showCopied ? "copied" : "copy text instead")
-                                        .font(ToskaFont.sans(11, weight: .medium))
-                                }
-                                .foregroundColor(showCopied ? Color.toskaFollowGreen.opacity(0.9) : Color(hex: "8a8790"))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                            }
-
-                            if let shareURL {
-                                Button {
-                                    // The link itself is not sensitive (it points at the
-                                    // anonymous public page), but keep the same local +
-                                    // expiring pasteboard posture as the text copy — a
-                                    // toska share landing on another device's clipboard
-                                    // unprompted would feel wrong even when harmless.
-                                    UIPasteboard.general.setItems(
-                                        [["public.utf8-plain-text": shareURL.absoluteString]],
-                                        options: [
-                                            .expirationDate: Date().addingTimeInterval(300),
-                                            .localOnly: true,
-                                        ]
-                                    )
-                                    showCopiedLink = true
-                                    HapticManager.play(.feltThis)
-                                    Task {
-                                        try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                        showCopiedLink = false
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: showCopiedLink ? "checkmark" : "link")
-                                            .font(.system(size: 11))
-                                        Text(showCopiedLink ? "copied" : "copy link")
-                                            .font(ToskaFont.sans(11, weight: .medium))
-                                    }
-                                    .foregroundColor(showCopiedLink ? Color.toskaFollowGreen.opacity(0.9) : Color(hex: "8a8790"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 11)
-                                }
-                            }
-
-                            // Transparent-PNG sticker for layering over the
-                            // user's own photo in stories. The mood picks the
-                            // ink color; the background stays clear.
-                            Button {
-                                shareSticker()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "rectangle.dashed")
-                                        .font(.system(size: 11))
-                                    Text("sticker")
-                                        .font(ToskaFont.sans(11, weight: .medium))
-                                }
-                                .foregroundColor(Color(hex: "8a8790"))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 11)
-                            }
-                            .accessibilityLabel("Share as transparent sticker")
-                        }
-                        .padding(.horizontal, 24)
-
                         // Small trailing breather only — the save/share bar lives in a
                         // bottom safeAreaInset now, which already reserves its own
                         // clearance; the old 30pt spacer double-padded the scroll end.
@@ -646,11 +555,12 @@ struct ShareCardView: View {
         }
     }
 
-    /// The "custom" chip at the end of the mood row. The whole chip is a
-    /// system ColorPicker (stretched invisibly over the swatch art), so a tap
-    /// opens the iOS color wheel directly; picking a color selects the custom
-    /// mood. A simultaneous tap gesture selects it immediately as well, so
-    /// returning to an already-picked color doesn't require re-picking.
+    /// The "custom" chip at the end of the mood row: the current color as
+    /// the chip ground with the REAL system color well, visible at its
+    /// natural size, centered on it — tapping the well opens the iOS color
+    /// wheel (the previous invisible stretched-picker overlay never received
+    /// taps on device). Tapping the chip around the well re-selects the
+    /// custom mood with the current color; picking a color selects it too.
     private var customSwatch: some View {
         let isSelected = selectedStyle == Self.customStyle
         return VStack(spacing: 6) {
@@ -658,20 +568,15 @@ struct ShareCardView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(customColor)
                     .frame(width: 54, height: 54)
-                Image(systemName: "paintpalette")
-                    .font(.system(size: 15, weight: .light))
-                    .foregroundColor(customColorIsDark ? .white.opacity(0.75) : .black.opacity(0.5))
-                // Modest scale only: .clipped() trims DRAWING, not hit-
-                // testing — at 2.2x the invisible picker's touch area bled
-                // over the neighboring mood chip and hijacked its taps.
-                // 1.45x covers the chip face; the simultaneous tap gesture
-                // below catches the corner slivers.
+                    .onTapGesture {
+                        HapticManager.play(.tabSwitch)
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            selectedStyle = Self.customStyle
+                        }
+                    }
                 ColorPicker("", selection: $customColor, supportsOpacity: false)
                     .labelsHidden()
-                    .scaleEffect(1.45)
-                    .frame(width: 54, height: 54)
-                    .clipped()
-                    .opacity(0.02)
+                    .frame(width: 38, height: 38)
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -683,12 +588,6 @@ struct ShareCardView: View {
                     .padding(-3)
             )
             .scaleEffect(isSelected ? 1.08 : 1.0)
-            .simultaneousGesture(TapGesture().onEnded {
-                HapticManager.play(.tabSwitch)
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    selectedStyle = Self.customStyle
-                }
-            })
             .onChange(of: customColor) { _, _ in
                 withAnimation(.easeInOut(duration: 0.3)) {
                     selectedStyle = Self.customStyle
@@ -1469,74 +1368,6 @@ struct ShareCardView: View {
         let renderer = ImageRenderer(content: fullCard)
         renderer.scale = scale
         return renderer.uiImage
-    }
-
-    // MARK: - Transparent Sticker
-
-    /// Sticker layout: quote mark + quote + compact wordmark/domain, NO
-    /// background/decorations/grain — a transparent PNG meant to be layered
-    /// over the user's own photo in stories. The mood still chooses the ink
-    /// (dark moods → light ink for dark photos, light moods → dark ink), so
-    /// the mood row doubles as the sticker's ink picker. Width is the card's;
-    /// height is whatever the text needs (stories scale stickers anyway).
-    var stickerBody: some View {
-        VStack(spacing: 10) {
-            Text(quoteMark)
-                .font(.custom("Newsreader-Medium", size: 34))
-                .foregroundColor(textColor.opacity(0.45))
-            Text(cardText)
-                .font(quoteFont(size: fittedFontSize))
-                .foregroundColor(textColor)
-                .lineSpacing(lineSpacing)
-                .multilineTextAlignment(textAlignment)
-            HStack(spacing: 5) {
-                Text("toska")
-                    .font(.custom("Newsreader-Italic", size: 12))
-                Text("·")
-                    .font(ToskaFont.sans(9))
-                Text("toskaapp.com")
-                    .font(ToskaFont.sans(8, weight: .medium))
-                    .tracking(0.6)
-            }
-            .foregroundColor(textColor.opacity(0.45))
-            .padding(.top, 4)
-        }
-        .padding(.horizontal, textPadding)
-        .padding(.vertical, 16)
-        .frame(width: cardSize.width)
-        .dynamicTypeSize(.large)
-    }
-
-    @MainActor func renderStickerImage() -> UIImage? {
-        let renderer = ImageRenderer(content: stickerBody)
-        renderer.scale = 3.0
-        renderer.isOpaque = false
-        return renderer.uiImage
-    }
-
-    /// Renders the transparent sticker and hands a PNG FILE to the share
-    /// sheet. A file URL (not a UIImage) is deliberate: several share
-    /// targets re-encode bare images to JPEG, which destroys the alpha
-    /// channel — the file path keeps the PNG intact end to end.
-    func shareSticker() {
-        withRenderIndicator {
-            guard let image = renderStickerImage(),
-                  let data = image.pngData() else { return }
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("toska-sticker.png")
-            do { try data.write(to: url) } catch { return }
-            persistCardLook()
-            presentShareSheet(with: [url]) { completed in
-                // The handler fires on cancel too — either way, don't leave
-                // someone's grief sitting in tmp as a file (same posture as
-                // the expiring pasteboards). Share targets copy the data
-                // before this fires, so removal is safe.
-                try? FileManager.default.removeItem(at: url)
-                if completed {
-                    Task { @MainActor in showPostShareConfirmation() }
-                }
-            }
-        }
     }
 
     // MARK: - Share Functions

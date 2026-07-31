@@ -157,26 +157,7 @@ enum ShareCardMatrixHarness {
             }
         }
 
-        // ---- Transparent stickers: dark-mood ink over a light ground and
-        // light-mood ink over a dark ground (the failure directions), plus
-        // a fragment selection driving the card.
-        for (name, style, ground) in [("duskink-on-dark", 1, UIColor(white: 0.13, alpha: 1)),
-                                      ("dawnink-on-light", 8, UIColor(white: 0.9, alpha: 1))] {
-            let view = ShareCardView(
-                text: texts[1].text, handle: "harness", feltCount: 999,
-                tag: nil, matrixStyle: style, font: 0, size: 1,
-                alignment: 1, ratio: 0)
-            guard let sticker = view.renderStickerImage() else { continue }
-            let r = UIGraphicsImageRenderer(size: sticker.size)
-            let composed = r.image { ctx in
-                ground.setFill()
-                ctx.fill(CGRect(origin: .zero, size: sticker.size))
-                sticker.draw(at: .zero)
-            }
-            try? composed.pngData()?.write(
-                to: URL(fileURLWithPath: "\(outDir)/sticker_\(name).png"))
-        }
-
+        // ---- Fragment selection driving the card.
         let fragmentView = ShareCardView(
             text: texts[1].text, handle: "harness", feltCount: 999,
             tag: texts[1].tag, matrixStyle: 1, font: 0, size: 1,

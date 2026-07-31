@@ -103,6 +103,51 @@ struct ShareCardView: View {
     @AppStorage("toska_hint_sharing") private var sharingHintSeen = false
     @State private var showSharingHint = false
 
+    // Remember the last look (2026-07-31 owner): the composer reopens with
+    // whatever style/font/size/alignment/ratio/color the user last actually
+    // SHARED or SAVED with (persistCardLook) — repeat sharers keep a
+    // recognizable look instead of resetting to dawn/serif every time.
+    // Values are clamped on load so a stale/garbage default can't select a
+    // control that no longer exists (e.g. the removed "wide" ratio).
+    init(text: String, handle: String, feltCount: Int, tag: String?,
+         shareURL: URL? = nil) {
+        self.text = text
+        self.handle = handle
+        self.feltCount = feltCount
+        self.tag = tag
+        self.shareURL = shareURL
+        let d = UserDefaults.standard
+        func load(_ key: String, _ fallback: Int, max: Int) -> Int {
+            guard let v = d.object(forKey: key) as? Int, (0...max).contains(v)
+            else { return fallback }
+            return v
+        }
+        _selectedStyle = State(initialValue: load("toska_card_last_style", 8, max: Self.customStyle))
+        _selectedFont = State(initialValue: load("toska_card_last_font", 0, max: 3))
+        _selectedSize = State(initialValue: load("toska_card_last_size", 1, max: 2))
+        _selectedAlignment = State(initialValue: load("toska_card_last_align", 1, max: 2))
+        _selectedRatio = State(initialValue: load("toska_card_last_ratio", 0, max: 1))
+        if let hex = d.string(forKey: "toska_card_last_custom_hex"), hex.count == 6 {
+            _customColor = State(initialValue: Color(hex: hex))
+        }
+    }
+
+    /// Persist the current look — called from save/share/sticker, i.e. when
+    /// a look is actually USED, not merely browsed.
+    private func persistCardLook() {
+        let d = UserDefaults.standard
+        d.set(selectedStyle, forKey: "toska_card_last_style")
+        d.set(selectedFont, forKey: "toska_card_last_font")
+        d.set(selectedSize, forKey: "toska_card_last_size")
+        d.set(selectedAlignment, forKey: "toska_card_last_align")
+        d.set(selectedRatio, forKey: "toska_card_last_ratio")
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(customColor).getRed(&r, green: &g, blue: &b, alpha: &a)
+        d.set(String(format: "%02x%02x%02x",
+                     Int(round(r * 255)), Int(round(g * 255)), Int(round(b * 255))),
+              forKey: "toska_card_last_custom_hex")
+    }
+
     // "dusk" (index 1) is the signature plum mood — placed near the front so it
     // reads prominently in the swatch row. Inserting it shifted every later mood
     // up by one, so the dark/light boundary is now an explicit set (see isDark)
@@ -114,7 +159,7 @@ struct ShareCardView: View {
     // changes — every index→style mapping (backgroundFor / styleHighlightColor /
     // isDark / brandTextColor …) is keyed to the original index and untouched.
     let styleDisplayOrder = [8, 9, 10, 11, 12, 0, 1, 2, 3, 4, 5, 6, 7]
-    let fonts = ["serif", "sans", "mono", "hand"]
+    let fonts = ["serif", "sans", "typewriter", "hand"]
     // Two social-native shapes only (2026-07-31 owner): story (9:16 — IG/
     // TikTok stories) and square (1:1 — feed posts). The old landscape
     // "wide" fit no social surface and carried its own layout special-cases.
@@ -123,6 +168,45 @@ struct ShareCardView: View {
     /// Sentinel style index for the user-picked custom color (one past the
     /// last named mood).
     static let customStyle = 13
+
+    // MARK: - Fragment Sharing
+    // A 500-char post shrinks to ~9pt to fit the card — nobody shares that.
+    // The user can instead pick the line(s) that matter ("share just a
+    // line"); the card, sticker, and copy-text all follow the selection.
+    // Skipped sentences between selected ones become an ellipsis, the
+    // honest mark of an excerpt.
+
+    @State private var selectedSentences: Set<Int> = []
+    @State private var showFragmentPicker = false
+
+    /// The post split into sentence-ish fragments (terminator-greedy, so
+    /// "i miss you..." stays one piece). Newlines end a fragment too.
+    var sentences: [String] {
+        guard let regex = try? NSRegularExpression(pattern: "[^.!?…\\n]+[.!?…]*") else { return [text] }
+        let ns = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+            .map { ns.substring(with: $0.range).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Offer the picker only when there's something to choose between.
+    var fragmentsAvailable: Bool { text.count > 120 && sentences.count > 1 }
+
+    /// What the card actually renders: the full post, or the selected
+    /// fragments joined in order with "…" marking skipped sentences.
+    var cardText: String {
+        let all = sentences
+        let picked = selectedSentences.filter { $0 < all.count }.sorted()
+        guard !picked.isEmpty, picked.count < all.count else { return text }
+        var parts: [String] = []
+        var prev: Int? = nil
+        for i in picked {
+            if let p = prev, i > p + 1 { parts.append("…") }
+            parts.append(all[i])
+            prev = i
+        }
+        return parts.joined(separator: " ")
+    }
 
     /// Explicit dark-mood index set. Dark moods: 0...7 (2am, dusk, numb, bruise,
     /// ashes, unsent, alone, hollow); light moods: 8...12 (dawn, paper, blush,
@@ -252,6 +336,13 @@ struct ShareCardView: View {
                         // collapsed into ONE compact bar with thin dividers.
                         typeToolbar
 
+                        // MARK: - Fragment picker
+                        // Long posts shrink to fit — offer sharing just the
+                        // line(s) that matter instead.
+                        if fragmentsAvailable {
+                            fragmentSection
+                        }
+
                         // MARK: - Ratio + felt-count (behind "more options")
                         VStack(spacing: 12) {
                             Button {
@@ -295,7 +386,7 @@ struct ShareCardView: View {
                                 // min and keep it local (no Universal Clipboard hand-off
                                 // to the user's other Apple devices).
                                 UIPasteboard.general.setItems(
-                                    [["public.utf8-plain-text": "\"\(text)\"\n\n— someone on toska"]],
+                                    [["public.utf8-plain-text": "\"\(cardText)\"\n\n— someone on toska"]],
                                     options: [
                                         .expirationDate: Date().addingTimeInterval(300),
                                         .localOnly: true,
@@ -351,6 +442,24 @@ struct ShareCardView: View {
                                     .padding(.vertical, 11)
                                 }
                             }
+
+                            // Transparent-PNG sticker for layering over the
+                            // user's own photo in stories. The mood picks the
+                            // ink color; the background stays clear.
+                            Button {
+                                shareSticker()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "rectangle.dashed")
+                                        .font(.system(size: 11))
+                                    Text("sticker")
+                                        .font(ToskaFont.sans(11, weight: .medium))
+                                }
+                                .foregroundColor(Color(hex: "8a8790"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 11)
+                            }
+                            .accessibilityLabel("Share as transparent sticker")
                         }
                         .padding(.horizontal, 24)
 
@@ -667,6 +776,77 @@ struct ShareCardView: View {
         Rectangle().fill(Color.black.opacity(0.06)).frame(width: 0.5, height: 18)
     }
 
+    /// "share just a line" — collapsed by default; expands into tappable
+    /// sentence rows. Selecting a subset re-renders the card with only those
+    /// lines (see cardText); clearing returns to the full post.
+    private var fragmentSection: some View {
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showFragmentPicker.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "text.quote")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text(selectedSentences.isEmpty
+                         ? "share just a line"
+                         : "sharing \(min(selectedSentences.count, sentences.count)) of \(sentences.count) lines")
+                        .font(ToskaFont.sans(11, weight: .medium))
+                    Image(systemName: showFragmentPicker ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .foregroundColor(selectedSentences.isEmpty ? Color(hex: "8a8790") : composerAccent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showFragmentPicker ? "Hide line picker" : "Share just a line")
+
+            if showFragmentPicker {
+                VStack(spacing: 6) {
+                    ForEach(Array(sentences.enumerated()), id: \.offset) { index, sentence in
+                        let isOn = selectedSentences.contains(index)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                if isOn { selectedSentences.remove(index) }
+                                else { selectedSentences.insert(index) }
+                            }
+                        } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(isOn ? composerAccent : Color(hex: "c9c6cf"))
+                                    .padding(.top, 1)
+                                Text(sentence)
+                                    .font(ToskaFont.sans(12))
+                                    .foregroundColor(isOn ? Color(hex: "1a1720") : Color(hex: "8a8790"))
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(3)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(isOn ? composerAccent.opacity(0.08) : Color.black.opacity(0.02))
+                            .cornerRadius(9)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isOn ? .isSelected : [])
+                    }
+
+                    if !selectedSentences.isEmpty {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) { selectedSentences = [] }
+                        } label: {
+                            Text("share the whole post")
+                                .font(ToskaFont.sans(11, weight: .medium))
+                                .foregroundColor(Color(hex: "8a8790"))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
     /// Clean segmented control for the card ratio.
     private var ratioControl: some View {
         HStack(spacing: 2) {
@@ -721,26 +901,29 @@ struct ShareCardView: View {
 
     // MARK: - Font Helpers
 
+    /// The "Aa" chip previews the ACTUAL face each slot draws with.
     func fontPickerFont(_ index: Int) -> Font {
         switch index {
         case 0: return .custom("Newsreader-Medium", size: 10)
-        case 1: return .system(size: 10, weight: .medium)
-        case 2: return .system(size: 10, weight: .regular, design: .monospaced)
-        case 3: return .system(size: 10, weight: .regular, design: .serif)
+        case 1: return .custom("HankenGrotesk-Regular", size: 10)
+        case 2: return .custom("AmericanTypewriter", size: 10)
+        case 3: return .custom("Newsreader-Italic", size: 10)
         default: return .system(size: 10)
         }
     }
 
+    // Font lineup (2026-07-31, owner-approved from the font-options pitch):
+    // serif/hand = the brand Newsreader faces posts are already read in
+    // (Medium cut per the postBody faint-Regular decision); sans = Hanken
+    // Grotesk, the app's own chrome face; "typewriter" = American Typewriter
+    // (built into iOS) — an app of unsent letters shouldn't quote them in a
+    // terminal font, and the slot was renamed to match.
     func quoteFont(size: CGFloat) -> Font {
         switch selectedFont {
-        // Newsreader-Medium, not Georgia (2026-07-31): the brand serif the
-        // post was already rendered in everywhere else (feed, detail, web,
-        // OG link-preview card). Medium cut per the 2026-07-30 postBody
-        // decision — Regular reads faint at reading sizes.
         case 0: return .custom("Newsreader-Medium", size: size)
-        case 1: return .system(size: size, weight: .light)
-        case 2: return .system(size: size, weight: .regular, design: .monospaced)
-        case 3: return .custom("Georgia-Italic", size: size)
+        case 1: return .custom("HankenGrotesk-Regular", size: size)
+        case 2: return .custom("AmericanTypewriter", size: size)
+        case 3: return .custom("Newsreader-Italic", size: size)
         default: return .custom("Newsreader-Medium", size: size)
         }
     }
@@ -835,7 +1018,7 @@ struct ShareCardView: View {
                 .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
                 .padding(.bottom, 2)
 
-            Text(text)
+            Text(cardText)
                 .font(quoteFont(size: fittedFontSize))
                 .foregroundColor(textColor)
                 .lineSpacing(lineSpacing)
@@ -890,6 +1073,14 @@ struct ShareCardView: View {
                         .font(.custom("Newsreader-Italic", size: 12))
                         .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                 }
+
+                // The image travels as pixels — reposts and screenshots strip
+                // every link. This whisper of a domain is the only way back
+                // to toska that survives re-sharing.
+                Text("toskaapp.com")
+                    .font(ToskaFont.sans(8, weight: .medium))
+                    .tracking(0.6)
+                    .foregroundColor(isDarkStyle ? .white.opacity(0.16) : brandTextColor.opacity(0.22))
             }
             .padding(.bottom, 20)
         }
@@ -910,10 +1101,38 @@ struct ShareCardView: View {
             .clipped()
     }
 
+    /// One shared noise tile (mid-gray ±16), generated once per launch.
+    /// Overlay-blended at low opacity it reads as paper grain, not static.
+    private static let grainTile: UIImage = {
+        let dim = 144
+        guard let ctx = CGContext(
+            data: nil, width: dim, height: dim, bitsPerComponent: 8,
+            bytesPerRow: dim, space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ), let data = ctx.data else { return UIImage() }
+        let buf = data.bindMemory(to: UInt8.self, capacity: dim * dim)
+        for i in 0..<(dim * dim) { buf[i] = UInt8.random(in: 112...144) }
+        guard let cg = ctx.makeImage() else { return UIImage() }
+        return UIImage(cgImage: cg)
+    }()
+
+    /// Subtle paper-grain wash over the mood ground — pushes the card from
+    /// "flat gradient" toward "editorial object". Sits between decorations
+    /// and text; never on the transparent sticker.
+    var cardGrain: some View {
+        Image(uiImage: Self.grainTile)
+            .resizable(resizingMode: .tile)
+            .frame(width: cardSize.width, height: cardSize.height)
+            .blendMode(.overlay)
+            .opacity(isDarkStyle ? 0.4 : 0.3)
+            .allowsHitTesting(false)
+    }
+
     var cardPreview: some View {
         ZStack {
             cardBackground
             boundedCardDecorations
+            cardGrain
             cardBody
         }
         // Lay the preview out at the EXACT export size (the sheet then
@@ -978,7 +1197,7 @@ struct ShareCardView: View {
     /// factor bottoms out for multiline height-fitting). The SAME value drives
     /// the live preview AND the exported image, so they're byte-for-byte WYSIWYG.
     var fittedFontSize: CGFloat {
-        guard !text.isEmpty else { return maxFontSize }
+        guard !cardText.isEmpty else { return maxFontSize }
         let maxW = cardSize.width - 2 * textPadding
         // Fit to 93% of the box: a small safety margin so any SwiftUI-vs-UIKit
         // sub-pixel layout difference can't tip a fitted size into a clip.
@@ -1000,19 +1219,19 @@ struct ShareCardView: View {
     /// (plus a rounding cushion), clamped to the budget. See the .frame note
     /// in cardBody for why this is a fixed height rather than a maxHeight.
     var fittedQuoteHeight: CGFloat {
-        guard !text.isEmpty else { return quoteMaxHeight }
+        guard !cardText.isEmpty else { return quoteMaxHeight }
         let maxW = cardSize.width - 2 * textPadding
         return min(measuredQuoteHeight(fontSize: fittedFontSize, width: maxW) + 3,
                    quoteMaxHeight)
     }
 
+    // MUST name the same faces quoteFont draws with — the fit engine
+    // measures with these fonts, and a mismatch reopens the truncation gap.
     private func measuringUIFont(size: CGFloat) -> UIFont {
         switch selectedFont {
-        case 1: return .systemFont(ofSize: size, weight: .light)
-        case 2: return .monospacedSystemFont(ofSize: size, weight: .regular)
-        case 3: return UIFont(name: "Georgia-Italic", size: size) ?? .italicSystemFont(ofSize: size)
-        // MUST name the same face quoteFont draws with — the fit engine
-        // measures with this font, and a mismatch reopens the truncation gap.
+        case 1: return UIFont(name: "HankenGrotesk-Regular", size: size) ?? .systemFont(ofSize: size)
+        case 2: return UIFont(name: "AmericanTypewriter", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+        case 3: return UIFont(name: "Newsreader-Italic", size: size) ?? .italicSystemFont(ofSize: size)
         default: return UIFont(name: "Newsreader-Medium", size: size) ?? .systemFont(ofSize: size)
         }
     }
@@ -1029,7 +1248,7 @@ struct ShareCardView: View {
         let para = NSMutableParagraphStyle()
         para.lineSpacing = lineSpacing
         para.alignment = nsAlignment
-        let rect = (text as NSString).boundingRect(
+        let rect = (cardText as NSString).boundingRect(
             with: CGSize(width: width, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: measuringUIFont(size: fontSize), .paragraphStyle: para],
@@ -1039,7 +1258,7 @@ struct ShareCardView: View {
     }
 
     var lineSpacing: CGFloat {
-        let base: CGFloat = text.count > 200 ? 5 : 7
+        let base: CGFloat = cardText.count > 200 ? 5 : 7
         return base * sizeMultiplier
     }
 
@@ -1220,6 +1439,7 @@ struct ShareCardView: View {
         let fullCard = ZStack {
             cardBackground
             boundedCardDecorations
+            cardGrain
             cardBody
         }
         .frame(width: cardSize.width, height: cardSize.height)
@@ -1233,6 +1453,69 @@ struct ShareCardView: View {
         let renderer = ImageRenderer(content: fullCard)
         renderer.scale = scale
         return renderer.uiImage
+    }
+
+    // MARK: - Transparent Sticker
+
+    /// Sticker layout: quote mark + quote + compact wordmark/domain, NO
+    /// background/decorations/grain — a transparent PNG meant to be layered
+    /// over the user's own photo in stories. The mood still chooses the ink
+    /// (dark moods → light ink for dark photos, light moods → dark ink), so
+    /// the mood row doubles as the sticker's ink picker. Width is the card's;
+    /// height is whatever the text needs (stories scale stickers anyway).
+    var stickerBody: some View {
+        VStack(spacing: 10) {
+            Text(quoteMark)
+                .font(.custom("Newsreader-Medium", size: 34))
+                .foregroundColor(textColor.opacity(0.45))
+            Text(cardText)
+                .font(quoteFont(size: fittedFontSize))
+                .foregroundColor(textColor)
+                .lineSpacing(lineSpacing)
+                .multilineTextAlignment(textAlignment)
+            HStack(spacing: 5) {
+                Text("toska")
+                    .font(.custom("Newsreader-Italic", size: 12))
+                Text("·")
+                    .font(ToskaFont.sans(9))
+                Text("toskaapp.com")
+                    .font(ToskaFont.sans(8, weight: .medium))
+                    .tracking(0.6)
+            }
+            .foregroundColor(textColor.opacity(0.45))
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, textPadding)
+        .padding(.vertical, 16)
+        .frame(width: cardSize.width)
+        .dynamicTypeSize(.large)
+    }
+
+    @MainActor func renderStickerImage() -> UIImage? {
+        let renderer = ImageRenderer(content: stickerBody)
+        renderer.scale = 3.0
+        renderer.isOpaque = false
+        return renderer.uiImage
+    }
+
+    /// Renders the transparent sticker and hands a PNG FILE to the share
+    /// sheet. A file URL (not a UIImage) is deliberate: several share
+    /// targets re-encode bare images to JPEG, which destroys the alpha
+    /// channel — the file path keeps the PNG intact end to end.
+    func shareSticker() {
+        withRenderIndicator {
+            guard let image = renderStickerImage(),
+                  let data = image.pngData() else { return }
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("toska-sticker.png")
+            do { try data.write(to: url) } catch { return }
+            persistCardLook()
+            presentShareSheet(with: [url]) { completed in
+                if completed {
+                    Task { @MainActor in showPostShareConfirmation() }
+                }
+            }
+        }
     }
 
     // MARK: - Share Functions
@@ -1256,6 +1539,7 @@ struct ShareCardView: View {
     func saveToPhotos() {
         withRenderIndicator {
             guard let image = renderCardImage() else { return }
+            persistCardLook()
             // Save via PHPhotoLibrary so we can confirm ONLY on success. The old
             // UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil) passed a nil
             // completion target, so "saved to your photos" showed even when the
@@ -1279,6 +1563,7 @@ struct ShareCardView: View {
     func shareImage() {
         withRenderIndicator {
             guard let image = renderCardImage() else { return }
+            persistCardLook()
             // Only show the "you shared" affirmation if the user actually shared.
             // Previously it fired unconditionally, so cancelling the system share
             // sheet still declared success — jarring on a grief app. Mirrors the
@@ -1317,7 +1602,7 @@ extension ShareCardView {
     init(text: String, handle: String, feltCount: Int, tag: String?,
          shareURL: URL? = nil, matrixStyle: Int, font: Int, size: Int,
          alignment: Int, ratio: Int, showFeltCount: Bool = true,
-         customColor: Color? = nil) {
+         customColor: Color? = nil, fragment: Set<Int> = []) {
         self.text = text
         self.handle = handle
         self.feltCount = feltCount
@@ -1332,6 +1617,7 @@ extension ShareCardView {
         if let customColor {
             _customColor = State(initialValue: customColor)
         }
+        _selectedSentences = State(initialValue: fragment)
     }
 
 }

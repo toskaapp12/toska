@@ -5,7 +5,16 @@ import FirebaseAuth
 @MainActor
 struct OtherProfileView: View {
     let userId: String
-    let handle: String
+    // @State, not `let` (2026-08-05): the follow-push path (MainTabView
+    // .openProfileFromPush) constructs this view with handle: "" — as an
+    // immutable `let` the header title rendered blank, "block ?" dialogs read
+    // wrong, and toggleFollow PERSISTED "handle": "" into the follow-graph
+    // docs (reports from this surface carried reportedHandle: "" too).
+    // loadProfile() backfills it from the fetched user doc; every existing
+    // read (header, follow/report/block writes) picks up the live value.
+    // Swift still synthesizes the memberwise init(userId:handle:) with the
+    // wrapped String type, so call sites are unchanged.
+    @State var handle: String
     // H3-residual: seed rows with the user's real like/save/repost state so an
     // already-liked post here can't be silently unliked (see InteractionStateStore).
     @ObservedObject private var interactions = InteractionStateStore.shared
@@ -22,6 +31,10 @@ struct OtherProfileView: View {
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
     @State private var showReportFailedAlert = false
+    // Offline-specific report feedback (2026-08-05): reportUser() fails fast
+    // when disconnected — addDocument's completion never fires offline, so
+    // the tap was a silent no-op with the report durably queued behind it.
+    @State private var showReportOfflineAlert = false
     @State private var showBlockFailedAlert = false
     @State private var lastFollowTime: Date? = nil
     @State private var hasFetchedInitial = false
@@ -30,6 +43,16 @@ struct OtherProfileView: View {
     // header forever. Set when the user-doc read errors with no data; the
     // banner's retry re-runs the full initial load.
     @State private var profileLoadFailed = false
+    // (2026-08-05) distinguish "still fetching" and "fetch failed" from
+    // "genuinely empty" on the posts/replies tabs. Previously the "nothing
+    // here yet" / "quiet so far" empty states rendered INSTANTLY while the
+    // fetch was in flight and PERMANENTLY on a silent query failure — a
+    // misleading read on someone's profile. Loaded flips true only on a
+    // successful snapshot; failed drives the shared ToskaErrorBanner.
+    @State private var postsLoaded = false
+    @State private var postsLoadFailed = false
+    @State private var repliesLoaded = false
+    @State private var repliesLoadFailed = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -177,7 +200,23 @@ struct OtherProfileView: View {
                         Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                         
                         if selectedTab == 0 {
-                            if posts.isEmpty {
+                            if postsLoadFailed {
+                                // Failure state (2026-08-05) — was the empty
+                                // state, which misread a network failure as
+                                // "this person never posted". Same shared
+                                // banner PostDetailView/FeedView use.
+                                ToskaErrorBanner("couldn't load posts — check your connection") {
+                                    postsLoadFailed = false
+                                    loadPosts()
+                                }
+                                .padding(.vertical, 24)
+                            } else if !postsLoaded {
+                                // In-flight: don't flash "nothing here yet"
+                                // before the first snapshot. (2026-08-05)
+                                ProgressView().tint(Color.toskaBlue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 60)
+                            } else if posts.isEmpty {
                                 VStack(spacing: 16) {
                                     Image(systemName: "pencil.line")
                                         .font(.system(size: 28, weight: .ultraLight))
@@ -197,7 +236,19 @@ struct OtherProfileView: View {
                                 }
                             }
                         } else {
-                            if userReplies.isEmpty {
+                            if repliesLoadFailed {
+                                // Failure state (2026-08-05) — mirrors the
+                                // posts tab above.
+                                ToskaErrorBanner("couldn't load replies — check your connection") {
+                                    repliesLoadFailed = false
+                                    loadReplies()
+                                }
+                                .padding(.vertical, 24)
+                            } else if !repliesLoaded {
+                                ProgressView().tint(Color.toskaBlue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 60)
+                            } else if userReplies.isEmpty {
                                 VStack(spacing: 16) {
                                     Image(systemName: "bubble.left")
                                         .font(.system(size: 28, weight: .ultraLight))
@@ -306,6 +357,11 @@ struct OtherProfileView: View {
         } message: {
             Text("something went wrong. please try again in a bit.")
         }
+        .alert("couldnt report", isPresented: $showReportOfflineAlert) {
+            Button("ok") {}
+        } message: {
+            Text("you're offline — try again when you're connected.")
+        }
         .alert("couldnt block", isPresented: $showBlockFailedAlert) {
             Button("ok") {}
         } message: {
@@ -365,6 +421,12 @@ struct OtherProfileView: View {
                     return
                 }
                 profileLoadFailed = false
+                // Backfill the handle from the live user doc (2026-08-05) —
+                // the follow-push path seeds it "" (see the property comment).
+                // Never clobber a good seed with an empty/missing field.
+                if let liveHandle = data["handle"] as? String, !liveHandle.isEmpty, liveHandle != handle {
+                    handle = liveHandle
+                }
                 followerCount = data["followerCount"] as? Int ?? 0
                 followingCount = data["followingCount"] as? Int ?? 0
                 totalLikes = data["totalLikes"] as? Int ?? 0
@@ -390,9 +452,17 @@ struct OtherProfileView: View {
             .whereField("authorId", isEqualTo: userId)
             .order(by: "createdAt", descending: true)
             .limit(to: 50)
-            .getDocuments { snapshot, _ in
+            .getDocuments { snapshot, error in
                 Task { @MainActor in
-                    guard let documents = snapshot?.documents else { return }
+                    guard let documents = snapshot?.documents else {
+                        // (2026-08-05) a silently-swallowed error used to leave
+                        // the tab on "nothing here yet" forever; flag it so the
+                        // retry banner renders instead.
+                        if error != nil { postsLoadFailed = true }
+                        return
+                    }
+                    postsLoaded = true
+                    postsLoadFailed = false
                                         posts = documents.compactMap { doc in
                                                                 let data = doc.data()
                                                                 if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return nil }
@@ -413,11 +483,20 @@ struct OtherProfileView: View {
         let db = Firestore.firestore()
         
         Task {
-            guard let replySnap = try? await db.collectionGroup("replies")
+            let replySnap: QuerySnapshot
+            do {
+                replySnap = try await db.collectionGroup("replies")
                             .whereField("authorId", isEqualTo: userId)
                             .order(by: "createdAt", descending: true)
                             .limit(to: 30)
-                            .getDocumentsAsync() else { return }
+                            .getDocumentsAsync()
+            } catch {
+                // (2026-08-05) was `try?` + silent return, which left the tab
+                // on "quiet so far" forever after a network failure; flag it
+                // so the retry banner renders instead.
+                repliesLoadFailed = true
+                return
+            }
             
             var results: [MyReply] = []
             
@@ -458,6 +537,8 @@ struct OtherProfileView: View {
                         }
             
             userReplies = results.sorted { $0.createdAt > $1.createdAt }
+            repliesLoaded = true
+            repliesLoadFailed = false
         }
     }
     
@@ -539,8 +620,25 @@ struct OtherProfileView: View {
                             myHandle = h
                         }
                     }
+                    // Resolve THEIR handle before it is persisted (2026-08-05):
+                    // on the follow-push path `handle` seeds as "" until
+                    // loadProfile backfills it, and a fast follow tap wrote
+                    // "handle": "" into my /following doc. Empty follow-doc
+                    // handles are only self-healed per-render by
+                    // FollowListView's re-fetch — persisted junk otherwise.
+                    // Fall back to the seed if the fetch fails; deliberately
+                    // NOT the "anonymous" sentinel, which would persist wrong
+                    // copy (empty at least keeps the re-fetch path working).
+                    var theirHandle = handle
+                    if theirHandle.isEmpty {
+                        if let snap = try? await db.collection("users").document(userId).getDocumentAsync(),
+                           let h = snap.data()?["handle"] as? String, !h.isEmpty {
+                            theirHandle = h
+                            handle = h   // heal the header/dialogs too
+                        }
+                    }
                     let batch = db.batch()
-                    batch.setData(["handle": handle, "createdAt": FieldValue.serverTimestamp()], forDocument: followingRef)
+                    batch.setData(["handle": theirHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followingRef)
                     batch.setData(["handle": myHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followerRef)
                     batch.commit { error in
                     if error != nil {
@@ -630,6 +728,14 @@ struct OtherProfileView: View {
     
     func reportUser() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // Offline guard (2026-08-05): addDocument's completion never fires
+        // offline, so the tap gave zero feedback while the report sat durably
+        // queued (double-file risk on a retry). Same fail-fast blockUser()
+        // uses, with the app's standard offline copy.
+        guard NetworkMonitor.shared.isConnected else {
+            showReportOfflineAlert = true
+            return
+        }
         // Match the hardened firestore.rules schema: required type / status /
         // createdAt and a reason inside the bounded enum. Without the type
         // field the rule rejects this write silently.

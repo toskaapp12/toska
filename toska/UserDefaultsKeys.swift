@@ -156,6 +156,30 @@ enum DraftStore {
         set("", forKey: key)
     }
 
+    // Typed accessors (2026-08-05 draft-loss fix). A draft is more than its
+    // words: the composer's letter flag (2,000-char mode) has to survive a
+    // force-quit too. Before this, only text+tag were buffered, so a restored
+    // letter of <=500 chars came back as a NORMAL post — and the first
+    // keystroke then truncated anything the user had typed past 500. Bools
+    // ride the same protected file store as the text so clearAll() and the
+    // sign-out scrub cover them with zero extra plumbing.
+    //
+    // Encoding is deliberate: true -> "1", false -> ABSENT (set("") deletes
+    // the file). That makes a MISSING key — i.e. every buffer written before
+    // today — decode to `false`, which is exactly the pre-existing default
+    // ("not a letter"). Backward compatibility with no migration step, and no
+    // way for a legacy buffer to come back flagged as a letter by accident.
+    static func getBool(forKey key: String) -> Bool {
+        get(forKey: key) == "1"
+    }
+
+    // Named setBool/getBool rather than overloading set(_:forKey:) — a Bool
+    // overload next to a String one invites a literal binding to the wrong
+    // one at a call site and would silently persist "true"/"false" strings.
+    static func setBool(_ value: Bool, forKey key: String) {
+        set(value ? "1" : "", forKey: key)
+    }
+
     // Drop every draft (used on sign-out so the next account on this device
     // inherits none of the previous user's in-progress words).
     static func clearAll() {

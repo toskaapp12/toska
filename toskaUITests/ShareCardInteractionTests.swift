@@ -224,6 +224,12 @@ final class ShareCardInteractionTests: XCTestCase {
         // ---- Fragment picker (present only for long multi-sentence posts).
         let fragToggle = app.buttons["Share just a line"]
         if fragToggle.exists {
+            // Snapshot the toggle's position BEFORE tapping: the tap flips its
+            // accessibility label to "Hide line picker", so any later read of
+            // `fragToggle.frame` re-runs the "Share just a line" query, finds
+            // nothing, and fails the test with a snapshot error instead of
+            // exercising the picker.
+            let toggleMinY = fragToggle.frame.minY
             forceTap(fragToggle)
             sleep(1)
             snap("10-fragment-picker-open")
@@ -231,7 +237,7 @@ final class ShareCardInteractionTests: XCTestCase {
             // whose label is the sentence text — first long-labeled button
             // below the toggle; length filtering must happen in Swift).
             let sentenceRow = app.buttons.allElementsBoundByIndex.first(where: {
-                $0.exists && $0.frame.minY > fragToggle.frame.minY
+                $0.exists && $0.frame.minY > toggleMinY
                     && $0.label.count > 15 && !$0.label.hasPrefix("Font:")
             })
             if let row = sentenceRow {

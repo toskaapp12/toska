@@ -17,7 +17,7 @@
 // app UI on the author's own profile, so it needs no external seed.)
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 const CFG = { apiKey: 'AIzaSyCTGuUzy9maPF84fZh5gD_-eZ2qkie75OQ', authDomain: 'toskastaging.firebaseapp.com', projectId: 'toskastaging' };
 const B_EMAIL = 'salinarotess+webv1rb70g8@gmail.com';
@@ -38,6 +38,14 @@ if (!usnap.exists() || usnap.data().confirmedAdult !== true) {
   process.exit(1);
 }
 const handle = usnap.data().handle;
+// Delete any previous fixture first (2026-08-05). This used to be a bare
+// setDoc described as "overwrites in place" — but when the doc already exists
+// that is an UPDATE, and the posts update rule limits an author to
+// ['text','editedAt'], so re-seeding failed with PERMISSION_DENIED from the
+// second run onward (silently leaving a stale, buried fixture and failing
+// test14 with "No post row found in feed"). Authors may delete their own post,
+// so delete-then-create gives the fresh createdAt the tests need.
+await deleteDoc(doc(db, 'posts', FIXTURE_ID)).catch(() => {});
 await setDoc(doc(db, 'posts', FIXTURE_ID), {
   authorId: uid, authorHandle: handle, text: FIXTURE_TEXT,
   createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,

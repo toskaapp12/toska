@@ -142,5 +142,36 @@ class RateLimiter {
         lastRepostByPost[postId] = Date()
     }
 
-    private init() {}
+    // Account-switch hygiene (2026-08-05): every cooldown here throttles ONE
+    // user's intent, but the singleton outlives sign-out — user A posts, signs
+    // out, user B signs in on the same device and inherits A's 30s post window
+    // / 5s reply window / in-flight locks, so B's first action is silently
+    // swallowed (ComposeView shows A's "one breath" banner to B). Clear it all
+    // on the same .userDidSignOut notification the views already tear down on.
+    // In-flight maps are cleared too: a straggling completion from the old
+    // session only calls markComplete (sets nil), which is idempotent.
+    func reset() {
+        lastPostTime = nil
+        lastReplyTime = nil
+        lastLikeByPost.removeAll()
+        lastSaveByPost.removeAll()
+        lastRepostByPost.removeAll()
+        inFlightLikes.removeAll()
+        inFlightReposts.removeAll()
+        inFlightSaves.removeAll()
+    }
+
+    private init() {
+        // Registered lazily on first use — fine, because state only exists
+        // after first use. Same @Sendable-closure + inner-@MainActor-Task shape
+        // as NetworkMonitor.pathUpdateHandler so Swift 6 strict concurrency
+        // doesn't flag the cross-closure self capture.
+        NotificationCenter.default.addObserver(
+            forName: .userDidSignOut, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reset()
+            }
+        }
+    }
 }

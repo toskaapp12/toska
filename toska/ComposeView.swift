@@ -25,11 +25,34 @@ enum ComposeHint: String, Identifiable {
     }
 }
 
+/// The non-text half of a draft, bundled so the composer can watch all three
+/// with a single `.onChange` instead of one per field (see the call site: the
+/// extra chain links broke `body`'s type-checking).
+private struct DraftSidecar: Equatable {
+    let tag: String?
+    let isLetter: Bool
+    let gifUrl: String?
+}
+
 @MainActor
 struct ComposeView: View {
     @Environment(\.dismiss) var dismiss
     var initialText: String = ""
     var initialTag: String? = nil
+    // (2026-08-05 draft-loss fix) Reopening a saved draft has to carry the
+    // WHOLE draft, not just its words. Draft docs used to persist `text`
+    // alone, so a letter of <=500 chars reopened as a normal post (the
+    // ">500 chars must have been a letter" inference in seedTextAndTag was
+    // the only letter signal there was) and the selected GIF vanished.
+    // DraftsView now passes both through. Defaults keep every other call
+    // site (feed prompt, anniversary card, empty-feed CTA) source-compatible,
+    // and `false`/`nil` there is the correct answer anyway.
+    //
+    // initialIsLetter is only ever used to turn letter mode ON: a `false`
+    // from a legacy draft doc means "field was missing", not "user turned
+    // letter mode off", so it must never clear the >500 inference.
+    var initialIsLetter: Bool = false
+    var initialGifUrl: String? = nil
     // When this compose was opened from the daily-prompt "respond" button,
     // FeedView passes today's promptDate (yyyy-MM-dd). It's stamped onto the
     // resulting post doc so the FeedHeaderCard can detect that the user has
@@ -50,7 +73,23 @@ struct ComposeView: View {
     // them, the .onChange handlers below write through.
     @State private var draftText: String = ""
     @State private var draftTag: String = ""
+    // (2026-08-05) The force-quit buffer persisted text+tag only, so a kill
+    // mid-letter restored the body WITHOUT letter mode — activeCharLimit fell
+    // back to 500 and the next keystroke truncated up to 1,500 characters of
+    // the user's letter. Same for a picked GIF, which was simply gone. These
+    // mirror the on-disk values exactly like draftText/draftTag do.
+    @State private var draftIsLetter: Bool = false
+    @State private var draftGifUrl: String = ""
     @State private var draftSaveTask: Task<Void, Never>? = nil   // debounces the encrypted draft write
+
+    // Buffer keys for the two fields added 2026-08-05. They live here (rather
+    // than in UserDefaultsKeys) because the composer is their only reader or
+    // writer, and they intentionally stay inside the same `toska_composeDraft*`
+    // namespace as the text/tag keys — DraftStore.clearAll() wipes the whole
+    // draft directory on sign-out, so no per-key registration is needed for
+    // the scrub to cover them.
+    private static let composeDraftIsLetterKey = "toska_composeDraftIsLetter"
+    private static let composeDraftGifUrlKey   = "toska_composeDraftGifUrl"
     @State private var text = ""
     @State private var selectedTag: String? = nil
     @State private var showTagPicker = false
@@ -774,10 +813,30 @@ struct ComposeView: View {
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(false)
-        .onChange(of: selectedTag) { _, newValue in
-            // Persist tag selection alongside text draft so a kill mid-
-            // compose restores both. Empty string when nil.
-            draftTag = newValue ?? ""
+        // Tag / letter mode / GIF all ride the force-quit buffer alongside the
+        // text, so a kill mid-compose restores the WHOLE draft rather than just
+        // the words. They write straight through (no debounce): unlike text
+        // these change once per tap, not per keystroke, so there is nothing to
+        // collapse — and a deferred write is exactly what loses the value when
+        // iOS kills the app a moment later.
+        //
+        // Watched as ONE value rather than three .onChange modifiers
+        // (2026-08-05): each modifier lengthens body's chain, and three more
+        // links pushed the whole expression past the Swift type-checker's time
+        // limit — the file stopped compiling. See also seedTextAndTag(), split
+        // out of .onAppear for the same reason.
+        .onChange(of: DraftSidecar(tag: selectedTag, isLetter: isLetter, gifUrl: selectedGifUrl)) { _, sidecar in
+            // While EDITING a saved draft, Firestore is the persistence layer;
+            // writing here would overwrite the separate new-post buffer, so an
+            // unrelated in-progress compose came back wearing this draft's tag.
+            guard editingDraftId == nil else { return }
+            draftTag = sidecar.tag ?? ""
+            draftIsLetter = sidecar.isLetter
+            // Only ever buffer a value the drafts rule would accept back
+            // (giphy host + 500 cap) — see sanitizedGifUrl.
+            draftGifUrl = sanitizedGifUrl(sidecar.gifUrl) ?? ""
+            persistBufferBool(sidecar.isLetter, forKey: Self.composeDraftIsLetterKey)
+            persistBufferString(draftGifUrl, forKey: Self.composeDraftGifUrlKey)
         }
         // N-4: persist drafts to the protected DraftStore. DEBOUNCED (perf pass):
         // DraftStore.set does a synchronous atomic + complete-file-protection
@@ -802,7 +861,7 @@ struct ComposeView: View {
             }
         }
         .onChange(of: draftTag) { _, newValue in
-            DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftTag)
+            persistBufferString(newValue, forKey: UserDefaultsKeys.composeDraftTag)
         }
         // Out-of-band sign-out (token revoked, account deleted on another
         // device) while composing: cancel the pending debounce write and blank
@@ -812,6 +871,17 @@ struct ComposeView: View {
             draftSaveTask?.cancel()
             draftSaveTask = nil
             draftText = ""
+            // (2026-08-05) Blank the rest of the buffer for the same reason:
+            // the tag/letter/GIF writes are immediate, so without this a tap
+            // after the scrub would re-persist this user's draft metadata into
+            // the next account's composer on a shared device. Assigning here
+            // routes through the handlers above, which always let an EMPTY
+            // value through to disk (a clear must land even with no session).
+            draftTag = ""
+            draftIsLetter = false
+            draftGifUrl = ""
+            persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
+            persistBufferString("", forKey: Self.composeDraftGifUrlKey)
         }
         // Drives the fade/scale transition on the gentle-check overlay
         // regardless of which surface (button, tap-outside, etc.) flips it.
@@ -828,44 +898,13 @@ struct ComposeView: View {
                     // before the restore logic below reads draftText/draftTag.
                     draftText = DraftStore.get(forKey: UserDefaultsKeys.composeDraftText) ?? ""
                     draftTag = DraftStore.get(forKey: UserDefaultsKeys.composeDraftTag) ?? ""
+                    // (2026-08-05) Missing keys are the norm, not an error:
+                    // every buffer written before today has text/tag only, so
+                    // these decode to false / "" — the old defaults.
+                    draftIsLetter = DraftStore.getBool(forKey: Self.composeDraftIsLetterKey)
+                    draftGifUrl = DraftStore.get(forKey: Self.composeDraftGifUrlKey) ?? ""
                     loadHandle()
-                    if text.isEmpty && !initialText.isEmpty {
-                        text = initialText
-                        // Drafts persist only `text`, not `isLetter`; an
-                        // edit-draft (DraftsView) or prompt seed over the normal
-                        // 500 cap could only have been a letter. Restore letter
-                        // mode so the onChange truncation below doesn't silently
-                        // clip a long letter draft to 500 chars (data loss).
-                        // Mirrors the force-quit draftText branch below.
-                        if text.utf16.count > charLimit {
-                            isLetter = true
-                        }
-                    } else if text.isEmpty && !draftText.isEmpty {
-                        // Restore draft from a prior session that was killed
-                        // before the user could post. Only when we have no
-                        // initialText override (e.g. tapping "say something"
-                        // from the empty feed shouldn't pre-fill an old
-                        // anniversary reflection draft).
-                        text = draftText
-                        // The draft buffer persists text+tag but NOT isLetter. A
-                        // restored draft over the normal 500 cap could only have
-                        // been a letter — restore letter mode so the first
-                        // keystroke doesn't truncate the body to 500 (silent data
-                        // loss of up to 1500 chars).
-                        if text.utf16.count > charLimit {
-                            isLetter = true
-                        }
-                    }
-                    if selectedTag == nil, let tag = initialTag {
-                        selectedTag = tag
-                    } else if selectedTag == nil, !draftTag.isEmpty, initialText.isEmpty {
-                        // Only restore the saved tag when this isn't an
-                        // initialText-seeded compose (e.g. a prompt response) —
-                        // otherwise a stale tag from an abandoned draft would
-                        // silently attach to an unrelated new post. Mirrors the
-                        // text-restore guard above.
-                        selectedTag = draftTag
-                    }
+                    seedTextAndTag()
                     focusTask?.cancel()
                     focusTask = Task {
                         // Short delay so the focus assignment happens after the
@@ -951,6 +990,119 @@ struct ComposeView: View {
     }
 
     // MARK: - Functions
+
+    /// Writes one force-quit buffer STRING to the protected DraftStore.
+    ///
+    /// (2026-08-05) Encodes the same session rule the debounced draftText
+    /// write uses: a non-empty value must not be persisted once the session
+    /// is gone (an out-of-band sign-out runs DraftStore.clearAll(), and a
+    /// late write would resurrect user A's draft for user B on a shared
+    /// device), but a CLEAR must always land — that's the scrub itself.
+    private func persistBufferString(_ value: String, forKey key: String) {
+        guard value.isEmpty || Auth.auth().currentUser != nil else { return }
+        DraftStore.set(value, forKey: key)
+    }
+
+    /// Bool sibling of persistBufferString — `false` is the "clear" case
+    /// (DraftStore.setBool deletes the file), so it is never session-gated.
+    private func persistBufferBool(_ value: Bool, forKey key: String) {
+        guard !value || Auth.auth().currentUser != nil else { return }
+        DraftStore.setBool(value, forKey: key)
+    }
+
+    /// (2026-08-05) Same reasoning as sanitizedGifUrl below, for `tag`: the
+    /// drafts rule constrains the value, so a tag that isn't one of the app's
+    /// real tags would reject the whole save. Tags can only ever be chosen
+    /// from `sharedTags` (the picker is the only writer), so in practice this
+    /// is a no-op that exists purely so corrupt/legacy data degrades to "no
+    /// tag" instead of "this user can no longer save drafts".
+    private func sanitizedTag(_ raw: String?) -> String? {
+        guard let raw = raw, sharedTags.contains(where: { $0.name == raw }) else { return nil }
+        return raw
+    }
+
+    /// (2026-08-05) A gifUrl is only worth persisting if the drafts security
+    /// rule will accept it back. That rule host-locks gifUrl to giphy and
+    /// caps it at 500 chars (mirroring the post/reply rules — an arbitrary
+    /// URL rendered by every client is a deanonymizing IP beacon). Anything
+    /// else is dropped HERE rather than at write time, because a rejected
+    /// field doesn't fail alone: it fails the whole draft save, which would
+    /// turn one bad value into "saving is broken" for that user.
+    /// Returns nil for nil/empty so callers can simply omit the key.
+    private func sanitizedGifUrl(_ raw: String?) -> String? {
+        guard let raw = raw, !raw.isEmpty, raw.utf16.count <= 500,
+              let url = URL(string: raw),
+              url.scheme?.lowercased() == "https",
+              GifLoadGuard.isAllowedHost(url) else { return nil }
+        return raw
+    }
+
+    /// Seeds `text` / `selectedTag` / letter mode / GIF on appear from (in
+    /// priority order) the caller's initial values, then the force-quit
+    /// draft buffer.
+    ///
+    /// Lives outside `body` deliberately: inlined in the `.onAppear` closure
+    /// these nested conditions pushed the whole `body` expression past the
+    /// type-checker's time limit and the file stopped compiling.
+    func seedTextAndTag() {
+        if text.isEmpty && !initialText.isEmpty {
+            text = initialText
+            // (2026-08-05) Draft docs NOW persist isLetter, so an explicit
+            // flag from the caller is the primary signal. The >500 inference
+            // stays as the backward-compat fallback for draft docs written
+            // before the field existed: over the normal 500 cap it could only
+            // have been a letter. Either way, restoring letter mode is what
+            // stops the editor's onChange truncation from silently clipping a
+            // long letter back to 500 chars (data loss).
+            //
+            // OR, never assignment: initialIsLetter == false can mean "legacy
+            // doc, field absent", so it must not be able to override the
+            // length inference.
+            if initialIsLetter || text.utf16.count > charLimit {
+                isLetter = true
+            }
+        } else if text.isEmpty && !draftText.isEmpty && promptDate == nil {
+            // Restore a draft from a prior session that was killed before the
+            // user could post — only when we have no initialText override
+            // (tapping "say something" from the empty feed shouldn't pre-fill
+            // an old anniversary reflection draft).
+            //
+            // promptDate == nil (2026-08-05): the daily-prompt compose passes
+            // initialText: "" plus a promptDate, so the initialText.isEmpty
+            // test alone did NOT exclude it — an abandoned unrelated draft
+            // pre-filled the prompt response, and posting stamped promptDate
+            // onto that old text, mislabeling it as today's response.
+            text = draftText
+            // (2026-08-05) The buffer now persists isLetter alongside the
+            // text, so a letter killed at ANY length comes back as a letter —
+            // previously only a >500-char body could be recognised, i.e. the
+            // inference rescued long letters and nothing else. The length
+            // check stays for buffers written before today (no key on disk →
+            // draftIsLetter == false), where it is still the only signal.
+            if draftIsLetter || text.utf16.count > charLimit {
+                isLetter = true
+            }
+        }
+        if selectedTag == nil, let tag = initialTag {
+            selectedTag = tag
+        } else if selectedTag == nil, !draftTag.isEmpty, initialText.isEmpty, promptDate == nil {
+            // Same two guards as the text branch: an initialText-seeded compose
+            // keeps its own tag, and the prompt compose (initialText: "" +
+            // promptDate) must not inherit a stale tag from an abandoned draft.
+            selectedTag = draftTag
+        }
+        // GIF restore (2026-08-05) — same precedence and the SAME guards as
+        // the tag branch above, deliberately: the caller's value wins, and the
+        // force-quit buffer is only consulted for a plain compose (no
+        // initialText override, no daily-prompt session), so an abandoned
+        // draft's GIF can never attach itself to today's prompt response.
+        if selectedGifUrl == nil, let gif = sanitizedGifUrl(initialGifUrl) {
+            selectedGifUrl = gif
+        } else if selectedGifUrl == nil, initialText.isEmpty, promptDate == nil,
+                  let gif = sanitizedGifUrl(draftGifUrl) {
+            selectedGifUrl = gif
+        }
+    }
 
     func loadHandle() {
         userHandle = UserHandleCache.shared.handle
@@ -1040,33 +1192,88 @@ struct ComposeView: View {
 
     /// Save the current text to users/{uid}/drafts/ instead of publishing.
     /// Creates a new draft when editingDraftId is nil; otherwise updates
-    /// the existing one (text + updatedAt). No rate-limit / moderation
-    /// triggers fire — drafts never reach feed / explore / push paths.
+    /// the existing one. No rate-limit / moderation triggers fire — drafts
+    /// never reach feed / explore / push paths.
+    ///
+    /// (2026-08-05 draft-loss fix) A draft used to store `text` only, so
+    /// saving silently discarded the user's tag, letter mode and GIF — on the
+    /// one feature whose entire promise is "you won't lose what you wrote".
+    /// The drafts rule now accepts exactly:
+    ///     text (string, 1…2000), createdAt / updatedAt (server timestamp),
+    ///     tag (string), isLetter (bool), gifUrl (string, giphy-host-locked)
+    /// Write NOTHING outside that set and nothing of another type: the rule
+    /// is a keys().hasOnly() allow-list, so ONE stray field or wrong type
+    /// doesn't degrade the save, it rejects the entire write.
     func saveAsDraft() {
         guard canSave else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()
         let draftsRef = db.collection("users").document(uid).collection("drafts")
+        // Snapshot the optional fields once, on the main actor, before the
+        // async hop — and drop a GIF the rule wouldn't accept rather than
+        // letting it fail the whole save (see sanitizedGifUrl).
+        let tagToSave = sanitizedTag(selectedTag)
+        let gifToSave = sanitizedGifUrl(selectedGifUrl)
+        let letterToSave = isLetter
         Task { @MainActor in
             do {
                 if let id = editingDraftId {
-                    // Update existing draft. Rules permit text + updatedAt only.
-                    try await draftsRef.document(id).updateData([
+                    var update: [String: Any] = [
                         "text": trimmedText,
                         "updatedAt": FieldValue.serverTimestamp(),
-                    ])
+                        // Always written on update: a bool carries no
+                        // "absent means default" ambiguity, and turning
+                        // letter mode OFF while editing has to land as
+                        // `false` rather than leaving a stale `true` behind.
+                        "isLetter": letterToSave,
+                    ]
+                    // Cleared tag / removed GIF: DELETE the key instead of
+                    // writing "". The rule constrains the VALUE (a tag name,
+                    // a giphy URL), so an empty string is a plausible
+                    // rejection — which would turn "I removed my tag" into
+                    // "saving is broken". Deleting a key the doc never had is
+                    // a no-op and doesn't even register as an affected key.
+                    if let tag = tagToSave {
+                        update["tag"] = tag
+                    } else {
+                        update["tag"] = FieldValue.delete()
+                    }
+                    if let gif = gifToSave {
+                        update["gifUrl"] = gif
+                    } else {
+                        update["gifUrl"] = FieldValue.delete()
+                    }
+                    try await draftsRef.document(id).updateData(update)
                 } else {
                     // Create a new draft with the rule's required schema.
-                    try await draftsRef.addDocument(data: [
+                    // Optional fields are OMITTED when unset (never nil, never
+                    // ""), which is both what the rule expects and what makes
+                    // old text-only drafts and new ones decode identically.
+                    var create: [String: Any] = [
                         "text": trimmedText,
                         "createdAt": FieldValue.serverTimestamp(),
-                    ])
+                    ]
+                    if let tag = tagToSave { create["tag"] = tag }
+                    if letterToSave { create["isLetter"] = true }
+                    if let gif = gifToSave { create["gifUrl"] = gif }
+                    try await draftsRef.addDocument(data: create)
                 }
                 // Clear the in-progress draft cache so the next compose-open
                 // doesn't re-prompt with the same words. The persisted-to-
                 // Firestore version is the canonical store now.
-                draftText = ""
-                draftTag = ""
+                //
+                // (2026-08-05) Only for a NEW draft: while EDITING a saved
+                // draft this shared buffer belongs to a different, unfinished
+                // new post — wiping it here threw those words away, the exact
+                // class of loss this whole path exists to prevent.
+                if editingDraftId == nil {
+                    draftText = ""
+                    draftTag = ""
+                    draftIsLetter = false
+                    draftGifUrl = ""
+                    persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
+                    persistBufferString("", forKey: Self.composeDraftGifUrlKey)
+                }
                 Telemetry.draftSaved(isUpdate: editingDraftId != nil)
                 // First time saving a NEW draft, explain where it lives before
                 // closing; the alert's button dismisses. Every save after that
@@ -1217,8 +1424,21 @@ struct ComposeView: View {
                         )
                         // Post landed on the server — drop the draft so the
                         // next compose opens clean.
-                        self.draftText = ""
-                        self.draftTag = ""
+                        //
+                        // (2026-08-05) Clear the letter/GIF buffer fields too:
+                        // a leftover isLetter/gifUrl would have re-seeded the
+                        // NEXT compose with the published post's letter mode
+                        // and GIF. Guarded on editingDraftId for the same
+                        // reason as saveAsDraft — publishing an edited draft
+                        // must not delete an unrelated in-progress new post.
+                        if self.editingDraftId == nil {
+                            self.draftText = ""
+                            self.draftTag = ""
+                            self.draftIsLetter = false
+                            self.draftGifUrl = ""
+                            self.persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
+                            self.persistBufferString("", forKey: Self.composeDraftGifUrlKey)
+                        }
                         // If we were editing an existing saved draft and the
                         // user chose to publish (rather than update), delete
                         // the draft so they don't end up with a stranded

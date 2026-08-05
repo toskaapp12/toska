@@ -31,6 +31,19 @@ struct ReplyDetailView: View {
 
     @State private var children: [ThreadedReply] = []
     @State private var hasLoadedChildren = false
+    // Mirrors PostDetailView.replyLoadFailed (H2) — set when the children
+    // listener errors, cleared on the next good snapshot. Without it the error
+    // branch only print()ed, hasLoadedChildren stayed false, and the skeleton
+    // rows rendered FOREVER with no retry path. (2026-08-05)
+    @State private var childrenLoadFailed = false
+    // True once the focal reply has been seen live in a snapshot. Dismissal on
+    // focal deletion/demotion is TRANSITION-based (seen live → absent), never
+    // absence-based: the live-only query legitimately omits the focal when it's
+    // the viewer's own still-pending_validation reply (dismissing on the first
+    // snapshot would eject the author from the reply they just sent) or when
+    // the focal falls outside the 500-doc query bound on a huge thread.
+    // (2026-08-05)
+    @State private var focalSeenLive = false
     // Bumped at the start of every snapshot-processing Task; a Task whose
     // captured value is stale after its stamp await bails instead of writing a
     // list that predates a newer snapshot (which would drop a just-arrived reply).
@@ -216,7 +229,21 @@ struct ReplyDetailView: View {
                         // Direct children only. Each is a SwipeToReplyRow whose
                         // tap pushes its own ReplyDetailView, so grandchildren
                         // are reachable by drilling — one level per push.
-                        if children.isEmpty && !hasLoadedChildren {
+                        // Shared ToskaErrorBanner (ToskaDesign) — same component +
+                        // copy as PostDetailView's reply-thread failure. Retry
+                        // re-attaches the listener. Skeleton/empty branches below
+                        // exclude the failed state so a failure can't render as
+                        // eternal skeletons or a misleading "be the first to
+                        // reply"; already-loaded children keep showing (stale)
+                        // under the banner. (2026-08-05)
+                        if childrenLoadFailed {
+                            ToskaErrorBanner("couldn't load replies — check your connection") {
+                                childrenLoadFailed = false
+                                attachListener()
+                            }
+                            .padding(.top, 8)
+                        }
+                        if children.isEmpty && !hasLoadedChildren && !childrenLoadFailed {
                             LazyVStack(spacing: 0) {
                                 ForEach(0..<3, id: \.self) { _ in
                                     SkeletonReplyRow()
@@ -224,7 +251,7 @@ struct ReplyDetailView: View {
                                         .frame(height: 0.5).padding(.leading, 16)
                                 }
                             }
-                        } else if children.isEmpty {
+                        } else if children.isEmpty && !childrenLoadFailed {
                             VStack(spacing: 8) {
                                 Text("\"some words just need\na witness.\"")
                                     .font(ToskaFont.serifItalic(16))
@@ -381,6 +408,25 @@ struct ReplyDetailView: View {
                     .font(ToskaFont.sans(13))
                     .focused($composerFocused)
                     .lineLimit(1...4)
+                    .onChange(of: composerText) { _, newValue in
+                        // Truncate on UTF-16 length to match the reply rule's
+                        // size() <= 500 check — single pass, emoji-safe (mirrors
+                        // PostDetailView's reply bar). This composer had NO cap
+                        // (2026-08-05): a >500-char reply was optimistically
+                        // inserted, rule-REJECTED, and every retry failed with
+                        // the generic "couldn't reply" and no explanation.
+                        if newValue.utf16.count > 500 {
+                            var utf16Count = 0
+                            var endIdx = newValue.startIndex
+                            for ch in newValue {
+                                let chUtf16 = String(ch).utf16.count
+                                if utf16Count + chUtf16 > 500 { break }
+                                utf16Count += chUtf16
+                                endIdx = newValue.index(after: endIdx)
+                            }
+                            composerText = String(newValue[..<endIdx])
+                        }
+                    }
                     .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(Color(hex: "f0f0ec"))
                     .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -401,7 +447,11 @@ struct ReplyDetailView: View {
     }
 
     var canPost: Bool {
-        !composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // >= 2 trimmed chars — parity with PostDetailView's replyIsSendable /
+        // sendReply guard (M4 2026-07-22). This composer accepted 1-char sends
+        // the main reply bar rejects; the two must agree or the same reply is
+        // sendable from one surface and not the other. (2026-08-05)
+        composerText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
     }
 
     // Snapshot listener on the post's replies subcollection. We filter to:
@@ -431,12 +481,24 @@ struct ReplyDetailView: View {
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
                         print("⚠️ ReplyDetailView listener error: \(error)")
+                        // Surface + retry (mirrors PostDetailView H2): without
+                        // this flag hasLoadedChildren stayed false and the UI
+                        // showed skeletons indefinitely with no way out.
+                        // (2026-08-05)
+                        childrenLoadFailed = true
                         return
                     }
                     guard let docs = snapshot?.documents else { return }
+                    // Good snapshot — clear any prior failure so the banner
+                    // drops once the listener recovers (parity with
+                    // PostDetailView's live-listener success branch).
+                    childrenLoadFailed = false
                     attachGeneration += 1
                     let gen = attachGeneration
                     var newChildren: [ThreadedReply] = []
+                    // Whether THIS snapshot contains the focal reply as a live
+                    // doc — feeds the transition-based deletion dismiss below.
+                    var sawFocal = false
                     for doc in docs {
                         let data = doc.data()
                         let authorId = data["authorId"] as? String ?? ""
@@ -459,6 +521,7 @@ struct ReplyDetailView: View {
                         )
                         if doc.documentID == reply.id {
                             // Refresh focal reply state from the live snapshot.
+                            sawFocal = true
                             replyText = item.text
                             replyHandle = item.handle
                             likeCount = item.likes
@@ -530,6 +593,24 @@ struct ReplyDetailView: View {
                     // complete current live set — bail so we don't overwrite it
                     // with our older (possibly reply-missing) list.
                     guard gen == attachGeneration else { return }
+                    // Focal-deletion watch (2026-08-05), mirroring PostDetailView's
+                    // dismiss-when-post-doc-vanishes: once the focal reply has been
+                    // SEEN live and then disappears from a snapshot, it was deleted
+                    // or demoted out of "live" — without this the view kept
+                    // rendering the stale text with a WORKING composer/like/save
+                    // row, writing child replies under a nonexistent parent. The
+                    // seen→gone transition (not bare absence) is what makes this
+                    // safe on first load — see focalSeenLive's decl for the two
+                    // legitimate-absence cases. Placed after the generation guard
+                    // so only the newest snapshot can decide to dismiss.
+                    if sawFocal {
+                        focalSeenLive = true
+                    } else if focalSeenLive {
+                        replyListener?.remove()
+                        replyListener = nil
+                        dismiss()
+                        return
+                    }
                     children = (newChildren + stillPending).sorted { $0.createdAt < $1.createdAt }
                     hasLoadedChildren = true
                 }
@@ -540,7 +621,9 @@ struct ReplyDetailView: View {
 
     private func sendReply() {
         let trimmed = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !postId.isEmpty else { return }
+        // >= 2 chars mirrors canPost (and PostDetailView.sendReply) so the
+        // guard can never silently swallow a tap the button allowed. (2026-08-05)
+        guard trimmed.count >= 2, !postId.isEmpty else { return }
         guard Auth.auth().currentUser?.uid != nil else { return }
         guard !isPosting else { return }
         // T-8 (2026-06-11): restricted users can't reply (the reply-create rule
@@ -551,8 +634,21 @@ struct ReplyDetailView: View {
             postError = "your account is restricted and can't reply right now."
             return
         }
-        // Rate-limit (5s) — parity with PostDetailView.sendReply.
-        if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
+        // Rate-limit (5s) — parity with PostDetailView.sendReply. Surfaced, not
+        // silent (2026-08-05): the send button stays lit during the cooldown, so
+        // a bare `return` read as "my reply was eaten" (same reason ComposeView
+        // shows its "one breath between posts" banner). Auto-clears after 4s
+        // like ComposeView's; the equality check keeps the delayed clear from
+        // wiping a DIFFERENT error that replaced this one in the meantime.
+        if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 {
+            let msg = "one breath between replies. you can send again in a moment."
+            postError = msg
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                if postError == msg { postError = nil }
+            }
+            return
+        }
         // Content-violation gate (profanity/slurs/harassment/threats/spam/links).
         // This was MISSING on the drill-down composer, so those bypassed the
         // client guard here even though the main reply composer (PostDetailView)

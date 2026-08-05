@@ -1754,6 +1754,17 @@ struct ReportSheet: View {
     private func submitReport() {
         guard let reason = selectedReason else { return }
         guard let reporterUid = Auth.auth().currentUser?.uid else { return }
+        // Offline guard (2026-08-05): addDocument's completion never fires
+        // offline, so isSubmitting stuck true forever — a permanent spinner on
+        // a report the user cares about — while the write sat durably queued
+        // (a retry after reconnect then double-filed it). Fail fast; the
+        // submitFailed alert copy already says "check your connection", and
+        // the selected reason is preserved for the retry. Same pattern as
+        // PostDetailView.postReplyNow / saveEdit.
+        guard NetworkMonitor.shared.isConnected else {
+            submitFailed = true
+            return
+        }
         isSubmitting = true
 
         var payload: [String: Any] = [

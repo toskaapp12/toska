@@ -72,6 +72,16 @@ final class WalkthroughUITests: XCTestCase {
         return nil
     }
 
+    /// Scrolls the current list back to the top. Needed before searching for a
+    /// just-created row: it sorts newest-first, so it's at the top, while
+    /// findRow's fallback search only ever swipes DOWN the list.
+    func scrollToTop(_ times: Int = 4) {
+        for _ in 0..<times {
+            app.swipeDown()
+            usleep(400_000)
+        }
+    }
+
     /// A row at the bottom viewport edge sits under the floating glass bar —
     /// taps there get eaten (or open compose). A row materialized ABOVE the
     /// viewport coordinate-taps into the status bar. Drag until the row sits
@@ -620,6 +630,11 @@ final class WalkthroughUITests: XCTestCase {
         // the long post's DETAIL instead — findRow scroll-searches the row into
         // the safe band — and share from the detail header, which is always
         // on-screen.
+        // Newest-first, so the post just made is at the very top — but the
+        // profile can open already scrolled (and every prior run of this test
+        // left another identical copy further down the list). Go to the top so
+        // the row findRow lands on is the fresh one, on-screen and hittable.
+        scrollToTop()
         let row = findRow(matching: NSPredicate(format: "label CONTAINS 'refrigerator hum'"))
         XCTAssertNotNil(row, "Long post row not found on profile")
         guard let row else { return }

@@ -987,7 +987,14 @@ class PostInteractionManager {
                 "likeCount": 0,
                 "repostCount": 0,
                 "replyCount": 0,
-                "isShareable": true,
+                // MUST be the computed consent value, not a literal (2026-08-05):
+                // the reply-repost create rule pins isShareable == true ONLY when
+                // the reply author's user doc exists AND allowSharing == true
+                // (firestore.rules ~1058-1072). Hardcoding true here meant every
+                // repost of a non-consenting (or deleted-account) author's reply
+                // was rule-REJECTED — optimistic green, then silent rollback —
+                // making the feature deterministically dead for that class.
+                "isShareable": replyAuthorAllowsSharing,
                 "isRepost": true,
                 "originalPostId": postId,
                 "originalReplyId": replyId,

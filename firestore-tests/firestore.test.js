@@ -2858,3 +2858,755 @@ describe("blocked subcollection: unblock works, S-2 create pin holds", () => {
         .set({ blockedAt: new Date(), blockedUid: "victim" }));
   });
 });
+
+// ============================================================
+// 2026-08-05 rules round — five regressions pinned below:
+//   (1) postVisibleToCaller orphan-parent leg narrowed to own-doc/admin
+//   (2) reply-likes null-read (missing reply doc) no longer error-denies
+//   (3) isShareable is type-locked to bool on post create
+//   (4) parentPostText/parentPostHandle validated on reply create
+//   (5) follow docs pin createdAt to request.time (create AND update)
+// ============================================================
+
+describe("orphan-parent leg narrowed (2026-08-05): deleted post's subcollections", () => {
+  // A reply survives its parent post's deletion (cascade cleanup pending).
+  // Replies snapshot parentPostText, so the old orphan leg — which returned
+  // visible to EVERY authed caller when the parent was missing — re-leaked a
+  // deleted post's text + reply authorIds to anyone holding the post id.
+  // Now only the reply's own author (or an admin) can read an orphaned reply.
+  beforeEach(async () => {
+    await setUserDoc("bob");
+    await setUserDoc("carol");
+    // NOTE: posts/gone_parent is never created — only its subcollection docs.
+    await setReply("gone_parent", "orph1", "carol"); // carries parentPostText
+    await setLike("gone_parent", "dave");
+  });
+
+  it("DENIED: a third party GETs a reply under a deleted post (parentPostText leak)", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collection("posts").doc("gone_parent")
+        .collection("replies").doc("orph1").get()
+    );
+  });
+
+  it("DENIED: a third party LISTs a deleted post's replies (the thread query shape)", async () => {
+    // This is the exact query a leaking client would run: the thread's
+    // moderationStatus == 'live' constrained list. Under the old orphan leg
+    // it succeeded and recovered the deleted post's snapshot text.
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collection("posts").doc("gone_parent").collection("replies")
+        .where("moderationStatus", "==", "live").get()
+    );
+  });
+
+  it("the reply's OWN author still reads their orphaned reply (blanked-replies-tab regression)", async () => {
+    // The orphan leg exists so one deleted parent doesn't blank the author's
+    // whole replies tab — narrowing it must NOT remove the own-doc path.
+    const carol = env.authenticatedContext("carol").firestore();
+    await assertSucceeds(
+      carol.collection("posts").doc("gone_parent")
+        .collection("replies").doc("orph1").get()
+    );
+  });
+
+  it("the reply author's own-authorId query under the deleted parent still works", async () => {
+    const carol = env.authenticatedContext("carol").firestore();
+    await assertSucceeds(
+      carol.collection("posts").doc("gone_parent").collection("replies")
+        .where("authorId", "==", "carol").get()
+    );
+  });
+
+  it("an admin can still read an orphaned reply (cleanup visibility)", async () => {
+    await setAdmin("mod");
+    const mod = env.authenticatedContext("mod").firestore();
+    await assertSucceeds(
+      mod.collection("posts").doc("gone_parent")
+        .collection("replies").doc("orph1").get()
+    );
+  });
+
+  it("DENIED: a third party reads someone's like doc under a deleted post (liker-uid harvest)", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collection("posts").doc("gone_parent")
+        .collection("likes").doc("dave").get()
+    );
+  });
+
+  it("the liker still reads their OWN uid-keyed like doc under a deleted post", async () => {
+    // Dedup/unlike transaction pre-reads its own like doc; a like doc is
+    // keyed by the liker's uid and carries no authorId.
+    const dave = env.authenticatedContext("dave").firestore();
+    await assertSucceeds(
+      dave.collection("posts").doc("gone_parent")
+        .collection("likes").doc("dave").get()
+    );
+  });
+
+  it("a caller's own MISSING like doc under a deleted post reads clean (null, not deny)", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collection("posts").doc("gone_parent")
+        .collection("likes").doc("bob").get()
+    );
+  });
+});
+
+describe("reply-likes null-read (2026-08-05): missing reply must not error-deny own doc", () => {
+  // The reply-like read rule dereferenced a possibly-missing reply's .data —
+  // reading likes/{myUid} under a not-yet-created (or deleted) reply ERRORED
+  // into PERMISSION_DENIED, the same repost null-read class patched on the
+  // posts/replies read rules. exists() now splits the legs.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p_rl", "alice", { moderationStatus: "live" });
+    await setReply("p_rl", "r_live", "carol");
+  });
+
+  it("caller reads their OWN like doc under a MISSING reply — allowed (dedup pre-read)", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collection("posts").doc("p_rl")
+        .collection("replies").doc("never_created")
+        .collection("likes").doc("bob").get()
+    );
+  });
+
+  it("caller reads their own missing like doc under an EXISTING live reply — allowed", async () => {
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      bob.collection("posts").doc("p_rl")
+        .collection("replies").doc("r_live")
+        .collection("likes").doc("bob").get()
+    );
+  });
+
+  it("DENIED: third party reads someone ELSE's like doc under a missing reply", async () => {
+    // A deleted reply's surviving like docs (cleanup pending) must not let
+    // anyone enumerate the liker uid list — own-doc/admin only.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p_rl")
+        .collection("replies").doc("deleted_reply")
+        .collection("likes").doc("dave")
+        .set({ createdAt: new Date() });
+    });
+    const bob = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      bob.collection("posts").doc("p_rl")
+        .collection("replies").doc("deleted_reply")
+        .collection("likes").doc("dave").get()
+    );
+  });
+
+  it("the liker still reads their OWN surviving like doc under a deleted reply (unlike path)", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("posts").doc("p_rl")
+        .collection("replies").doc("deleted_reply")
+        .collection("likes").doc("dave")
+        .set({ createdAt: new Date() });
+    });
+    const dave = env.authenticatedContext("dave").firestore();
+    await assertSucceeds(
+      dave.collection("posts").doc("p_rl")
+        .collection("replies").doc("deleted_reply")
+        .collection("likes").doc("dave").get()
+    );
+  });
+});
+
+describe("post create: isShareable is type-locked to bool (2026-08-05)", () => {
+  // The reply-repost consent pin keys on `.get('isShareable', true) != true`
+  // — a truthy NON-bool (1, "true") makes `!= true` TRUE, so the escape leg
+  // fires and the consent check is skipped while every share surface treats
+  // the field truthily. Same F2 class as the isWhisper/isMidnightPost locks.
+  beforeEach(async () => { await setUserDoc("alice"); });
+
+  function postWithShareable(isShareable) {
+    return env.authenticatedContext("alice").firestore()
+      .collection("posts").doc("p_sh").set({
+        authorId: "alice", authorHandle: "handle_alice", text: "hello world",
+        createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+        isShareable,
+      });
+  }
+
+  it("allows isShareable: true", async () => {
+    await assertSucceeds(postWithShareable(true));
+  });
+  it("allows isShareable: false", async () => {
+    await assertSucceeds(postWithShareable(false));
+  });
+  it("DENIES a truthy non-bool isShareable: 1 (type-confusion)", async () => {
+    await assertFails(postWithShareable(1));
+  });
+  it('DENIES a string isShareable: "true"', async () => {
+    await assertFails(postWithShareable("true"));
+  });
+});
+
+describe("reply create: parentPostText/parentPostHandle validation (2026-08-05)", () => {
+  // The parent-snapshot fields were the only unvalidated strings on a reply:
+  // a tampered client could attach a ~1MB parentPostText that every thread
+  // reader downloads, or a fabricated parentPostHandle byline. Caps:
+  // parentPostText <= 2000 (posts cap at 2000 and the snapshot is verbatim),
+  // parentPostHandle <= 40.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setPost("p_ps", "alice");
+  });
+
+  function replyWith(extra) {
+    return env.authenticatedContext("bob").firestore()
+      .collection("posts").doc("p_ps").collection("replies").doc("r_ps").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "responding",
+        createdAt: serverTimestamp(),
+        likeCount: 0,
+        ...extra,
+      });
+  }
+
+  it("allows a reply snapshotting a LONG parent post (> 500 chars — posts allow 2000)", async () => {
+    // Guards against anyone "fixing" the cap down to the reply text cap
+    // (500), which would break replying to any post longer than 500 chars.
+    await assertSucceeds(replyWith({
+      parentPostText: "x".repeat(1500),
+      parentPostHandle: "handle_alice",
+    }));
+  });
+
+  it("DENIES parentPostText over 2000 chars (bandwidth/storage abuse)", async () => {
+    await assertFails(replyWith({ parentPostText: "x".repeat(2001) }));
+  });
+
+  it("DENIES a non-string parentPostText", async () => {
+    await assertFails(replyWith({ parentPostText: 12345 }));
+  });
+
+  it("DENIES parentPostHandle over 40 chars", async () => {
+    await assertFails(replyWith({ parentPostHandle: "h".repeat(41) }));
+  });
+
+  it("DENIES a non-string parentPostHandle", async () => {
+    await assertFails(replyWith({ parentPostHandle: 99 }));
+  });
+});
+
+describe("follow docs: createdAt pinned to request.time (2026-08-05)", () => {
+  // Follows were the last create rules without the createdAt pin — a
+  // tampered client could backdate its position in follow-list orderings,
+  // and (worse, /followers) in someone ELSE's tree. The update rule also
+  // pins it so create-honestly-then-rewrite isn't a two-step bypass.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+  });
+
+  it("DENIED: /following create with a client-chosen literal createdAt", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").collection("following").doc("bob")
+        .set({ handle: "handle_bob", createdAt: new Date("2025-01-01") })
+    );
+  });
+
+  it("allows /following create with serverTimestamp (request.time)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").collection("following").doc("bob")
+        .set({ handle: "handle_bob", createdAt: serverTimestamp() })
+    );
+  });
+
+  it("DENIED: /followers create with a client-chosen literal createdAt (victim-tree backdate)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("bob").collection("followers").doc("alice")
+        .set({ handle: "handle_alice", createdAt: new Date("2025-01-01") })
+    );
+  });
+
+  it("allows /followers create with serverTimestamp", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("bob").collection("followers").doc("alice")
+        .set({ handle: "handle_alice", createdAt: serverTimestamp() })
+    );
+  });
+
+  it("DENIED: a follower cannot REWRITE createdAt on their doc in the victim's tree", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("bob").collection("followers").doc("alice")
+        .set({ handle: "handle_alice", createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("bob").collection("followers").doc("alice")
+        .update({ createdAt: new Date("2020-01-01") })
+    );
+  });
+
+  it("allows the toggleFollow re-write (full setData with serverTimestamp)", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("bob").collection("followers").doc("alice")
+        .set({ handle: "handle_alice", createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("bob").collection("followers").doc("alice")
+        .set({ handle: "handle_alice", createdAt: serverTimestamp() })
+    );
+  });
+
+  it("allows a handle-only merge update that leaves createdAt untouched (unchanged leg)", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("bob").collection("followers").doc("alice")
+        .set({ handle: "handle_alice", createdAt: new Date() });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("bob").collection("followers").doc("alice")
+        .update({ handle: "handle_alice" })
+    );
+  });
+});
+
+// =====================================================================
+// Reserved-handle denylist (2026-08-05)
+//
+// validHandle() only constrained the CHARSET and nothing forces a client
+// to use the app's generator, so a tampered client could register
+// `toska_support` / `moderator` / `admin` — and every byline pin in the
+// ruleset would then certify that impersonating handle as canonical.
+// reservedHandle() blocks the obvious platform-impersonation space at
+// BOTH create sites (user doc + handles registry row).
+// =====================================================================
+describe("reserved-handle denylist (2026-08-05)", () => {
+  function signupBatchFor(db, uid, handle) {
+    const batch = db.batch();
+    batch.set(db.collection("users").doc(uid), {
+      handle,
+      followerCount: 0,
+      followingCount: 0,
+      totalLikes: 0,
+      createdAt: new Date(),
+    });
+    batch.set(db.collection("handles").doc(handle.toLowerCase()), { uid });
+    return batch;
+  }
+
+  // Each of these is a handle a victim could plausibly read as official.
+  // Substring, prefix and case variants are all covered by one regex, so
+  // the list doubles as documentation of what "reserved" means here.
+  const RESERVED = [
+    "toska",             // bare platform name
+    "toska_support",     // the canonical phish byline
+    "ToskaHelp",         // case-insensitivity
+    "admin",
+    "x_admin_x",         // embedded, not just prefixed
+    "moderator",
+    "mod_team",
+    "support",
+    "realsupport",
+    "staff",
+    "official_toska",
+    "help",
+    "security",
+  ];
+
+  RESERVED.forEach((handle) => {
+    it(`DENIED: user-doc create claiming reserved handle "${handle}"`, async () => {
+      const m = env.authenticatedContext("mallory").firestore();
+      await assertFails(signupBatchFor(m, "mallory", handle).commit());
+    });
+  });
+
+  it("DENIED: registry row alone for a reserved id (second create site)", async () => {
+    // Isolates the handles/{handleLower} leg from the users-create leg: the
+    // user doc is planted with rules DISABLED (as an Admin-SDK/legacy row
+    // would be), so getAfter() binds cleanly and the ONLY thing that can
+    // reject the registry create is reservedHandle(handleLower).
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("mallory").set({
+        handle: "toska_support",
+        followerCount: 0, followingCount: 0, totalLikes: 0,
+      });
+    });
+    const m = env.authenticatedContext("mallory").firestore();
+    await assertFails(
+      m.collection("handles").doc("toska_support").set({ uid: "mallory" })
+    );
+  });
+
+  it("allows a registry row alone for a non-reserved id (control)", async () => {
+    // Same shape as the test above; proves the denial there is the
+    // reserved-name check and not the getAfter() binding.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("users").doc("alice").set({
+        handle: "quiet_ghost_42",
+        followerCount: 0, followingCount: 0, totalLikes: 0,
+      });
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("handles").doc("quiet_ghost_42").set({ uid: "alice" })
+    );
+  });
+
+  // The generator's real output must still sign up. These are the only two
+  // shapes either client can emit: {adjective}_{noun}_{1..999} from the
+  // fixed word lists (ContentModeration.swift) and the anonymous_{8 hex}
+  // fallback (iOS + webapp/js/app.js).
+  ["quiet_ghost_42", "sleepless_ember_7", "anonymous_1a2b3c4d",
+   "almost_shore_999"].forEach((handle) => {
+    it(`allows generator-shaped handle "${handle}"`, async () => {
+      const a = env.authenticatedContext("alice").firestore();
+      await assertSucceeds(signupBatchFor(a, "alice", handle).commit());
+    });
+  });
+
+  it("existing accounts are unaffected — the check is create-only", async () => {
+    // A pre-existing doc carrying a reserved handle (planted before the
+    // rule, or by the Admin SDK) can still be updated normally: handle is
+    // immutable so it never re-enters a create path, and reservedHandle()
+    // is not consulted on update.
+    await setUserDoc("alice", { handle: "toska_support" });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").update({ allowSharing: false })
+    );
+  });
+});
+
+// =====================================================================
+// users/{uid} update: allow-list schema lock (2026-08-05)
+//
+// This doc was the only writable collection still guarded by a DENY-list,
+// so a tampered client could plant any unlisted field (a large blob, or
+// free text that never passes moderation) on a document every
+// authenticated user and the admin dashboard reads. The lock is on
+// diff().affectedKeys() — NOT keys() — so pre-migration docs that still
+// carry a legacy field they aren't touching keep working.
+// =====================================================================
+describe("user doc update: allow-list schema lock (2026-08-05)", () => {
+  beforeEach(async () => {
+    await setUserDoc("alice");
+  });
+
+  it("DENIED: planting an unknown free-text field (bio)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({ bio: "call me on signal" })
+    );
+  });
+
+  it("DENIED: planting an unknown large blob field", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({ blob: "x".repeat(20000) })
+    );
+  });
+
+  it("DENIED: an unknown field smuggled alongside a legitimate one", async () => {
+    // The realistic shape: the attacker keeps the write looking normal.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({
+        allowSharing: false,
+        trustedByAdmin: true,
+      })
+    );
+  });
+
+  it("allows allowSharing", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").update({ allowSharing: false })
+    );
+  });
+
+  it("allows showFollowerCount", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").update({ showFollowerCount: true })
+    );
+  });
+
+  it("allows hasCompletedOnboarding (OnboardingView.finishOnboarding)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice")
+        .set({ hasCompletedOnboarding: true }, { merge: true })
+    );
+  });
+
+  it("allows acceptedPolicyVersion + acceptedPolicyAt (recordPolicyAcceptance / web re-accept gate)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").set({
+        acceptedPolicyVersion: 3,
+        acceptedPolicyAt: serverTimestamp(),
+      }, { merge: true })
+    );
+  });
+
+  it("allows the real SettingsView.saveSettings write (toggles + legacy scrub)", async () => {
+    // The exact batch SettingsView writes: two public-projection toggles
+    // plus FieldValue.delete() on every legacy main-doc PII copy. Deletes
+    // land in affectedKeys, which is why those field names have to be in
+    // the allow-list even though they can never be added or modified.
+    await setUserDoc("alice", {
+      notifyLikes: true, notifyReplies: true, notifyFollows: true,
+      notifyReposts: true, notifySaves: true, notifyMessages: true,
+      notifyMilestones: true, pushEnabled: true, gentleCheckIn: true,
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").update({
+        allowSharing: false,
+        showFollowerCount: true,
+        notifyLikes: deleteField(),
+        notifyReplies: deleteField(),
+        notifyFollows: deleteField(),
+        notifyReposts: deleteField(),
+        notifySaves: deleteField(),
+        notifyMessages: deleteField(),
+        notifyMilestones: deleteField(),
+        pushEnabled: deleteField(),
+        gentleCheckIn: deleteField(),
+      })
+    );
+  });
+
+  it("allows an update on a pre-migration doc that still carries legacy PII it isn't touching", async () => {
+    // The regression a keys()-based allow-list would have caused: the doc
+    // still has email/selectedMood from before the private/data migration,
+    // and the user just flips a toggle. affectedKeys() sees only the
+    // toggle, so this passes.
+    await setUserDoc("alice", {
+      email: "alice@example.com",
+      selectedMood: "still in it",
+    });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      a.collection("users").doc("alice").update({ allowSharing: false })
+    );
+  });
+
+  it("DENIED: non-bool allowSharing (share-consent reads treat it truthily)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({ allowSharing: 1 })
+    );
+  });
+
+  it("DENIED: oversized acceptedPolicyVersion (allow-listed name, wrong type)", async () => {
+    // The allow-list alone would let a 900KB string ride in under a
+    // legitimate field name; the type lock is what closes it.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice")
+        .update({ acceptedPolicyVersion: "x".repeat(20000) })
+    );
+  });
+
+  it("still denies the server-owned fields the deny-list covers", async () => {
+    // The deny-list is kept alongside the allow-list; these must not
+    // become allowed just because the shape check now exists.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").update({ followerCount: 999999 })
+    );
+    await assertFails(
+      a.collection("users").doc("alice").update({ restricted: false })
+    );
+  });
+});
+
+// =====================================================================
+// drafts: tag / letter-mode / gif now persist (2026-08-05)
+//
+// The lock was ['text','createdAt','updatedAt'] on create and
+// ['text','updatedAt'] on update, so saving a draft silently dropped the
+// chosen tag and the letter-mode flag — user data loss with no error.
+// The widened shape accepts SOME, ALL or NONE of tag/isLetter/gifUrl so
+// legacy text-only drafts and not-yet-updated clients keep working.
+// =====================================================================
+describe("drafts: tag / isLetter / gifUrl (2026-08-05)", () => {
+  const GIF_OK = "https://media1.giphy.com/media/abc123/giphy.gif";
+
+  function draftRef(db) {
+    return db.collection("users").doc("alice").collection("drafts").doc("d1");
+  }
+
+  async function seedDraft(fields) {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore()
+        .collection("users").doc("alice").collection("drafts").doc("d1")
+        .set({ text: "first draft", createdAt: new Date(), ...fields });
+    });
+  }
+
+  it("allows create with text + tag + isLetter + gifUrl", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      draftRef(a).set({
+        text: "the thing i can't send",
+        tag: "unsent",
+        isLetter: true,
+        gifUrl: GIF_OK,
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows a legacy text-only create (backward compatible)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      draftRef(a).set({ text: "just words", createdAt: serverTimestamp() })
+    );
+  });
+
+  it("allows a partial set — tag only, no isLetter/gifUrl", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      draftRef(a).set({
+        text: "just words", tag: "longing", createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: create with a non-Giphy gifUrl (viewer-IP beacon)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).set({
+        text: "x",
+        gifUrl: "https://tracker.example.com/beacon.gif",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: create with a gifUrl that only LOOKS Giphy (host-suffix trick)", async () => {
+    // The regex is anchored and requires the path to start right after
+    // giphy.com, so `giphy.com.evil.tld` doesn't slip through.
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).set({
+        text: "x",
+        gifUrl: "https://media.giphy.com.evil.tld/beacon.gif",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: create with a non-bool isLetter (F2 truthiness class)", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).set({
+        text: "x", isLetter: "yes", createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: create with an oversized tag", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).set({
+        text: "x", tag: "y".repeat(41), createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: create with an unknown field alongside the new ones", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).set({
+        text: "x", tag: "numb", isLetter: true, gifUrl: GIF_OK,
+        flagged: false, createdAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows update adding tag + isLetter + gifUrl to a legacy draft", async () => {
+    await seedDraft({});
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      draftRef(a).update({
+        text: "revised",
+        tag: "regret",
+        isLetter: true,
+        gifUrl: GIF_OK,
+        updatedAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("allows a legacy text-only update (backward compatible)", async () => {
+    await seedDraft({});
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      draftRef(a).update({ text: "revised", updatedAt: serverTimestamp() })
+    );
+  });
+
+  it("allows clearing tag / gifUrl on update", async () => {
+    await seedDraft({ tag: "numb", gifUrl: GIF_OK });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(
+      draftRef(a).update({
+        tag: deleteField(),
+        gifUrl: deleteField(),
+        updatedAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: update swapping in a non-Giphy gifUrl (no two-step bypass)", async () => {
+    // Create-time validation alone would be defeated by save-clean-then-edit;
+    // create and update share validDraftExtras() for exactly this reason.
+    await seedDraft({ gifUrl: GIF_OK });
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).update({
+        gifUrl: "https://tracker.example.com/beacon.gif",
+        updatedAt: serverTimestamp(),
+      })
+    );
+  });
+
+  it("DENIED: update setting a non-bool isLetter", async () => {
+    await seedDraft({});
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).update({ isLetter: 1, updatedAt: serverTimestamp() })
+    );
+  });
+
+  it("DENIED: update setting an oversized tag", async () => {
+    await seedDraft({});
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).update({ tag: "y".repeat(41), updatedAt: serverTimestamp() })
+    );
+  });
+
+  it("DENIED: update planting an unknown field", async () => {
+    await seedDraft({});
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      draftRef(a).update({ injected: "x", updatedAt: serverTimestamp() })
+    );
+  });
+});

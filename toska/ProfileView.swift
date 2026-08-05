@@ -1473,6 +1473,11 @@ struct FollowListView: View {
     // inline auto-dismissing error toast.
     @State private var pendingUnfollow: (id: String, handle: String)? = nil
     @State private var unfollowError: String? = nil
+    // (2026-08-05) a failed follow-graph query used to fall through to the
+    // "no followers yet" empty state — misleading (the user HAS followers,
+    // the read just failed) with no way to retry short of reopening. Drives
+    // the shared ToskaErrorBanner below instead.
+    @State private var loadFailed = false
 
     private var isFollowingTab: Bool { title == "following" }
 
@@ -1487,6 +1492,15 @@ struct FollowListView: View {
                 ToskaHeader(title: title, onBack: { dismiss() })
                     if isLoading {
                         Spacer(); ProgressView().tint(Color.toskaBlue); Spacer()
+                    } else if loadFailed {
+                        // Failure state (2026-08-05) — see loadFailed above.
+                        ToskaErrorBanner("couldn't load your \(title) — check your connection") {
+                            loadFailed = false
+                            isLoading = true
+                            loadUsers()
+                        }
+                        .padding(.top, 8)
+                        Spacer()
                     } else if users.isEmpty {
                         Spacer()
                         VStack(spacing: 8) {
@@ -1634,7 +1648,13 @@ struct FollowListView: View {
             
             guard let snapshot = try? await db.collection("users").document(uid).collection(collection)
                 .limit(to: 50)
-                .getDocumentsAsync() else { isLoading = false; return }
+                .getDocumentsAsync() else {
+                // (2026-08-05) was a silent bail that rendered "no \(title)
+                // yet" on a network failure; surface the retry banner instead.
+                loadFailed = true
+                isLoading = false
+                return
+            }
             let documents = snapshot.documents.filter { !blockedUserIds.contains($0.documentID) }
             if documents.isEmpty { isLoading = false; return }
             var fetched: [(id: String, handle: String)] = []

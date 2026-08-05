@@ -61,6 +61,7 @@ async function deleteCollection(collectionRef, maxBatches = 100) {
   const batchSize = 499;
   let batches = 0;
   let totalDeleted = 0;
+  let commitFailed = false;
   while (batches < maxBatches) {
     const snapshot = await collectionRef.limit(batchSize).get();
     if (snapshot.empty) break;
@@ -69,15 +70,26 @@ async function deleteCollection(collectionRef, maxBatches = 100) {
     try {
       await batch.commit();
     } catch (err) {
+      // A failed commit means this page's docs still exist — work REMAINS.
+      // Reporting capHit=false here (the pre-2026-08-05 shape) made
+      // runWithResume / the sub-cleanup loop treat the pass as complete and
+      // queue no continuation, silently stranding everything past this page
+      // forever. Surface it as capHit=true so the caller queues a resume;
+      // the hourly sweep re-runs until a pass completes clean. No tight
+      // retry loop is possible: we break out of this invocation immediately,
+      // and the resume queue is rate-bounded (hourly schedule, ≤20 entries
+      // per run, bounded pages per pass) — a persistent failure loops
+      // loudly in logs instead of deleting the queue entry.
       console.warn("deleteCollection batch failed:", err.message);
+      commitFailed = true;
       break;
     }
     batches++;
     totalDeleted += snapshot.size;
     if (snapshot.size < batchSize) break;
   }
-  const capHit = batches >= maxBatches;
-  if (capHit) {
+  const capHit = commitFailed || batches >= maxBatches;
+  if (batches >= maxBatches) {
     // Loud warning is the signal: somewhere a subcollection grew large
     // enough to hit the cap. The legacy unbounded loop hid this; surface
     // it now so we can add a continuation path before it becomes data
@@ -150,6 +162,13 @@ async function cleanupPostsForUid(uid, maxIterations) {
 async function cleanupMirrorFollowsForUid(uid, maxIterations) {
   let batchCount = 0;
   let totalDeleted = 0;
+  // A failed batch commit leaves the page's edges in place — work remains.
+  // Both loops below break on commit failure, and this flag forces
+  // capHit=true so runWithResume queues a continuation instead of treating
+  // the pass as complete (which stranded the remaining mirror edges forever;
+  // 2026-08-05). Safe against looping: the invocation stops immediately and
+  // the resume queue only retries hourly until a pass completes clean.
+  let commitFailed = false;
 
   // Followers side: peers who follow uid. Delete their `following/{uid}`
   // mirror (fires trigger) AND uid's local `followers/{peer}` row.
@@ -167,6 +186,7 @@ async function cleanupMirrorFollowsForUid(uid, maxIterations) {
       await batch.commit();
     } catch (err) {
       console.warn("cleanupMirrorFollowsForUid followers batch failed:", err.message);
+      commitFailed = true;
       break;
     }
     batchCount++;
@@ -190,6 +210,7 @@ async function cleanupMirrorFollowsForUid(uid, maxIterations) {
       await batch.commit();
     } catch (err) {
       console.warn("cleanupMirrorFollowsForUid following batch failed:", err.message);
+      commitFailed = true;
       break;
     }
     batchCount++;
@@ -197,7 +218,7 @@ async function cleanupMirrorFollowsForUid(uid, maxIterations) {
     if (snap.size < 100) break;
   }
 
-  return { totalDeleted, capHit: batchCount >= maxIterations };
+  return { totalDeleted, capHit: commitFailed || batchCount >= maxIterations };
 }
 
 // Generic paginated batch-delete loop shared by the byte-identical cleanup
@@ -1546,29 +1567,48 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
 // onReplyRepostDeletedUpdateCount adjusts a count). They surface on the
 // reposter's profile pointing at content that no longer exists. Delete them
 // here; each reply-repost is itself a post, so its own
-// onPostDeletedCleanupSubtree drains its subtree. Reply auto-IDs are globally
-// unique, so matching originalReplyId alone is safe (no need for a composite
-// index on postId). Bounded; reply-reposts of a single reply are few.
+// onPostDeletedCleanupSubtree drains its subtree.
+//
+// 2026-08-05: match on (originalReplyId AND originalPostId) — never
+// originalReplyId alone. Reply doc ids are only unique PER replies
+// subcollection, and firestore.rules lets the writing client choose the reply
+// doc id — so an attacker could create posts/{ownPost}/replies/{victimReplyId},
+// delete it, and a replyId-only match here would sweep every reply-repost of
+// the VICTIM's reply. The postId check runs in code rather than as a second
+// `where` (that would demand a new composite index); pagination therefore uses
+// a cursor, because non-matching docs survive each pass and a re-run of the
+// bare query would re-read the same first page forever.
 exports.onReplyDeletedCleanupReposts = onDocumentDeleted(
   "posts/{postId}/replies/{replyId}",
   async (event) => {
     const replyId = event.params.replyId;
+    const postId = event.params.postId;
     let cleared = 0;
+    let cursor = null;
     for (let i = 0; i < 50; i++) {
-      const snap = await db.collection("posts")
+      let query = db.collection("posts")
         .where("originalReplyId", "==", replyId)
-        .limit(100)
-        .get();
+        .limit(100);
+      // startAfter rides the implicit __name__ ordering — no orderBy (and no
+      // extra index) needed for an equality filter. Deleted docs sort before
+      // the cursor, so advancing past a page is safe whether or not any of
+      // its docs were deleted.
+      if (cursor) query = query.startAfter(cursor);
+      const snap = await query.get();
       if (snap.empty) break;
-      const batch = db.batch();
-      snap.docs.forEach((d) => batch.delete(d.ref));
-      try {
-        await batch.commit();
-      } catch (err) {
-        console.warn(`onReplyDeletedCleanupReposts batch failed for reply ${replyId}:`, err.message);
-        break;
+      cursor = snap.docs[snap.docs.length - 1];
+      const matching = snap.docs.filter((d) => d.get("originalPostId") === postId);
+      if (matching.length > 0) {
+        const batch = db.batch();
+        matching.forEach((d) => batch.delete(d.ref));
+        try {
+          await batch.commit();
+        } catch (err) {
+          console.warn(`onReplyDeletedCleanupReposts batch failed for reply ${replyId}:`, err.message);
+          break;
+        }
+        cleared += matching.length;
       }
-      cleared += snap.size;
       if (snap.size < 100) break;
     }
     if (cleared > 0) {
@@ -1793,6 +1833,18 @@ async function clearRepostsOfPost(postId, maxBatches) {
       .get();
     if (snap.empty) break;
     for (const repostDoc of snap.docs) {
+      // Reply docs carry a nested likes subcollection; deleteCollection is
+      // non-recursive, so drain each reply's likes BEFORE deleting the reply
+      // docs (same discipline as cleanupPostsForUid / clearPostSubtree /
+      // cleanupExpiredPosts). Deleting the replies first strands their likes
+      // as orphaned uid-keyed docs no later sweep can reach: the repost
+      // delete below does fire onPostDeletedCleanupSubtree, but
+      // clearPostSubtree finds nested likes by walking the replies
+      // subcollection — already-deleted reply docs hide them forever.
+      const replySnap = await repostDoc.ref.collection("replies").get();
+      for (const replyDoc of replySnap.docs) {
+        await deleteCollection(replyDoc.ref.collection("likes"));
+      }
       await deleteCollection(repostDoc.ref.collection("replies"));
       await deleteCollection(repostDoc.ref.collection("likes"));
       await deleteCollection(repostDoc.ref.collection("reflections"));
@@ -3180,7 +3232,17 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
   }
   const FALLBACK_ADMIN_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
   const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
-  const configured = (cfgSnap.data()?.uids || []).filter((u) => typeof u === "string");
+  // `uids` is hand-seeded (see A-1 note above) — if someone writes it as a
+  // map/string instead of an array, `.filter` throws, the trigger fails, and
+  // Eventarc redelivery turns EVERY explicit-crisis post into a retry storm
+  // that pages nobody. Treat a malformed field as unconfigured: fall through
+  // to FALLBACK_ADMIN_UIDS (and the email-backup tag below still fires), and
+  // log loudly so the operator fixes the doc.
+  const rawUids = cfgSnap.data()?.uids;
+  if (rawUids !== undefined && !Array.isArray(rawUids)) {
+    console.error(`${logLabel}: system/crisisAlertRecipients.uids is not an array (got ${typeof rawUids}); using fallback admin uids — fix the doc`);
+  }
+  const configured = (Array.isArray(rawUids) ? rawUids : []).filter((u) => typeof u === "string");
   const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
   if (adminUids.length === 0) {
     console.log(`${logLabel}: tripped explicit-crisis but no admin uids configured`);
@@ -3687,7 +3749,16 @@ exports.pruneOldNotifications = onSchedule("every 24 hours", async () => {
   }
 });
 
-exports.cleanupExpiredPosts = onSchedule("every 60 minutes", async () => {
+// Every 10 minutes, not hourly (2026-08-05). The rules layer cannot gate reads
+// on expiresAt — rules are not filters, so a single expired doc in a feed query
+// would deny the WHOLE query — which means the promise "this disappears
+// tonight" is enforced only by this sweep plus Firestore TTL, and TTL collects
+// on its own schedule (documented as typically within 24h of the timestamp).
+// Until the expired doc is actually deleted, a tampered client that drops the
+// client-side expiry filter can still read it. Hourly left a window of up to an
+// hour on a product whose wedge is ephemerality; this shortens it to minutes.
+// Cheap: the steady-state run is one indexed query that returns empty.
+exports.cleanupExpiredPosts = onSchedule("every 10 minutes", async () => {
   const now = Timestamp.now();
   console.log("Running expired post cleanup at:", now.toDate());
 
@@ -3711,9 +3782,21 @@ exports.cleanupExpiredPosts = onSchedule("every 60 minutes", async () => {
         // non-recursive, and once the reply docs are gone these are
         // permanently orphaned (the post-delete backstop queries an
         // already-empty replies collection).
-        const replySnap = await doc.ref.collection("replies").get();
-        for (const replyDoc of replySnap.docs) {
-          await deleteCollection(replyDoc.ref.collection("likes"));
+        //
+        // Paged, not a bare .get() (2026-08-05): an unbounded read of a
+        // mega-thread's replies can exhaust memory or blow the timeout, and
+        // because the outer query re-reads the SAME first page every run, one
+        // such post wedges the entire expiry pipeline behind it — expired
+        // whispers platform-wide then stay readable indefinitely. Deleting
+        // each reply as we go means a page is never re-read. Mirrors
+        // clearPostSubtree's paging.
+        for (let replyPage = 0; replyPage < 50; replyPage++) {
+          const replySnap = await doc.ref.collection("replies").limit(100).get();
+          if (replySnap.empty) break;
+          for (const replyDoc of replySnap.docs) {
+            await deleteCollection(replyDoc.ref.collection("likes"));
+            await replyDoc.ref.delete();
+          }
         }
         await deleteCollection(doc.ref.collection("replies"));
         // Likes drain BEFORE the post doc delete so each per-like trigger
@@ -4185,10 +4268,13 @@ exports.resumePostSubtreeCleanup = onSchedule("every 60 minutes", async () => {
 //
 // Drains userDeletionCleanupQueue entries written by onUserDocDeleted
 // when a single invocation hit its iteration cap. Each queue doc is
-// keyed by `${uid}_${type}` where type ∈ {notifications, circleMessages,
-// reports}. We process up to 20 entries per run and drop the entry
-// when the corresponding helper reports capHit=false (i.e., the
-// collection is empty for that uid).
+// keyed by `${uid}_${type}`; the dispatch table below MUST cover every
+// type string passed to runWithResume in the cascade — an unknown type
+// takes the "drop queue entry" path, which permanently deletes the
+// continuation and strands the remaining data (that's how handleRegistry
+// rows survived deletion until 2026-08-05). We process up to 20 entries
+// per run and drop the entry when the corresponding helper reports
+// capHit=false (i.e., the collection is empty for that uid).
 //
 // Mirrors resumePostDeletion's shape so future cleanup types can be
 // added by extending the dispatch table without changing the schedule.
@@ -4212,6 +4298,12 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     convos: cleanupUserConversationsForUid,
     likesOnOthers: cleanupLikesForUid,
     blockedBy: cleanupBlockedByForUid,
+    // Queued at the end of the onUserDocDeleted cascade but MISSING here
+    // until 2026-08-05: the unknown-type path below dropped the queue entry,
+    // so a capHit/error on handle-registry cleanup left handles/{handleLower}
+    // pointing at a deleted uid forever — and the handle could never be
+    // re-registered.
+    handleRegistry: cleanupHandleRegistryForUid,
   };
 
   // sub_* types resume the owner-only subcollection cleanup that the main
@@ -4342,17 +4434,17 @@ exports.monitorPendingDeletions = onSchedule("every 60 minutes", async () => {
 });
 
 // ============================================================
-// Counter drift detector (alert-only)
+// Counter drift detector (detect + guarded auto-correct)
 // ============================================================
 // like/reply/repost/totalLikes/tagCounts counters have NO self-healing path
 // (only follower counts get reconcileMyCounts), so any drift from an optimistic-
 // UI race, a dropped trigger, or a partial cascade is PERMANENT and invisible.
 // This daily sweep samples recent posts, recomputes the two UNAMBIGUOUS counters
 // (likeCount = size of the likes subcollection; repostCount = count of reposts
-// pointing at the post) directly from source, and records any mismatch to
-// system/counterDriftReport + logs it. It deliberately does NOT auto-correct: a
-// recompute that disagrees with the trigger's exact semantics could overwrite a
-// CORRECT counter, so a human reviews the report first. replyCount/totalLikes/
+// pointing at the post) directly from source, records any mismatch to
+// system/counterDriftReport + logs it, and repairs the drifted field(s) via a
+// compare-and-set transaction (see the in-loop comment for why a blind
+// overwrite would itself introduce drift). replyCount/totalLikes/
 // tagCounts need bespoke recompute (the replyCount gate excludes pending_review
 // and legacy docs) and are intentionally out of this v1.
 // timeoutSeconds: up to ~600 sequential count() round-trips; the default 60s
@@ -4369,6 +4461,7 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
     .get();
 
   const drifts = [];
+  let corrected = 0;
   for (const postDoc of snap.docs) {
     const data = postDoc.data();
     if (data.isRepost === true) continue; // reposts don't own like/repost counts
@@ -4389,13 +4482,22 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
       // here produced phantom drift on any post whose reply was ever
       // reposted, i.e. false evidence inviting a wrong manual "correction".
       // count() can't test field absence, so fetch key-only projections and
-      // filter; per-post repost sets are small.
+      // filter; per-post repost sets are small. The filter must mirror
+      // onRepostCreatedUpdateCount's guard EXACTLY: the trigger routes the
+      // increment to the reply doc only when originalReplyId is a NON-EMPTY
+      // string, so a repost carrying originalReplyId:"" or null IS counted
+      // in the post's repostCount — an `=== undefined` test here excluded
+      // those docs, manufacturing phantom drift and a wrong downward
+      // auto-correction.
       const repostSnap = await db.collection("posts")
         .where("originalPostId", "==", id)
         .where("isRepost", "==", true)
         .select("originalReplyId")
         .get();
-      const actualReposts = repostSnap.docs.filter((d) => d.get("originalReplyId") === undefined).length;
+      const actualReposts = repostSnap.docs.filter((d) => {
+        const orid = d.get("originalReplyId");
+        return !(typeof orid === "string" && orid.length > 0);
+      }).length;
       const storedReposts = typeof data.repostCount === "number" ? data.repostCount : 0;
 
       if (actualLikes !== storedLikes || actualReposts !== storedReposts) {
@@ -4404,6 +4506,51 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
           likeCount: { stored: storedLikes, actual: actualLikes },
           repostCount: { stored: storedReposts, actual: actualReposts },
         });
+        // Auto-correct (2026-08-03 Phase-2 fix, L2/L3): the counter triggers
+        // use bare FieldValue.increment with no dedup ledger, so a rare
+        // Eventarc redelivery double-counts; report-only meant sampled drift
+        // sat unrepaired until a human acted.
+        //
+        // The correction MUST be a guarded transaction, not a blind
+        // overwrite. A like landing on an OLD post mid-scan makes the
+        // aggregate read N+1 while the stored counter (from the sample
+        // snapshot) still reads N; overwriting to N+1 and then having the
+        // like trigger's increment(1) land yields N+2 — the detector would
+        // INTRODUCE drift. (FRESH_MS doesn't cover this: it skips posts
+        // CREATED recently, not posts ENGAGED recently.) Invariant enforced
+        // here: write only if the stored counters still equal the values the
+        // scan observed — i.e. no trigger moved them underneath — and write
+        // only the field(s) that actually drifted, so a clean counter is
+        // never touched. If they moved, skip; the next daily run
+        // re-measures. Residual window: a subcollection write whose trigger
+        // increment hasn't COMMITTED by transaction time is still invisible,
+        // so a rare off-by-one can slip through — but the next run repairs
+        // it, so the error is bounded and self-healing rather than silent
+        // and permanent. A post-doc count write doesn't re-fire a counter
+        // trigger (those fire on likes/reposts subdocs, not the post doc)
+        // and onPostUpdated bails unless `text` changed. The report still
+        // records the pre-correction delta for the drift metric/audit.
+        try {
+          const didCorrect = await db.runTransaction(async (tx) => {
+            const cur = await tx.get(postDoc.ref);
+            if (!cur.exists) return false; // post deleted mid-scan
+            const curLikes = typeof cur.get("likeCount") === "number" ? cur.get("likeCount") : 0;
+            const curReposts = typeof cur.get("repostCount") === "number" ? cur.get("repostCount") : 0;
+            if (curLikes !== storedLikes || curReposts !== storedReposts) return false;
+            const update = {};
+            if (actualLikes !== storedLikes) update.likeCount = actualLikes;
+            if (actualReposts !== storedReposts) update.repostCount = actualReposts;
+            tx.update(postDoc.ref, update);
+            return true;
+          });
+          if (didCorrect) {
+            corrected++;
+          } else {
+            console.log(`detectCounterDrift: counters moved under post ${id} mid-scan; leaving for next run.`);
+          }
+        } catch (err) {
+          console.warn(`detectCounterDrift: correction write failed for post ${id}:`, err.message);
+        }
       }
     } catch (err) {
       console.warn(`detectCounterDrift: recompute failed for post ${id}:`, err.message);
@@ -4414,15 +4561,20 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
   if (drifts.length > 0) {
     console.error(
       `detectCounterDrift: ${drifts.length} post(s) with drifted like/repost ` +
-      `counts (of ${snap.size} sampled). See system/counterDriftReport.`);
+      `counts (of ${snap.size} sampled); auto-corrected ${corrected}. ` +
+      `See system/counterDriftReport.`);
     // Full report ONLY when drift is found: a clean run must not clobber
     // `drifts` — the sample is the newest 300 posts, so day-N drift slides
     // out of the window and a clean day-N+1 write would zero the unreviewed
-    // evidence a human still needs to act on.
+    // evidence a human still needs to act on. `drifts` records the
+    // pre-correction deltas even though the counts are now repaired, so the
+    // metric/audit still reflects that drift occurred (and correctedCount
+    // shows how much self-healed vs. needs a human — e.g. a write that failed).
     await db.collection("system").doc("counterDriftReport").set({
       generatedAt: FieldValue.serverTimestamp(),
       sampled: snap.size,
       driftCount: drifts.length,
+      correctedCount: corrected,
       drifts: drifts.slice(0, MAX_REPORTED),
     }, { merge: true });
   } else {
@@ -5201,6 +5353,20 @@ exports.mirrorModerationState = onDocumentWritten(
     const changed = MIRRORED.some((f) => key(before[f]) !== key(after[f]))
       || (after.restrictedBy != null && key(before.restrictedBy) !== key(after.restrictedBy));
     if (!changed) return;
+    // Late-redelivery resurrection guard (2026-08-05): Eventarc can redeliver
+    // an old UPDATE event after the user doc was deleted and the deletion
+    // cascade drained users/{uid}/private. The merge-set below would then
+    // re-CREATE private/data (and, if restricted, the restrictedUsers row)
+    // under a deleted uid — restricted/confirmedAdult residue with no
+    // remaining GC path, since the cascade fires once and never re-runs.
+    // Re-read the live parent doc and skip the mirror when it's gone; the
+    // delete event's own branch above owns the row cleanup. Placed after the
+    // change-guard so the extra read isn't paid on every counter-bump write.
+    const liveParent = await db.doc(`users/${userId}`).get();
+    if (!liveParent.exists) {
+      console.log(`mirrorModerationState(${userId}): user doc gone (late redelivery) — skipping mirror`);
+      return;
+    }
     const mirror = {};
     for (const f of MIRRORED) mirror[f] = after[f] === undefined ? FieldValue.delete() : after[f];
     if (after.restrictedBy != null) mirror.restrictedBy = after.restrictedBy;

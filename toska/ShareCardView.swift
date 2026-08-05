@@ -130,7 +130,7 @@ struct ShareCardView: View {
         }
     }
 
-    /// Persist the current look — called from save/share/sticker, i.e. when
+    /// Persist the current look — called from save/share, i.e. when
     /// a look is actually USED, not merely browsed.
     private func persistCardLook() {
         let d = UserDefaults.standard
@@ -437,6 +437,12 @@ struct ShareCardView: View {
                     .onTapGesture {
                         withAnimation(.easeOut(duration: 0.3)) {
                             showSharedConfirmation = false
+                            // Must reset the SAME state the "okay" button
+                            // resets (2026-08-05): dismissing via the scrim
+                            // left savedToPhotos true, so the NEXT share's
+                            // confirmation read "saved to your photos"
+                            // instead of the share affirmation.
+                            savedToPhotos = false
                         }
                     }
 
@@ -488,7 +494,13 @@ struct ShareCardView: View {
         .alert("sharing, quietly", isPresented: $showSharingHint) {
             Button("got it", role: .cancel) { sharingHintSeen = true }
         } message: {
-            Text("this card carries the words only — no name, no handle, nothing that points back to the writer. sharing also includes a link to the post's page on toskaapp.com, anonymous in the same way. a few shared posts may also be featured there. writers can turn sharing off any time in settings.")
+            // Copy is conditional on shareURL (2026-08-05): replies, letters,
+            // whispers and midnight posts share image-only (shareURL == nil),
+            // and the "also includes a link" sentence was untrue for them —
+            // a trust-sensitive claim on a hint that shows exactly once.
+            Text(shareURL != nil
+                 ? "this card carries the words only — no name, no handle, nothing that points back to the writer. sharing also includes a link to the post's page on toskaapp.com, anonymous in the same way. a few shared posts may also be featured there. writers can turn sharing off any time in settings."
+                 : "this card carries the words only — no name, no handle, nothing that points back to the writer. writers can turn sharing off any time in settings.")
         }
     }
 
@@ -1053,7 +1065,7 @@ struct ShareCardView: View {
 
     /// Subtle paper-grain wash over the mood ground — pushes the card from
     /// "flat gradient" toward "editorial object". Sits between decorations
-    /// and text; never on the transparent sticker.
+    /// and text.
     var cardGrain: some View {
         Image(uiImage: Self.grainTile)
             .resizable(resizingMode: .tile)

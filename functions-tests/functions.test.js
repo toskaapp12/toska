@@ -743,8 +743,15 @@ describe("mirrorModerationState — private mirror + restrictedUsers index", () 
     before: { exists: b !== null, data: () => b || {} },
     after:  { exists: a !== null, data: () => a || {} },
   });
-  const run = (uid, b, a, id) =>
-    fns.mirrorModerationState.run({ id, data: change(b, a), params: { userId: uid } });
+  // The trigger re-reads the LIVE users/{uid} doc before mirroring (2026-08-05
+  // late-redelivery guard), so a faithful update event needs that doc to exist
+  // — in production the update that fired the event wrote it. Seeding it here
+  // keeps these cases testing the mirror logic rather than the guard; the
+  // guard itself gets its own case below.
+  const run = async (uid, b, a, id) => {
+    if (a !== null) await db.doc(`users/${uid}`).set(a);
+    return fns.mirrorModerationState.run({ id, data: change(b, a), params: { userId: uid } });
+  };
 
   it("restrict: mirrors fields to private/data and creates the index row", async () => {
     const until = new Date(Date.now() + 48 * 3600e3);
@@ -800,6 +807,24 @@ describe("mirrorModerationState — private mirror + restrictedUsers index", () 
       "mm-e5");
     const priv = await db.doc("users/mm2/private/data").get();
     assert.strictEqual(priv.get("marker"), "untouched");
+  });
+
+  it("late redelivery after account deletion does NOT resurrect private/data", async () => {
+    // Eventarc can redeliver a pre-deletion UPDATE after the cascade drained
+    // users/{uid}/private. Without the live-parent re-read the merge-set below
+    // re-creates the mirror (restricted/confirmedAdult residue under a uid
+    // that no longer exists, with no remaining GC path).
+    await db.doc("users/mm4/private/data").delete();
+    await db.doc("users/mm4").delete();
+    await fns.mirrorModerationState.run({
+      id: "mm-e7",
+      data: change({ handle: "mm4", restricted: false }, { handle: "mm4", restricted: true, restrictedBy: "system" }),
+      params: { userId: "mm4" },
+    });
+    assert.strictEqual((await db.doc("users/mm4/private/data").get()).exists, false,
+      "mirror must not re-create the private doc for a deleted user");
+    assert.strictEqual((await db.doc("restrictedUsers/mm4").get()).exists, false,
+      "index row must not be written for a deleted user");
   });
 
   it("user-doc delete removes the index row", async () => {

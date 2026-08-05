@@ -13,6 +13,13 @@ struct GifPickerView: View {
     // Surfaced when the Giphy fetch fails (timeout, JSON shape change, network)
     // so the empty grid doesn't get confused with a genuine zero-result query.
     @State private var fetchError: String? = nil
+    // Monotonic fetch token (2026-08-05): the callable await in fetchGifs has
+    // no ordering guarantee, so a slow `trending` response could land AFTER a
+    // fast `search` response and clobber the newer results (grid shows trending
+    // GIFs under a non-empty query, or vice-versa after clearing the field).
+    // Each fetch bumps this; a Task whose captured token is stale drops its
+    // response instead of writing state.
+    @State private var fetchGeneration = 0
 
     // Giphy is proxied through the giphyProxy Cloud Function (functions/index.js).
     // Migrated from onRequest URL fetch to onCall callable on 2026-05-08 — the
@@ -205,7 +212,15 @@ struct GifPickerView: View {
         ]
         if let query = query { payload["q"] = query }
 
+        // Claim this request's generation BEFORE the Task starts so a newer
+        // fetch fired in the same runloop tick invalidates this one (see the
+        // fetchGeneration decl for the stale-overwrite race this closes).
+        fetchGeneration += 1
+        let gen = fetchGeneration
+
         Task { @MainActor in
+            // A newer fetch may have started before this Task body even ran.
+            guard gen == fetchGeneration else { return }
             fetchError = nil
             let callable = Functions.functions().httpsCallable("giphyProxy")
             let result: HTTPSCallableResult
@@ -219,11 +234,17 @@ struct GifPickerView: View {
                 // "GIFs don't work."
                 print("⚠️ giphyProxy callable failed: \(error.localizedDescription)")
                 Telemetry.recordError(error, context: "Giphy.callable.\(mode)")
+                // Stale failure must not surface an error / kill the spinner for
+                // the newer in-flight request that superseded this one.
+                guard gen == fetchGeneration else { return }
                 isLoading = false
                 fetchError = "couldn't load GIFs — try again."
                 return
             }
 
+            // Response arrived after a newer fetch started — drop it; the newer
+            // Task owns all state writes (gifs / isLoading / fetchError) now.
+            guard gen == fetchGeneration else { return }
             guard let json = result.data as? [String: Any],
                   let dataArray = json["data"] as? [[String: Any]] else {
                 isLoading = false

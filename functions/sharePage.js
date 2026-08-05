@@ -61,6 +61,12 @@ function evaluateSharePage(post, nowMs) {
   if (post.moderationStatus !== "live") return { outcome: "not_found" };
   if (post.isShareable !== true) return { outcome: "not_found" };
   if (post.isWhisper === true || post.isMidnightPost === true) return { outcome: "not_found" };
+  // isLetter (2026-08-05): letters are the most intimate content class and
+  // BOTH clients already treat them as never publicly shareable (iOS
+  // ShareConsent and web's copy-link menu both exclude isLetter), but rules
+  // can't stop a tampered client writing isLetter + isShareable:true — this
+  // server-side gate is what actually denies that doc a public /p/ page.
+  if (post.isLetter === true) return { outcome: "not_found" };
   if (typeof post.text !== "string" || post.text.trim().length === 0) return { outcome: "not_found" };
 
   // Ephemeral window: whispers/midnight are the expiring kinds and are already

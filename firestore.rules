@@ -22,19 +22,39 @@ service cloud.firestore {
     // by the pending-review system (moderationStatus != 'live') leaks its
     // content/engagers through its subcollections. `.get('moderationStatus',
     // 'live')` defaults legacy docs to live, matching the post read rule.
-    function postVisibleToCaller(postId) {
+    // `callerOwnsDoc`: the CALL SITE's answer to "is the doc being read the
+    // caller's own?" — resource.data.authorId == auth.uid for replies,
+    // auth.uid == likeUserId for like docs (which carry no authorId; they are
+    // keyed by the liker's uid). Passed in because the ownership expression
+    // differs per subcollection shape and evaluating the wrong one errors.
+    function postVisibleToCaller(postId, callerOwnsDoc) {
       return isAuth()
         && (
           // Existence short-circuit: if the parent post is GONE (deleted, cleanup
           // of its replies still pending), `get(...).data` is null and evaluating
           // it ERRORS — which fails the ENTIRE collection-group replies query, so
-          // one deleted-parent reply blanked a user's whole "replies" tab. Treat a
-          // missing parent as visible (the orphan reply is the caller's own words
-          // and is about to be cleaned up) instead of erroring.
-          !exists(/databases/$(database)/documents/posts/$(postId))
-          || get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', 'live') == 'live'
-          || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
-          || isAdmin()
+          // one deleted-parent reply blanked a user's whole "replies" tab. The
+          // exists() split below keeps the get() legs unreachable for a missing
+          // parent, so no evaluation path can error.
+          //
+          // 2026-08-05: the orphan leg used to return visible to EVERY
+          // authenticated caller, which quietly re-leaked deleted posts:
+          // replies snapshot the parent's text (parentPostText), so after an
+          // author retracted a PII post (or an admin deleted a held one), any
+          // client holding the post id could list posts/{deletedId}/replies
+          // and recover the deleted post's text + reply authorIds — and
+          // posts/{deletedId}/likes re-exposed the liker uid list. Now the
+          // orphan leg enforces what its own rationale always claimed: a
+          // missing parent is visible only for the caller's OWN docs (or
+          // admins, who need orphan cleanup visibility). A user's own
+          // orphaned replies stay readable, so the blanked-replies-tab bug
+          // this leg was added for stays fixed.
+          (!exists(/databases/$(database)/documents/posts/$(postId))
+            && (callerOwnsDoc || isAdmin()))
+          || (exists(/databases/$(database)/documents/posts/$(postId))
+            && (get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', 'live') == 'live'
+              || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
+              || isAdmin()))
         );
     }
 
@@ -147,6 +167,78 @@ service cloud.firestore {
       return h is string
         && h.size() <= 30
         && h.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    // Reserved-handle denylist (2026-08-05). validHandle() above only
+    // constrains the CHARSET, and nothing forces a client to use the app's
+    // handle generator — users/{uid} create takes whatever `handle` the
+    // request carries. So a tampered client could register `toska_support`,
+    // `moderator`, or `admin_help`, and then EVERY anti-spoofing pin in this
+    // ruleset (authorHandle / originalHandle / fromHandle / follower+following
+    // handle) would faithfully certify that handle as the caller's canonical
+    // byline. The pins make impersonation of another USER impossible; without
+    // this check they actively launder impersonation of the PLATFORM — a
+    // "toska_support" byline replying "verify your account here" is the
+    // highest-yield phish in an anonymity-first app where nobody has a real
+    // name to compare against.
+    //
+    // Substring (not prefix/equality) match, because `x_admin_x`,
+    // `toskahelp`, and `real_support` are all just as convincing in a byline
+    // as the bare word. CEL in rules has no contains(); matches() is
+    // full-match RE2, hence the explicit `^.*(...).*$` wrapper — same
+    // convention as the gifUrl host-lock below. `.lower()` first so
+    // `ToskaSupport` can't slip through on case alone.
+    //
+    // This is a coarse net for the OBVIOUS impersonation space, not an
+    // evasion-proof matcher: `t0ska_supp0rt` still passes (leet/homoglyph
+    // handling lives in ContentModeration.swift, and a handle is only 30
+    // chars of a fixed charset). Raising the bar from "trivial" to
+    // "deliberate" is the goal; the reserved words below are the ones a
+    // victim would actually read as official.
+    //
+    // Does NOT break the legitimate generator. iOS
+    // (ContentModeration.swift:971-1051) emits `{adjective}_{noun}_{1...999}`
+    // from two fixed 30-word lists — none of the 60 words contains any
+    // reserved token — with a `anonymous_{8 hex}` fallback; the web signup
+    // (webapp/js/app.js:802) emits only that same `anonymous_{8 hex}` form.
+    // Hex digits can't spell any token below (m/i/n/s/t/h/p/u/g/r/y aren't
+    // hex), so every handle either client can produce is accepted.
+    //
+    // Runs on CREATE only (user-doc create + registry create). Existing
+    // accounts are untouched: `handle` is immutable post-create
+    // (firestore.rules:359-360 denies it in the update deny-list), so no
+    // legitimate user can be locked out of updating their doc by a handle
+    // they already hold. If a pre-existing account holds a reserved handle,
+    // it must be renamed server-side (Admin SDK bypasses rules).
+    function reservedHandle(h) {
+      return h.lower().matches(
+        '^.*(toska|admin|mod|support|staff|official|help|security).*$'
+      );
+    }
+
+    // Optional-field validation shared by the drafts create AND update rules
+    // (2026-08-05). Kept in one place because the two rules diverging is
+    // exactly how a field ends up validated on create and free-form on
+    // update — the two-step bypass this file has already had to fix on
+    // followers.handle and followers.createdAt. Every clause is
+    // presence-guarded: a draft may carry some, all, or none of these (legacy
+    // drafts are `{text, createdAt}` only, and a field cleared with
+    // FieldValue.delete is simply absent from the post-write doc). Evaluated
+    // against request.resource.data, i.e. the document AFTER the write.
+    // The gifUrl regex is character-for-character the posts host-lock
+    // (firestore.rules posts/create) — if that one is ever tightened,
+    // tighten this one in the same commit or a draft becomes the softer way
+    // in. See the drafts match block for the full rationale per field.
+    function validDraftExtras() {
+      return (!('tag' in request.resource.data.keys())
+              || (request.resource.data.tag is string
+                  && request.resource.data.tag.size() <= 40))
+        && (!('isLetter' in request.resource.data.keys())
+              || request.resource.data.isLetter is bool)
+        && (!('gifUrl' in request.resource.data.keys())
+              || (request.resource.data.gifUrl is string
+                  && request.resource.data.gifUrl.size() <= 500
+                  && request.resource.data.gifUrl.matches('^https://([a-z0-9-]+[.])+giphy[.]com/.*$')));
     }
 
     // Legacy PII fields that lived on the main user doc before the migration
@@ -281,6 +373,11 @@ service cloud.firestore {
         // (generateUniqueHandle) only produces strings in this character class
         // so existing accounts are unaffected.
         && validHandle(request.resource.data.handle)
+        // Reserved-name check (2026-08-05). Must follow validHandle() in the
+        // && chain: reservedHandle() calls .lower(), which errors (→ deny,
+        // but for the wrong reason) on a non-string. See reservedHandle()
+        // for why a charset check alone left platform-impersonation open.
+        && !reservedHandle(request.resource.data.handle)
         // Handle uniqueness (2026-07-01): every anti-spoofing pin in this
         // ruleset (authorHandle/originalHandle/fromHandle) verifies the
         // written handle against the AUTHOR'S OWN user doc — which is
@@ -358,7 +455,88 @@ service cloud.firestore {
             // legacy main-doc copies opportunistically; pre-migration accounts
             // updating other fields pass because the unchanged-value branch
             // matches. See legacyPIIFieldsImmutable() and functions/scrubLegacyPII.js.
-            && legacyPIIFieldsImmutable())
+            && legacyPIIFieldsImmutable()
+            // SCHEMA LOCK (2026-08-05). users/{uid} was the ONLY writable
+            // collection in this file still guarded by a deny-list — posts,
+            // replies, reports, notifications, followers, following, drafts,
+            // presence, saved/liked(+Replies) all use a hasOnly() allow-list.
+            // A deny-list only stops the fields someone thought of: a
+            // tampered client could plant ANY unlisted field on this doc —
+            // a 900KB blob (storage abuse + it bloats every OtherProfileView
+            // read of the doc, and the doc is readable by EVERY authenticated
+            // user), or free text like `bio` / `note` that never passes
+            // validatePost moderation yet renders wherever a future surface
+            // (or the admin dashboard, which dumps the doc) decides to trust
+            // it. This closes the shape, not just the known-bad names.
+            //
+            // NOTE the allow-list is on diff().affectedKeys(), NOT on
+            // request.resource.data.keys(). request.resource.data is the
+            // FULL post-write document, so a keys() allow-list would deny
+            // every update from a pre-migration account that still carries a
+            // legacy `email`/`selectedMood` copy it isn't touching —
+            // silently breaking settings-save for exactly the long-tail
+            // accounts scrubLegacyPII.js hasn't reached yet. affectedKeys()
+            // constrains what an update may ADD, CHANGE, or DELETE, which is
+            // the property we actually want.
+            //
+            // The deny-list above is deliberately KEPT rather than folded in.
+            // It is the stronger statement ("no client may ever write these,
+            // whatever else changes here"), and it keeps a careless future
+            // addition to this allow-list from quietly re-opening the
+            // counter-forgery / self-unrestrict / self-adult-confirm holes.
+            //
+            // Every entry below is a field a real client write path touches
+            // (verified 2026-08-05 across toska/*.swift, webapp/js/*.js,
+            // docs/admin.html):
+            //   allowSharing, showFollowerCount   SettingsView.saveSettings
+            //   hasCompletedOnboarding            OnboardingView.finishOnboarding
+            //   acceptedPolicyVersion/-At         recordPolicyAcceptance (iOS,
+            //                                     ToskaTheme.swift) + the web
+            //                                     policy re-accept gate
+            //                                     (webapp/js/app.js)
+            //   email, selectedMood, notify*,     DELETE-ONLY in practice —
+            //   pushEnabled, gentleCheckIn        SettingsView.saveSettings
+            //                                     scrubs the legacy main-doc
+            //                                     copies via FieldValue.delete
+            //                                     (a delete shows up in
+            //                                     affectedKeys, so they must be
+            //                                     listed). legacyPIIFieldsImmutable()
+            //                                     above still forbids re-adding
+            //                                     or modifying them.
+            // Admin writes (restricted*) go through the isAdmin() branch below
+            // and are unaffected. Server writes (counters, confirmedAdult,
+            // moderation mirror) use the Admin SDK and bypass rules entirely.
+            // If a new client-written main-doc field is ever added, extend
+            // this list — otherwise the write silently 403s.
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['allowSharing', 'showFollowerCount',
+                          'hasCompletedOnboarding',
+                          'acceptedPolicyVersion', 'acceptedPolicyAt',
+                          'email', 'selectedMood',
+                          'notifyLikes', 'notifyReplies', 'notifyFollows',
+                          'notifyReposts', 'notifySaves', 'notifyMessages',
+                          'notifyMilestones', 'pushEnabled', 'gentleCheckIn'])
+            // Type locks on the client-owned fields. The allow-list alone
+            // still permits `acceptedPolicyVersion: <900KB string>` on a
+            // world-readable doc, and a non-bool allowSharing would break the
+            // `=== true` / `?? true` share-consent reads in ComposeView and
+            // webapp/js/writes.js the same way F2 broke the ephemeral flags.
+            // Presence-guarded (`!('x' in keys) || ...`) so an update that
+            // doesn't touch a field — or deletes it — isn't forced to supply
+            // one, matching the pattern used throughout this file.
+            && (!('allowSharing' in request.resource.data.keys())
+                || request.resource.data.allowSharing is bool)
+            && (!('showFollowerCount' in request.resource.data.keys())
+                || request.resource.data.showFollowerCount is bool)
+            && (!('hasCompletedOnboarding' in request.resource.data.keys())
+                || request.resource.data.hasCompletedOnboarding is bool)
+            // `is number` not `is int`: iOS sends a Swift Int (→ integer) and
+            // the web sends a JS number, which the JS SDK encodes as integer
+            // for safe integers but which we don't want to depend on.
+            && (!('acceptedPolicyVersion' in request.resource.data.keys())
+                || request.resource.data.acceptedPolicyVersion is number)
+            && (!('acceptedPolicyAt' in request.resource.data.keys())
+                || request.resource.data.acceptedPolicyAt is timestamp))
         || (isAdmin()
             && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil'])
@@ -422,6 +600,13 @@ service cloud.firestore {
         allow create: if isOwner(userId) && followedId != userId
           && notBlockedBy(followedId)
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
+          // createdAt pinned to server time (2026-08-05) — every other create
+          // rule in this file pins it (saved/liked/posts/replies); follows
+          // were the stragglers, letting a tampered client backdate its
+          // position in follow-list orderings. The only writer
+          // (OtherProfileView.toggleFollow) already sends
+          // FieldValue.serverTimestamp(), so this is transparent to the app.
+          && request.resource.data.createdAt == request.time
           // Handle pin (2026-07-09 Phase-1 audit): `handle` snapshots the
           // FOLLOWED user's handle (FollowListView "following" tab renders it).
           // Pin it to their canonical user-doc handle so a tampered client
@@ -467,6 +652,14 @@ service cloud.firestore {
           && request.auth.uid != userId
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
           && notBlockedBy(userId)
+          // createdAt pin (2026-08-05): this doc lives in the VICTIM's tree
+          // and orders their followers list — without the pin a follower
+          // could write an arbitrary createdAt and backdate their position
+          // in someone ELSE's follower ordering (worse than the /following
+          // case, which only pollutes the actor's own tree). The client
+          // sends FieldValue.serverTimestamp() (OtherProfileView.toggleFollow),
+          // so the pin is transparent.
+          && request.resource.data.createdAt == request.time
           && (!('handle' in request.resource.data.keys())
               || request.resource.data.handle ==
                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle);
@@ -477,6 +670,17 @@ service cloud.firestore {
         // the spoof just moves to a follow-then-update two-step.
         allow update: if isAuth() && request.auth.uid == followerId
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
+          // createdAt pin on UPDATE too (2026-08-05) — else the create-time
+          // pin above is a two-step bypass: follow honestly, then rewrite
+          // createdAt to any value (the exact pattern the handle pin below
+          // already anticipates for handle). The only re-write path is
+          // toggleFollow's full setData overwrite, which sends
+          // serverTimestamp (→ request.time leg). The `unchanged` leg keeps
+          // a hypothetical handle-only merge-update legal — request.resource
+          // .data is the POST-write doc, so an untouched createdAt equals
+          // resource.data.createdAt, and neither leg permits backdating.
+          && (request.resource.data.createdAt == request.time
+              || request.resource.data.createdAt == resource.data.createdAt)
           && (!('handle' in request.resource.data.keys())
               || request.resource.data.handle ==
                    get(/databases/$(database)/documents/users/$(request.auth.uid)).data.handle);
@@ -758,21 +962,59 @@ service cloud.firestore {
       // request.time on create so a tampered client can't backdate.
       // updatedAt isn't pinned so the iOS edit path can refresh it
       // freely without a server round-trip on each keystroke.
+      //
+      // 2026-08-05: `tag`, `isLetter` and `gifUrl` added to both shapes.
+      // The lock was text-only, so ComposeView could not round-trip the rest
+      // of what the composer holds: saving a draft silently dropped the
+      // chosen tag and the letter-mode flag, and a SHORT letter draft
+      // reopened as a normal post (letter mode is inferred from length past
+      // a threshold, so only long ones survived by accident) — user data
+      // loss with no error, because the fields never left the client. The
+      // iOS client is being updated to write them; the rule accepts SOME,
+      // ALL, or NONE of the three so a legacy `{text, createdAt}` draft and
+      // a not-yet-updated client both keep working.
+      //
+      // Validation mirrors what posts get for the same fields:
+      //   tag      — string + length cap. Deliberately NOT the posts enum
+      //              lock: that lock exists because onPostCreatedUpdateTagCounts
+      //              writes a post's tag as a KEY on the single shared
+      //              meta/tagCounts doc (Explore chips for everyone), so a
+      //              free-text tag there is an injection + 1MB-DoS vector. A
+      //              draft touches no shared doc and no trigger; if it is ever
+      //              promoted to a post, THAT create re-validates against the
+      //              enum. Cap only bounds storage.
+      //   isLetter — genuine bool. Same F2 class as isWhisper/isShareable: a
+      //              truthy non-bool renders as letter mode on the reopen path
+      //              while comparing false in any `== true` gate.
+      //   gifUrl   — the SAME anchored Giphy host-lock + 500-char cap the post
+      //              create rule uses. Drafts are owner-only, so this is not
+      //              about other users' data: it is about the URL becoming a
+      //              viewer-IP beacon LATER. A draft is a publish staging area
+      //              — promote it and the stored URL is what gets copied onto
+      //              a post that every iOS client (no CSP) fetches. Validating
+      //              only at publish time would leave the attacker-controlled
+      //              value sitting in the pipeline, one code path away from
+      //              being trusted; both legit writers only ever store
+      //              giphyProxy media URLs.
       match /drafts/{draftId} {
         allow read: if isOwner(userId);
         allow create: if isOwner(userId)
-          && request.resource.data.keys().hasOnly(['text', 'createdAt', 'updatedAt'])
+          && request.resource.data.keys().hasOnly([
+               'text', 'tag', 'isLetter', 'gifUrl', 'createdAt', 'updatedAt'
+             ])
           && request.resource.data.keys().hasAll(['text', 'createdAt'])
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 2000
-          && request.resource.data.createdAt == request.time;
+          && request.resource.data.createdAt == request.time
+          && validDraftExtras();
         allow update: if isOwner(userId)
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['text', 'updatedAt'])
+              .hasOnly(['text', 'tag', 'isLetter', 'gifUrl', 'updatedAt'])
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 2000;
+          && request.resource.data.text.size() <= 2000
+          && validDraftExtras();
         allow delete: if isOwner(userId);
       }
     }
@@ -801,6 +1043,16 @@ service cloud.firestore {
       allow create: if isAuth()
         && request.resource.data.keys().hasOnly(['uid'])
         && request.resource.data.uid == request.auth.uid
+        // Reserved-name check (2026-08-05), mirroring the users-create rule.
+        // The getAfter() binding below already makes a reserved registry row
+        // unreachable in practice (it must match the user doc's handle, and
+        // THAT create rejects reserved names), but the two rules are only
+        // coupled by a batch that a tampered client controls — pinning both
+        // ends means neither can be the single point of failure, and it
+        // keeps the invariant "no registry row exists for a reserved name"
+        // true on its own terms. handleLower is a doc id, always a string,
+        // so .lower() is safe here without a preceding type check.
+        && !reservedHandle(handleLower)
         // Bind the row to the user doc in the SAME batch: the claimed id
         // must equal the lowercased handle the caller's user doc carries
         // after this write. Stops squatting rows that don't match any real
@@ -952,6 +1204,16 @@ service cloud.firestore {
             || request.resource.data.isWhisper is bool)
         && (!('isMidnightPost' in request.resource.data.keys())
             || request.resource.data.isMidnightPost is bool)
+        // 2026-08-05: isShareable needs the same type-lock. The reply-repost
+        // consent pin below keys on `.get('isShareable', true) != true` — a
+        // truthy NON-bool (isShareable: 1) makes `!= true` TRUE, so the escape
+        // fires and the reply author's allowSharing consent check is skipped
+        // entirely, while every share-button surface treats the field truthily
+        // — exactly the F2 bypass class, one field over. The post-repost
+        // branch compares `.get(...) == .get(...)` and is unaffected either
+        // way. Both legit writers only ever store genuine bools.
+        && (!('isShareable' in request.resource.data.keys())
+            || request.resource.data.isShareable is bool)
         // 2026-07-17 re-audit: the ephemeral flags REQUIRE expiresAt. Both
         // legit compose paths always set it (ComposeView.swift:1141-1151,
         // webapp writes.js); without this a tampered client could mint a
@@ -1238,7 +1500,15 @@ service cloud.firestore {
         // .data) dereferences null.data and ERRORS → deny, which broke any
         // transaction/dedup read of a not-yet-created reply doc (the repost
         // null-read class). resource==null short-circuits before the deref.
-        allow read: if postVisibleToCaller(postId)
+        // 2026-08-05: callerOwnsDoc arg feeds the orphan-parent leg of
+        // postVisibleToCaller (see helper comment): under a DELETED parent
+        // post only the reply's own author (or an admin) may still read it —
+        // otherwise the reply's parentPostText snapshot resurrects the
+        // deleted post's text for anyone holding the post id. resource==null
+        // short-circuits the authorId deref (null reads stay allowed, and
+        // under a missing parent they carry no data to leak).
+        allow read: if postVisibleToCaller(postId,
+            resource == null || resource.data.authorId == request.auth.uid)
           && (resource == null || moderationVisible(resource.data));
         // Block enforcement: the post author can't be replied to by a user
         // they've blocked. Without this check, blocked users could keep
@@ -1295,6 +1565,23 @@ service cloud.firestore {
               || (request.resource.data.gifUrl is string
                   && request.resource.data.gifUrl.size() <= 500
                   && request.resource.data.gifUrl.matches('^https://([a-z0-9-]+[.])+giphy[.]com/.*$')))
+          // 2026-08-05: the parent-snapshot fields were the only unvalidated
+          // strings on a reply — `text` is capped at 500 and gifUrl at 500,
+          // but a tampered client could attach a ~1MB parentPostText that
+          // every thread reader then downloads (bandwidth DoS + storage
+          // abuse), or a fabricated parentPostHandle byline. Caps:
+          // parentPostText <= 2000 because it snapshots the PARENT POST's
+          // full text (posts cap at 2000; PostDetailView.postReplyNow and
+          // webapp writes.js both copy it verbatim, untruncated — a 500 cap
+          // would break replying to any post longer than 500 chars).
+          // parentPostHandle <= 40 matches the likedReplies/savedReplies
+          // replyHandle cap (canonical handles are <= 30 via validHandle).
+          && (!('parentPostText' in request.resource.data.keys())
+              || (request.resource.data.parentPostText is string
+                  && request.resource.data.parentPostText.size() <= 2000))
+          && (!('parentPostHandle' in request.resource.data.keys())
+              || (request.resource.data.parentPostHandle is string
+                  && request.resource.data.parentPostHandle.size() <= 40))
           && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
         // Text-size cap mirrored from create. Without it, an author could
         // edit a 500-char reply into multi-KB content and bypass both the
@@ -1368,8 +1655,25 @@ service cloud.firestore {
           // with hiding the held reply itself. Now the likers of a held reply
           // are visible only to the reply author and admins. Legacy/clean
           // replies default to 'live'.
-          allow read: if postVisibleToCaller(postId)
-            && moderationVisible(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data);
+          // 2026-08-05: two fixes here.
+          // (a) callerOwnsDoc for the orphan-parent leg is `auth.uid ==
+          //     likeUserId` — a like doc carries no authorId; it is KEYED by
+          //     the liker's uid. Under a deleted parent post only your own
+          //     like doc (or an admin) is readable, so the liker-uid list of
+          //     a deleted post's replies can't be enumerated (fix 1).
+          // (b) the reply get() below dereferenced a possibly-MISSING reply's
+          //     .data, and it sits right of an `&&` — so instead of returning
+          //     null the read ERRORED → PERMISSION_DENIED, the same repost
+          //     null-read class already patched at the posts and replies read
+          //     rules. exists() now splits the legs so no path errors: a
+          //     DELETED reply's surviving like docs (cleanup pending) fall to
+          //     the own-doc/admin leg — same anti-enumeration rationale as
+          //     (a), and it keeps a client's own dedup/unlike read working.
+          allow read: if postVisibleToCaller(postId, request.auth.uid == likeUserId)
+            && ((!exists(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId))
+                  && (request.auth.uid == likeUserId || isAdmin()))
+              || (exists(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId))
+                  && moderationVisible(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data)));
           // F-P2-1 (2026-07-13 product call): no self-like — mirrors the
           // post-like rule (create-only; unlike stays allowed). Targets the
           // REPLY author, same as block enforcement above. Cached get().
@@ -1389,7 +1693,13 @@ service cloud.firestore {
         // Inherit parent post visibility — enumerating likers on a held post
         // leaks the de-anonymizing engager list and confirms the hidden post
         // exists. See postVisibleToCaller (firestore.rules:18).
-        allow read: if postVisibleToCaller(postId);
+        // 2026-08-05: callerOwnsDoc = `auth.uid == likeUserId` (like docs are
+        // keyed by the liker's uid, no authorId field). Under a DELETED post
+        // the orphan leg previously let ANY authenticated caller list
+        // posts/{deletedId}/likes and harvest the liker uid list before
+        // cleanup; now only your own like doc (dedup/unlike transaction
+        // reads) or an admin gets through.
+        allow read: if postVisibleToCaller(postId, request.auth.uid == likeUserId);
         // Same block enforcement as replies — a blocked user shouldn't be
         // able to bump someone's likeCount.
         // T-10 (2026-06-11): schema lock + createdAt pin, mirroring the reply-

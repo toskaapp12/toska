@@ -19,6 +19,15 @@ struct DraftItem: Identifiable {
     let id: String
     let text: String
     let createdAt: Date
+    // (2026-08-05 draft-loss fix) A draft is the tag, the letter mode and the
+    // GIF as well as the words — saving used to persist `text` only, so
+    // reopening a saved draft quietly handed back a plain post. All three are
+    // OPTIONAL with today's defaults so a draft doc written before the fields
+    // existed decodes to exactly the behavior it has always had (no tag, not
+    // a letter, no GIF) instead of failing to decode or coming back wrong.
+    var tag: String? = nil
+    var isLetter: Bool = false
+    var gifUrl: String? = nil
 }
 
 @MainActor
@@ -73,9 +82,58 @@ struct DraftsView: View {
                                         .lineSpacing(3)
                                         .lineLimit(3)
                                         .multilineTextAlignment(.leading)
-                                    Text(ToskaFormatters.fullDate.string(from: draft.createdAt).lowercased())
-                                        .font(ToskaFont.sans(11))
-                                        .foregroundColor(LateNightTheme.tertiaryText)
+                                    // (2026-08-05) Metadata line. Now that a
+                                    // draft actually keeps its tag / letter
+                                    // mode / GIF, the list says so — otherwise
+                                    // two drafts that reopen differently look
+                                    // identical here. Every element is
+                                    // conditional on a field that defaults to
+                                    // absent, so a pre-2026-08-05 draft simply
+                                    // renders the date exactly as before.
+                                    HStack(spacing: 8) {
+                                        Text(ToskaFormatters.fullDate.string(from: draft.createdAt).lowercased())
+                                            .font(ToskaFont.sans(11))
+                                            .foregroundColor(LateNightTheme.tertiaryText)
+                                        if draft.isLetter {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "envelope")
+                                                    .font(.system(size: 9))
+                                                Text("letter")
+                                                    .font(ToskaFont.sans(11))
+                                            }
+                                            .foregroundColor(Color.toskaAccentGold)
+                                            .accessibilityElement(children: .combine)
+                                            .accessibilityLabel("letter draft")
+                                        }
+                                        if let tag = draft.tag, !tag.isEmpty {
+                                            // Unknown tag (older build, hand-
+                                            // edited doc) falls back to the
+                                            // neutral chip color instead of
+                                            // crashing on a nil lookup — same
+                                            // fallback the composer uses.
+                                            let tagData = sharedTags.first(where: { $0.name == tag })
+                                            HStack(spacing: 3) {
+                                                Image(systemName: tagData?.icon ?? "tag")
+                                                    .font(.system(size: 9))
+                                                Text(tag)
+                                                    .font(ToskaFont.sans(11))
+                                            }
+                                            .foregroundColor(Color(hex: tagData?.colorHex ?? "9198a8"))
+                                            .accessibilityElement(children: .combine)
+                                            .accessibilityLabel("tagged \(tag)")
+                                        }
+                                        if draft.gifUrl != nil {
+                                            // Icon only: the URL is never
+                                            // fetched here (a list of drafts
+                                            // shouldn't kick off N downloads),
+                                            // just noted so the user knows the
+                                            // GIF survived.
+                                            Image(systemName: "photo")
+                                                .font(.system(size: 9))
+                                                .foregroundColor(LateNightTheme.tertiaryText)
+                                                .accessibilityLabel("has a gif")
+                                        }
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.vertical, 8)
@@ -100,8 +158,17 @@ struct DraftsView: View {
             .toolbar(.visible, for: .navigationBar)
             .fullScreenCover(item: $selectedDraft) { draft in
                 EdgeSwipeDismissWrapper {
+                    // (2026-08-05) Carry the whole draft back into the
+                    // composer. initialIsLetter matters most: without it a
+                    // saved letter of <=500 chars reopened as a NORMAL post
+                    // (ComposeView could only infer letter mode from a body
+                    // over the 500 cap), and the next keystroke would then
+                    // hold the user to 500 characters.
                     ComposeView(
                         initialText: draft.text,
+                        initialTag: draft.tag,
+                        initialIsLetter: draft.isLetter,
+                        initialGifUrl: draft.gifUrl,
                         onPostSuccess: nil,
                         editingDraftId: draft.id
                     )
@@ -139,7 +206,21 @@ struct DraftsView: View {
                         let data = doc.data()
                         guard let text = data["text"] as? String else { return nil }
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                        return DraftItem(id: doc.documentID, text: text, createdAt: createdAt)
+                        // (2026-08-05) Conditional casts, not force/`as!`:
+                        // every one of these fields is absent on drafts saved
+                        // before today (and `tag`/`gifUrl` are absent on new
+                        // drafts that simply don't have one — the writer omits
+                        // the key rather than storing ""). A missing or
+                        // wrong-typed value falls back to the pre-existing
+                        // default; nothing here can throw the row away.
+                        return DraftItem(
+                            id: doc.documentID,
+                            text: text,
+                            createdAt: createdAt,
+                            tag: data["tag"] as? String,
+                            isLetter: data["isLetter"] as? Bool ?? false,
+                            gifUrl: data["gifUrl"] as? String
+                        )
                     } ?? []
                 }
             }

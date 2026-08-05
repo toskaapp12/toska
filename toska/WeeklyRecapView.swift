@@ -13,6 +13,12 @@ struct WeeklyRecapView: View {
     @State private var communityPostCount = 0
     @State private var isLoading = true
     @State private var isVisible = false
+    // (2026-08-05) every query in fetchRecapData was `try?`, so a network
+    // failure silently rendered the "nothing this week" empty state — telling
+    // a user their week was empty when the reads just failed. Set when any
+    // required query errors; drives the shared ToskaErrorBanner + hides the
+    // share button (which would otherwise share zeros).
+    @State private var loadFailed = false
     
     var body: some View {
         ZStack {
@@ -39,6 +45,16 @@ struct WeeklyRecapView: View {
                 
                 if isLoading {
                                     ProgressView().tint(Color.toskaBlue)
+                                } else if loadFailed {
+                                    // Failure state (2026-08-05) — distinct from the
+                                    // "nothing this week" empty state below, which a
+                                    // failed fetch used to masquerade as.
+                                    ToskaErrorBanner("couldn't load your recap — check your connection") {
+                                        loadFailed = false
+                                        isLoading = true
+                                        fetchRecapData()
+                                    }
+                                    .padding(.horizontal, 16)
                                 } else if postCount == 0 {
                                     VStack(spacing: 12) {
                                         Text("nothing this week.")
@@ -122,9 +138,10 @@ struct WeeklyRecapView: View {
                 Spacer()
                 
                 // Share button
-                // Share button — hidden while loading so it can't be tapped
-                              // before data has arrived (would share zeros).
-                              if !isLoading {
+                // Share button — hidden while loading OR after a failed load
+                              // so it can't be tapped before data has arrived
+                              // (would share zeros). (2026-08-05: + loadFailed)
+                              if !isLoading && !loadFailed {
                                   Button {
                                       shareRecap()
                                   } label: {
@@ -199,16 +216,20 @@ struct WeeklyRecapView: View {
                 .whereField("createdAt", isGreaterThan: Timestamp(date: weekAgo))
             
             Task { @MainActor in
-                // Run all four queries concurrently, wait for all to finish
-                async let postCountResult: Int = {
+                // Run all four queries concurrently, wait for all to finish.
+                // (2026-08-05) the three user-scoped queries now return nil on
+                // a QUERY error (vs. a real zero/empty result) so a network
+                // failure can surface the retry banner instead of silently
+                // rendering "nothing this week".
+                async let postCountResult: Int? = {
                     // Exclude reposts so "posts this week" counts the user's own
                     // words, consistent with the top-post stat (which skips
                     // reposts) and the totalLikes sum below. Covered by the
                     // [authorId, isRepost, createdAt] composite index.
-                    let snap = try? await userWeekQuery
+                    guard let snap = try? await userWeekQuery
                         .whereField("isRepost", isEqualTo: false)
-                        .count.getAggregation(source: .server)
-                    return Int(truncating: snap?.count ?? 0)
+                        .count.getAggregation(source: .server) else { return nil }
+                    return Int(truncating: snap.count)
                 }()
                 
                 async let communityCountResult: Int = {
@@ -226,7 +247,7 @@ struct WeeklyRecapView: View {
                                     return Int(truncating: snap?.count ?? 0)
                                 }()
                 
-                async let topPostResult: (String, Int) = {
+                async let topPostResult: (String, Int)? = {
                     // Fetch this week's posts ordered by createdAt (the range
                     // filter field — Firestore requires the first orderBy to
                     // match the inequality field, so we can't .order(by:
@@ -235,11 +256,11 @@ struct WeeklyRecapView: View {
                     // by likeCount client-side, then pick the first that's
                     // not expired/flagged/concerning. Mirrors the same
                     // workaround in DailyMomentView.
-                    let snap = try? await userWeekQuery
+                    guard let snap = try? await userWeekQuery
                         .order(by: "createdAt", descending: true)
                         .limit(to: 50)
-                        .getDocuments()
-                    let sortedByLikes = (snap?.documents ?? []).sorted {
+                        .getDocuments() else { return nil }
+                    let sortedByLikes = snap.documents.sorted {
                         ($0.data()["likeCount"] as? Int ?? 0)
                             > ($1.data()["likeCount"] as? Int ?? 0)
                     }
@@ -250,6 +271,16 @@ struct WeeklyRecapView: View {
                             let data = doc.data()
                             if data["flagged"] as? Bool == true { continue }
                             if data["concerningContent"] as? Bool == true { continue }
+                            // (2026-08-05) skip posts held for moderation —
+                            // "hit the hardest this week" must not celebrate a
+                            // post that review may remove. The author-scoped
+                            // query returns their held posts (authorId == me
+                            // satisfies the read rule), so without this filter
+                            // a pending_review post could be the week's top
+                            // post. "live" and the brief pending_validation
+                            // window still qualify, matching the flagged/
+                            // concerning filters above.
+                            if data["moderationStatus"] as? String == "pending_review" { continue }
                             if let expiresAt = data["expiresAt"] as? Timestamp,
                                expiresAt.dateValue() < now { continue }
                             // Skip reposts. The user's "top post of the week"
@@ -266,12 +297,12 @@ struct WeeklyRecapView: View {
                     return ("", 0)
                 }()
                 
-                async let tagDistResult: (Int, String?) = {
-                    let snap = try? await userWeekQuery
+                async let tagDistResult: (Int, String?)? = {
+                    guard let snap = try? await userWeekQuery
                         .order(by: "createdAt", descending: true)
                         .limit(to: 100)
-                        .getDocuments()
-                    guard let docs = snap?.documents else { return (0, nil) }
+                        .getDocuments() else { return nil }
+                    let docs = snap.documents
                     var likes = 0
                     var tagCounts: [String: Int] = [:]
                     for doc in docs {
@@ -290,15 +321,30 @@ struct WeeklyRecapView: View {
                 }()
                 
                 // Await all four — none can leave isLoading stuck
-                self.postCount = await postCountResult
-                self.communityPostCount = await communityCountResult
-                let (topText, topLikes) = await topPostResult
-                self.topPostText = topText
-                self.topPostLikes = topLikes
-                let (totalLikes, tag) = await tagDistResult
-                self.totalLikesReceived = totalLikes
-                self.topTag = tag
-                
+                let postCountValue = await postCountResult
+                let communityCount = await communityCountResult
+                let topPost = await topPostResult
+                let tagDist = await tagDistResult
+
+                // (2026-08-05) any REQUIRED user-scoped query failing → show
+                // the retry banner, not the "nothing this week" empty state.
+                // communityCount is deliberately NOT required: it's a vanity
+                // line that renders only when > 0, and treating its historically
+                // fussier cross-author aggregation as fatal would brick the
+                // whole recap over a cosmetic stat.
+                guard let postCountValue, let topPost, let tagDist else {
+                    self.loadFailed = true
+                    self.isLoading = false
+                    return
+                }
+
+                self.postCount = postCountValue
+                self.communityPostCount = communityCount
+                self.topPostText = topPost.0
+                self.topPostLikes = topPost.1
+                self.totalLikesReceived = tagDist.0
+                self.topTag = tagDist.1
+                self.loadFailed = false
                 self.isLoading = false
             }
         }

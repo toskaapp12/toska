@@ -42,14 +42,32 @@ struct ThreadedReply: Identifiable, Hashable {
 @MainActor
 struct PostDetailView: View {
     let postId: String
-    let handle: String
     let text: String
-    let tag: String?
     let likes: Int
     let reposts: Int
     let replies: Int
-    let time: String
     let authorId: String
+
+    // Header fields are @State mirrors of the init params (2026-08-05), NOT
+    // `let`s, because the push / universal-link path (MainTabView pushPostId,
+    // /p/{id} links) constructs this view knowing only the postId — it seeds
+    // handle:"", time:"", tag:nil. As immutable `let`s these rendered an empty
+    // author line and no timestamp for the whole visit, and tapping the author
+    // pushed a profile with a blank title; worse, repost/report/reply writes
+    // denormalized the empty handle ("originalHandle": "", "reportedHandle":
+    // "", "parentPostHandle": ""). The live listener backfills them from the
+    // post doc, same as it backfills postText. Same name as the old lets so
+    // every existing read (header, repost, report, block, share) picks up the
+    // live value automatically.
+    @State private var handle: String
+    @State private var time: String
+    @State private var tag: String?
+    // Live reply count. The `replies` init param is 0 on the push path even
+    // for busy threads, which (a) froze the "replies" stat at 0 and (b) made
+    // the reply section flash "be the first to reply" before the first
+    // snapshot. Kept in sync from the post doc's replyCount by the live
+    // listener. (2026-08-05)
+    @State private var localReplyCount: Int
 
     let initialIsLiked: Bool
     let initialIsSaved: Bool
@@ -57,17 +75,21 @@ struct PostDetailView: View {
 
     init(postId: String, handle: String, text: String, tag: String?, likes: Int, reposts: Int, replies: Int, time: String, authorId: String = "", isAlreadyLiked: Bool = false, isAlreadySaved: Bool = false, isAlreadyReposted: Bool = false, gifUrl: String? = nil, isLetter: Bool = false, isWhisper: Bool = false) {
         self.postId = postId
-        self.handle = handle
         self.text = text
-        self.tag = tag
         self.likes = likes
         self.reposts = reposts
         self.replies = replies
-        self.time = time
         self.authorId = authorId
         self.initialIsLiked = isAlreadyLiked
         self.initialIsSaved = isAlreadySaved
         self.initialIsReposted = isAlreadyReposted
+        // Header mirrors (2026-08-05): seeded exactly like postText below so
+        // feed-path opens render a complete first frame; the push path seeds
+        // empties and relies on the live listener's backfill.
+        _handle = State(initialValue: handle)
+        _time = State(initialValue: time)
+        _tag = State(initialValue: tag)
+        _localReplyCount = State(initialValue: replies)
         // Seed the display @State from the init params so the FIRST rendered
         // frame is complete. Otherwise the body/counts render empty/"0" and pop
         // to full size one frame later — mid-push — which reads as a glitchy,
@@ -138,6 +160,12 @@ struct PostDetailView: View {
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
     @State private var showReportFailedAlert = false
+    // Offline-specific report feedback (2026-08-05) — reportPost() fails fast
+    // when disconnected (addDocument's completion never fires offline, so the
+    // tap was a silent no-op with a durably-queued report behind it); this
+    // alert carries the app's standard offline copy, distinct from the
+    // generic showReportFailedAlert.
+    @State private var showReportOfflineAlert = false
     @State private var showReplyNameWarning = false
     @State private var showReplyContentWarning = false
     @State private var replyContentWarningMessage = ""
@@ -320,6 +348,9 @@ struct PostDetailView: View {
             .alert("couldn't report", isPresented: $showReportFailedAlert) {
                 Button("ok") {}
             } message: { Text("something went wrong. please try again in a bit.") }
+            .alert("couldn't report", isPresented: $showReportOfflineAlert) {
+                Button("ok") {}
+            } message: { Text("you're offline — try again when you're connected.") }
             .alert("hold on", isPresented: $showReplyContentWarning) {
                 Button("edit") {}
             } message: { Text(replyContentWarningMessage) }
@@ -492,6 +523,16 @@ struct PostDetailView: View {
                             .contentShape(Rectangle())
                     }
                     .opacity(isAuthorIdLoading ? 0 : 1)
+                    // Opacity does NOT disable hit testing (2026-08-05): while
+                    // the author lookup is in flight, isOwnPost is still false,
+                    // so the INVISIBLE menu opened on a tap and offered
+                    // report/block on what may be the user's OWN post — and a
+                    // report fired then wrote reportedUserId: "". Withhold hit
+                    // testing until the lookup resolves. allowsHitTesting, not
+                    // .disabled(): the menu must stay ENABLED once visible —
+                    // it's matched by enabled-scoped queries, and marking a
+                    // control disabled is a state other code can observe.
+                    .allowsHitTesting(!isAuthorIdLoading)
                     .accessibilityLabel(isOwnPost ? "Edit or delete post" : "Report or block")
                 }
                 .contentShape(Rectangle())
@@ -518,22 +559,27 @@ struct PostDetailView: View {
                             .padding(.top, 8)
                         }
 
-                        if replyList.isEmpty && !hasLoadedReplies && replies > 0 {
-                            // Loading state. The post is known to have replies
-                            // (count arrived with the post), but the snapshot
-                            // listener hasn't returned yet. Show skeletons so
-                            // there's no flash of the "be the first to reply"
-                            // empty state before the real replies fade in.
-                            LazyVStack(spacing: 0) {
-                                ForEach(0..<min(max(replies, 1), 5), id: \.self) { _ in
-                                    SkeletonReplyRow()
-                                    Rectangle()
-                                        .fill(Color.toskaBorderLight.opacity(0.5))
-                                        .frame(height: 0.5)
-                                        .padding(.leading, 16)
+                        if replyList.isEmpty && !hasLoadedReplies {
+                            // Loading state, gated on the LIVE count
+                            // (2026-08-05): the push/deep-link path opens with
+                            // replies == 0 even on busy threads, so gating on
+                            // the init param flashed "be the first to reply"
+                            // and then popped the real replies in. When the
+                            // known count is 0 render nothing for the beat —
+                            // localReplyCount corrects with the first post-doc
+                            // snapshot and the skeletons appear.
+                            if localReplyCount > 0 {
+                                LazyVStack(spacing: 0) {
+                                    ForEach(0..<min(max(localReplyCount, 1), 5), id: \.self) { _ in
+                                        SkeletonReplyRow()
+                                        Rectangle()
+                                            .fill(Color.toskaBorderLight.opacity(0.5))
+                                            .frame(height: 0.5)
+                                            .padding(.leading, 16)
+                                    }
                                 }
+                                .transition(.opacity)
                             }
-                            .transition(.opacity)
                         } else if replyList.isEmpty {
                                                     VStack(spacing: 8) {
                                                         Text("\"some words just need\na witness.\"")
@@ -828,11 +874,17 @@ struct PostDetailView: View {
                             }
                             // replyList.count is ROOT replies only (nested live in
                             // .children), so it undercounted threaded posts. Count the
-                            // whole tree; fall back to (and never drop below) the server
-                            // `replies` value we opened with.
-                            statLabel(count: replyList.isEmpty ? replies : max(replies, countAllReplies(replyList)), label: "replies")
+                            // whole tree; fall back to (and never drop below) the LIVE
+                            // server count (localReplyCount — the `replies` init param
+                            // is 0 on the push path and never updates). (2026-08-05)
+                            statLabel(count: replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList)), label: "replies")
                             // 2026-07-30 owner: show reposts alongside felt/replies.
-                            statLabel(count: reposts, label: "reposts")
+                            // Must render localRepostCount, not the immutable
+                            // `reposts` init param — the listener + repostPost
+                            // maintain the live value, and the init param froze
+                            // the visible count until the view was reopened.
+                            // (2026-08-05)
+                            statLabel(count: localRepostCount, label: "reposts")
                             Spacer()
                         }
                         .padding(.bottom, 8)
@@ -1043,11 +1095,38 @@ struct PostDetailView: View {
                     if let snapText = data["text"] as? String, snapText != postText {
                         postText = snapText
                     }
-                    // repostCount isn't rendered here but seeds unrepost math;
-                    // keep it live so an unrepost after a push-pop decrements from
-                    // the current base rather than the stale init param.
+                    // Backfill the header fields the same way the body is
+                    // backfilled above (2026-08-05): the push/universal-link
+                    // path constructs this view with handle:"", time:"",
+                    // tag:nil (only the postId is known), and before these
+                    // were @State the author line + timestamp stayed blank
+                    // for the whole visit and the author-profile push carried
+                    // an empty title. Field names match FeedView.feedPost:
+                    // authorHandle / tag / createdAt. Never clobber a good
+                    // handle with an empty/missing one (repost docs and
+                    // legacy docs may lack authorHandle).
+                    if let snapHandle = data["authorHandle"] as? String, !snapHandle.isEmpty, snapHandle != handle {
+                        handle = snapHandle
+                    }
+                    if let snapCreatedAt = data["createdAt"] as? Timestamp {
+                        let formatted = FeedView.timeAgoString(from: snapCreatedAt.dateValue())
+                        if formatted != time { time = formatted }
+                    }
+                    if let snapTag = data["tag"] as? String, !snapTag.isEmpty, snapTag != tag {
+                        tag = snapTag
+                    }
+                    // repostCount is rendered in the stats row (2026-08-05 —
+                    // it used to show the frozen init param) and seeds unrepost
+                    // math; keep it live so an unrepost after a push-pop
+                    // decrements from the current base rather than a stale value.
                     if let snapReposts = data["repostCount"] as? Int, snapReposts != localRepostCount {
                         localRepostCount = max(0, snapReposts)
+                    }
+                    // replyCount feeds the stats row + the skeleton-vs-empty
+                    // reply gating; the init param is 0 on the push path.
+                    // (2026-08-05)
+                    if let snapReplies = data["replyCount"] as? Int, snapReplies != localReplyCount {
+                        localReplyCount = max(0, snapReplies)
                     }
                     // Pull the attached GIF URL so postHeaderSection can render
                     // it. nil/empty string both clear the preview cleanly.
@@ -1214,6 +1293,15 @@ struct PostDetailView: View {
 
     func reportPost() {
             guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else { return }
+            // Offline guard (2026-08-05): addDocument's completion never fires
+            // offline, so a one-tap report gave ZERO feedback while the write
+            // sat durably queued — it could land hours later on reconnect, or
+            // a retry tap could double-file it. Same fail-fast the app's other
+            // awaited writes use, with the standard offline copy.
+            guard NetworkMonitor.shared.isConnected else {
+                showReportOfflineAlert = true
+                return
+            }
             // Writes must match the hardened firestore.rules schema for the
             // reports collection: required type/status/createdAt, only fields
             // in the keys.hasOnly() allow list, reportedBy must match the
@@ -1246,6 +1334,16 @@ struct PostDetailView: View {
 
     func deletePost() {
         guard !postId.isEmpty, !isDeleting else { return }
+        // Offline guard: batch.commit() never resolves offline (same failure
+        // mode as postReplyNow/saveEdit), so isDeleting stuck true for the
+        // rest of the session (delete silently dead) — worse, the reply/like
+        // cleanup batches queue DURABLY and land on reconnect while the
+        // post-doc delete below was never issued, leaving a live post
+        // stripped of its replies. Fail fast with feedback. (2026-08-05)
+        guard NetworkMonitor.shared.isConnected else {
+            deleteError = "you're offline — try again when you're connected."
+            return
+        }
         isDeleting = true
         let db = Firestore.firestore()
 
@@ -1348,6 +1446,14 @@ struct PostDetailView: View {
     private func adminDeletePost() {
         guard AdminManager.shared.isAdmin, !postId.isEmpty, !isDeleting,
               let adminUid = Auth.auth().currentUser?.uid else { return }
+        // Same offline fail-fast as deletePost() above (2026-08-05): the
+        // updateData/delete completions never fire offline, so isDeleting
+        // would spin forever while the audit-stamp + delete sat queued to
+        // land unattended on reconnect.
+        guard NetworkMonitor.shared.isConnected else {
+            deleteError = "you're offline — try again when you're connected."
+            return
+        }
         isDeleting = true
         let ref = Firestore.firestore().collection("posts").document(postId)
         Task { @MainActor in

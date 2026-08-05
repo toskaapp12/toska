@@ -666,3 +666,137 @@ describe("N-1 FIXED: reply author cannot spoof authorHandle / inject fields via 
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// 2026-08-05: isShareable bool type-lock closes the reply-repost consent
+// escape. The consent pin keys on `.get('isShareable', true) != true` — a
+// truthy NON-bool (1, "true") made that TRUE, so the escape leg fired and
+// the reply author's allowSharing check was skipped entirely, while every
+// share-button surface treats the field truthily: a tampered client handed
+// a non-consenting author's words a live share button. Now non-bool
+// isShareable is rejected at post create before the repost branch runs.
+// ─────────────────────────────────────────────────────────────────────
+describe("isShareable type-lock: reply-repost consent pin cannot be sidestepped with a non-bool", () => {
+  const REPLY_TEXT = "a reply";
+  async function setup() {
+    await seedUser("reposter", { handle: "handle_reposter" });
+    // Reply author has sharing OFF — the exact consent the pin protects.
+    await seedUser("ra", { handle: "handle_ra", allowSharing: false });
+    await seedPost("op", "origauthor");
+    await seedReplyDoc("op", "orr", "ra", { moderationStatus: "live" });
+  }
+  const repost = (isShareable) => ({
+    authorId: "reposter", authorHandle: "handle_reposter", text: REPLY_TEXT,
+    createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+    isRepost: true, originalPostId: "op", originalReplyId: "orr", originalAuthorId: "ra",
+    isShareable,
+  });
+
+  it("DENIED: reply-repost with truthy non-bool isShareable: 1 (old escape path)", async () => {
+    await setup();
+    const db = env.authenticatedContext("reposter").firestore();
+    await assertFails(db.collection("posts").doc("rr_nonbool_1").set(repost(1)));
+  });
+
+  it('DENIED: reply-repost with string isShareable: "true"', async () => {
+    await setup();
+    const db = env.authenticatedContext("reposter").firestore();
+    await assertFails(db.collection("posts").doc("rr_nonbool_s").set(repost("true")));
+  });
+
+  it("CONTROL: same repost with a genuine isShareable: false is accepted (understating consent)", async () => {
+    await setup();
+    const db = env.authenticatedContext("reposter").firestore();
+    await assertSucceeds(db.collection("posts").doc("rr_bool_false").set(repost(false)));
+  });
+
+  it("CONTROL: a genuine isShareable: true is still consent-DENIED (allowSharing off)", async () => {
+    await setup();
+    const db = env.authenticatedContext("reposter").firestore();
+    await assertFails(db.collection("posts").doc("rr_bool_true").set(repost(true)));
+  });
+});
+
+// =====================================================================
+// Platform impersonation via a self-chosen handle (2026-08-05)
+//
+// Adversary: a tampered client skips generateUniqueHandle and picks its
+// own handle at signup. Every byline pin in the ruleset verifies the
+// written handle against the author's OWN user doc, so a handle like
+// `toska_support` isn't spoofing — it becomes the attacker's CANONICAL
+// identity, and the pins then certify it everywhere the byline renders.
+// The reserved-name check is what stops the identity being minted at all.
+// =====================================================================
+describe("hostile: platform-impersonating handle at signup", () => {
+  function signup(db, uid, handle) {
+    const batch = db.batch();
+    batch.set(db.collection("users").doc(uid), {
+      handle, followerCount: 0, followingCount: 0, totalLikes: 0,
+      createdAt: new Date(),
+    });
+    batch.set(db.collection("handles").doc(handle.toLowerCase()), { uid });
+    return batch;
+  }
+
+  it("cannot register `toska_support`", async () => {
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(signup(db, "attacker", "toska_support").commit());
+  });
+
+  it("cannot register `moderator` (or any embedded `mod`)", async () => {
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(signup(db, "attacker", "moderator").commit());
+    await assertFails(signup(db, "attacker", "the_mods").commit());
+  });
+
+  it("cannot dodge the check with capitalization", async () => {
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(signup(db, "attacker", "AdMiN_Team").commit());
+  });
+
+  it("CONTROL: a generator-shaped handle still signs up", async () => {
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertSucceeds(signup(db, "attacker", "hollow_tide_318").commit());
+  });
+});
+
+// =====================================================================
+// Field planting on the world-readable user doc (2026-08-05)
+//
+// users/{uid} is readable by every authenticated user and dumped whole by
+// the admin dashboard. Before the allow-list, the update rule only named
+// the fields someone had thought of — anything else could be written.
+// =====================================================================
+describe("hostile: planting unlisted fields on own user doc", () => {
+  it("cannot attach an unmoderated free-text field", async () => {
+    await seedUser("attacker");
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(
+      db.collection("users").doc("attacker").update({ bio: "find me @elsewhere" })
+    );
+  });
+
+  it("cannot park a large blob on a doc everyone reads", async () => {
+    await seedUser("attacker");
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(
+      db.collection("users").doc("attacker").update({ payload: "x".repeat(50000) })
+    );
+  });
+
+  it("cannot seed a scratch field a future trigger might trust", async () => {
+    await seedUser("attacker");
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertFails(
+      db.collection("users").doc("attacker").update({ verified: true })
+    );
+  });
+
+  it("CONTROL: a real settings toggle still writes", async () => {
+    await seedUser("attacker");
+    const db = env.authenticatedContext("attacker").firestore();
+    await assertSucceeds(
+      db.collection("users").doc("attacker").update({ allowSharing: false })
+    );
+  });
+});

@@ -341,13 +341,29 @@
         async function deleteAccountDirect(userId, handle) {
             if (!userId) return;
             if (!confirm(`PERMANENTLY DELETE the account ${handle || userId}?\n\nThis erases their profile and ALL their posts, replies, likes, saves, and data. It cannot be undone.`)) return;
-            const reason = prompt("reason (optional — e.g. 'underage'):", "underage") || "";
+            // prompt() returns null on Cancel — that must ABORT the
+            // irreversible deletion, not proceed with an empty reason
+            // (`|| ""` used to treat Cancel as consent). The reason dialog
+            // is the admin's last chance to back out. (2026-08-05)
+            const reason = prompt("reason (optional — e.g. 'underage'):", "underage");
+            if (reason === null) return;
             try {
                 await httpsCallable(functions, "adminDeleteAccount")({ uid: userId, reason });
                 refreshCounts();
                 showToast(`${handle || "account"} deleted`);
-                const card = document.getElementById(`user-${userId}`);
-                if (card) card.remove();
+                // This button is wired into the restricted tab ("user-" card)
+                // AND the pending / pending-reply / flagged / crisis loaders,
+                // whose cards are keyed by POST id — removing only
+                // `user-${userId}` left those cards on screen with live
+                // approve / remove / restrict buttons pointed at content the
+                // cascade is deleting (same stale-card class deletePost's
+                // multi-prefix removal fixes). The uid alone can't name a
+                // post-keyed card id, so deleteAccountButton stamps
+                // data-del-account-uid on each button and we sweep every card
+                // carrying it. (2026-08-05)
+                document.getElementById(`user-${userId}`)?.remove();
+                document.querySelectorAll(`[data-del-account-uid="${CSS.escape(userId)}"]`)
+                    .forEach(b => b.closest(".card")?.remove());
             } catch (e) {
                 showToast("error: " + (e?.message || "delete failed"));
             }
@@ -357,6 +373,11 @@
             if (!authorId) return null;
             const btn = el("button", "btn-remove");
             btn.textContent = "delete account";
+            // Target-uid stamp so deleteAccountDirect can find and remove
+            // EVERY card this account owns on the current tab after the
+            // deletion succeeds (cards on pending/flagged/crisis are keyed
+            // by post id, unreachable from the uid). (2026-08-05)
+            btn.dataset.delAccountUid = authorId;
             btn.setAttribute("aria-label", `delete account ${handle || authorId}`);
             btn.addEventListener("click", () => deleteAccountDirect(authorId, handle || ""));
             return btn;
@@ -1417,6 +1438,13 @@
         // makes the button silently do nothing.
 
         async function dismissReport(reportId) {
+            // Dismiss permanently resolves the report (status flips off
+            // "pending", the queue query never returns it again) with no
+            // undo — every sibling action here (removePost, restrictUser,
+            // removeReportedReply) confirms first, so a stray click on the
+            // leftmost button must not silently discharge the 24h review
+            // promise. (2026-08-05)
+            if (!confirm("dismiss this report? it will be marked resolved with no action taken.")) return;
             try {
                 const uid = auth.currentUser.uid;
                 await updateDoc(doc(db, "reports", reportId), { status: "dismissed", reviewedBy: uid, reviewedAt: serverTimestamp(), action: "dismissed" });
@@ -1434,8 +1462,24 @@
                     // Stamp the acting admin BEFORE deleting so auditPostDeletion
                     // (functions/index.js) reads deletedBy off the doc's last state
                     // and attributes the removal to this admin rather than "author".
+                    // Two separate writes on purpose: in an atomic batch the delete
+                    // event's before-image is the pre-commit state, so the stamp
+                    // would never reach the audit trigger. (2026-08-05)
                     await updateDoc(doc(db, "posts", postId), { deletedBy: uid, deletedAt: serverTimestamp() });
-                    await deleteDoc(doc(db, "posts", postId));
+                    try {
+                        await deleteDoc(doc(db, "posts", postId));
+                    } catch (delErr) {
+                        // Delete half failed AFTER the stamp landed: without this
+                        // scrub the post survives LIVE (world-readable) carrying an
+                        // admin uid — the M-1 exposure class — and nothing server-
+                        // side ever clears it (auditPostModeration's scrub set
+                        // excludes deletedBy; no sweep reacts to a stranded stamp).
+                        // Best-effort revert, then surface the real error.
+                        // (2026-08-05)
+                        await updateDoc(doc(db, "posts", postId),
+                            { deletedBy: deleteField(), deletedAt: deleteField() }).catch(() => {});
+                        throw delErr;
+                    }
                 } catch (e) {
                     // Post already gone (earlier retry got through the delete but
                     // died before resolving the report): the stamp updateDoc
@@ -1476,6 +1520,13 @@
         }
 
         async function unflagPost(postId) {
+            // Same guard class as approvePending: this one click flips the
+            // post back to "live" AND scrubs every moderation/crisis marker,
+            // and it sits directly beside "delete post" — a misclick would
+            // publish crisis-flagged/PII-held content world-readable
+            // instantly, with no undo short of re-flagging by hand.
+            // (2026-08-05)
+            if (!confirm("unflag this post and restore it to public feeds?")) return;
             try {
                 // Clearing flagged alone wasn't enough — DailyMomentView,
                 // WeeklyRecapView, TopView, FeedViewModel, OtherProfileView,
@@ -1528,9 +1579,21 @@
             try {
                 // Stamp the acting admin BEFORE deleting so auditPostDeletion
                 // (functions/index.js) attributes the removal to this admin
-                // rather than falling back to "author".
+                // rather than falling back to "author". Kept as two writes —
+                // an atomic batch's delete event carries the PRE-commit state,
+                // which would drop the stamp from the audit trail. (2026-08-05)
                 await updateDoc(doc(db, "posts", postId), { deletedBy: auth.currentUser.uid, deletedAt: serverTimestamp() });
-                await deleteDoc(doc(db, "posts", postId));
+                try {
+                    await deleteDoc(doc(db, "posts", postId));
+                } catch (delErr) {
+                    // See removePost: a failed delete after a landed stamp
+                    // strands an admin uid on a world-readable live doc (M-1
+                    // class) with no server-side scrub. Best-effort revert,
+                    // then surface the real error. (2026-08-05)
+                    await updateDoc(doc(db, "posts", postId),
+                        { deletedBy: deleteField(), deletedAt: deleteField() }).catch(() => {});
+                    throw delErr;
+                }
                 // deletePost is wired from the flagged, pending, AND crisis
                 // tabs, each with its own card-id prefix — removing only the
                 // flagged variant left a live-looking card (re-clickable

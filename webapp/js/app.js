@@ -1251,8 +1251,23 @@ async function viewPost(postId) {
         );
 
         // ---- action row: like / save / repost / overflow
-        const targetPostId = d.isRepost ? (d.originalPostId ?? postId) : postId;
-        const targetAuthorId = d.isRepost ? (d.originalAuthorId ?? d.authorId) : d.authorId;
+        // Reply-reposts (originalReplyId set; iOS-created doc id
+        // {uid}_replyrepost_{replyId}) must NOT deref to originalPostId:
+        // there originalPostId is the PARENT POST while the row's text is
+        // the REPLY's, so dereferencing aimed like/save/report (and the
+        // reply composer) at a post whose words the user never saw. Worst
+        // case was report — it carried postId=<parent post> + text=<reply>,
+        // and admin.html fetches r.postId and binds "remove post" to the
+        // INNOCENT parent (the reply-report wrong-doc class). iOS treats a
+        // reply-repost row as a plain post targeting the repost doc itself
+        // (PostInteractionManager writes likes/saves/reports against
+        // posts/{repostDocId}; its text is rules-pinned to the real reply,
+        // so admins still review exactly what the reporter saw). Mirror
+        // that. Plain post-reposts keep the deref — established web
+        // semantic, same hop sharePage 301s. (2026-08-05)
+        const isReplyRepost = d.isRepost === true && !!d.originalReplyId;
+        const targetPostId = d.isRepost && !isReplyRepost ? (d.originalPostId ?? postId) : postId;
+        const targetAuthorId = d.isRepost && !isReplyRepost ? (d.originalAuthorId ?? d.authorId) : d.authorId;
         const icon = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
         const HEART = icon('<path d="M12 20.5s-7.5-4.7-9.3-9.3C1.4 7.9 3.6 4.5 7 4.5c2.2 0 3.9 1.3 5 3 1.1-1.7 2.8-3 5-3 3.4 0 5.6 3.4 4.3 6.7-1.8 4.6-9.3 9.3-9.3 9.3z"/>');
         const BOOKMARK = icon('<path d="M6.5 3.5h11a1 1 0 011 1v16l-6.5-4.2L5.5 20.5v-16a1 1 0 011-1z"/>');
@@ -1276,6 +1291,13 @@ async function viewPost(postId) {
         // your own repost row the button still works (as un-repost).
         if (targetAuthorId === me.uid) repostBtn.disabled = true;
         if (d.isWhisper === true || d.isMidnightPost === true) repostBtn.disabled = true;
+        // Reply-repost rows target the repost doc itself (see above), so
+        // reposting here would chain a repost onto a repost — iOS refuses
+        // this at three layers (button disabled, menu omitted, manager
+        // early-return); mirror the suppression. Plain post-reposts stay
+        // enabled: their target is the ORIGINAL, so the button works as
+        // un/re-repost of it. (2026-08-05)
+        if (isReplyRepost) repostBtn.disabled = true;
         // F-P2-1: no self-felt — same rule as repost above. The isLiked()
         // read below re-enables it only if a legacy self-like exists, so
         // un-felting still works; it re-disables after that unlike.
@@ -1326,7 +1348,20 @@ async function viewPost(postId) {
             // midnight. A repost's isShareable is pinned to the original at
             // create, so d.isShareable speaks for the target; the link uses
             // targetPostId because the repost id would just 301 anyway.
-            if (d.isShareable === true && d.isLetter !== true && d.isWhisper !== true && d.isMidnightPost !== true) {
+            // Reply-reposts (originalReplyId set — iOS-only, but a web viewer
+            // can still see one) get NO public link: /p/ serves POSTS, so the
+            // link would resolve to the PARENT post, not the reposted reply —
+            // sharing the wrong words. iOS suppresses it too (ShareConsent
+            // publicShareURL returns nil for `_replyrepost_` ids); mirror that.
+            // moderationStatus gate (2026-08-05): sharePage 404s anything not
+            // strictly "live", but the AUTHOR can view their own pending/held
+            // post right here (postVisible lets owners through) — without
+            // this check that page offered "copy link" and handed out a URL
+            // that 404s for everyone. Strict === mirrors the server's gate
+            // (every prod post has the field since the 2026-05-31 backfill).
+            if (d.isShareable === true && d.moderationStatus === "live"
+                && d.isLetter !== true && d.isWhisper !== true
+                && d.isMidnightPost !== true && !d.originalReplyId) {
                 items.push({
                     label: "copy link",
                     onclick: async () => {
@@ -1876,7 +1911,30 @@ onAuthStateChanged(auth, async (user) => {
             renderPolicyReacceptGate(user.uid);
             return;
         }
-    } catch (e) { console.warn("verify failed, continuing", e?.code); }
+    } catch (e) {
+        // FAIL CLOSED (2026-08-05): this catch used to log-and-continue,
+        // which silently skipped the acceptedPolicyVersion gate above
+        // whenever the users-doc read hiccuped (offline blip, App Check
+        // retry) — routing an un-reaccepted account straight in. iOS blocks
+        // hard on this same read (ContentView.verifyUserDocumentAsync), so
+        // continuing here was a policy-gate bypass, not resilience. Hold at
+        // a retryable screen instead: "try again" re-runs the whole verify
+        // path via reload (a transient App Check/network error clears on
+        // the next attempt), and sign-out stays available so nobody is
+        // trapped. Listeners/badges intentionally do NOT start — the
+        // account isn't verified.
+        console.warn("verify failed — holding at gate", e?.code);
+        mount.replaceChildren(el("div", { class: "auth-card" },
+            el("h1", { style: "font-size:24px;" }, "one moment"),
+            el("p", { class: "note" },
+                "we couldn't verify your account just now — check your connection and try again."),
+            el("div", { style: "margin-top:10px;" },
+                el("button", { class: "btn", onclick: () => location.reload() }, "try again")),
+            el("p", { class: "note", style: "margin-top:16px;" },
+                el("a", { class: "plain", href: "#/signin", onclick: async () => { await signOut(auth); } }, "sign out")),
+        ));
+        return;
+    }
     initWrites(db, user.uid);
     startBlockedListener(user.uid);
     startNotifBadge(user.uid);

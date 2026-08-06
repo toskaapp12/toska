@@ -1326,7 +1326,12 @@ struct ComposeView: View {
         // Letters and whispers are never shareable at display time (the share
         // button is hidden for them in the feed), so store isShareable=false to
         // match — otherwise the flag claimed shareable for a post that isn't.
-        let allowSharing = UserHandleCache.shared.allowSharing && !isLetter && !isWhisper
+        // Midnight posts belong in this exclusion too (2026-08-06): Privacy §4
+        // promises "letters and expiring posts are never shareable", and a share
+        // card is a local image that OUTLIVES the post it came from — so a
+        // midnight post rendered to a card defeats the disappears-tonight
+        // promise exactly the way a whisper card would.
+        let allowSharing = UserHandleCache.shared.allowSharing && !isLetter && !isWhisper && !expiresAtMidnight
 
         Task { @MainActor in
             guard self.isPosting else { return }

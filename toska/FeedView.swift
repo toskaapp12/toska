@@ -970,7 +970,7 @@ struct FeedPostRow: View, Equatable {
                                             // (those are private/ephemeral and not
                                             // shareable) and when the author disabled
                                             // sharing.
-                                            if isShareable && !isLetter && !isWhisperPost {
+                                            if isShareable && !isLetter && !isWhisperPost && !isMidnightPost {
                                                 Button { showShareCard = true } label: {
                                                     Image(systemName: "square.and.arrow.up")
                                                         .font(.system(size: 15, weight: .regular))
@@ -1042,7 +1042,7 @@ struct FeedPostRow: View, Equatable {
                         }
                     }
 
-                    if isShareable && !isLetter && !isWhisperPost {
+                    if isShareable && !isLetter && !isWhisperPost && !isMidnightPost {
                                             Button {
                                                 showShareCard = true
                                             } label: {

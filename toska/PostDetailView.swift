@@ -946,7 +946,7 @@ struct PostDetailView: View {
                            // the listener) — this now fully mirrors the feed
                            // row's gating; previously consent revocation never
                            // reached this surface.
-                           if isShareable && !isLetter && !isWhisper {
+                           if isShareable && !isLetter && !isWhisper && !isMidnight {
                                Button { showShareCard = true } label: {
                                    Image(systemName: "square.and.arrow.up")
                                        .font(.system(size: 15, weight: .light))

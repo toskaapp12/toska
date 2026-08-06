@@ -877,8 +877,11 @@ exports.onAllowSharingChanged = onDocumentUpdated("users/{userId}", async (event
   };
   const ownSnap = await db.collection("posts")
     .where("authorId", "==", uid).where("isRepost", "==", false).get();
+  // isMidnightPost joins the exclusion (2026-08-06): turning sharing back ON
+  // must not re-stamp an expiring post as shareable, same reasoning as
+  // whispers — a share card outlives the post.
   const own = await apply(ownSnap,
-    (d) => after && d.isLetter !== true && d.isWhisper !== true);
+    (d) => after && d.isLetter !== true && d.isWhisper !== true && d.isMidnightPost !== true);
   if (own === -1) {
     console.log(`onAllowSharingChanged(${uid}): stale delivery (setting changed again) — aborted`);
     return;
@@ -4756,6 +4759,12 @@ exports.publicFeed = onRequest(
         if (d.moderationStatus !== "live") continue;
         if (d.isRepost === true || d.isShareable !== true) continue;
         if (d.isWhisper === true || d.isMidnightPost === true) continue;
+        // Letters too (2026-08-06): sharePage.js gates them off /p/ pages, but
+        // this feed never did — so a curated letter would publish to
+        // toskaapp.com while Privacy §4 promises letters are "never
+        // shareable". Both public paths must carry the same gate, and rules
+        // can't do it: a tampered client can write isLetter + isShareable.
+        if (d.isLetter === true) continue;
         // Curation gate: only posts an admin explicitly flagged for the web.
         // The live feed contains tester noise and PII-shaped test posts —
         // author consent (isShareable) is necessary but NOT sufficient for

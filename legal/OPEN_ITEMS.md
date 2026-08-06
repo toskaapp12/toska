@@ -4,7 +4,7 @@ No attorney was available, so v1.0 was finalized with best-practice defaults. De
 
 | Decision | Call made | Where |
 |---|---|---|
-| Age floor | **17+** (consistent with gate copy, attestation, Apple rating) | Terms §2, in-app policy §1 |
+| Age floor | **18+** as of 2026-08-06 (raised from 17+ after weighing minor-related exposure; consistent with gate copy, attestation, detector, Apple rating) | Terms §2, in-app policy §1 |
 | Governing law | **Texas** (SALTE DEVELOPMENT LLC formation state) | Terms §14, in-app policy §10 |
 | Arbitration / class waiver | **None** — informal-resolution-first + small-claims instead; a botched template clause is worse than none. Adding one later = material change requiring re-acceptance | Terms §14 |
 | Liability cap | Greater of $100 or amounts paid (12 mo) + user indemnity for violating content | Terms §13, in-app §10 |
@@ -28,4 +28,4 @@ No attorney was available, so v1.0 was finalized with best-practice defaults. De
 
 ## When you eventually get an attorney (30-minute brief)
 
-Priority order: (1) whether to add arbitration + class waiver (the highest-leverage protection for a solo UGC operator; deliberately omitted rather than botched); (2) Texas venue + minors' (17-year-olds') capacity to accept these terms, and any state social-media age statutes; (3) liability cap enforceability given the mental-health-adjacent context; (4) GDPR representative/transfer-mechanism formality if EU distribution becomes deliberate; (5) confirm the law-enforcement stance (notify-when-permitted + imminent-harm exception). The documents were drafted to be accurate to the code first — have them check law, not facts.
+Priority order: (1) whether to add arbitration + class waiver (the highest-leverage protection for a solo UGC operator; deliberately omitted rather than botched); (2) Texas venue, and any state social-media age statutes — note the minors'-capacity question is RETIRED as of 2026-08-06 by moving the floor to 18+, so no minor can accept these terms; (3) liability cap enforceability given the mental-health-adjacent context; (4) GDPR representative/transfer-mechanism formality if EU distribution becomes deliberate; (5) confirm the law-enforcement stance (notify-when-permitted + imminent-harm exception). The documents were drafted to be accurate to the code first — have them check law, not facts.

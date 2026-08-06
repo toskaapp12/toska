@@ -737,7 +737,7 @@ function viewSignUp() {
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "create account");
     btn.onclick = async () => {
         err.replaceChildren();
-        if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 17 or older.")); return; }
+        if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 18 or older.")); return; }
         if (!terms.checked) { err.replaceChildren(errorBox("please read and accept the terms and privacy policy to continue.")); return; }
         btn.disabled = true;
         signupInProgress = true;
@@ -783,7 +783,7 @@ function viewSignUp() {
             el("div", { class: "field" }, el("label", {}, "email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pwField(pw)),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "adultCk" },
-                adult, el("span", {}, "i confirm i'm 17 or older")),
+                adult, el("span", {}, "i confirm i'm 18 or older")),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:10px 0 14px; cursor:pointer;", for: "termsCk" },
                 terms, el("span", {},
                     "i have read and agree to the ",
@@ -1861,7 +1861,7 @@ function renderPolicyReacceptGate(uid) {
                 el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"),
                 " to keep using toska."),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "reacceptCk" },
-                ck, el("span", {}, "i confirm i'm 17 or older and i accept the updated terms and privacy policy")),
+                ck, el("span", {}, "i confirm i'm 18 or older and i accept the updated terms and privacy policy")),
             err,
             el("div", { style: "margin-top:6px;" }, btn),
             el("p", { class: "note", style: "margin-top:20px;" },

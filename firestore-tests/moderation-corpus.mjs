@@ -68,15 +68,30 @@ const CASES = [
   ["my dog is 14 years old", null],
   ["i am 25 years old and lost", null],
   ["back in high school this happened to me", null],
-  // hardening FP guards: threshold stays <17, college forms + reminiscing
+  // hardening FP guards: threshold is <18, college forms + reminiscing
   // + third-person + non-age "turn" uses stay clear
   ["im a freshman in college and still lost", null],
+  ["im a junior in college and she left", null],
   ["when i was 16 we started dating", null],
   ["i had just turned 15 when we met back then", null],
   ["my sister is turning 12 next week", null],
   ["i turn on the tv to distract myself", null],
   ["i was born in 1995", null],
-  ["im 17 years old", null], // 17 is a permitted user (ToS/Apple 17+)
+  // ── age floor moved 17 → 18 (2026-08-06): 17 now flags, 18 does not ──
+  ["im 17 years old", "minor_safety"],
+  ["i am seventeen years old", "minor_safety"],
+  ["im turning 17 next month", "minor_safety"],
+  ["im in 11th grade", "minor_safety"],
+  ["im an 11th grader", "minor_safety"],
+  ["im a junior and we broke up", "minor_safety"],
+  [`i was born in ${new Date().getFullYear() - 17}`, "minor_safety"], // always age <= 17
+  ["im 18 years old", null],          // 18 is a permitted user (ToS §2)
+  ["i am eighteen years old and hurting", null],
+  ["im a senior and she dumped me", null],   // seniors are commonly 18
+  ["im in high school and it hurts", null],  // deliberately not flagged
+  ["im in 12th grade", null],
+  ["when i was 17 we were still together", null], // past tense stays clear
+  [`i was born in ${new Date().getFullYear() - 18}`, null], // could be 18
 
   ["send nudes", "sexual_content"],
   ["lets hook up tonight", "sexual_content"],

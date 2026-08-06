@@ -1059,7 +1059,7 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 // small-claims + IP carve-outs), hardened warranty/liability/indemnification
 // + release between users + 1-year limitations period; Privacy co-versioned to
 // v2.0 (GPC/DNT statement). Material change → re-acceptance required.
-let currentPolicyVersion = 3
+let currentPolicyVersion = 4
 
 let toskaSupportEmail = "salte@saltedevelopments.com"
 
@@ -1081,7 +1081,7 @@ let toskaPolicyBody = """
 toska is a space for the things you can't say out loud. anonymity is the point. to keep that space safe, we ask everyone to agree to a few ground rules before using the app.
 
 1. who can use toska
-you must be at least 17 years old to use toska. some content on toska is emotionally heavy and isn't suited to minors. by continuing, you confirm you are 17 or older.
+you must be at least 18 years old to use toska. what people share here is raw — grief, anger, the worst nights — and we keep toska an adults-only space for that reason. by continuing, you confirm you are 18 or older.
 
 2. what you can share
 toska is for your own feelings, your own story. you can say anything about your own experience — even the hard parts. you agree not to:
@@ -1113,7 +1113,7 @@ toska keeps your real identity separate from your posts. we store the minimum ne
 we use firebase (a service by google) as the backend that stores your posts, handles sign-in, and delivers push notifications. firebase also collects anonymous crash reports and app-usage stats (which screens get opened, how often) so we can fix bugs and understand where the app is rough. firebase never receives your real name or any identifying info because we don't collect those either. you can turn off the anonymous usage stats in settings → privacy.
 
 8. account termination
-you can delete your account at any time from settings. we may suspend or terminate accounts that repeatedly violate these rules, that put other users at risk, or that we believe to be operated by someone under 17.
+you can delete your account at any time from settings. we may suspend or terminate accounts that repeatedly violate these rules, that put other users at risk, or that we believe to be operated by someone under 18.
 
 9. changes to these rules
 we'll update these rules as toska evolves. when we make material changes, we'll ask you to re-accept before you can keep using the app.
@@ -1126,7 +1126,7 @@ questions, appeals, or anything else: \(toskaSupportEmail). we read every messag
 
 toska is published by SALTE DEVELOPMENT LLC.
 
-by tapping "i agree and continue" you confirm you are 17 or older, you understand these rules, and you accept them.
+by tapping "i agree and continue" you confirm you are 18 or older, you understand these rules, and you accept them.
 """
 
 // MARK: - Age Gate View
@@ -1137,15 +1137,15 @@ by tapping "i agree and continue" you confirm you are 17 or older, you understan
 // matches how Whisper, Reddit's anonymous surfaces, and most mental-health
 // peer apps handle this.
 //
-// If the user taps "I am under 17" we show a friendly off-ramp and do NOT
+// If the user declines we show a friendly off-ramp and do NOT
 // let them proceed. We also do not create any Firestore or Auth records
 // during this screen — it runs entirely before account creation.
 
 @MainActor
 struct AgeGateView: View {
-    /// Called when the user confirms they are 17 or older.
+    /// Called when the user confirms they are 18 or older.
     let onConfirmAdult: () -> Void
-    /// Called when the user declines (under 17). Parent should dismiss the
+    /// Called when the user declines (under 18). Parent should dismiss the
     /// signup flow and return to the splash / sign-in screen.
     let onDecline: () -> Void
 
@@ -1175,7 +1175,7 @@ struct AgeGateView: View {
                 .font(ToskaFont.serifItalic(24))
                 .foregroundColor(.white)
 
-            Text("toska is for 17 and up.\nsome of what people share here is heavy.\nwe want to make sure youre ready for that.")
+            Text("toska is for 18 and up.\nsome of what people share here is heavy.\nwe want to make sure youre ready for that.")
                 .font(ToskaFont.sans(13))
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
@@ -1188,7 +1188,7 @@ struct AgeGateView: View {
                 Button {
                     onConfirmAdult()
                 } label: {
-                    Text("i am 17 or older")
+                    Text("i am 18 or older")
                         .font(ToskaFont.sans(13, weight: .medium))
                         .foregroundColor(Color.toskaNearBlack)
                         .frame(maxWidth: .infinity)
@@ -1225,7 +1225,7 @@ struct AgeGateView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
 
-            // The age-gate off-ramp shows the under-17 user a single crisis
+            // The age-gate off-ramp shows the under-18 user a single crisis
             // resource. Pulled from CrisisLines so the right local number
             // shows regardless of where the user is.
             Text("toska gets heavy. we want you to have the right support around you.\n\nif youre going through something hard right now, please talk to a trusted adult, or reach out to \(CrisisLines.resources.first?.label ?? "a crisis line"). youre not alone.")
@@ -1345,7 +1345,7 @@ struct PolicyAcceptanceView: View {
                                 Image(systemName: agreed ? "checkmark.square.fill" : "square")
                                     .font(.system(size: 18))
                                     .foregroundColor(agreed ? Color.toskaBlue : .white.opacity(0.3))
-                                Text("i confirm i am 17 or older and i agree to the terms and content policy above.")
+                                Text("i confirm i am 18 or older and i agree to the terms and content policy above.")
                                     .font(ToskaFont.sans(12))
                                     .foregroundColor(.white.opacity(0.7))
                                     .multilineTextAlignment(.leading)

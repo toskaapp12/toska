@@ -19,7 +19,7 @@ Every user-facing claim about privacy, anonymity, expiration, deletion, or safet
 | 13 | Web privacy page: Giphy "your search query is sent to Giphy's API" | Understates our protection | **TRUE\*** (outdated in our favor) | Searches now proxy through `giphyProxy` CF — Giphy never sees user identity/IP for searches; device fetches GIF media from Giphy CDN (IP visible, like any image host). v1.0 policy states both halves. |
 | 14 | Web terms (June 16, 2026): "Some data may persist in backups for up to 90 days" | Retention ceiling | **TRUE\*** (loose) | Actual worst case ≈ 60 days (weekly backups, 8-week retention). v1.0 docs state ~60; 90 was safe-direction but imprecise. |
 | 15 | Web terms §7 license: "display, distribute, and share … for promotional purposes (such as shareable post cards)" | License scope | **MISLEADING (over-broad)** | "Promotional purposes" is wider than what the app does or the intimacy warrants. v1.0 Terms §7 narrows to: in-service display + the two consent-gated mechanisms (share cards, website featuring), nothing else. |
-| 16 | In-app age gate: "toska is for 17 and up" vs. audit brief's "18+" | Age floor | **CONSISTENT at 17+ in all code/copy** | Not a code/copy mismatch — a decision mismatch with the owner's stated assumption. See OPEN_ITEMS. |
+| 16 | In-app age gate vs. Terms §2 age floor | Age floor | **CONSISTENT at 18+ in all code/copy** (2026-08-06) | Owner raised the floor 17 → 18. Terms §2, Privacy §11, the published HTML, the in-app gate + policy body, the web signup/re-acceptance copy, and the underage detector were all moved together. App Store rating is an owner console action. |
 
 ### 2026-07-27 full-audit corrections
 

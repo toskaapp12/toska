@@ -507,7 +507,7 @@ const SPAM_PATTERNS = [
   /\b(onlyfans|only fans)\b/i,
 ];
 
-// 2026-07-27 minor-safety: first-person underage self-disclosure on a 17+ app.
+// 2026-07-27 minor-safety: first-person underage self-disclosure on an 18+ app.
 // Held for review (NOT deleted) so an admin can verify and act per the ToS
 // ("we remove accounts we discover to be underage"). Tight, first-person,
 // FP-guarded — "im 15 minutes late", "relationship is 9 years old", "im 25",
@@ -517,36 +517,42 @@ const SPAM_PATTERNS = [
 // 2026-07-28 hardening (system-review A.5 #1): added spelled-out ages,
 // "turning / just turned / i turn X next..." framings, freshman/sophomore
 // (college forms excluded), 9th–10th grade + "Nth grader", and first-person
-// birth-year disclosure with a dynamic cutoff. The threshold deliberately
-// stays UNDER 17 (ToS/Apple 17+ line): a stated "i'm 17" is a permitted user
-// and is NOT flagged; 11th/12th grade and "i'm in high school" are excluded
-// for the same reason (often 17+). Past-tense reminiscing ("when i was 16",
-// "i had just turned 15") stays clear because every framing requires
-// present-tense first-person adjacency.
+// birth-year disclosure with a dynamic cutoff. Past-tense reminiscing ("when
+// i was 16", "i had just turned 15") stays clear because every framing
+// requires present-tense first-person adjacency.
+//
+// 2026-08-06: the floor moved 17 → 18, so the threshold moved with it —
+// otherwise the detector would miss exactly the users the new policy
+// excludes. A stated "i'm 17" now flags; "i'm 18" does not.
+//   - 11th grade / junior ADDED: juniors are ~16-17, essentially never 18.
+//   - 12th grade / senior / "i'm in high school" still EXCLUDED: seniors are
+//     commonly 18, so flagging them would hold legitimate adult posts and
+//     spend moderator attention for no safety gain. Do not "fix" this.
+// The college guard on freshman/sophomore/junior stays for the same reason.
 const UNDERAGE_AGE =
-  "(?:1[0-6]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen)";
+  "(?:1[0-7]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)";
 const UNDERAGE_PATTERNS = [
   /\b(i'?m|i am)\s+(a\s+)?(minor|underage)\b/,
   /\bi'?m\s+not\s+(even\s+)?(18|eighteen)\b/,
   new RegExp(
     "\\b(i'?m|i am)\\s+(only\\s+|just\\s+)?" + UNDERAGE_AGE +
     "\\s*(years?\\s*old|yo\\b|yrs?\\s*old)"),
-  /\b(i'?m|i am)\s+in\s+(middle school|junior high|[6-9](th)?\s*grade|10(th)?\s*grade|(sixth|seventh|eighth|ninth|tenth)\s*grade)\b/,
+  /\b(i'?m|i am)\s+in\s+(middle school|junior high|[6-9](th)?\s*grade|1[01](th)?\s*grade|(sixth|seventh|eighth|ninth|tenth|eleventh)\s*grade)\b/,
   new RegExp("\\b(i'?m|i am)\\s+turning\\s+" + UNDERAGE_AGE + "\\b"),
   new RegExp("\\bi\\s+just\\s+turned\\s+" + UNDERAGE_AGE + "\\b"),
   new RegExp("\\bi\\s+turn\\s+" + UNDERAGE_AGE + "\\s+(next|this|in|on)\\b"),
-  /\b(i'?m|i am)\s+an?\s+(freshman|sophomore)\b(?!\s+(in|at)\s+(community\s+)?(college|university|uni)\b)/,
-  /\b(i'?m|i am)\s+an?\s+([6-9]|10)(th)?[\s-]*grader\b/,
+  /\b(i'?m|i am)\s+an?\s+(freshman|sophomore|junior)\b(?!\s+(in|at)\s+(community\s+)?(college|university|uni)\b)/,
+  /\b(i'?m|i am)\s+an?\s+([6-9]|10|11)(th)?[\s-]*grader\b/,
 ];
 const UNDERAGE_BORN_RE = /\b(i\s+was|i'?m|i\s+am)\s+born\s+in\s+((19|20)\d{2})\b/;
 
 function isUnderageDisclosure(rawText) {
   const t = (rawText || "").toLowerCase();
   if (UNDERAGE_PATTERNS.some((re) => re.test(t))) return true;
-  // Birth year >= (currentYear - 16) guarantees age <= 16 even after this
-  // year's birthday — never goes stale, never flags a possible 17-year-old.
+  // Birth year >= (currentYear - 17) guarantees age <= 17 even after this
+  // year's birthday — never goes stale, never flags a possible 18-year-old.
   const born = UNDERAGE_BORN_RE.exec(t);
-  if (born && Number(born[2]) >= new Date().getFullYear() - 16) return true;
+  if (born && Number(born[2]) >= new Date().getFullYear() - 17) return true;
   return false;
 }
 

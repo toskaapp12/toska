@@ -62,7 +62,7 @@ final class ShareCardInteractionTests: XCTestCase {
         let agree = app.buttons["i agree and continue"]
         if agree.waitForExistence(timeout: 3) {
             let checkbox = app.buttons.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "i confirm i am 17 or older")
+                NSPredicate(format: "label BEGINSWITH %@", "i confirm i am 18 or older")
             ).firstMatch
             if checkbox.waitForExistence(timeout: 2) { checkbox.tap() }
             forceTap(agree)

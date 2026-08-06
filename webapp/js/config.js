@@ -32,4 +32,4 @@ export const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
 // signup consent links to the CURRENT terms/privacy pages, so stamping the
 // current number is correct — lagging behind made every web signup redundantly
 // re-accept the same policy on their first iOS launch.
-export const POLICY_VERSION = 3;
+export const POLICY_VERSION = 4;

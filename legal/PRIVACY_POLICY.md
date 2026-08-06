@@ -1,10 +1,11 @@
 # toska — Privacy Policy
 
-**Version 2.0 — Effective July 19, 2026**
+**Version 3.0 — Effective August 6, 2026**
 **Operator / data controller: SALTE DEVELOPMENT LLC**
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v3.0 (2026-08-06): Co-versioned with Terms of Service v3.0 for joint re-acceptance. Minimum age raised from 17 to 18 (§11); data practices otherwise unchanged.
 > - v2.0 (2026-07-19): Co-versioned with Terms of Service v2.0 for joint re-acceptance. No reduction in your privacy: added an explicit Global Privacy Control / Do-Not-Track statement (§8), clarified that we honor opt-out preference signals, and confirmed our breach-notification and data-minimization commitments. Data practices are otherwise unchanged from v1.0.
 > - v1.0 (2026-07-17): First versioned release. Supersedes the web policy dated April 17, 2026. Substantive corrections from that text: removed references to "messages" (direct messages were removed from the app in May 2026 and no message data is collected), corrected the Giphy description (searches are proxied through our server), added the full data inventory (drafts, mood/stage, usage-streak days, prompt responses), stated exact retention windows, and added the "what anonymous actually means" section.
 
@@ -103,7 +104,7 @@ Data is encrypted in transit and at rest on Google's infrastructure. Access rule
 
 ## 11. Age
 
-toska is for users 17 and older, and your age confirmation is recorded at signup. We do not knowingly collect data from anyone under 17; if we learn we have, we delete the account and its data. toska is not directed at children under 13, and we never knowingly collect their data (COPPA).
+toska is for users 18 and older, and your age confirmation is recorded at signup. We do not knowingly collect data from anyone under 18; if we learn we have, we delete the account and its data. toska is not directed at children under 13, and we never knowingly collect their data (COPPA).
 
 ## 12. Changes to this policy
 

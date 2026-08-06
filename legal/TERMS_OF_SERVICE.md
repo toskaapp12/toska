@@ -1,10 +1,11 @@
 # toska — Terms of Service
 
-**Version 2.0 — Effective July 19, 2026**
+**Version 3.0 — Effective August 6, 2026**
 **Operator: SALTE DEVELOPMENT LLC ("toska," "we," "us")**
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v3.0 (2026-08-06): **Minimum age raised from 17 to 18** (§2), with the in-app age gate, the App Store age rating, and the underage-content detector moved in step. toska is now an adults-only service: everyone using it is at or above the age of majority in nearly every US state, which removes the contract-capacity and parental-consent questions that a 17+ floor created. Material change requiring re-acceptance under §15.
 > - v2.0 (2026-07-19): Security & legal hardening release. Added binding individual arbitration with a class-action and jury-trial waiver, a 30-day arbitration opt-out, a small-claims carve-out, an intellectual-property injunctive-relief carve-out, and a fee-shifting/consumer-cost-protection provision so the clause isn't cost-prohibitive (§14); strengthened the warranty disclaimer and added an express not-responsible-for-other-users'-content/conduct and force-majeure clause (§11); hardened the limitation of liability (aggregate cap, essential-purpose survival, assumption of risk) and expanded indemnification, adding a release of claims between users (§13); added a one-year limitations period (§14), a no-reliance/entire-agreement and prohibited-use clause (§17), and a DMCA counter-notice process (§18). These are material changes requiring re-acceptance under §15. **This reverses the prior "no arbitration" position in v1.0.**
 > - v1.0 (2026-07-17): First versioned release. Supersedes the undated web terms of June 16, 2026.
 
@@ -16,7 +17,7 @@ toska is a pseudonymous platform for expressing feelings about breakups and loss
 
 ## 2. Who can use toska
 
-You must be at least **17 years old** to use toska. By creating an account you confirm this, and your confirmation is recorded. We do not knowingly allow anyone under 17 to use the app, and we remove accounts we discover to be underage. (17+ matches the app's App Store age rating and the in-app attestation; all three are kept in sync deliberately.) If you are under the age of majority where you live, you confirm your parent or legal guardian has reviewed and agreed to these terms on your behalf.
+You must be at least **18 years old** to use toska. By creating an account you confirm this, and your confirmation is recorded. We do not knowingly allow anyone under 18 to use the app, and we remove accounts we discover to be underage. (18+ matches the app's App Store age rating and the in-app attestation; all three are kept in sync deliberately.) In the few states where the age of majority is above 18 — Alabama and Nebraska (19) and Mississippi (21) — you confirm that a parent or legal guardian has reviewed and agreed to these terms on your behalf; everywhere else, being 18 means you can agree to them yourself.
 
 ## 3. Your account
 

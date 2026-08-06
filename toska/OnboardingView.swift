@@ -312,7 +312,7 @@ struct OnboardingView: View {
                     showPolicyAcceptance = true
                 },
                 onDecline: {
-                    // User is under 17 — delete the account we just created
+                    // User is under 18 — delete the account we just created
                     // via Apple/Google/email, sign out, and send them back to
                     // the splash screen.
                     Telemetry.ageGateDeclined()

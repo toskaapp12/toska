@@ -27,6 +27,7 @@ Everything below is collected only because a feature needs it. We collect **no**
 | Push notification token | Delivering notifications you opted into | Your private, owner-only profile area |
 | Reports you submit (including the reported text) | Moderation and safety | Restricted database area readable only by moderators |
 | Crash reports | Fixing bugs | Firebase Crashlytics — **not linked** to your account (we never attach your user ID), and error text is scrubbed for identifiers before sending |
+| Performance data (app start time, screen render time, network request timing) | Finding and fixing slowness — **opt out any time** in Settings → Privacy, the same toggle as usage analytics | Firebase Performance Monitoring — no content, handle, or account identifier |
 | Usage analytics (event names only) | Understanding feature use — **opt out any time** in Settings → Privacy | Firebase Analytics — event vocabulary is fixed and never includes what you wrote, your handle, your ID, or search terms |
 
 Timestamps on content are server-assigned and used for ordering and expiration — we don't collect device clocks, time zones, device models, or OS-version analytics of our own.
@@ -53,7 +54,7 @@ Turning it off ends both, including for existing posts. Deleting a post removes 
 
 ## 5. Third parties that process your data
 
-- **Firebase / Google Cloud** (our infrastructure): authentication, database, serverless functions, push delivery, crash reporting, analytics, and app-integrity checks (App Check) all run on Google's infrastructure, so the data in §1 is processed on Google's servers under their [privacy documentation](https://firebase.google.com/support/privacy). We use them as a processor to run toska, not to advertise.
+- **Firebase / Google Cloud** (our infrastructure): authentication, database, serverless functions, push delivery, crash reporting, analytics, performance monitoring, and app-integrity checks (App Check) all run on Google's infrastructure, so the data in §1 is processed on Google's servers under their [privacy documentation](https://firebase.google.com/support/privacy). We use them as a processor to run toska, not to advertise.
 - **Apple** (push notifications, Sign in with Apple): push payloads are routed through Apple's notification service. **They contain no post content and no handles** — only generic text ("someone felt your words") and routing IDs. Sign in with Apple shares your email with us (or Apple's private relay address if you choose Hide My Email).
 - **Google Sign-In** (optional sign-in): shares your Google account email with us.
 - **Giphy** (GIF search): when you search GIFs, your search terms are sent to Giphy's API **through our server** — Giphy does not receive your identity, account ID, or IP address for searches. When a GIF is displayed, your device loads the image directly from Giphy's servers, which — like any image host — see your IP address. [Giphy privacy policy](https://support.giphy.com/hc/en-us/articles/360032872931).

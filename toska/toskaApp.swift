@@ -133,6 +133,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // custom Telemetry events — otherwise opting out is cosmetic.
             // SettingsView re-invokes this when the toggle flips.
             Analytics.setAnalyticsCollectionEnabled(Telemetry.isOptedIn)
+            // Performance rides the SAME opt-out (2026-08-06). It used to
+            // collect regardless, which made two Privacy Policy statements
+            // untrue at once: Performance appeared nowhere in the collection
+            // list, and §8 claimed the Settings toggle turns off "the only
+            // optional collection we do". Gating it here makes the promise
+            // true rather than just disclosed. SettingsView mirrors this on
+            // flip; this line applies the stored preference at launch.
+            Performance.sharedInstance().isDataCollectionEnabled = Telemetry.isOptedIn
 
         // Bump URLCache so AsyncImage / GIF reloads don't constantly refetch.
         // The URLSession default is ~4 MB memory + ~20 MB disk, which a feed

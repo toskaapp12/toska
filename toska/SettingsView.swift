@@ -1,5 +1,6 @@
 import SwiftUI
 import FirebaseAnalytics
+import FirebasePerformance
 import FirebaseAuth
 @preconcurrency import FirebaseFirestore
 import UserNotifications
@@ -447,6 +448,10 @@ struct SettingsView: View {
             // (sessions, screen views) — Telemetry's guard only covers our
             // custom events. toskaApp.swift applies the same at launch.
             Analytics.setAnalyticsCollectionEnabled(optedIn)
+            // Performance too (2026-08-06) — see toskaApp.swift: the policy
+            // promises this toggle covers every optional collection, so it
+            // has to actually reach Performance, not just Analytics.
+            Performance.sharedInstance().isDataCollectionEnabled = optedIn
         }
         .onChange(of: settings) { oldValue, newValue in
             if isLoaded && oldValue != newValue {

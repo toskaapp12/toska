@@ -108,6 +108,7 @@
             <li><strong>Reports you submit</strong> (including the reported text) &mdash; readable only by moderators.</li>
             <li><strong>Crash reports</strong> &mdash; Firebase Crashlytics, not linked to your account, error text scrubbed of identifiers before sending.</li>
             <li><strong>Usage analytics</strong> (event names only; opt out in Settings &rarr; Privacy) &mdash; a fixed event vocabulary that never includes what you wrote, your handle, your ID, or search terms.</li>
+            <li><strong>Performance data</strong> (app start time, screen render time, network request timing; opt out with the same Settings &rarr; Privacy toggle) &mdash; Firebase Performance Monitoring. No content, handle, or account identifier.</li>
         </ul>
         <p>Timestamps on content are server-assigned and used for ordering and expiration &mdash; we don't collect device clocks, time zones, device models, or OS-version analytics of our own.</p>
 
@@ -128,7 +129,7 @@
 
         <h2>5. Third-party services</h2>
         <ul>
-            <li><strong>Firebase / Google Cloud</strong> &mdash; our infrastructure: authentication, database, serverless functions, push delivery, crash reporting, analytics, and app-integrity checks all run on Google's servers under <a href="https://firebase.google.com/support/privacy">Firebase's privacy documentation</a>. We use them to run toska, not to advertise.</li>
+            <li><strong>Firebase / Google Cloud</strong> &mdash; our infrastructure: authentication, database, serverless functions, push delivery, crash reporting, analytics, performance monitoring, and app-integrity checks all run on Google's servers under <a href="https://firebase.google.com/support/privacy">Firebase's privacy documentation</a>. We use them to run toska, not to advertise.</li>
             <li><strong>Apple</strong> &mdash; push notifications are routed through Apple's service; the payloads contain no post content and no handles &mdash; only generic text and routing IDs. Sign in with Apple shares your email with us (or Apple's private relay address if you Hide My Email).</li>
             <li><strong>Google Sign-In</strong> (optional) &mdash; shares your Google account email with us.</li>
             <li><strong>Giphy</strong> &mdash; GIF search goes through our server, so Giphy does not receive your identity, account ID, or IP address for searches. When a GIF is displayed, your device loads the image directly from Giphy's servers, which &mdash; like any image host &mdash; see your IP address. <a href="https://support.giphy.com/hc/en-us/articles/360032872931">Giphy privacy policy</a>.</li>

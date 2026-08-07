@@ -5,7 +5,7 @@
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
-> - v3.0 (2026-08-06): **Minimum age raised from 17 to 18** (§2), with the in-app age gate, the App Store age rating, and the underage-content detector moved in step. toska is now an adults-only service: everyone using it is at or above the age of majority in nearly every US state, which removes the contract-capacity and parental-consent questions that a 17+ floor created. Material change requiring re-acceptance under §15.
+> - v3.0 (2026-08-06): **Minimum age raised from 17 to 18** (§2), with the in-app age gate and the underage-content detector moved in step (the App Store age rating is updated separately in App Store Connect). toska is now an adults-only service: everyone using it is at or above the age of majority in nearly every US state, which removes the contract-capacity and parental-consent questions that a 17+ floor created. Material change requiring re-acceptance under §15.
 > - v2.0 (2026-07-19): Security & legal hardening release. Added binding individual arbitration with a class-action and jury-trial waiver, a 30-day arbitration opt-out, a small-claims carve-out, an intellectual-property injunctive-relief carve-out, and a fee-shifting/consumer-cost-protection provision so the clause isn't cost-prohibitive (§14); strengthened the warranty disclaimer and added an express not-responsible-for-other-users'-content/conduct and force-majeure clause (§11); hardened the limitation of liability (aggregate cap, essential-purpose survival, assumption of risk) and expanded indemnification, adding a release of claims between users (§13); added a one-year limitations period (§14), a no-reliance/entire-agreement and prohibited-use clause (§17), and a DMCA counter-notice process (§18). These are material changes requiring re-acceptance under §15. **This reverses the prior "no arbitration" position in v1.0.**
 > - v1.0 (2026-07-17): First versioned release. Supersedes the undated web terms of June 16, 2026.
 
@@ -17,7 +17,7 @@ toska is a pseudonymous platform for expressing feelings about breakups and loss
 
 ## 2. Who can use toska
 
-You must be at least **18 years old** to use toska. By creating an account you confirm this, and your confirmation is recorded. We do not knowingly allow anyone under 18 to use the app, and we remove accounts we discover to be underage. (18+ matches the app's App Store age rating and the in-app attestation; all three are kept in sync deliberately.) In the few states where the age of majority is above 18 — Alabama and Nebraska (19) and Mississippi (21) — you confirm that a parent or legal guardian has reviewed and agreed to these terms on your behalf; everywhere else, being 18 means you can agree to them yourself.
+You must be at least **18 years old** to use toska. By creating an account you confirm this, and your confirmation is recorded. We do not knowingly allow anyone under 18 to use the app, and we remove accounts we discover to be underage. (The in-app age gate and attestation enforce this same floor; we keep the App Store age rating aligned with it.) In the few states where the age of majority is above 18 — Alabama and Nebraska (19) and Mississippi (21) — you confirm that a parent or legal guardian has reviewed and agreed to these terms on your behalf; everywhere else, being 18 means you can agree to them yourself.
 
 ## 3. Your account
 
@@ -66,7 +66,7 @@ The license for a piece of content ends when you delete it or delete your accoun
 Whisper posts and midnight posts are ephemeral by design, and we want to be precise about the mechanics:
 
 - The moment a post expires (1 hour after posting for whispers; your local midnight for midnight posts), it stops appearing in every feed and surface in the app.
-- The post is then **permanently deleted from our live database within about one hour** of expiring, by an automated hourly cleanup (with a database time-to-live policy as backstop).
+- The post is then **permanently deleted from our live database**, usually within about ten minutes of expiring, by an automated cleanup that runs every ten minutes (with a database time-to-live policy as backstop, which can take longer if a cleanup run fails).
 - Like all data, deleted posts can persist briefly in standard database backups (§12) before those backups expire.
 - Practical honesty: anything shown on screens can be screenshotted by other users before it expires. Expiration limits how long we keep and show a post; it cannot un-show it to people who already saw it.
 

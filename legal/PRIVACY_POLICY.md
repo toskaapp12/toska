@@ -66,7 +66,7 @@ No other third party receives user data. There are no ad networks, no data broke
 | Data | Kept until |
 |---|---|
 | Posts, replies, profile | You delete them or delete your account |
-| Whisper posts | 1 hour after posting, then hard-deleted from the live database within ~1 more hour by automated cleanup |
+| Whisper posts | 1 hour after posting, then hard-deleted from the live database — usually within ~10 minutes — by a cleanup that runs every ten minutes (a database time-to-live policy is the backstop if a run fails) |
 | Midnight posts | Your local midnight, then hard-deleted the same way |
 | Notifications in your inbox | Pruned after 90 days |
 | Drafts | Until you delete them or your account |

@@ -140,7 +140,7 @@
         <ul>
             <li>Posts, replies, profile: until you delete them or your account.</li>
             <li>Drafts: until you delete them or your account (only you can ever read them).</li>
-            <li>Whisper posts: 1 hour after posting, then hard-deleted from the live database within about 1 more hour by automated cleanup. Midnight posts: same, from your local midnight.</li>
+            <li>Whisper posts: 1 hour after posting, then hard-deleted from the live database &mdash; usually within about ten minutes &mdash; by a cleanup that runs every ten minutes (a database time-to-live policy is the backstop if a run fails). Midnight posts: same, from your local midnight.</li>
             <li>Notifications in your inbox: pruned after 90 days.</li>
             <li>Reports and moderation records: retained after content deletion for safety, abuse-pattern, and legal-defense purposes.</li>
             <li>Admin action log: retained as an internal accountability record; contains no post content beyond what moderation required.</li>

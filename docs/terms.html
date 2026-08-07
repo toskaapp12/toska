@@ -121,7 +121,7 @@
         <p>Whisper posts and midnight posts are ephemeral by design, and we want to be precise about the mechanics:</p>
         <ul>
             <li>The moment a post expires (1 hour after posting for whispers; your local midnight for midnight posts), it stops appearing in every feed and surface in the app.</li>
-            <li>The post is then permanently deleted from our live database within about one hour of expiring, by an automated hourly cleanup.</li>
+            <li>The post is then permanently deleted from our live database, usually within about ten minutes of expiring, by an automated cleanup that runs every ten minutes (with a database time-to-live policy as backstop, which can take longer if a cleanup run fails).</li>
             <li>Like all data, deleted posts can persist briefly in standard database backups (section 12) before those backups expire.</li>
             <li>Practical honesty: anything shown on screens can be screenshotted by other users before it expires. Expiration limits how long we keep and show a post; it cannot un-show it to people who already saw it.</li>
         </ul>

@@ -13,7 +13,7 @@ toska is built around pseudonymity. We collect as little as we can, we never sel
 
 ## 1. What we collect
 
-Everything below is collected only because a feature needs it. We collect **no** real name, phone number, location, contacts, photos, camera data, or advertising identifiers, and the app contains no ad SDKs and does no cross-app tracking.
+Everything below is collected only because a feature needs it. We collect **no** real name, phone number, location, contacts, photos, camera data, or advertising identifiers, we serve no advertising, and we do no cross-app tracking. (One literal caveat, so this reads true: Firebase Analytics pulls in Google's ads-attribution library as a transitive dependency, so that code is present in the binary. We never call it, no ads are served, and the app declares no tracking.)
 
 | Data | Why | Where it lives |
 |---|---|---|
@@ -50,7 +50,7 @@ If your **allow sharing** setting is on (default on; Settings → Privacy):
 - other users can render a post of yours as a **share-card image** — words and feeling tag only, never your handle or any identifier;
 - a small number of posts, hand-picked by us, may appear on **toskaapp.com** and its share pages — same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.
 
-Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website. Letters and expiring posts are never shareable regardless of this setting.
+Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website — the website's cache can take up to about ten minutes to catch up. Letters and expiring posts are never shareable regardless of this setting.
 
 ## 5. Third parties that process your data
 
@@ -85,7 +85,7 @@ You can also delete or edit any individual post or reply anywhere it appears, an
 
 Available to **everyone, in-app, today** — no forms, no email needed:
 
-- **Access / portability:** Settings → export my data produces a JSON file of everything you've authored and own (account data, posts, replies, drafts, liked/saved IDs, follower/following handles, notification history).
+- **Access / portability:** Settings → export my data produces a JSON file of what you've authored and own (account data, posts, replies, drafts, liked/saved IDs, follower/following handles, notification history). Two limits, stated plainly: reports you filed are **not** included — they are moderation records readable only by moderators — and each collection is capped at 5,000 items, so an unusually prolific account's export may be partial. Email us if you need the remainder.
 - **Deletion:** per-item delete everywhere; full account deletion in Settings.
 - **Correction:** edit your posts and replies; change email in Settings.
 - **Analytics opt-out:** Settings → Privacy.

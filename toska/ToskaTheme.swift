@@ -1060,6 +1060,15 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 // + release between users + 1-year limitations period; Privacy co-versioned to
 // v2.0 (GPC/DNT statement). Material change → re-acceptance required.
 let currentPolicyVersion = 4
+/// Human-facing label for the SAME agreement `currentPolicyVersion` gates.
+/// They are different numbers on purpose: `currentPolicyVersion` is an
+/// internal counter that only has to increase to force re-acceptance, while
+/// the published Terms/Privacy carry their own document version and effective
+/// date. Showing the raw counter (it read "version 4 · last updated 2026")
+/// meant the screen a user accepts disagreed with the documents on
+/// toskaapp.com they were accepting. Update this string whenever the
+/// published documents get a new version or date.
+let currentPolicyLabel = "version 3.0 · effective august 6, 2026"
 
 let toskaSupportEmail = "salte@saltedevelopments.com"
 
@@ -1295,7 +1304,7 @@ struct PolicyAcceptanceView: View {
                     Text("terms and content policy")
                         .font(ToskaFont.serifItalic(22))
                         .foregroundColor(.white)
-                    Text("version \(currentPolicyVersion) · last updated 2026")
+                    Text(currentPolicyLabel)
                         .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.3))
                 }

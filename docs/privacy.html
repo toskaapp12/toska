@@ -95,7 +95,7 @@
         <p>toska is built around pseudonymity. We collect as little as we can, we never sell your data, and this policy is written to match what the code actually does &mdash; no more, no less.</p>
 
         <h2>1. What we collect</h2>
-        <p>Everything below is collected only because a feature needs it. We collect <strong>no</strong> real name, phone number, location, contacts, photos, camera data, or advertising identifiers, and the app contains no ad SDKs and does no cross-app tracking.</p>
+        <p>Everything below is collected only because a feature needs it. We collect <strong>no</strong> real name, phone number, location, contacts, photos, camera data, or advertising identifiers, we serve no advertising, and we do no cross-app tracking. (One literal caveat, so this reads true: Firebase Analytics pulls in Google's ads-attribution library as a transitive dependency, so that code is present in the binary. We never call it, no ads are served, and the app declares no tracking.)</p>
         <ul>
             <li><strong>Email address</strong> &mdash; sign-in, password reset, account recovery, support. Stored with Firebase Auth only &mdash; it is never copied into our post/profile database.</li>
             <li><strong>Random handle</strong> &mdash; your display identity (generated; never your real name).</li>
@@ -125,7 +125,7 @@
 
         <h2>4. Public sharing of posts (your control)</h2>
         <p>If your <strong>allow sharing</strong> setting is on (default on; Settings &rarr; Privacy): other users can render a post of yours as a share-card image &mdash; words and feeling tag only, never your handle; and a small number of posts, hand-picked by us, may appear on toskaapp.com and its share pages &mdash; same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.</p>
-        <p>Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website. Letters and expiring posts are never shareable regardless of this setting.</p>
+        <p>Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website &mdash; the website's cache can take up to about ten minutes to catch up. Letters and expiring posts are never shareable regardless of this setting.</p>
 
         <h2>5. Third-party services</h2>
         <ul>

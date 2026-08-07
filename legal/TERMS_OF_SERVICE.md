@@ -46,7 +46,7 @@ Automated systems screen content at posting time and may hold content for human 
 
 ## 6. Reporting, blocking, enforcement
 
-You can report any post, reply, or user in-app, and block any user (blocking is mutual-invisibility and the blocked person is not notified). We may remove content, hold it for review, restrict an account's ability to post, or terminate an account, at our discretion. Serious threats of harm may be referred to law enforcement.
+You can report any post, reply, or user in-app, and block any user (the blocked person is not notified). Blocking hides each of you from the other's profile and stops all interaction between you — replies, likes, reposts, follows, and notifications — in both directions. One honest limit: it does not remove your posts from the public feed, so someone you've blocked can still read what you post there. We may remove content, hold it for review, restrict an account's ability to post, or terminate an account, at our discretion. Serious threats of harm may be referred to law enforcement.
 
 ## 7. Your content and the license you give us
 

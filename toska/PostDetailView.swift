@@ -1079,6 +1079,24 @@ struct PostDetailView: View {
                         return
                     }
                     guard let data = snapshot?.data() else { return }
+                    // Expired posts must not be readable here (2026-08-06
+                    // accuracy audit). Terms §8 promises an expired post
+                    // "stops appearing in every feed and surface", but this
+                    // screen is reachable by push deep link and by an
+                    // app.toskaapp.com/p/{id} universal link with nothing but
+                    // the id — and unlike the feed it never filtered on
+                    // expiresAt. There is deliberately no rules-layer gate
+                    // (rules aren't filters: one expired doc would deny an
+                    // entire feed query), so the client owns this. Dismiss
+                    // exactly as for a deleted post; the sweep removes the
+                    // doc within ~10 minutes either way.
+                    if let expiresAt = data["expiresAt"] as? Timestamp,
+                       expiresAt.dateValue() < Date() {
+                        self.liveListener?.remove()
+                        self.liveListener = nil
+                        self.dismiss()
+                        return
+                    }
                     if data["isLetter"] as? Bool == true { isLetter = true }
                     if data["isWhisper"] as? Bool == true { isWhisper = true }
                     // Unconditional assignment (not set-if-true): consent

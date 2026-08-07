@@ -392,6 +392,27 @@ async function cleanupBlockedByForUid(uid, maxIterations) {
 // (handles/{handleLower}, uid field — see firestore.rules). Queried by uid
 // rather than derived from the deleted doc's handle so stray rows from any
 // earlier state are swept too. Frees the handle for future signups.
+// Rate-limit buckets are keyed rateLimits/{uid}_{endpoint} — a raw uid in the
+// doc id (2026-08-06 accuracy audit). Nothing deleted them: not the cascade,
+// not a TTL, not a sweep, so they survived "delete everything" indefinitely and
+// were disclosed nowhere. The endpoint set is fixed and small, so this is a
+// bounded set of point-deletes rather than a query (the collection has no
+// uid field to query on). `report_target` is included because a deleted user
+// can be the TARGET of that bucket, not just its caller.
+async function cleanupRateLimitsForUid(uid) {
+  let totalDeleted = 0;
+  for (const endpoint of RATE_LIMIT_ALLOWED_ENDPOINTS) {
+    try {
+      await db.collection("rateLimits").doc(`${uid}_${endpoint}`).delete();
+      totalDeleted++;
+    } catch (err) {
+      console.warn(`cleanupRateLimitsForUid(${uid}/${endpoint}) failed:`, err.message);
+      throw err;   // let runWithResume queue a continuation
+    }
+  }
+  return { totalDeleted, capHit: false };
+}
+
 async function cleanupHandleRegistryForUid(uid, maxIterations) {
   return paginatedBatchDelete((pageSize) => db.collection("handles")
     .where("uid", "==", uid)
@@ -1053,6 +1074,7 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     await runWithResume(uid, "reports", cleanupSubmittedReportsForUid, "pending reports filed");
     await runWithResume(uid, "blockedBy", cleanupBlockedByForUid, "others' block entries");
     await runWithResume(uid, "handleRegistry", cleanupHandleRegistryForUid, "handle registry rows");
+    await runWithResume(uid, "rateLimits", cleanupRateLimitsForUid, "rate-limit buckets");
 
     console.log("Cleanup complete for user:", uid);
   } catch (error) {
@@ -4307,6 +4329,7 @@ exports.resumeUserCleanup = onSchedule("every 60 minutes", async () => {
     // pointing at a deleted uid forever — and the handle could never be
     // re-registered.
     handleRegistry: cleanupHandleRegistryForUid,
+    rateLimits: cleanupRateLimitsForUid,
   };
 
   // sub_* types resume the owner-only subcollection cleanup that the main

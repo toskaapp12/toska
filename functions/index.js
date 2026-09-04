@@ -17,7 +17,7 @@ const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https")
 const { defineSecret } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp, AggregateField } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const { getAppCheck } = require("firebase-admin/app-check");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -4611,6 +4611,68 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
     await db.collection("system").doc("counterDriftReport").set({
       lastCleanRunAt: FieldValue.serverTimestamp(),
       lastCleanSampled: snap.size,
+    }, { merge: true });
+  }
+
+  // ---- Phase 2 (2026-09-04): users.totalLikes. This is the profile "felt"
+  // number. It's maintained by three bare increments (like +1, unlike -1,
+  // post-delete -likeCount) with no ledger, and seed scripts write
+  // likeCount directly without touching it — a prod sweep found 5 of 13
+  // users drifted, one at -111, and the demo account Apple reviews showed
+  // "-1 felt". Invariant (mirrors the triggers exactly): totalLikes ==
+  // SUM(likeCount) over posts where authorId == uid, reposts INCLUDED (a
+  // like on a repost row credits the reposter; delete decrements by that
+  // row's likeCount). Server-side sum() aggregation, one round-trip per
+  // user; same guarded compare-and-set as the post phase.
+  const USER_SAMPLE = 500;
+  const userSnap = await db.collection("users")
+    .orderBy("createdAt", "desc")
+    .limit(USER_SAMPLE)
+    .select("totalLikes")
+    .get();
+  const userDrifts = [];
+  let usersCorrected = 0;
+  for (const userDoc of userSnap.docs) {
+    const stored = typeof userDoc.get("totalLikes") === "number" ? userDoc.get("totalLikes") : 0;
+    try {
+      const agg = await db.collection("posts")
+        .where("authorId", "==", userDoc.id)
+        .aggregate({ total: AggregateField.sum("likeCount") })
+        .get();
+      const actual = agg.data().total || 0;
+      if (actual === stored) continue;
+      userDrifts.push({ uid: userDoc.id, totalLikes: { stored, actual } });
+      const didCorrect = await db.runTransaction(async (tx) => {
+        const cur = await tx.get(userDoc.ref);
+        if (!cur.exists) return false;
+        const curVal = typeof cur.get("totalLikes") === "number" ? cur.get("totalLikes") : 0;
+        if (curVal !== stored) return false; // a like/unlike moved it mid-scan
+        tx.update(userDoc.ref, { totalLikes: actual });
+        return true;
+      });
+      if (didCorrect) usersCorrected++;
+      else console.log(`detectCounterDrift: totalLikes moved under user ${userDoc.id} mid-scan; leaving for next run.`);
+    } catch (err) {
+      console.warn(`detectCounterDrift: totalLikes recompute failed for user ${userDoc.id}:`, err.message);
+    }
+    if (userDrifts.length >= MAX_REPORTED) break;
+  }
+  if (userDrifts.length > 0) {
+    console.error(
+      `detectCounterDrift: ${userDrifts.length} user(s) with drifted totalLikes ` +
+      `(of ${userSnap.size} sampled); auto-corrected ${usersCorrected}.`);
+    await db.collection("system").doc("counterDriftReport").set({
+      userGeneratedAt: FieldValue.serverTimestamp(),
+      userSampled: userSnap.size,
+      userDriftCount: userDrifts.length,
+      userCorrectedCount: usersCorrected,
+      userDrifts: userDrifts.slice(0, MAX_REPORTED),
+    }, { merge: true });
+  } else {
+    console.log(`detectCounterDrift: no totalLikes drift in ${userSnap.size} sampled users.`);
+    await db.collection("system").doc("counterDriftReport").set({
+      userLastCleanRunAt: FieldValue.serverTimestamp(),
+      userLastCleanSampled: userSnap.size,
     }, { merge: true });
   }
 });

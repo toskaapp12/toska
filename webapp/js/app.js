@@ -688,8 +688,12 @@ function viewSignIn() {
         try {
             await signInWithEmailAndPassword(auth, email.value.trim(), pw.value);
         } catch (e) {
-            const m = /invalid-credential|wrong-password|user-not-found/.test(e.code ?? "")
-                ? "that email and password don't match." : GENERIC_ERR;
+            const code = e.code ?? "";
+            const m = /invalid-credential|wrong-password|user-not-found/.test(code) ? "that email and password don't match."
+                : /invalid-email|missing-email/.test(code) ? "that email doesn't look right."
+                : /too-many-requests/.test(code) ? "too many tries — wait a few minutes, then try again."
+                : /network-request-failed/.test(code) ? "you're offline. try again when you're back."
+                : GENERIC_ERR;
             err.replaceChildren(errorBox(m)); btn.disabled = false;
         }
     };
@@ -768,6 +772,8 @@ function viewSignUp() {
             signupInProgress = false;
             const m = e?.code === "auth/email-already-in-use" ? "that email already has an account — sign in instead."
                 : e?.code === "auth/weak-password" ? "password needs at least 6 characters."
+                : /invalid-email|missing-email/.test(e?.code ?? "") ? "that email doesn't look right."
+                : /network-request-failed/.test(e?.code ?? "") ? "you're offline. try again when you're back."
                 : GENERIC_ERR;
             // toast survives the re-render that the rollback's auth event triggers
             toast(m, 5000);
@@ -787,9 +793,9 @@ function viewSignUp() {
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:10px 0 14px; cursor:pointer;", for: "termsCk" },
                 terms, el("span", {},
                     "i have read and agree to the ",
-                    el("a", { class: "plain", href: "https://www.toskaapp.com/terms.html", target: "_blank" }, "terms of service"),
+                    el("a", { class: "plain", href: "https://www.toskaapp.com/terms", target: "_blank" }, "terms of service"),
                     " and ",
-                    el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"))),
+                    el("a", { class: "plain", href: "https://www.toskaapp.com/privacy", target: "_blank" }, "privacy policy"))),
             err, el("div", { style: "margin-top:6px;" }, btn),
             el("p", { class: "note", style: "margin-top:20px;" },
                 "already have an account? ", el("a", { class: "plain", href: "#/signin" }, "sign in")),
@@ -866,7 +872,17 @@ async function viewFeed() {
     const search = el("input", {
         type: "search", class: "feed-search", placeholder: "search what's been said here…",
     });
-    mount.replaceChildren(promptCard, search, tabs, list, spinner());
+    // Rail-first DOM order keeps the phone layout identical to iOS (prompt →
+    // search → tabs → feed); ≥1040px CSS moves the rail beside the feed.
+    mount.replaceChildren(
+        el("div", { class: "feed-grid" },
+            el("aside", { class: "feed-rail" }, promptCard, search,
+                el("div", { class: "rail-foot" },
+                    el("a", { href: "https://www.toskaapp.com/terms", target: "_blank", rel: "noopener" }, "terms"),
+                    el("a", { href: "https://www.toskaapp.com/privacy", target: "_blank", rel: "noopener" }, "privacy"),
+                    el("span", {}, "© 2026 toska"))),
+            el("div", { class: "feed-main" }, tabs, list)),
+        spinner());
     const applyFilter = () => {
         const q = search.value.trim().toLowerCase();
         let any = false;
@@ -876,7 +892,7 @@ async function viewFeed() {
             any = any || hit;
         }
         list.querySelector(".search-empty")?.remove();
-        if (!any) list.append(el("div", { class: "empty search-empty" },
+        if (!any && q) list.append(el("div", { class: "empty search-empty" },
             el("span", { class: "glyph" }, "☾"), `nothing here matches "${q}" — it only searches what's loaded.`));
     };
     search.addEventListener("input", debounce(applyFilter, 250));
@@ -892,16 +908,23 @@ async function viewFeed() {
             return;
         }
         for (const [id, d] of rows) list.append(postRow(id, d));
-        if (tab === "for you" && cache.rows.length >= 60 && cache.cursor && !cache.noMore) {
+        // Page-size checks use the RAW fetch count (_fetched), not the
+        // visible rows: one blocked/expired/flagged doc in the first page used
+        // to drop the count below 60 and hide "more" forever.
+        if (tab === "for you" && (cache.fetched ?? cache.rows.length) >= 60 && cache.cursor && !cache.noMore) {
             const more = el("button", { class: "btn quiet", style: "display:block; margin:20px auto;" }, "more");
             more.onclick = async () => {
                 more.disabled = true;
-                const next = await fetchForYou(cache.cursor);
-                for (const [id, d] of next) list.append(postRow(id, d));
-                cache.rows.push(...next);
-                cache.cursor = next._cursor;
+                try {
+                    const next = await fetchForYou(cache.cursor);
+                    for (const [id, d] of next) list.append(postRow(id, d));
+                    list.append(more); // keep the button below the new rows
+                    cache.rows.push(...next);
+                    cache.cursor = next._cursor;
+                    if ((next._fetched ?? next.length) < 20) { cache.noMore = true; more.remove(); }
+                    if (search.value.trim()) applyFilter(); // new rows honor the active search
+                } catch (e) { console.error(e); toast(GENERIC_ERR); }
                 more.disabled = false;
-                if (next.length < 20) { cache.noMore = true; more.remove(); }
             };
             list.append(more);
         }
@@ -912,7 +935,7 @@ async function viewFeed() {
     if (cached && Date.now() - cached.at < FEED_TTL) { finish(cached); return; }
     try {
         const rows = tab === "for you" ? await fetchForYou() : await fetchFollowing();
-        const cache = { rows, cursor: rows._cursor, noMore: false, scrollY: 0, at: Date.now() };
+        const cache = { rows, cursor: rows._cursor, fetched: rows._fetched, noMore: false, scrollY: 0, at: Date.now() };
         feedCache.set(tab, cache);
         finish(cache);
     } catch (e) {
@@ -932,6 +955,7 @@ async function fetchForYou(cursor) {
     const snap = await getDocs(q);
     const rows = snap.docs.filter(d => postVisible(d.data())).map(d => [d.id, d.data()]);
     rows._cursor = snap.docs.at(-1);
+    rows._fetched = snap.docs.length; // pre-filter page size, for "more" gating
     return rows;
 }
 
@@ -1154,9 +1178,8 @@ async function viewTop() {
                 el("span", {}, relTime(hero.createdAt)),
                 tagChip(hero.tag)),
             el("div", { class: "post-text" }, hero.text ?? ""),
-            el("div", { class: "post-stats" },
-                el("span", {}, `${hero.likeCount ?? 0} felt this`),
-                el("span", {}, `${hero.replyCount ?? 0} replies`)),
+            gifImg(hero.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
+            statsRow(hero), // same zero-hiding stats as every other row
         ));
         ranked.slice(1).forEach(([id, d], i) => {
             const row = postRow(id, d);
@@ -1180,6 +1203,9 @@ const NOTIF_ACTION = {
 };
 async function viewNotifications() {
     setChrome(false);
+    // Opening the tab is "seen": drop the badge now instead of after the
+    // mark-read batch round-trips through the live unread listener.
+    document.getElementById("notifDot").hidden = true;
     const list = el("div");
     mount.replaceChildren(el("h2", { class: "section-title" }, "notifications"), list, spinner());
     try {
@@ -1205,11 +1231,14 @@ async function viewNotifications() {
                 preview ? el("div", { class: "note", style: "margin-top:6px;" }, `"${preview}"`) : null,
             ));
         }
-        // mark-read sweep (best effort; owner-scoped update)
-        const unread = snap.docs.filter(d => d.data().isRead === false);
-        if (unread.length) {
+        // mark-read sweep (best effort; owner-scoped update). Queries unread
+        // directly rather than filtering the 50 newest, so an older unread
+        // item can't keep the badge lit forever.
+        const unread = await getDocs(query(collection(db, "users", me.uid, "notifications"),
+            where("isRead", "==", false), limit(400)));
+        if (!unread.empty) {
             const batch = writeBatch(db);
-            for (const d of unread.slice(0, 400)) batch.update(d.ref, { isRead: true });
+            for (const d of unread.docs) batch.update(d.ref, { isRead: true });
             batch.commit().catch(() => {});
         }
     } catch (e) {
@@ -1643,7 +1672,9 @@ async function viewProfile(uid) {
     const joined = ud.createdAt?.toDate ?
         ud.createdAt.toDate().toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "";
     const showFollowers = own || ud.showFollowerCount === true;
-    const stat = (n, label) => el("span", {}, el("b", {}, String(n ?? 0)), ` ${label}`);
+    // Counters are server-maintained and can drift below zero (seen 2026-09-04
+    // on the demo account: totalLikes -1). Never show a negative.
+    const stat = (n, label) => el("span", {}, el("b", {}, String(Math.max(0, n ?? 0))), ` ${label}`);
     const head = el("div", { class: "profile-head" },
         el("h2", {}, ud.handle ?? "anonymous"),
         joined ? el("div", { class: "joined" }, `here since ${joined}`) : null,
@@ -1856,9 +1887,9 @@ function renderPolicyReacceptGate(uid) {
             el("h1", { style: "font-size:28px;" }, "our terms have changed"),
             el("p", { class: "note" },
                 "please review and accept the updated ",
-                el("a", { class: "plain", href: "https://www.toskaapp.com/terms.html", target: "_blank" }, "terms of service"),
+                el("a", { class: "plain", href: "https://www.toskaapp.com/terms", target: "_blank" }, "terms of service"),
                 " and ",
-                el("a", { class: "plain", href: "https://www.toskaapp.com/privacy.html", target: "_blank" }, "privacy policy"),
+                el("a", { class: "plain", href: "https://www.toskaapp.com/privacy", target: "_blank" }, "privacy policy"),
                 " to keep using toska."),
             el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:16px 0 4px; cursor:pointer;", for: "reacceptCk" },
                 ck, el("span", {}, "i confirm i'm 18 or older and i accept the updated terms and privacy policy")),

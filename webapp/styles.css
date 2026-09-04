@@ -45,13 +45,32 @@ body {
 
 header.app { background: var(--ground); }
 header.app .inner {
-    max-width: 620px; margin: 0 auto; padding: 16px 16px 4px;
+    max-width: 620px; margin: 0 auto; padding: 14px 16px 2px;
     display: flex; align-items: center; justify-content: space-between;
+}
+/* desktop: wordmark row + nav form ONE sticky, frosted band. The
+   backdrop-filter is scoped to ≥641px so it never becomes the containing
+   block for the mobile position:fixed tab bar (see .mainnav note). */
+@media (min-width: 641px) {
+    header.app {
+        position: sticky; top: 0; z-index: 10;
+        background: color-mix(in srgb, var(--ground) 84%, transparent);
+        backdrop-filter: blur(16px) saturate(1.4);
+        -webkit-backdrop-filter: blur(16px) saturate(1.4);
+        border-bottom: 1px solid var(--hairline);
+    }
+    .mainnav {
+        position: static; background: none; border: none;
+        backdrop-filter: none; -webkit-backdrop-filter: none;
+        /* pull the first pill's icon flush with the wordmark's left edge */
+        padding: 2px max(2px, calc(50% - 308px)) 9px;
+    }
 }
 .wordmark {
     font-size: 24px; letter-spacing: 0.01em;
     color: var(--plum); text-decoration: none; font-weight: 500;
 }
+header.app .actions { display: flex; gap: 14px; align-items: center; }
 #signOutBtn {
     font-family: -apple-system, sans-serif; font-size: 13px;
     color: var(--faint); background: none; border: none; cursor: pointer;
@@ -60,8 +79,9 @@ header.app .inner {
 #signOutBtn:hover { color: var(--soft); }
 
 /* main navigation — segmented pills on desktop, floating tab bar on mobile.
-   NOTE: lives OUTSIDE header.app — backdrop-filter on an ancestor would
-   hijack position:fixed and pin the mobile bar to the header. */
+   NOTE: lives INSIDE header.app; header.app only gets backdrop-filter at
+   ≥641px, because a filtered ancestor would hijack the mobile bar's
+   position:fixed and pin it to the header. */
 .mainnav {
     position: sticky; top: 0; z-index: 10;
     background: color-mix(in srgb, var(--ground) 82%, transparent);
@@ -125,9 +145,24 @@ header.app .inner {
 .btn:active { transform: scale(0.985); }
 .btn.quiet { background: transparent; color: var(--soft); border: 1px solid var(--hairline); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.tabs { display: flex; gap: 7px; padding: 16px 0 10px; overflow-x: auto; scrollbar-width: none; }
+/* tab ROWS mirror FeedView's text tabs: plain labels grouped at the leading
+   edge with a short accent underline under the active one. Standalone .tab
+   buttons (gif, remove, sign out) keep the pill. */
+.tabs { display: flex; gap: 22px; padding: 14px 4px 6px; overflow-x: auto; scrollbar-width: none; }
 .tabs::-webkit-scrollbar { display: none; }
-.tabs .tab { white-space: nowrap; flex-shrink: 0; }
+.tabs .tab {
+    white-space: nowrap; flex-shrink: 0;
+    position: relative; padding: 4px 0 10px; border-radius: 0;
+    background: none; border: none; font-size: 15px; color: var(--faint);
+}
+.tabs .tab::after {
+    content: ""; position: absolute; left: 0; bottom: 2px;
+    width: 24px; height: 2px; border-radius: 999px;
+    background: transparent; transition: background 0.18s ease;
+}
+.tabs .tab:hover { color: var(--soft); border: none; }
+.tabs .tab.active { color: var(--ink); font-weight: 600; background: none; border: none; }
+.tabs .tab.active::after { background: var(--plum); }
 .tab {
     font-family: -apple-system, sans-serif; font-size: 13.5px;
     padding: 7px 15px; border-radius: 999px; border: 1px solid var(--hairline);
@@ -154,15 +189,18 @@ a.post-row:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); 
 .post-meta .handle { color: var(--soft); font-weight: 500; }
 a.handle { text-decoration: none; }
 a.handle:hover { color: var(--plum); }
-.post-meta .tag {
-    margin-left: auto; font-size: 12.5px;
-    padding: 2px 10px; border-radius: 999px;
+/* emotion tag — ONE treatment everywhere (feed rows, hero, prompt card) */
+.tag {
+    font-family: -apple-system, sans-serif; font-size: 12.5px;
+    padding: 2px 10px; border-radius: 999px; line-height: 1.6;
     background: color-mix(in srgb, currentColor 9%, transparent);
 }
+.post-meta .tag { margin-left: auto; }
 .post-text {
     font-size: 17.5px; line-height: 1.62;
     white-space: pre-wrap; word-break: break-word;
 }
+@media (min-width: 641px) { .post-row:not(.hero-card) .post-text { font-size: 18px; } }
 .post-stats {
     font-family: -apple-system, sans-serif; font-size: 12.5px; color: var(--faint);
     display: flex; gap: 7px; margin-top: 13px; align-items: baseline;
@@ -479,3 +517,76 @@ a.plain:hover { text-decoration: underline; }
 
 .blocked-row { display: flex; align-items: center; justify-content: space-between; }
 .blocked-row .btn.quiet { padding: 8px 18px; font-size: 13px; }
+
+/* ---- desktop frame (2026-09-03): three columns like a desktop social app.
+   left = wordmark + vertical nav + write; middle = the reading column;
+   right = search + today's prompt + legal. Below 1040px CSS everything
+   collapses back to the single column in iOS order. ---- */
+.feed-grid { display: block; }
+.rail-foot {
+    font-family: -apple-system, sans-serif; font-size: 12px; color: var(--faint);
+    display: none; gap: 12px; flex-wrap: wrap; padding: 16px 6px 0;
+}
+.rail-foot a { color: var(--faint); text-decoration: none; }
+.rail-foot a:hover { color: var(--soft); }
+
+@media (min-width: 1040px) {
+    /* page = [sidebar 224] [gap 28] [content] centered at 1180 */
+    body {
+        display: grid; grid-template-columns: 224px minmax(0, 1fr);
+        column-gap: 28px; max-width: 1180px; margin: 0 auto; padding: 0 20px;
+        align-items: start;
+    }
+
+    /* left column */
+    header.app {
+        position: sticky; top: 0; z-index: 10;
+        height: 100vh; padding: 14px 0 20px;
+        display: flex; flex-direction: column; gap: 6px;
+        background: none; border: none;
+        backdrop-filter: none; -webkit-backdrop-filter: none;
+    }
+    header.app .inner { display: contents; }
+    .wordmark { order: 0; font-size: 27px; padding: 6px 14px 14px; }
+    .mainnav {
+        order: 1; position: static; flex-direction: column; gap: 2px;
+        padding: 0; background: none; border: none;
+    }
+    .mainnav a { font-size: 15.5px; padding: 11px 14px; gap: 14px; border-radius: 999px; }
+    .mainnav a svg { width: 22px; height: 22px; }
+    .mainnav a:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink); }
+    .mainnav a.active { background: none; box-shadow: none; font-weight: 600; }
+    .mainnav a .dot { top: 9px; left: 28px; }
+    header.app .actions {
+        order: 2; flex-direction: column; align-items: stretch; gap: 0;
+        flex: 1; padding: 12px 0 0;
+    }
+    .write-top { padding: 13px 20px; font-size: 15px; box-shadow: var(--shadow); }
+    #signOutBtn { margin-top: auto; text-align: left; padding: 10px 14px; }
+
+    /* middle + right */
+    .shell { margin: 0; padding: 4px 0 120px; max-width: 928px; }
+    .shell:not(:has(> .feed-grid)) { max-width: 600px; }
+    .feed-grid {
+        display: grid; grid-template-columns: minmax(0, 1fr) 300px;
+        column-gap: 28px; align-items: start;
+    }
+    .feed-main { grid-column: 1; grid-row: 1; min-width: 0; }
+    .feed-main .tabs { padding-top: 14px; }
+    .feed-rail {
+        grid-column: 2; grid-row: 1; position: sticky; top: 0;
+        display: flex; flex-direction: column; padding-top: 14px;
+    }
+    .feed-rail .feed-search { order: -1; margin: 0; }
+    .feed-rail .prompt-card { margin-top: 14px; padding: 18px 20px 16px; }
+    .feed-rail .prompt-card .post-text { font-size: 16px; }
+    .feed-rail .prompt-card > div:last-child { flex-wrap: wrap; }
+    .rail-foot { display: flex; }
+}
+
+/* signed-out pages hide the sidebar — drop the grid so the auth card centers */
+@media (min-width: 1040px) {
+    main.shell { grid-column: 2; }
+    body:has(> header.app[hidden]) { display: block; }
+    body:has(> header.app[hidden]) .shell { margin: 0 auto; }
+}

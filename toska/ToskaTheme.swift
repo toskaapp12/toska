@@ -764,7 +764,10 @@ func friendlyAuthErrorMessage(_ error: Error) -> String {
     // still differ — the authoritative fix is enabling Email Enumeration
     // Protection in Firebase Auth project settings (see APP_STORE_METADATA
     // pre-submission checklist); this UI collapse is defense in depth.
-    case 17009, 17011: return String(localized: "that email or password doesn't match. try again or reset your password.")
+    // 17004 (invalidCredential) is what Firebase returns for a wrong password
+    // once Email Enumeration Protection is on — without it here, a typo fell
+    // through to the generic "couldn't sign in" and read like an outage.
+    case 17004, 17009, 17011: return String(localized: "that email or password doesn't match. try again or reset your password.")
     case 17010: return String(localized: "too many tries. wait a minute and try again.")
     case 17012: return String(localized: "this email is linked to a different sign-in method.")
     case 17014: return String(localized: "for security, please sign out and sign back in, then try again.")

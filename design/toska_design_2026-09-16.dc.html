@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="54da7809-c3ba-4031-ae32-079ef788b9c9"></script>
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<style>/* cyrillic-ext */
+@font-face {
+  font-family: 'Fragment Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fead3d25-726f-4b34-9a7e-063b597c9448") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Fragment Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("ec8bfc9b-8bd2-4227-9bcf-61e77dc62f91") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Fragment Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("20507eeb-5852-4cbc-a7a1-11392416b6a1") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("450e8493-07ae-46c3-b663-15d5cbac6621") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("de53b4be-d3dc-45ff-952b-9d557256cd66") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("450e8493-07ae-46c3-b663-15d5cbac6621") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("de53b4be-d3dc-45ff-952b-9d557256cd66") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("450e8493-07ae-46c3-b663-15d5cbac6621") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url("de53b4be-d3dc-45ff-952b-9d557256cd66") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("4ccf85c7-d620-4d85-b16d-e2aa0598cca5") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("b52709d3-cd95-4348-a9a3-14a64a8f9a12") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("de6b58e0-6d69-43bb-8d26-6c0567085e06") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("1eee6254-381d-44d7-bb7a-c93035e19b0c") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("935c71e8-9d9e-44aa-9c75-0a0ac3ab131a") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("baed423a-dc9b-4a0a-b83e-f6d816e5a5cd") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("eb51b383-317d-46be-9ad6-7e27d95e4c04") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("d8460f8d-bcf7-4708-b621-dcca092d704c") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("31feb880-caea-450b-8a87-77f6b1c127b7") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("5186f806-94fa-41ce-be2b-ab571aa76dc4") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url("a0a29b9f-7aad-47c8-9aab-2fa0c7574a3f") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("935c71e8-9d9e-44aa-9c75-0a0ac3ab131a") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("baed423a-dc9b-4a0a-b83e-f6d816e5a5cd") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("eb51b383-317d-46be-9ad6-7e27d95e4c04") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("d8460f8d-bcf7-4708-b621-dcca092d704c") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("31feb880-caea-450b-8a87-77f6b1c127b7") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("5186f806-94fa-41ce-be2b-ab571aa76dc4") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("a0a29b9f-7aad-47c8-9aab-2fa0c7574a3f") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("935c71e8-9d9e-44aa-9c75-0a0ac3ab131a") format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F;
+}
+/* cyrillic */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("baed423a-dc9b-4a0a-b83e-f6d816e5a5cd") format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+/* greek-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("eb51b383-317d-46be-9ad6-7e27d95e4c04") format('woff2');
+  unicode-range: U+1F00-1FFF;
+}
+/* greek */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("d8460f8d-bcf7-4708-b621-dcca092d704c") format('woff2');
+  unicode-range: U+0370-0377, U+037A-037F, U+0384-038A, U+038C, U+038E-03A1, U+03A3-03FF;
+}
+/* vietnamese */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("31feb880-caea-450b-8a87-77f6b1c127b7") format('woff2');
+  unicode-range: U+0102-0103, U+0110-0111, U+0128-0129, U+0168-0169, U+01A0-01A1, U+01AF-01B0, U+0300-0301, U+0303-0304, U+0308-0309, U+0323, U+0329, U+1EA0-1EF9, U+20AB;
+}
+/* latin-ext */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("5186f806-94fa-41ce-be2b-ab571aa76dc4") format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* latin */
+@font-face {
+  font-family: 'Literata';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("a0a29b9f-7aad-47c8-9aab-2fa0c7574a3f") format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+</style>
+<style>
+  body { margin: 0; background: oklch(0.93 0.004 264); -webkit-font-smoothing: antialiased; }
+  a { color: oklch(0.45 0.05 264); text-decoration: none; }
+  a:hover { color: oklch(0.30 0.04 264); }
+  .fd::-webkit-scrollbar { width: 0; }
+</style>
+</helmet>
+
+<section style="padding:44px; font-family:'Instrument Sans', Helvetica, Arial, sans-serif; color:oklch(0.25 0.008 264);">
+  <div style="display:flex; align-items:baseline; gap:14px; margin-bottom:6px;">
+    <div style="font-size:11px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; padding:5px 9px; border-radius:6px; background:oklch(0.25 0.008 264); color:#fff;">toska</div>
+    <div style="font-size:26px; font-weight:600; letter-spacing:-0.03em;">Every page, refined</div>
+  </div>
+  <div style="font-size:14px; line-height:1.6; color:oklch(0.48 0.01 264); max-width:720px; margin-bottom:34px;">One system across all eleven screens: stone paper, Literata for anything a person wrote, Instrument Sans for anything the app says, hairline rules instead of cards or icon tiles, one ink-violet accent, feeling as the only other colour. Translucent blurred chrome, safe areas, 44px targets, tabular numerals. Same features you had — nothing added, nothing taken away.</div>
+
+  <div id="11a" style="display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start;">
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">feed</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">for you</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+
+
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px; padding:11px 4px; margin:-11px -4px; cursor:pointer;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 28px 16px 28px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; letter-spacing:-0.012em; color:oklch(0.258 0.020 298);">toska</div>
+            <div style="display:flex; gap:20px; color:oklch(0.478 0.018 298);">
+              <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M16.5 16.5L21 21"></path></svg>
+            </div>
+          </div>
+          <div style="display:flex; gap:20px; margin-top:18px; font-size:13px;">
+            <div style="font-weight:600; color:oklch(0.258 0.020 298);">for you</div>
+            <div style="color:oklch(0.468 0.018 298);">following</div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 118px 0;">
+
+          <div style="padding:26px 28px 28px 28px; background:oklch(0.944 0.030 300); border-bottom:1px solid oklch(0.912 0.032 300);">
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.425 0.085 296);">today's prompt</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; line-height:1.5; letter-spacing:-0.003em; color:oklch(0.245 0.035 298); margin-top:11px; text-wrap:balance;">what did you stop doing when they left.</div>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:14px; font-size:12px;">
+              <div style="font-weight:600; color:oklch(0.385 0.095 294);">write yours</div>
+              <div style="color:oklch(0.462 0.024 296);">· 1,204 already did · 4h left</div>
+            </div>
+          </div>
+
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:24px 28px 22px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:18.5px; font-weight:400; line-height:1.62; color:oklch(0.258 0.020 298); margin-top:0; text-wrap:pretty;">i stopped buying the good coffee. a year of instant, like i was being punished. bought the good one today.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.625 0.098 160);"></div>
+              <div style="font-weight:500; color:oklch(0.430 0.088 160);">acceptance</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>late_oak_88</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>1d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.448 0.018 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">41</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">2</span> replies</div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">3</span> reposts</div>
+              <div style="display:flex; align-items:center; gap:16px; margin:-11px 0 -11px auto; padding:11px 0; color:oklch(0.62 0.016 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v17l-6-4.5L6 21z"></path></svg><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4L8 8M12 4l4 4"></path><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg></div>
+            </div>
+          </div>
+
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:30px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:0; text-wrap:pretty;">i hope whoever you're with now knows you hum when you cook.</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:16.5px; font-weight:400; line-height:1.74; color:oklch(0.318 0.020 298); margin-top:10px; text-wrap:pretty;">i hope they think it's as good as i did. i hope they don't ask you to stop. i keep finding the version of me that lived in your kitchen and i don't know where to put her, so i'm leaving her here.</div>
+            <div style="font-size:12px; font-weight:600; color:oklch(0.385 0.095 294); margin-top:13px;">keep reading</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.635 0.105 15);"></div>
+              <div style="font-weight:500; color:oklch(0.442 0.095 15);">still love you</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>still_water_77</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>letter · 3 min · 2d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.462 0.105 15);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">318</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">27</span> replies</div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">3</span> reposts</div>
+              <div style="display:flex; align-items:center; gap:16px; margin:-11px 0 -11px auto; padding:11px 0; color:oklch(0.62 0.016 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v17l-6-4.5L6 21z"></path></svg><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4L8 8M12 4l4 4"></path><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg></div>
+            </div>
+          </div>
+
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:24px 28px 22px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:18.5px; font-weight:400; line-height:1.62; color:oklch(0.258 0.020 298); margin-top:0; text-wrap:pretty;">six weeks. i keep waiting to feel something and instead i just reorganise the kitchen.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.620 0.095 255);"></div>
+              <div style="font-weight:500; color:oklch(0.438 0.085 255);">numb</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>soft_rain_04</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>3d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.448 0.018 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">96</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">8</span> replies</div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">3</span> reposts</div>
+              <div style="display:flex; align-items:center; gap:16px; margin:-11px 0 -11px auto; padding:11px 0; color:oklch(0.62 0.016 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v17l-6-4.5L6 21z"></path></svg><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4L8 8M12 4l4 4"></path><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg></div>
+            </div>
+          </div>
+
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:24px 28px 22px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:18.5px; font-weight:400; line-height:1.62; color:oklch(0.258 0.020 298); margin-top:0; text-wrap:pretty;">you told everyone i left. fine. i'd rather be the villain in your story than a footnote in mine.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.640 0.100 32);"></div>
+              <div style="font-weight:500; color:oklch(0.448 0.092 32);">anger</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>morning_glow_28</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>6d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.448 0.018 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">212</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">14</span> replies</div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">3</span> reposts</div>
+              <div style="display:flex; align-items:center; gap:16px; margin:-11px 0 -11px auto; padding:11px 0; color:oklch(0.62 0.016 298);"><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v17l-6-4.5L6 21z"></path></svg><svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4L8 8M12 4l4 4"></path><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div style="position:absolute; left:0; right:0; bottom:0; height:150px; background:linear-gradient(to top, oklch(0.978 0.007 82) 32%, oklch(0.978 0.007 82 / 0.72) 66%, oklch(0.978 0.007 82 / 0) 100%); pointer-events:none;"></div>
+        <div style="position:absolute; left:14px; right:14px; bottom:26px; display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-radius:26px; background:oklch(0.978 0.007 82 / 0.76); backdrop-filter:blur(24px) saturate(1.6); -webkit-backdrop-filter:blur(24px) saturate(1.6); border:1px solid oklch(0.912 0.012 78); box-shadow:0 12px 34px -14px oklch(0.325 0.048 300 / 0.30);">
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="oklch(0.268 0.020 298)" stroke="none"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-8"></path></svg></div>
+          <div style="display:flex; align-items:center; gap:9px; min-height:44px; padding:0 20px; border-radius:100px; background:oklch(0.335 0.082 294); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.970 0.010 82)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3.5-.8L19 7.7l-2.7-2.7L5.8 15.5z"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82);">write</div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16V11a6 6 0 1 0-12 0v5l-1.5 2.5h15z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg></div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">post</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">replies live here, not in the feed</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+
+
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:4px 24px 12px 24px; display:flex; align-items:center; gap:8px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; gap:8px; min-height:44px; padding:0 8px; cursor:pointer;">
+            <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.318 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.318 0.020 298);">back</div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 116px 0;">
+          <div style="padding:4px 28px 28px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:0; text-wrap:pretty;">i hope whoever you're with now knows you hum when you cook. i hope they think it's as good as i did. i hope they don't ask you to stop.</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:16px; text-wrap:pretty;">i keep finding the version of me that lived in your kitchen and i don't know where to put her, so i'm leaving her here. she was good. she wasn't too much. she just loved someone who got tired.</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:16px; text-wrap:pretty;">if you ever read this and recognise yourself, you don't owe me anything. i just needed it written down somewhere that isn't my own head.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.635 0.105 15);"></div>
+              <div style="font-weight:500; color:oklch(0.442 0.095 15);">still love you</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>still_water_77</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>letter · 3 min · 2d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px; margin-top:9px; min-height:44px; font-size:12.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:8px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.462 0.105 15);"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">318</span> felt this</div></div>
+              <div style="width:1px; height:12px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">27</span> replies</div>
+              <div style="width:1px; height:12px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;"><span style="font-weight:600;">3</span> reposts</div>
+              <div style="display:flex; align-items:center; gap:16px; margin:-11px 0 -11px auto; padding:11px 0; color:oklch(0.62 0.016 298);"><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v17l-6-4.5L6 21z"></path></svg><svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M12 4L8 8M12 4l4 4"></path><path d="M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"></path></svg></div>
+            </div>
+          </div>
+
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+
+          <div style="padding:20px 28px 4px 28px;">
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.468 0.018 298);">27 replies</div>
+          </div>
+
+          <div style="padding:24px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:16px; font-weight:400; line-height:1.7; color:oklch(0.278 0.020 298); margin-top:0; text-wrap:pretty;">read this at 4am and cried, then actually slept. thank you for writing it down.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.620 0.095 255);"></div>
+              <div style="font-weight:500; color:oklch(0.438 0.085 255);">numb</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>soft_rain_04</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>4h</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:14px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.448 0.018 298);"><svg width="13.5" height="13.5" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">62</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;">reply</div>
+            </div>
+          </div>
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+
+          <div style="padding:24px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:16px; font-weight:400; line-height:1.7; color:oklch(0.278 0.020 298); margin-top:0; text-wrap:pretty;">the kitchen version of you still exists. she just lives somewhere else now.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.625 0.098 160);"></div>
+              <div style="font-weight:500; color:oklch(0.430 0.088 160);">acceptance</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>late_oak_88</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>1d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:14px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.448 0.018 298);"><svg width="13.5" height="13.5" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">41</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;">reply</div>
+            </div>
+          </div>
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+
+          <div style="padding:24px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:16px; font-weight:400; line-height:1.7; color:oklch(0.278 0.020 298); margin-top:0; text-wrap:pretty;">i hum too. nobody has ever mentioned it to me and now i hope someone does.</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11.5px; letter-spacing:0.005em; color:oklch(0.448 0.018 298);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.635 0.105 15);"></div>
+              <div style="font-weight:500; color:oklch(0.442 0.095 15);">still love you</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>quiet_harbor_12</div>
+              <div style="color:oklch(0.66 0.016 298);">·</div>
+              <div>2d</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:14px; margin-top:9px; min-height:44px; font-size:11.5px; font-variant-numeric:tabular-nums; color:oklch(0.448 0.018 298);">
+              <div style="display:flex; align-items:center; gap:7px; padding:11px 0; margin:-11px 0; cursor:pointer; color:oklch(0.448 0.018 298);"><svg width="13.5" height="13.5" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.6-7-9.4A4 4 0 0 1 12 8a4 4 0 0 1 7 2.6C19 15.4 12 20 12 20z"></path></svg><div><span style="font-weight:600;">18</span> felt this</div></div>
+              <div style="width:1px; height:11px; background:oklch(0.888 0.013 78);"></div>
+              <div style="padding:11px 0; margin:-11px 0; cursor:pointer;">reply</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute; left:0; right:0; bottom:88px; height:72px; background:linear-gradient(to top, oklch(0.978 0.007 82) 10%, oklch(0.978 0.007 82 / 0) 100%); pointer-events:none;"></div>
+        <div style="position:absolute; left:0; right:0; bottom:0; padding:14px 22px 30px 22px; background:oklch(0.978 0.007 82 / 0.82); backdrop-filter:blur(24px) saturate(1.5); -webkit-backdrop-filter:blur(24px) saturate(1.5); border-top:1px solid oklch(0.918 0.011 78); display:flex; align-items:center; gap:12px;">
+          <div style="flex:1 1 auto; min-height:44px; display:flex; align-items:center; padding:0 16px; border-radius:22px; background:oklch(0.946 0.012 82); font-size:12.5px; color:oklch(0.478 0.018 298);">say something kind, anonymously…</div>
+          <div style="flex:0 0 auto; min-height:44px; display:flex; align-items:center; padding:0 18px; border-radius:100px; background:oklch(0.335 0.082 294); font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">send</div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">most felt</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">this week</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 28px 14px 28px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between; min-height:36px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; letter-spacing:-0.012em; color:oklch(0.258 0.020 298);">most felt</div>
+            <div></div>
+          </div>
+          <div style="display:flex; gap:20px; margin-top:14px; font-size:12.5px;">
+            <div style="color:oklch(0.458 0.018 298); cursor:pointer;">today</div>
+            <div style="font-weight:600; color:oklch(0.258 0.020 298); cursor:pointer;">this week</div>
+            <div style="color:oklch(0.458 0.018 298); cursor:pointer;">all time</div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 118px 0;">
+          <div style="padding:26px 28px 24px 28px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:18px; font-style:italic; font-weight:400; line-height:1.6; color:oklch(0.258 0.020 298); text-wrap:pretty;">this week the app is mostly feeling <span style="color:oklch(0.470 0.058 15);">longing</span> &amp; <span style="color:oklch(0.458 0.052 160);">acceptance</span>.</div>
+            
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:26px 28px; display:flex; gap:16px;">
+            <div style="flex:0 0 26px; font-family:'Literata', Georgia, serif; font-size:19px; font-style:italic; color:oklch(0.62 0.016 298); font-variant-numeric:tabular-nums; line-height:1.3;">01</div>
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="display:flex; align-items:center; gap:9px; font-size:11.5px; color:oklch(0.458 0.018 298); font-variant-numeric:tabular-nums;">
+                <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.635 0.105 15);"></div>
+                <div style="font-weight:500; color:oklch(0.442 0.095 15);">still love you</div>
+                <div style="margin-left:auto;">4,318 felt this</div>
+              </div>
+              <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:10px; text-wrap:pretty;">i hope whoever you are with now knows you hum when you cook. i hope they think it is as good as i did.</div>
+            </div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:26px 28px; display:flex; gap:16px;">
+            <div style="flex:0 0 26px; font-family:'Literata', Georgia, serif; font-size:19px; font-style:italic; color:oklch(0.62 0.016 298); font-variant-numeric:tabular-nums; line-height:1.3;">02</div>
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="display:flex; align-items:center; gap:9px; font-size:11.5px; color:oklch(0.458 0.018 298); font-variant-numeric:tabular-nums;">
+                <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.625 0.098 160);"></div>
+                <div style="font-weight:500; color:oklch(0.430 0.088 160);">acceptance</div>
+                <div style="margin-left:auto;">2,904 felt this</div>
+              </div>
+              <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:10px; text-wrap:pretty;">a year ago today. i did not notice until my phone showed me a photo. i looked at it, felt something small, and went back to making lunch.</div>
+            </div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:26px 28px; display:flex; gap:16px;">
+            <div style="flex:0 0 26px; font-family:'Literata', Georgia, serif; font-size:19px; font-style:italic; color:oklch(0.62 0.016 298); font-variant-numeric:tabular-nums; line-height:1.3;">03</div>
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="display:flex; align-items:center; gap:9px; font-size:11.5px; color:oklch(0.458 0.018 298); font-variant-numeric:tabular-nums;">
+                <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.625 0.098 160);"></div>
+                <div style="font-weight:500; color:oklch(0.430 0.088 160);">acceptance</div>
+                <div style="margin-left:auto;">1,772 felt this</div>
+              </div>
+              <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:10px; text-wrap:pretty;">cried in the shower this morning, then made a really good breakfast. both things were true at once.</div>
+            </div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:26px 28px; display:flex; gap:16px;">
+            <div style="flex:0 0 26px; font-family:'Literata', Georgia, serif; font-size:19px; font-style:italic; color:oklch(0.62 0.016 298); font-variant-numeric:tabular-nums; line-height:1.3;">04</div>
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="display:flex; align-items:center; gap:9px; font-size:11.5px; color:oklch(0.458 0.018 298); font-variant-numeric:tabular-nums;">
+                <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.640 0.100 32);"></div>
+                <div style="font-weight:500; color:oklch(0.448 0.092 32);">anger</div>
+                <div style="margin-left:auto;">1,201 felt this</div>
+              </div>
+              <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.68; color:oklch(0.258 0.020 298); margin-top:10px; text-wrap:pretty;">you told everyone i left. fine. i would rather be the villain in your story than a footnote in mine.</div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute; left:0; right:0; bottom:0; height:150px; background:linear-gradient(to top, oklch(0.978 0.007 82) 32%, oklch(0.978 0.007 82 / 0.72) 66%, oklch(0.978 0.007 82 / 0) 100%); pointer-events:none;"></div>
+        <div style="position:absolute; left:14px; right:14px; bottom:26px; display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-radius:26px; background:oklch(0.978 0.007 82 / 0.76); backdrop-filter:blur(24px) saturate(1.6); -webkit-backdrop-filter:blur(24px) saturate(1.6); border:1px solid oklch(0.912 0.012 78); box-shadow:0 12px 34px -14px oklch(0.325 0.048 300 / 0.30);">
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.268 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-8"></path></svg></div>
+          <div style="display:flex; align-items:center; gap:9px; min-height:44px; padding:0 20px; border-radius:100px; background:oklch(0.335 0.082 294); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.970 0.010 82)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3.5-.8L19 7.7l-2.7-2.7L5.8 15.5z"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82);">write</div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16V11a6 6 0 1 0-12 0v5l-1.5 2.5h15z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg></div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">most felt</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">today — empty</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 28px 14px 28px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between; min-height:36px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; letter-spacing:-0.012em; color:oklch(0.258 0.020 298);">most felt</div>
+            <div></div>
+          </div>
+          <div style="display:flex; gap:20px; margin-top:14px; font-size:12.5px;">
+            <div style="font-weight:600; color:oklch(0.258 0.020 298); cursor:pointer;">today</div>
+            <div style="color:oklch(0.458 0.018 298); cursor:pointer;">this week</div>
+            <div style="color:oklch(0.458 0.018 298); cursor:pointer;">all time</div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 118px 0;">
+          <div style="flex:1 1 auto; min-height:220px; padding:40px 40px 90px 40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:19px; font-style:italic; color:oklch(0.378 0.020 298);">nothing yet</div>
+            <div style="font-size:12.5px; line-height:1.6; color:oklch(0.478 0.018 298);">everyone is being quiet right now.</div>
+            <div style="width:26px; height:1px; background:oklch(0.888 0.013 78); margin:28px 0 26px 0;"></div>
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.425 0.085 296);">today's prompt</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; line-height:1.5; color:oklch(0.245 0.035 298); margin-top:10px; max-width:250px; text-wrap:balance;">what did you stop doing when they left.</div>
+            <div style="display:flex; align-items:center; gap:8px; min-height:44px; margin-top:20px; padding:0 20px; border-radius:100px; background:oklch(0.335 0.082 294); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">
+              <svg width="14" height="14" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.970 0.010 82)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3.5-.8L19 7.7l-2.7-2.7L5.8 15.5z"></path></svg>
+              <div style="font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82);">write yours</div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute; left:0; right:0; bottom:0; height:150px; background:linear-gradient(to top, oklch(0.978 0.007 82) 32%, oklch(0.978 0.007 82 / 0.72) 66%, oklch(0.978 0.007 82 / 0) 100%); pointer-events:none;"></div>
+        <div style="position:absolute; left:14px; right:14px; bottom:26px; display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-radius:26px; background:oklch(0.978 0.007 82 / 0.76); backdrop-filter:blur(24px) saturate(1.6); -webkit-backdrop-filter:blur(24px) saturate(1.6); border:1px solid oklch(0.912 0.012 78); box-shadow:0 12px 34px -14px oklch(0.325 0.048 300 / 0.30);">
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.268 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-8"></path></svg></div>
+          <div style="display:flex; align-items:center; gap:9px; min-height:44px; padding:0 20px; border-radius:100px; background:oklch(0.335 0.082 294); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.970 0.010 82)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3.5-.8L19 7.7l-2.7-2.7L5.8 15.5z"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82);">write</div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16V11a6 6 0 1 0-12 0v5l-1.5 2.5h15z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg></div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">write</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">prompt visible, 500 left</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 22px 12px 22px; display:flex; align-items:center; justify-content:space-between; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; min-height:44px; padding:0 6px; font-size:12.5px; color:oklch(0.458 0.018 298); cursor:pointer;">cancel</div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="display:flex; align-items:center; min-height:44px; padding:0 6px; font-size:12.5px; color:oklch(0.458 0.018 298); cursor:pointer;">save draft</div>
+            <div style="display:flex; align-items:center; min-height:40px; padding:0 18px; border-radius:100px; background:oklch(0.335 0.082 294); font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">post</div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:0 24px; display:flex; align-items:center; gap:2px; border-bottom:1px solid oklch(0.918 0.011 78);">
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.458 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5V5h7.5L20 13.5 13.5 20z"></path><circle cx="8" cy="9" r="1.2"></circle></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.458 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"></path><circle cx="12" cy="12" r="2.6"></circle></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.458 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 5a7 7 0 1 1-9.9 9.9A8 8 0 0 0 18 5z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.458 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h17v11h-17z"></path><path d="M3.5 7l8.5 6 8.5-6"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; font-size:11.5px; font-weight:700; letter-spacing:0.02em; color:oklch(0.458 0.018 298); cursor:pointer;">GIF</div>
+          <div style="margin-left:auto; display:flex; align-items:center; min-height:44px; font-size:12px; font-weight:600; color:oklch(0.258 0.020 298); cursor:pointer;">public</div>
+        </div>
+
+        <div style="flex:1 1 auto; padding:24px 28px 0 28px; display:flex; flex-direction:column;">
+          <div style="display:flex; align-items:flex-start; gap:16px;">
+            <div style="flex:1 1 auto; font-family:'Literata', Georgia, serif; font-size:19px; font-weight:400; line-height:1.66; color:oklch(0.478 0.018 298); text-wrap:pretty;"><span style="display:inline-block; width:1.5px; height:20px; background:oklch(0.385 0.095 294); vertical-align:-4px; margin-right:3px;"></span>how did you sleep…</div>
+            <div style="flex:0 0 auto; font-size:11.5px; color:oklch(0.478 0.018 298); font-variant-numeric:tabular-nums; padding-top:4px;">500</div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:16px 28px 34px 28px; border-top:1px solid oklch(0.918 0.011 78);">
+          <div style="font-size:12px; line-height:1.6; color:oklch(0.458 0.018 298); text-wrap:pretty;">no name, no photo. read by a safety check before it goes live.</div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">notifications</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">all · mentions</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 28px 14px 28px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between; min-height:36px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; letter-spacing:-0.012em; color:oklch(0.258 0.020 298);">notifications</div>
+            <div></div>
+          </div>
+          <div style="display:flex; gap:20px; margin-top:14px; font-size:12.5px;">
+            <div style="font-weight:600; color:oklch(0.258 0.020 298); cursor:pointer;">all</div>
+            <div style="color:oklch(0.458 0.018 298); cursor:pointer;">mentions</div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 118px 0;">
+          <div style="padding:22px 28px 10px 28px;"><div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.478 0.018 298);">earlier</div></div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:22px 28px; display:flex; gap:12px; align-items:flex-start; min-height:44px;">
+            <div style="flex:0 0 auto; width:6px; height:6px; border-radius:50%; margin-top:7px; background:oklch(0.625 0.098 160);"></div>
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13px; line-height:1.55; color:oklch(0.258 0.020 298);"><span style="font-weight:600;">tester_alpha</span> followed you</div>
+              <div style="font-size:11.5px; color:oklch(0.478 0.018 298); margin-top:4px;">2mo</div>
+            </div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="flex:1 1 auto; min-height:220px; padding:40px 40px 90px 40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-style:italic; color:oklch(0.458 0.018 298);">nothing else yet.</div>
+            <div style="font-size:12.5px; line-height:1.6; color:oklch(0.478 0.018 298); text-wrap:pretty;">replies and felt-this will land here.</div>
+          </div>
+        </div>
+        <div style="position:absolute; left:0; right:0; bottom:0; height:150px; background:linear-gradient(to top, oklch(0.978 0.007 82) 32%, oklch(0.978 0.007 82 / 0.72) 66%, oklch(0.978 0.007 82 / 0) 100%); pointer-events:none;"></div>
+        <div style="position:absolute; left:14px; right:14px; bottom:26px; display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-radius:26px; background:oklch(0.978 0.007 82 / 0.76); backdrop-filter:blur(24px) saturate(1.6); -webkit-backdrop-filter:blur(24px) saturate(1.6); border:1px solid oklch(0.912 0.012 78); box-shadow:0 12px 34px -14px oklch(0.325 0.048 300 / 0.30);">
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-8"></path></svg></div>
+          <div style="display:flex; align-items:center; gap:9px; min-height:44px; padding:0 20px; border-radius:100px; background:oklch(0.335 0.082 294); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.970 0.010 82)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3.5-.8L19 7.7l-2.7-2.7L5.8 15.5z"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82);">write</div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.268 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16V11a6 6 0 1 0-12 0v5l-1.5 2.5h15z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg></div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">profile</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">anonymous</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 28px 16px 28px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between; min-height:36px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; letter-spacing:-0.012em; color:oklch(0.258 0.020 298);">profile</div>
+            <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; margin-right:-10px; cursor:pointer;"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.458 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.6 6.6l1.4 1.4M16 16l1.4 1.4M17.4 6.6L16 8M8 16l-1.4 1.4"></path></svg></div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 118px 0;">
+          <div style="padding:26px 28px 22px 28px;">
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.478 0.018 298);">anonymous</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:24px; font-weight:400; letter-spacing:-0.015em; color:oklch(0.258 0.020 298); margin-top:8px;">@fading_drift_774</div>
+            <div style="font-family:'Literata', Georgia, serif; font-size:15px; font-style:italic; font-weight:400; line-height:1.6; color:oklch(0.458 0.018 298); margin-top:8px; text-wrap:pretty;">no name, no face. just the things you needed to say.</div>
+            <div style="font-size:11.5px; color:oklch(0.478 0.018 298); margin-top:12px;">joined apr 2026</div>
+            <div style="display:flex; gap:20px; margin-top:18px; font-size:12px; color:oklch(0.458 0.018 298); font-variant-numeric:tabular-nums;">
+              <div><span style="font-weight:600; color:oklch(0.258 0.020 298);">0</span> posts</div>
+              <div><span style="font-weight:600; color:oklch(0.258 0.020 298);">1</span> following</div>
+              <div><span style="font-weight:600; color:oklch(0.258 0.020 298);">0</span> followers</div>
+              <div><span style="font-weight:600; color:oklch(0.258 0.020 298);">0</span> felt</div>
+            </div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="display:flex; gap:22px; padding:16px 28px 0 28px; font-size:12.5px;">
+            <div style="font-weight:600; color:oklch(0.258 0.020 298); padding-bottom:12px; border-bottom:1.5px solid oklch(0.258 0.020 298); cursor:pointer;">posts</div>
+            <div style="color:oklch(0.458 0.018 298); padding-bottom:12px; cursor:pointer;">felt</div>
+            <div style="color:oklch(0.458 0.018 298); padding-bottom:12px; cursor:pointer;">saved</div>
+            <div style="color:oklch(0.458 0.018 298); padding-bottom:12px; cursor:pointer;">replies</div>
+            <div style="color:oklch(0.458 0.018 298); padding-bottom:12px; cursor:pointer;">reposts</div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="flex:1 1 auto; min-height:220px; padding:40px 40px 90px 40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-style:italic; color:oklch(0.458 0.018 298); ">nothing here yet.</div>
+            <div style="font-size:12.5px; line-height:1.6; color:oklch(0.478 0.018 298); text-wrap:pretty;">say the thing you cannot say anywhere else.</div>
+          </div>
+        </div>
+        <div style="position:absolute; left:0; right:0; bottom:0; height:150px; background:linear-gradient(to top, oklch(0.978 0.007 82) 32%, oklch(0.978 0.007 82 / 0.72) 66%, oklch(0.978 0.007 82 / 0) 100%); pointer-events:none;"></div>
+        <div style="position:absolute; left:14px; right:14px; bottom:26px; display:flex; align-items:center; justify-content:space-between; padding:8px 14px; border-radius:26px; background:oklch(0.978 0.007 82 / 0.76); backdrop-filter:blur(24px) saturate(1.6); -webkit-backdrop-filter:blur(24px) saturate(1.6); border:1px solid oklch(0.912 0.012 78); box-shadow:0 12px 34px -14px oklch(0.325 0.048 300 / 0.30);">
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18l5-6 4 3 7-8"></path></svg></div>
+          <div style="display:flex; align-items:center; gap:9px; min-height:44px; padding:0 20px; border-radius:100px; background:oklch(0.335 0.082 294); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.96)">
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.970 0.010 82)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19l3.5-.8L19 7.7l-2.7-2.7L5.8 15.5z"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.970 0.010 82);">write</div>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16V11a6 6 0 1 0-12 0v5l-1.5 2.5h15z"></path></svg></div>
+          <div style="display:flex; align-items:center; justify-content:center; min-width:44px; min-height:44px; cursor:pointer;"><svg width="19" height="19" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.268 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.4"></circle><path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path></svg></div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">settings</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">admin · privacy · notifications</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:6px 28px 16px 28px; background:oklch(0.978 0.007 82 / 0.80); backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4); border-bottom:1px solid oklch(0.918 0.011 78); z-index:5;">
+          <div style="display:flex; align-items:center; justify-content:space-between; min-height:36px;">
+            <div style="display:flex; align-items:center; gap:10px;"><div style="display:flex; align-items:center; min-height:44px; cursor:pointer;"><svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.258 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"></path></svg></div><div style="font-family:'Literata', Georgia, serif; font-size:20px; font-weight:400; letter-spacing:-0.012em; color:oklch(0.258 0.020 298);">settings</div></div>
+            <div></div>
+          </div>
+        </div>
+
+        <div class="fd" style="flex:1 1 auto; overflow:auto; scrollbar-width:none; -ms-overflow-style:none; display:flex; flex-direction:column; overscroll-behavior:contain; padding:0 0 46px 0;">
+          <div style="padding:22px 28px 10px 28px;"><div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.478 0.018 298);">admin</div></div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">moderation</div>
+              <div style="font-size:12px; line-height:1.55; color:oklch(0.458 0.018 298); margin-top:4px; text-wrap:pretty;">review reports, flagged and crisis posts</div>
+            </div>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:26px 28px 10px 28px;"><div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.478 0.018 298);">privacy</div></div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">allow sharing</div>
+              <div style="font-size:12px; line-height:1.55; color:oklch(0.458 0.018 298); margin-top:4px; text-wrap:pretty;">let people share your words as image cards — always without your handle</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.335 0.082 294); display:flex; justify-content:flex-end;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">show follower count</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.335 0.082 294); display:flex; justify-content:flex-end;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">share anonymous usage data</div>
+              <div style="font-size:12px; line-height:1.55; color:oklch(0.458 0.018 298); margin-top:4px; text-wrap:pretty;">helps us fix bugs. never includes what you wrote.</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.335 0.082 294); display:flex; justify-content:flex-end;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">content policy</div>
+            </div>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">privacy policy</div>
+            </div>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">terms of service</div>
+            </div>
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.478 0.018 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:26px 28px 10px 28px;"><div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.478 0.018 298);">notifications</div></div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">push notifications</div>
+              <div style="font-size:12px; line-height:1.55; color:oklch(0.458 0.018 298); margin-top:4px; text-wrap:pretty;">know when someone feels what you said</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.335 0.082 294); display:flex; justify-content:flex-end;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">felt this</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.888 0.013 78); display:flex; justify-content:flex-start;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">replies</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.335 0.082 294); display:flex; justify-content:flex-end;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          
+          <div style="padding:19px 28px; display:flex; align-items:center; gap:18px; min-height:44px;">
+            <div style="flex:1 1 auto; min-width:0;">
+              <div style="font-size:13.5px; font-weight:500; color:oklch(0.258 0.020 298);">reposts</div>
+            </div>
+            <div style="flex:0 0 auto; width:42px; height:25px; border-radius:100px; padding:2.5px; background:oklch(0.335 0.082 294); display:flex; justify-content:flex-end;"><div style="width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 2px oklch(0.325 0.038 300 / 0.25);"></div></div>
+          </div>
+          
+          <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          <div style="padding:30px 28px 44px 28px; font-size:11.5px; color:oklch(0.478 0.018 298);">toska · v1.0</div>
+        </div>
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">share</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">post as an image card</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px; padding:11px 4px; margin:-11px -4px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:8px 28px 16px 28px; display:flex; align-items:center; gap:14px; border-bottom:1px solid oklch(0.918 0.011 78);">
+          <svg width="20" height="20" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.418 0.018 298)" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          <div style="flex:1 1 auto; text-align:center; font-family:'Literata', Georgia, serif; font-size:16px; font-style:italic; color:oklch(0.258 0.020 298);">share this</div>
+          <div style="width:20px; height:20px;"></div>
+        </div>
+
+        <div style="flex:1 1 auto; display:flex; align-items:center; justify-content:center; padding:26px 46px;">
+          <div style="width:100%; aspect-ratio:4 / 5; border-radius:20px; background:oklch(0.315 0.048 300); padding:34px 32px; display:flex; flex-direction:column; box-shadow:0 18px 40px -24px oklch(0.30 0.05 300 / 0.55);">
+            <div style="display:flex; align-items:center; gap:8px; font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.80 0.055 160);">
+              <div style="width:5px; height:5px; border-radius:50%; background:oklch(0.74 0.06 160);"></div>
+              <div>acceptance</div>
+            </div>
+            <div style="flex:1 1 auto; display:flex; align-items:center;">
+              <div style="font-family:'Literata', Georgia, serif; font-size:21px; font-weight:400; line-height:1.55; color:oklch(0.955 0.008 60); text-wrap:pretty;">a year ago today. i didn't notice until my phone showed me a photo. i looked at it, felt something small, and went back to making lunch. that's the whole story.</div>
+            </div>
+            <div style="display:flex; align-items:baseline; justify-content:space-between; font-size:11px; color:oklch(0.76 0.02 300);">
+              <div style="font-variant-numeric:tabular-nums;">41 felt this</div>
+              <div style="font-family:'Literata', Georgia, serif; font-size:13px; font-style:italic; color:oklch(0.84 0.02 300);">toska</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:0 28px 20px 28px; display:flex; gap:17px;">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:48px;">
+            <div style="width:48px; height:48px; border-radius:14px; background:oklch(0.955 0.018 78); box-shadow:inset 0 0 0 1px oklch(0.325 0.038 300 / 0.07);"></div>
+            <div style="font-size:10.5px; color:oklch(0.478 0.018 298);">dawn</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:48px;">
+            <div style="width:48px; height:48px; border-radius:14px; background:oklch(0.978 0.007 82); box-shadow:inset 0 0 0 1px oklch(0.325 0.038 300 / 0.07);"></div>
+            <div style="font-size:10.5px; color:oklch(0.478 0.018 298);">paper</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:48px;">
+            <div style="width:48px; height:48px; border-radius:14px; background:oklch(0.945 0.020 15); box-shadow:inset 0 0 0 1px oklch(0.325 0.038 300 / 0.07);"></div>
+            <div style="font-size:10.5px; color:oklch(0.478 0.018 298);">blush</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:48px;">
+            <div style="width:48px; height:48px; border-radius:14px; background:oklch(0.945 0.020 160); box-shadow:inset 0 0 0 1px oklch(0.325 0.038 300 / 0.07);"></div>
+            <div style="font-size:10.5px; color:oklch(0.478 0.018 298);">sage</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:48px;">
+            <div style="width:48px; height:48px; border-radius:14px; background:oklch(0.945 0.020 240); box-shadow:inset 0 0 0 1px oklch(0.325 0.038 300 / 0.07);"></div>
+            <div style="font-size:10.5px; color:oklch(0.478 0.018 298);">frost</div>
+          </div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:48px;">
+            <div style="width:48px; height:48px; border-radius:14px; background:oklch(0.315 0.048 300); box-shadow:0 0 0 1.5px oklch(0.335 0.082 294), inset 0 0 0 2.5px oklch(0.978 0.007 82);"></div>
+            <div style="font-size:10.5px; font-weight:600; color:oklch(0.335 0.082 294);">2am</div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+
+        <div style="flex:0 0 auto; padding:16px 28px; display:flex; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:9px;">
+            <div style="font-family:'Literata', Georgia, serif; font-size:14px; color:oklch(0.288 0.020 298);">Aa</div>
+            <div style="font-size:12px; color:oklch(0.418 0.018 298);">serif</div>
+          </div>
+          <div style="width:1px; height:20px; background:oklch(0.918 0.011 78);"></div>
+          <div style="display:flex; align-items:baseline; gap:14px; font-family:'Literata', Georgia, serif; color:oklch(0.478 0.018 298);">
+            <div style="font-size:12px;">A</div>
+            <div style="font-size:15px; font-weight:600; color:oklch(0.335 0.082 294);">A</div>
+            <div style="font-size:18px;">A</div>
+          </div>
+          <div style="width:1px; height:20px; background:oklch(0.918 0.011 78);"></div>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.335 0.082 294)" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.518 0.018 298)" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M7 12h10M5.5 18h13"></path></svg>
+            <svg width="15" height="15" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.518 0.018 298)" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M10 12h10M7 18h13"></path></svg>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+
+        <div style="flex:0 0 auto; padding:18px 28px 12px 28px; text-align:center; font-size:11.5px; color:oklch(0.478 0.018 298);">your handle is never on the card</div>
+
+        <div style="flex:0 0 auto; padding:0 28px 34px 28px; display:flex; gap:12px;">
+          <div style="flex:1 1 0; min-width:0; height:52px; border-radius:100px; box-shadow:inset 0 0 0 1px oklch(0.856 0.015 78); display:flex; align-items:center; justify-content:center; gap:9px; font-size:14px; font-weight:600; color:oklch(0.288 0.020 298);">
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"></path></svg>
+            <div>save</div>
+          </div>
+          <div style="flex:1 1 0; min-width:0; height:52px; border-radius:100px; background:oklch(0.335 0.082 294); display:flex; align-items:center; justify-content:center; gap:9px; font-size:14px; font-weight:600; color:#fff;">
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4l4 4M5 14v5a1 1 0 001 1h12a1 1 0 001-1v-5"></path></svg>
+            <div>share</div>
+          </div>
+        </div>
+
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">enter</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">email only — no name is ever asked for</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; padding:0 34px;">
+          <div style="font-family:'Literata', Georgia, serif; font-size:44px; font-weight:400; letter-spacing:-0.03em; line-height:1; color:oklch(0.258 0.020 298);">toska</div>
+          <div style="font-family:'Literata', Georgia, serif; font-size:19px; font-style:italic; font-weight:400; line-height:1.5; color:oklch(0.378 0.020 298); margin-top:16px; max-width:290px; text-wrap:pretty;">somewhere to put it down, where nobody knows it's you.</div>
+
+          <div style="margin-top:52px;">
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.478 0.018 298);">your email</div>
+            <div style="display:flex; align-items:center; min-height:52px; margin-top:8px; border-bottom:1.5px solid oklch(0.335 0.082 294);">
+              <div style="font-family:'Literata', Georgia, serif; font-size:19px; color:oklch(0.258 0.020 298);">hazel.m@</div>
+              <div style="width:1.5px; height:21px; background:oklch(0.335 0.082 294); margin-left:1px;"></div>
+            </div>
+            <div style="font-size:11.5px; line-height:1.55; color:oklch(0.478 0.018 298); margin-top:12px; text-wrap:pretty;">used only to sign you in. never shown on your posts, never searchable.</div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:center; min-height:54px; margin-top:26px; border-radius:100px; background:oklch(0.335 0.082 294); font-size:14px; font-weight:600; color:oklch(0.970 0.010 82); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.98)">send me a code</div>
+
+          <div style="display:flex; align-items:center; gap:16px; margin-top:28px;">
+            <div style="flex:1 1 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+            <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.518 0.018 298);">or</div>
+            <div style="flex:1 1 auto; height:1px; background:oklch(0.918 0.011 78);"></div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:center; gap:10px; min-height:54px; margin-top:28px; border-radius:100px; box-shadow:inset 0 0 0 1px oklch(0.856 0.015 78); font-size:14px; font-weight:600; color:oklch(0.288 0.020 298); cursor:pointer; transition:transform 120ms ease;" style-active="transform:scale(0.98)">
+            <svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="currentColor" stroke="none"><path d="M16.4 12.7c0-2.1 1.6-3.2 1.7-3.3-.9-1.4-2.4-1.6-2.9-1.6-1.3-.1-2.4.7-3 .7-.6 0-1.6-.7-2.6-.7-1.4 0-2.7.8-3.4 2.1-1.5 2.5-.4 6.3 1.1 8.4.7 1 1.5 2.1 2.6 2.1s1.4-.7 2.7-.7 1.6.7 2.7.6c1.1 0 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.3s-2.2-.9-2.5-3.3zM14.6 6.3c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6 1 .1 2-.5 2.5-1.2z"></path></svg>
+            <div>continue with apple</div>
+          </div>
+
+          <div style="font-size:11px; line-height:1.6; color:oklch(0.518 0.018 298); margin-top:30px; text-wrap:pretty;">by continuing you agree to the <span style="color:oklch(0.385 0.095 294); font-weight:600;">terms</span> and <span style="color:oklch(0.385 0.095 294); font-weight:600;">privacy policy</span>. you must be 18 or older.</div>
+        </div>
+
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; width:430px;">
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:13.5px; font-weight:600; letter-spacing:-0.01em; color:oklch(0.25 0.008 264);">code</div>
+        <div style="font-size:12px; color:oklch(0.50 0.01 264);">handle is assigned, never chosen</div>
+      </div>
+  <div style="position:relative; width:430px; height:920px; border-radius:44px; overflow:hidden; background:oklch(0.978 0.007 82); box-shadow:0 32px 72px -30px oklch(0.325 0.038 300 / 0.28), 0 0 0 1px oklch(0.325 0.038 300 / 0.06);">
+      <div style="position:absolute; inset:0; display:flex; flex-direction:column;">
+
+        <div style="flex:0 0 auto; height:44px; padding:0 34px; display:flex; align-items:center; justify-content:space-between; font-size:12px; font-weight:600; color:oklch(0.288 0.020 298); font-variant-numeric:tabular-nums;">
+          <div>3:14</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; align-items:flex-end; gap:2px;">
+              <div style="width:3px; height:5px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:7px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:9px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+              <div style="width:3px; height:11px; border-radius:1px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+            <div style="width:24px; height:12px; border-radius:3px; border:1px solid oklch(0.418 0.018 298); padding:1.5px; display:flex;">
+              <div style="width:70%; border-radius:1.5px; background:oklch(0.418 0.018 298);"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:0 0 auto; padding:4px 24px 12px 24px; display:flex; align-items:center; border-bottom:1px solid oklch(0.918 0.011 78);">
+          <div style="display:flex; align-items:center; gap:8px; min-height:44px; padding:0 8px; cursor:pointer;">
+            <svg width="18" height="18" sc-camel-view-box="0 0 24 24" fill="none" stroke="oklch(0.318 0.020 298)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 6l-6 6 6 6"></path></svg>
+            <div style="font-size:12.5px; font-weight:600; color:oklch(0.318 0.020 298);">back</div>
+          </div>
+        </div>
+
+        <div style="flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; padding:0 34px;">
+          <div style="font-family:'Literata', Georgia, serif; font-size:30px; font-weight:400; letter-spacing:-0.022em; line-height:1.18; color:oklch(0.258 0.020 298); text-wrap:balance;">check your email.</div>
+          <div style="font-size:13px; line-height:1.6; color:oklch(0.458 0.018 298); margin-top:12px;">six digits, sent to hazel.m@fastmail.com · <span style="color:oklch(0.385 0.095 294); font-weight:600;">change</span></div>
+
+          <div style="display:flex; gap:12px; margin-top:44px;">
+            <div style="flex:1 1 0; height:62px; display:flex; align-items:center; justify-content:center; font-family:'Literata', Georgia, serif; font-size:26px; color:oklch(0.258 0.020 298); border-bottom:1.5px solid oklch(0.856 0.015 78); font-variant-numeric:tabular-nums;">4</div>
+            <div style="flex:1 1 0; height:62px; display:flex; align-items:center; justify-content:center; font-family:'Literata', Georgia, serif; font-size:26px; color:oklch(0.258 0.020 298); border-bottom:1.5px solid oklch(0.856 0.015 78); font-variant-numeric:tabular-nums;">1</div>
+            <div style="flex:1 1 0; height:62px; display:flex; align-items:center; justify-content:center; font-family:'Literata', Georgia, serif; font-size:26px; color:oklch(0.258 0.020 298); border-bottom:1.5px solid oklch(0.856 0.015 78); font-variant-numeric:tabular-nums;">9</div>
+            <div style="flex:1 1 0; height:62px; display:flex; align-items:center; justify-content:center; border-bottom:1.5px solid oklch(0.335 0.082 294);"><div style="width:1.5px; height:26px; background:oklch(0.335 0.082 294);"></div></div>
+            <div style="flex:1 1 0; height:62px; border-bottom:1.5px solid oklch(0.888 0.013 78);"></div>
+            <div style="flex:1 1 0; height:62px; border-bottom:1.5px solid oklch(0.888 0.013 78);"></div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-top:22px; font-size:12px; color:oklch(0.518 0.018 298); font-variant-numeric:tabular-nums;">
+            <div>didn't arrive?</div>
+            <div>resend in 0:42</div>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:center; min-height:54px; margin-top:34px; border-radius:100px; background:oklch(0.888 0.013 78); font-size:14px; font-weight:600; color:oklch(0.62 0.016 298);">continue</div>
+
+          <div style="height:1px; background:oklch(0.918 0.011 78); margin:34px 0 26px 0;"></div>
+
+          <div style="font-size:10.5px; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; color:oklch(0.425 0.085 296);">what happens next</div>
+          <div style="font-family:'Literata', Georgia, serif; font-size:17px; font-weight:400; line-height:1.6; color:oklch(0.278 0.020 298); margin-top:11px; text-wrap:pretty;">we'll give you a handle. you don't pick it, and it isn't tied to your email — so nothing you write here can be traced back to you.</div>
+          <div style="display:flex; align-items:center; gap:9px; margin-top:16px; font-size:12px; color:oklch(0.478 0.018 298);">
+            <div style="font-family:'Literata', Georgia, serif; font-size:15px; color:oklch(0.258 0.020 298);">fading_drift_774</div>
+            <div style="color:oklch(0.66 0.016 298);">·</div>
+            <div>yours, if you continue</div>
+          </div>
+        </div>
+
+        <div style="position:absolute; left:50%; bottom:9px; width:136px; height:5px; border-radius:3px; background:oklch(0.325 0.038 300 / 0.30); transform:translateX(-50%); pointer-events:none;"></div>
+      </div>
+    </div>
+    </div>
+    </div>
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:1460,&quot;height&quot;:1120}}"></script>
+
+
+</body></html>

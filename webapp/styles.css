@@ -65,6 +65,9 @@ body {
 
 /* header: wordmark row (+ nav on tablet/desktop) — translucent, hairline below */
 header.app { background: var(--paper); }
+/* The desktop rules set display:flex on these, which would beat the UA's
+   [hidden] { display:none } — signed-out pages must actually hide them. */
+header.app[hidden], .mainnav[hidden], .write-top[hidden] { display: none !important; }
 header.app .inner {
     max-width: 620px; margin: 0 auto; padding: 18px 28px 0;
     display: flex; align-items: center; justify-content: space-between;

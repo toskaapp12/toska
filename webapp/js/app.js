@@ -606,17 +606,28 @@ const TAG_COLORS = {
     "regret": "#a58a6f", "confusion": "#8a8a9c", "still love you": "#b07a8a",
     "moving on": "#6f9c8a", "numb": "#8a8a9c",
 };
+// Feeling = dot + coloured word (design system 2026-09-16). Colours live in
+// styles.css as --em-<key> (dot) / --em-<key>-t (text); unknown tags fall
+// back to the accent.
+const TAG_KEY = {
+    "acceptance": "acceptance", "anger": "anger", "numb": "numb", "still love you": "still",
+    "longing": "longing", "regret": "regret", "confusion": "confusion", "unsent": "unsent", "moving on": "moving",
+};
 function tagChip(tag) {
     if (!tag) return null;
-    const c = TAG_COLORS[tag] ?? "var(--plum-soft)";
-    return el("span", { class: "tag", style: `color:${c};` }, tag);
+    const k = TAG_KEY[tag];
+    const style = k ? `--tag-d:var(--em-${k}); --tag-t:var(--em-${k}-t);` : "";
+    return el("span", { class: "tag", style }, tag);
 }
+// "41 felt this | 2 replies | 3 reposts" — always shown, zeros included, so
+// every row has the same shape (design: tabular numerals, hairline dividers).
 function statsRow(d) {
-    const bits = [];
-    if ((d.replyCount ?? 0) > 0) bits.push(el("span", {}, `${d.replyCount} ${d.replyCount === 1 ? "reply" : "replies"}`));
-    if ((d.likeCount ?? 0) > 0) bits.push(el("span", {}, `${d.likeCount} felt this`));
-    if ((d.repostCount ?? 0) > 0) bits.push(el("span", {}, `${d.repostCount} reposts`));
-    return bits.length ? el("div", { class: "post-stats" }, bits) : null;
+    const n = (v) => Math.max(0, v ?? 0);
+    const item = (count, one, many) => el("span", {}, el("b", {}, String(count)), ` ${count === 1 ? one : many}`);
+    return el("div", { class: "post-stats" },
+        item(n(d.likeCount), "felt this", "felt this"),
+        item(n(d.replyCount), "reply", "replies"),
+        item(n(d.repostCount), "repost", "reposts"));
 }
 // "whisper · fades in 42m" / "midnight · fades at midnight" chips on
 // ephemeral posts (web-only affordance; iOS shows the state in compose).
@@ -632,16 +643,17 @@ function ephemeralChip(d) {
 }
 function postRow(id, d) {
     const meta = el("div", { class: "post-meta" },
+        tagChip(d.tag),
         el("span", { class: "handle" }, d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
         el("span", {}, relTime(d.createdAt)),
-        tagChip(d.tag),
         ephemeralChip(d),
     );
+    // Words first, then the feeling line, then the stats line (design order).
     return el("a", { class: "post-row", href: `#/post/${id}` },
         d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle ?? "anonymous"} reposted`) : null,
-        meta,
         el("div", { class: "post-text" }, d.text ?? ""),
         gifImg(d.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
+        meta,
         statsRow(d),
     );
 }
@@ -715,9 +727,9 @@ function viewSignIn() {
     };
     mount.replaceChildren(
         el("div", { class: "auth-card" },
-            el("h1", { style: "color:var(--plum);" }, "toska"),
-            el("p", { class: "note tagline" }, "an anonymous space for heartbreak."),
-            el("div", { class: "field" }, el("label", {}, "email"), email),
+            el("h1", {}, "toska"),
+            el("p", { class: "note tagline" }, "somewhere to put it down, where nobody knows it's you."),
+            el("div", { class: "field" }, el("label", {}, "your email"), email),
             el("div", { class: "field" }, el("label", {}, "password"), pwField(pw)),
             el("div", { style: "margin:2px 0 4px;" }, forgot),
             resetNote,
@@ -857,16 +869,15 @@ async function viewFeed() {
     );
     // Daily prompt card — same client-static list + dayOfYear pick as iOS.
     const [pText, pTag] = todaysPrompt();
-    const respond = el("button", { class: "btn quiet" }, "respond");
+    const respond = el("button", { class: "btn quiet" }, "write yours");
     respond.onclick = () => {
         promptContext = { text: pText, tag: pTag, promptDate: todaysPromptDate() };
         location.hash = "#/compose";
     };
     const promptCard = el("div", { class: "prompt-card" },
         el("div", { class: "eyebrow" }, "today's prompt"),
-        el("div", { class: "post-text", style: "font-size:16.5px;" }, pText),
-        el("div", { style: "display:flex; align-items:center; gap:10px; margin-top:10px;" },
-            tagChip(pTag), respond));
+        el("div", { class: "post-text" }, pText),
+        el("div", { class: "prompt-actions" }, respond));
     // Search — honest scope, same as FeedView: filters only what's already
     // fetched (text + handle), no extra Firestore round-trip.
     const search = el("input", {
@@ -1082,7 +1093,7 @@ function viewCompose() {
             };
             return b;
         }));
-    const share = el("button", { class: "btn" }, "share it");
+    const share = el("button", { class: "btn" }, "post");
     share.onclick = async () => {
         err.replaceChildren();
         const text = ta.value.trim();
@@ -1124,7 +1135,7 @@ function viewCompose() {
                 share),
             err),
         el("p", { class: "note", style: "padding:0 6px;" },
-            "no names, no photos, no links. letters can run long (2000); everything else stays short (500)."),
+            "no name, no photo. read by a safety check before it goes live. letters can run long (2000); everything else stays short (500)."),
     ].filter(Boolean));
     render();
 }
@@ -1173,17 +1184,18 @@ async function viewTop() {
         list.append(el("a", { class: "hero-card post-row", href: `#/post/${heroId}`, style: "display:block;" },
             el("div", { class: "eyebrow" },
                 `most felt ${topPeriod === "all time" ? "of all time" : topPeriod}`),
-            el("div", { class: "post-meta" },
-                el("span", { class: "handle" }, hero.isRepost ? (hero.originalHandle ?? "anonymous") : (hero.authorHandle ?? "anonymous")),
-                el("span", {}, relTime(hero.createdAt)),
-                tagChip(hero.tag)),
+            el("span", { class: "rank-num" }, "01"),
             el("div", { class: "post-text" }, hero.text ?? ""),
             gifImg(hero.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
-            statsRow(hero), // same zero-hiding stats as every other row
+            el("div", { class: "post-meta" },
+                tagChip(hero.tag),
+                el("span", { class: "handle" }, hero.isRepost ? (hero.originalHandle ?? "anonymous") : (hero.authorHandle ?? "anonymous")),
+                el("span", {}, relTime(hero.createdAt))),
+            statsRow(hero),
         ));
         ranked.slice(1).forEach(([id, d], i) => {
             const row = postRow(id, d);
-            row.prepend(el("span", { class: "rank-num" }, `${i + 2}.`));
+            row.prepend(el("span", { class: "rank-num" }, String(i + 2).padStart(2, "0")));
             list.append(row);
         });
     } catch (e) {
@@ -1265,17 +1277,17 @@ async function viewPost(postId) {
         }
         const d = ps.data();
         const own = d.authorId === me.uid;
-        const body = el("div", { class: "post-row", style: "cursor:default;" },
+        const body = el("div", { class: "post-row", style: "cursor:default; border-bottom:none;" },
             d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle} reposted`) : null,
+            (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
+            el("div", { class: "post-text", style: "font-size:17px; line-height:1.68;" }, d.text ?? ""),
+            gifImg(d.gifUrl, "max-width:100%; border-radius:10px; margin-top:10px;"),
             el("div", { class: "post-meta" },
+                tagChip(d.tag),
                 el("a", { class: "handle plain", href: `#/u/${d.isRepost ? (d.originalAuthorId ?? d.authorId) : d.authorId}` },
                     d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
                 el("span", {}, relTime(d.createdAt)),
-                tagChip(d.tag),
                 ephemeralChip(d)),
-            (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
-            el("div", { class: "post-text", style: "font-size:19px;" }, d.text ?? ""),
-            gifImg(d.gifUrl, "max-width:100%; border-radius:10px; margin-top:10px;"),
             statsRow(d),
         );
 
@@ -1427,7 +1439,7 @@ async function viewPost(postId) {
                     el("button", { onclick: () => { replyingTo = null; renderStrip(); } }, "cancel"));
             }
         };
-        const rta = el("textarea", { placeholder: "say something gently…", rows: "1", maxlength: "520" });
+        const rta = el("textarea", { placeholder: "say something kind, anonymously…", rows: "1", maxlength: "520" });
         let replyGif = null;
         const replyGifBox = el("div");
         const renderReplyGif = () => replyGifBox.replaceChildren(replyGif ? el("div", { class: "gif-attach" },
@@ -1677,7 +1689,8 @@ async function viewProfile(uid) {
     const stat = (n, label) => el("span", {}, el("b", {}, String(Math.max(0, n ?? 0))), ` ${label}`);
     const head = el("div", { class: "profile-head" },
         el("h2", {}, ud.handle ?? "anonymous"),
-        joined ? el("div", { class: "joined" }, `here since ${joined}`) : null,
+        el("div", { class: "joined" }, "no name, no face. just the things you needed to say."),
+        joined ? el("div", { class: "joined" }, `joined ${joined.toLowerCase()}`) : null,
         el("div", { class: "stat-line" },
             showFollowers ? stat(ud.followerCount, "followers") : null,
             own ? stat(ud.followingCount, "following") : null,

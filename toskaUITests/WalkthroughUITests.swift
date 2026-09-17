@@ -602,6 +602,151 @@ final class WalkthroughUITests: XCTestCase {
         openAndReturn("change password", expect: "password")
     }
 
+    // MARK: 09d — real-user journey over the never-driven paths
+    //
+    // Owner 2026-09-17: "review everything like a real user." This drives the
+    // flows no suite had touched: another user's profile via a post's handle,
+    // follow → unfollow, a reply's own page, the drafts lifecycle, a settings
+    // toggle round-trip, and a notification row tap.
+    func test09d_userJourneyGaps() throws {
+        try requireFeed()
+
+        // 1) Open the fixture post → tap the author handle → other profile.
+        let fixtureRow = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"))
+        XCTAssertNotNil(fixtureRow, "Fixture post not in feed")
+        guard let fixtureRow else { return }
+        forceTap(fixtureRow)
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
+        sleep(1)
+        snap("09d0-detail-before-handle")
+        let handleMatches = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'anonymous_cd1b15f0'")).allElementsBoundByIndex
+        let handleBtn = handleMatches.first(where: { $0.isHittable }) ?? handleMatches.first
+        if handleBtn == nil {
+            let labels = app.buttons.allElementsBoundByIndex.prefix(40).map { $0.label }.joined(separator: " | ")
+            XCTFail("Author handle not tappable on detail — buttons: \(labels)")
+            return
+        }
+        if let handleBtn { forceTap(handleBtn) }
+        sleep(2)
+        snap("09d1-other-profile")
+        // 2) Follow ↔ unfollow round-trip, from WHATEVER state the account
+        // is in (a prior run may have left it following).
+        let pill = app.buttons["followButton"]
+        XCTAssertTrue(pill.waitForExistence(timeout: 6), "No follow button on other profile")
+        if pill.label == "following" { forceTap(pill); sleep(2) }   // normalize
+        XCTAssertEqual(pill.label, "follow", "Couldn't normalize to un-followed")
+        forceTap(pill)
+        sleep(2)
+        XCTAssertEqual(pill.label, "following", "Follow didn't flip to following")
+        snap("09d2-followed")
+        forceTap(pill)
+        sleep(2)
+        XCTAssertEqual(pill.label, "follow", "Unfollow didn't flip back")
+        // back to detail, then feed
+        if app.buttons["Back"].exists { forceTap(app.buttons["Back"]) } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+        }
+        sleep(1)
+        if app.buttons["Back"].exists { forceTap(app.buttons["Back"]) }
+        sleep(1)
+
+        // 3) Reply's own page: open a busy post, tap its first reply row.
+        scrollToTop(2)
+        let repliedRow = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'a year ago today'"))
+        if let repliedRow {
+            forceTap(repliedRow)
+            XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Replied post didn't open")
+            sleep(2)
+            snap("09d3-thread")
+            // A reply row is a button whose label carries the reply text; tap
+            // the first one below the stats line if present.
+            let replyRow = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS 'felt this' AND label CONTAINS 'reply'"))
+            _ = replyRow // (labels vary; drive via any reply body instead)
+            let anyReply = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS 'here with you'")).allElementsBoundByIndex.first(where: { $0.isHittable })
+            if let anyReply {
+                forceTap(anyReply)
+                sleep(2)
+                snap("09d4-reply-detail")
+                if app.buttons["Back"].exists { forceTap(app.buttons["Back"]); sleep(1) }
+            }
+            if app.buttons["Back"].exists { forceTap(app.buttons["Back"]); sleep(1) }
+        }
+
+        // 4) Drafts lifecycle: compose → type → save draft → check drafts list.
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        let marker = "draftcheck\(Int(Date().timeIntervalSince1970))"
+        focusAndType(app.textViews.firstMatch, "words i am not ready to say. \(marker)")
+        let saveDraft = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'save'")).firstMatch
+        XCTAssertTrue(saveDraft.waitForExistence(timeout: 4), "save draft missing")
+        forceTap(saveDraft)
+        sleep(2)
+        // Saving may auto-dismiss; if compose is still up, cancel out.
+        // (waitForExistence + forceTap: the exists→tap gap raced the
+        // save-draft auto-dismiss and crashed the query.)
+        if app.buttons["cancel"].waitForExistence(timeout: 2) {
+            forceTap(app.buttons["cancel"]); sleep(1)
+        }
+        app.buttons["Profile"].tap(); sleep(1)
+        app.buttons["settings"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Settings didn't open")
+        let draftsRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'drafts'"))
+            .allElementsBoundByIndex.last
+        XCTAssertNotNil(draftsRow, "drafts row missing")
+        if let draftsRow { nudgeRowIntoSafeBand(draftsRow); forceTap(draftsRow) }
+        sleep(2)
+        let savedDraft = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
+        XCTAssertTrue(waitFor(savedDraft, 8), "Saved draft not in drafts list")
+        snap("09d5-drafts")
+        if app.buttons["Back"].exists { forceTap(app.buttons["Back"]); sleep(1) }
+        else if app.buttons["close"].exists { forceTap(app.buttons["close"]); sleep(1) }
+        else if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap(); sleep(1) }
+
+        // 5) Settings toggle round-trip: flip "allow sharing" off and back on.
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Not back on settings")
+        let toggle = app.switches["allow sharing"].firstMatch
+        if toggle.waitForExistence(timeout: 4) {
+            nudgeRowIntoSafeBand(toggle)
+            let before = (toggle.value as? String) ?? "?"
+            if toggle.isHittable { toggle.tap() } else {
+                // knob sits at the trailing edge of the switch element
+                toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+            }
+            sleep(2)
+            let mid = (toggle.value as? String) ?? "?"
+            XCTAssertNotEqual(before, mid, "allow-sharing toggle didn't flip")
+            if toggle.isHittable { toggle.tap() } else {
+                toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap()
+            }
+            sleep(2)
+            let after = (toggle.value as? String) ?? "?"
+            XCTAssertEqual(before, after, "allow-sharing toggle didn't restore")
+            snap("09d6-toggle-roundtrip")
+        }
+
+        // 6) Notifications: open, tap the first row if any, come back.
+        app.buttons["Back"].exists ? forceTap(app.buttons["Back"]) : ()
+        sleep(1)
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Notifications'")).firstMatch.tap()
+        sleep(2)
+        snap("09d7-notifications")
+        let notifRow = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS 'felt this' OR label CONTAINS 'followed you' OR label CONTAINS 'replied'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable })
+        if let notifRow {
+            forceTap(notifRow)
+            sleep(2)
+            snap("09d8-notification-target")
+        }
+    }
+
     func test10_composeAndPost() throws {
         try requireFeed()
         app.buttons["New post"].tap()

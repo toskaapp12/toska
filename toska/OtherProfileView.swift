@@ -150,6 +150,10 @@ struct OtherProfileView: View {
                                 // code stays in place for legacy data only.
                                 Button { toggleFollow() } label: {
                                     Text(isFollowing ? "following" : "follow")
+                                        // Stable selector — the feed's "following"
+                                        // TAB shares this label in the AX tree and
+                                        // shadows label queries (2026-09-17).
+                                        .accessibilityIdentifier("followButton")
                                         .font(ToskaFont.sans(12.5, weight: .semibold))
                                         .foregroundColor(isFollowing ? ToskaColor.text2 : ToskaColor.onAccent)
                                         .frame(maxWidth: .infinity, minHeight: 44)

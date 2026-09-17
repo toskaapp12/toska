@@ -170,31 +170,33 @@ struct OtherProfileView: View {
                         .padding(.top, 16)
                         .padding(.bottom, 16)
                         
-                        HStack(spacing: 0) {
-                            Button { selectedTab = 0 } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: selectedTab == 0 ? "square.grid.2x2.fill" : "square.grid.2x2")
-                                        .font(.system(size: 14, weight: selectedTab == 0 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 0 ? Color.toskaBlue : Color.toskaInactiveGray)
-                                    Capsule().fill(selectedTab == 0 ? Color.toskaBlue : Color.clear).frame(height: 2)
+                        // Text tabs — same dialect as the own-profile tabs
+                        // (the icon pair was the last legacy segment control;
+                        // owner 2026-09-17 user-mindset pass).
+                        HStack(spacing: 22) {
+                            ForEach(0..<2, id: \.self) { idx in
+                                let isSel = selectedTab == idx
+                                Button { selectedTab = idx } label: {
+                                    Text(idx == 0 ? "posts" : "replies")
+                                        .font(ToskaFont.sans(12.5, weight: isSel ? .semibold : .regular))
+                                        .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
+                                        .padding(.top, 14)
+                                        .padding(.bottom, 12)
+                                        .overlay(alignment: .bottom) {
+                                            Rectangle()
+                                                .fill(isSel ? ToskaColor.text : Color.clear)
+                                                .frame(height: 1.5)
+                                        }
+                                        .contentShape(Rectangle())
                                 }
-                                .frame(maxWidth: .infinity)
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(idx == 0 ? "posts" : "replies")
                             }
-                            .accessibilityLabel("posts")
-                            Button { selectedTab = 1 } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: selectedTab == 1 ? "bubble.left.fill" : "bubble.left")
-                                        .font(.system(size: 14, weight: selectedTab == 1 ? .medium : .light))
-                                        .foregroundColor(selectedTab == 1 ? Color.toskaBlue : Color.toskaInactiveGray)
-                                    Capsule().fill(selectedTab == 1 ? Color.toskaBlue : Color.clear).frame(height: 2)
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                            .accessibilityLabel("replies")
+                            Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 40)
+                        .padding(.horizontal, 28)
                         
-                        Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
+                        Rectangle().fill(ToskaColor.divider).frame(height: 1)
                         
                         if selectedTab == 0 {
                             if postsLoadFailed {

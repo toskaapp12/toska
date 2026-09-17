@@ -1855,6 +1855,20 @@ struct FeedColumn: View {
                                                             Text("follow someone to see their words here")
                                                                 .font(ToskaFont.sans(12.5))
                                                                 .foregroundColor(ToskaColor.text3)
+                                                            // A way FORWARD — the empty state was a dead
+                                                            // end (owner 2026-09-17 user-mindset pass).
+                                                            Button {
+                                                                vm.showExplore = true
+                                                            } label: {
+                                                                Text("find people to follow")
+                                                                    .font(ToskaFont.sans(12.5, weight: .semibold))
+                                                                    .foregroundColor(ToskaColor.accentText)
+                                                                    .padding(.horizontal, 16)
+                                                                    .frame(minHeight: 36)
+                                                                    .overlay(Capsule().stroke(ToskaColor.divider2, lineWidth: 1))
+                                                                    .contentShape(Capsule())
+                                                            }
+                                                            .padding(.top, 6)
                                                         }
                                                         .frame(maxWidth: .infinity)
                                                         .padding(.vertical, 60)

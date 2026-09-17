@@ -32,6 +32,7 @@ struct DraftItem: Identifiable {
 
 @MainActor
 struct DraftsView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var drafts: [DraftItem] = []
     @State private var listener: ListenerRegistration? = nil
     @State private var selectedDraft: DraftItem? = nil
@@ -153,9 +154,11 @@ struct DraftsView: View {
                     .scrollContentBackground(.hidden)
                 }
             }
-            .navigationTitle("drafts")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
+            .navigationBarHidden(true)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ToskaHeader(title: "drafts", onBack: { dismiss() })
+                    .background(LateNightTheme.background)
+            }
             .fullScreenCover(item: $selectedDraft) { draft in
                 EdgeSwipeDismissWrapper {
                     // (2026-08-05) Carry the whole draft back into the

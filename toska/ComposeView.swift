@@ -305,6 +305,7 @@ struct ComposeView: View {
                 // "midnight · letter" summary duplicated them and squeezed
                 // the row into clipping (owner 2026-09-17). Row scrolls; a
                 // peeking chip signals the overflow.
+                HStack(spacing: 10) {
                 ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             Button {
@@ -350,7 +351,24 @@ struct ComposeView: View {
                             .accessibilityLabel("Add GIF")
                         }
                         .padding(.vertical, 7)
-                        .padding(.horizontal, 22)
+                        .padding(.leading, 22)
+                }
+
+                // Char counter — lives HERE (not over the editor) so it never
+                // collides with the words; warning colours near the limit.
+                Text("\(activeCharLimit - text.utf16.count) left")
+                    .font(ToskaFont.sans(11.5))
+                    .foregroundColor(
+                        text.utf16.count >= activeCharLimit
+                            ? Color.toskaErrorRed
+                            : (activeCharLimit - text.utf16.count < 100
+                                ? Color.toskaAccentTan
+                                : ToskaColor.text2)
+                    )
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                    .padding(.trailing, 22)
                 }
 
                 // Tag picker expansion now drops DOWN from the toolbar above
@@ -511,37 +529,6 @@ struct ComposeView: View {
                                         draftText = newValue
                                     }
                                 }
-                            // Char counter — shows remaining chars as the user
-                            // types, switches to a soft warning color at <100
-                            // remaining so the boundary doesn't surprise them.
-                            // utf16.count matches the Firestore rule's size()
-                            // check + the onChange truncation above.
-                            HStack {
-                                Spacer()
-                                Text("\(activeCharLimit - text.utf16.count) left")
-                                    .font(ToskaFont.sans(11.5))
-                                    .foregroundColor(
-                                        text.utf16.count >= activeCharLimit
-                                            ? Color.toskaErrorRed
-                                            : (activeCharLimit - text.utf16.count < 100
-                                                ? Color.toskaAccentTan
-                                                : ToskaColor.text2)
-                                    )
-                                    .monospacedDigit()
-                                    // Backing chip: the counter floats over the
-                                    // editor's top-right, and a long first line
-                                    // (any size — glaring at accessibility type
-                                    // sizes) runs beneath it into an unreadable
-                                    // collision. The chip keeps the count legible;
-                                    // hit testing stays off so the text underneath
-                                    // remains editable.
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .background(Capsule().fill(LateNightTheme.feedBackground.opacity(0.92)))
-                            }
-                            .padding(.horizontal, 24)
-                            .padding(.top, 12)
-                            .allowsHitTesting(false)
                         }
 
                         // Selected GIF preview

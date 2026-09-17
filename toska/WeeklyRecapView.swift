@@ -22,7 +22,7 @@ struct WeeklyRecapView: View {
     
     var body: some View {
         ZStack {
-            Color.toskaNearBlack.ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
                 HStack {
@@ -32,7 +32,7 @@ struct WeeklyRecapView: View {
                         // 44pt minimum; keep the 14pt glyph, enlarge the target.
                         Image(systemName: "xmark")
                             .font(.system(size: 14, weight: .light))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(ToskaColor.dot)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -44,7 +44,7 @@ struct WeeklyRecapView: View {
                 Spacer()
                 
                 if isLoading {
-                                    ProgressView().tint(Color.toskaBlue)
+                                    ProgressView().tint(ToskaColor.accent)
                                 } else if loadFailed {
                                     // Failure state (2026-08-05) — distinct from the
                                     // "nothing this week" empty state below, which a
@@ -58,11 +58,11 @@ struct WeeklyRecapView: View {
                                 } else if postCount == 0 {
                                     VStack(spacing: 12) {
                                         Text("nothing this week.")
-                                            .font(ToskaFont.serifItalic(20))
-                                            .foregroundColor(.white.opacity(0.4))
+                                            .font(ToskaFont.serifItalic(16))
+                                            .foregroundColor(ToskaColor.text2)
                                         Text("say something. it keeps.")
-                                            .font(ToskaFont.sans(12))
-                                            .foregroundColor(.white.opacity(0.2))
+                                            .font(ToskaFont.sans(12.5))
+                                            .foregroundColor(ToskaColor.text3)
                                     }
                                     .opacity(isVisible ? 1 : 0)
                                     .animation(.easeIn(duration: 0.8).delay(0.3), value: isVisible)
@@ -70,10 +70,10 @@ struct WeeklyRecapView: View {
                                     VStack(spacing: 24) {                        VStack(spacing: 4) {
                             Text("your week")
                                                             .font(ToskaFont.serifItalic(22))
-                                                            .foregroundColor(.white)
+                                                            .foregroundColor(ToskaColor.text)
                             Text(weekRangeString())
-                                .font(ToskaFont.sans(11))
-                                .foregroundColor(.white.opacity(0.25))
+                                .font(ToskaFont.sans(11.5))
+                                .foregroundColor(ToskaColor.text3)
                         }
                         .opacity(isVisible ? 1 : 0)
                         .animation(.easeIn(duration: 0.6).delay(0.2), value: isVisible)
@@ -90,20 +90,21 @@ struct WeeklyRecapView: View {
                         if !topPostText.isEmpty {
                             VStack(spacing: 8) {
                                 Text("hit the hardest this week")
-                                    .font(ToskaFont.sans(11, weight: .semibold))
-                                    .foregroundColor(Color.toskaBlue)
-                                    .tracking(1)
+                                    .font(ToskaFont.sans(10.5, weight: .semibold))
+                                    .textCase(.uppercase)
+                                    .tracking(0.74)
+                                    .foregroundColor(ToskaColor.promptEyebrow)
                                 
                                 Text(topPostText)
                                     .font(ToskaFont.serif(16))
-                                    .foregroundColor(.white.opacity(0.9))
+                                    .foregroundColor(ToskaColor.text)
                                     .lineSpacing(5)
                                     .multilineTextAlignment(.center)
                                     .padding(.horizontal, 32)
                                 
                                 Text("\(formatCount(topPostLikes)) felt this")
-                                    .font(ToskaFont.sans(11))
-                                    .foregroundColor(Color.toskaWhisperPink.opacity(0.7))
+                                    .font(ToskaFont.sans(11.5))
+                                    .foregroundColor(ToskaColor.handle)
                             }
                             .opacity(isVisible ? 1 : 0)
                             .offset(y: isVisible ? 0 : 15)
@@ -114,8 +115,8 @@ struct WeeklyRecapView: View {
                         if let tag = topTag {
                             VStack(spacing: 4) {
                                 Text("you were mostly feeling")
-                                                                    .font(ToskaFont.sans(11))
-                                                                    .foregroundColor(.white.opacity(0.3))
+                                                                    .font(ToskaFont.sans(11.5))
+                                                                    .foregroundColor(ToskaColor.text2)
                                 Text(tag)
                                     .font(ToskaFont.sans(13, weight: .semibold))
                                     .foregroundColor(tagColor(for: tag))
@@ -127,8 +128,8 @@ struct WeeklyRecapView: View {
                         // Community stat
                         if communityPostCount > 0 {
                             Text("\(formatCount(communityPostCount)) people said something they couldnt say anywhere else this week")
-                                .font(ToskaFont.sans(11))
-                                .foregroundColor(.white.opacity(0.25))
+                                .font(ToskaFont.sans(11.5))
+                                .foregroundColor(ToskaColor.text3)
                                 .opacity(isVisible ? 1 : 0)
                                 .animation(.easeIn(duration: 0.6).delay(1.4), value: isVisible)
                         }
@@ -151,18 +152,18 @@ struct WeeklyRecapView: View {
                                           Text("share recap")
                                               .font(ToskaFont.sans(12, weight: .medium))
                                       }
-                                      .foregroundColor(Color.toskaBlue)
+                                      .foregroundColor(ToskaColor.accentText)
                                       .padding(.horizontal, 24)
-                                      .padding(.vertical, 10)
-                                      .background(Color.toskaBlue.opacity(0.1))
-                                      .cornerRadius(20)
+                                      .frame(minHeight: 40)
+                                      .overlay(Capsule().stroke(ToskaColor.divider2, lineWidth: 1))
+                                      .contentShape(Capsule())
                                   }
                                   .opacity(isVisible ? 1 : 0)
                                   .animation(.easeIn(duration: 0.6).delay(1.7), value: isVisible)
                               }
                 Text("toska")
                     .font(ToskaFont.serifItalic(13))
-                    .foregroundColor(.white.opacity(0.12))
+                    .foregroundColor(ToskaColor.dot)
                     .padding(.top, 12)
                     .padding(.bottom, 40)
             }
@@ -179,11 +180,12 @@ struct WeeklyRecapView: View {
     func recapStat(number: Int, label: String) -> some View {
         VStack(spacing: 4) {
             Text("\(number)")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .font(ToskaFont.serif(28))
+                .monospacedDigit()
+                .foregroundColor(ToskaColor.text)
             Text(label)
-                .font(ToskaFont.sans(11))
-                .foregroundColor(.white.opacity(0.4))
+                .font(ToskaFont.sans(11.5))
+                .foregroundColor(ToskaColor.text2)
         }
     }
     

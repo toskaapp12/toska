@@ -537,6 +537,71 @@ final class WalkthroughUITests: XCTestCase {
 
     // MARK: 10 — compose & post (clean content, real moderation round-trip)
 
+    // MARK: 09c — every Settings destination opens and comes back
+    //
+    // Drafts / your week / followers / following / blocked users / change
+    // email / change password had never been functionally driven — a broken
+    // push or crash there only surfaced on-device (owner 2026-09-17).
+    func test09c_settingsDestinationsOpen() throws {
+        try requireFeed()
+        app.buttons["Profile"].tap()
+        sleep(1)
+        XCTAssertTrue(waitFor(app.buttons["settings"], 8), "Profile gear missing")
+        app.buttons["settings"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Settings didn't open")
+
+        func openAndReturn(_ rowLabel: String, expect: String? = nil) {
+            // LAST match — the feed's tab buttons ("following") stay in the
+            // AX tree behind the pushed stack and shadow firstMatch; the
+            // settings row is deeper in traversal. Existence works for
+            // off-screen rows; nudge scrolls it tappable.
+            func settingsRow() -> XCUIElement? {
+                let els = app.buttons.matching(
+                    NSPredicate(format: "label BEGINSWITH[c] %@", rowLabel)).allElementsBoundByIndex
+                return els.last
+            }
+            var found = settingsRow()
+            var swipes = 0
+            while (found == nil || found?.exists != true) && swipes < 5 {
+                app.swipeUp(); usleep(800_000)
+                found = settingsRow(); swipes += 1
+            }
+            guard let row = found, row.exists else {
+                XCTFail("Settings row '\(rowLabel)' not found"); return
+            }
+            nudgeRowIntoSafeBand(row)
+            forceTap(row)
+            sleep(2)
+            if let expect {
+                XCTAssertTrue(
+                    app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", expect)).firstMatch.exists
+                        || app.textFields.firstMatch.exists,
+                    "'\(rowLabel)' destination didn't render (expected '\(expect)')")
+            }
+            snap("09c-\(rowLabel.replacingOccurrences(of: " ", with: "-"))")
+            // Return: shared back affordance, full-screen close, system nav
+            // back, else edge swipe.
+            if app.buttons["Back"].exists { forceTap(app.buttons["Back"]) }
+            else if app.buttons["close"].exists { forceTap(app.buttons["close"]) }
+            else if app.buttons["cancel"].exists { forceTap(app.buttons["cancel"]) }
+            else if app.navigationBars.buttons.firstMatch.exists { app.navigationBars.buttons.firstMatch.tap() }
+            else {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+                    .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)))
+            }
+            sleep(1)
+            XCTAssertTrue(waitFor(app.staticTexts["settings"], 6), "Didn't return to settings from '\(rowLabel)'")
+        }
+
+        openAndReturn("drafts", expect: "draft")
+        openAndReturn("your week", expect: "week")
+        openAndReturn("followers", expect: "follow")
+        openAndReturn("following", expect: "follow")
+        openAndReturn("blocked users", expect: "block")
+        openAndReturn("change email", expect: "email")
+        openAndReturn("change password", expect: "password")
+    }
+
     func test10_composeAndPost() throws {
         try requireFeed()
         app.buttons["New post"].tap()

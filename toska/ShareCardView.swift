@@ -251,7 +251,7 @@ struct ShareCardView: View {
             // light color — not LateNightTheme.background, which flips dark at
             // night. The card's white hairline + layered shadow keep it
             // separated whether the mood is dark (pops on light) or light.
-            Color(hex: "F4F2F6")
+            Color(hex: "FAF7F3")
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -264,7 +264,7 @@ struct ShareCardView: View {
                     .accessibilityLabel("Close")
                     Spacer()
                     Text("share this")
-                        .font(.custom("Newsreader-Italic", size: 13))
+                        .font(.custom("Literata-Italic", size: 13))
                         .foregroundColor(Color(hex: "1a1720"))
                     Spacer()
                     Image(systemName: "xmark")
@@ -274,7 +274,7 @@ struct ShareCardView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                Rectangle().fill(Color.black.opacity(0.05)).frame(height: 0.5)
+                Rectangle().fill(Color(hex: "E8E3DC")).frame(height: 1)
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 18) {
@@ -399,34 +399,42 @@ struct ShareCardView: View {
                 // clipped. Anchoring them as a safe-area inset keeps the
                 // primary actions fully visible at every scroll position.
                 .safeAreaInset(edge: .bottom) {
-                    HStack(spacing: 12) {
-                        sharePill(name: "save", icon: "arrow.down.to.line",
-                                  colors: [Color.toskaAccentGold, Color(hex: "b8893f")]) {
-                            saveToPhotos()
+                    VStack(spacing: 10) {
+                        // The design's promise line sits right above the
+                        // actions — the whole point of the card.
+                        Text("your handle is never on the card")
+                            .font(ToskaFont.sans(11.5))
+                            .foregroundColor(Color(hex: "5E5B66"))
+
+                        HStack(spacing: 12) {
+                            // save = quiet outlined pill; share = the accent
+                            // pill (design 2026-09-16).
+                            sharePill(name: "save", icon: "arrow.down.to.line", filled: false) {
+                                saveToPhotos()
+                            }
+                            .accessibilityLabel("Save to Photos")
+                            sharePill(name: "share", icon: "square.and.arrow.up", filled: true) {
+                                shareImage()
+                            }
+                            .accessibilityLabel("Share")
                         }
-                        .accessibilityLabel("Save to Photos")
-                        sharePill(name: "share", icon: "square.and.arrow.up",
-                                  colors: [Color.toskaMidnightPurple, Color(hex: "6E5FB0")]) {
-                            shareImage()
+                        .disabled(isRendering)
+                        .opacity(isRendering ? 0.5 : 1)
+                        .overlay(alignment: .center) {
+                            if isRendering {
+                                ProgressView().tint(Color(hex: "25222C").opacity(0.6))
+                            }
                         }
-                        .accessibilityLabel("Share")
                     }
-                    .disabled(isRendering)
-                    .opacity(isRendering ? 0.5 : 1)
-                    .overlay(alignment: .center) {
-                        if isRendering {
-                            ProgressView().tint(Color(hex: "1a1720").opacity(0.6))
-                        }
-                    }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 22)
                     .padding(.top, 12)
                     .padding(.bottom, 8)
                     // Opaque bar ground (same fixed sheet surface) extended under
                     // the home indicator so scrolled content can't show through
                     // beneath the pills; hairline mirrors the header divider.
-                    .background(Color(hex: "F4F2F6").ignoresSafeArea(edges: .bottom))
+                    .background(Color(hex: "FAF7F3").ignoresSafeArea(edges: .bottom))
                     .overlay(alignment: .top) {
-                        Rectangle().fill(Color.black.opacity(0.05)).frame(height: 0.5)
+                        Rectangle().fill(Color(hex: "E8E3DC")).frame(height: 1)
                     }
                 }
             }
@@ -450,7 +458,7 @@ struct ShareCardView: View {
                     Text(savedToPhotos
                          ? "saved to your photos"
                          : "someone's going to feel less alone\nbecause of what you just shared")
-                        .font(.custom("Newsreader-Italic", size: 15))
+                        .font(.custom("Literata-Italic", size: 15))
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
@@ -851,10 +859,10 @@ struct ShareCardView: View {
     /// The "Aa" chip previews the ACTUAL face each slot draws with.
     func fontPickerFont(_ index: Int) -> Font {
         switch index {
-        case 0: return .custom("Newsreader-Medium", size: 10)
-        case 1: return .custom("HankenGrotesk-Regular", size: 10)
+        case 0: return .custom("Literata-Regular", size: 10)
+        case 1: return .custom("InstrumentSans-Regular", size: 10)
         case 2: return .custom("AmericanTypewriter", size: 10)
-        case 3: return .custom("Newsreader-Italic", size: 10)
+        case 3: return .custom("Literata-Italic", size: 10)
         default: return .system(size: 10)
         }
     }
@@ -867,34 +875,33 @@ struct ShareCardView: View {
     // terminal font, and the slot was renamed to match.
     func quoteFont(size: CGFloat) -> Font {
         switch selectedFont {
-        case 0: return .custom("Newsreader-Medium", size: size)
-        case 1: return .custom("HankenGrotesk-Regular", size: size)
+        case 0: return .custom("Literata-Regular", size: size)
+        case 1: return .custom("InstrumentSans-Regular", size: size)
         case 2: return .custom("AmericanTypewriter", size: size)
-        case 3: return .custom("Newsreader-Italic", size: size)
-        default: return .custom("Newsreader-Medium", size: size)
+        case 3: return .custom("Literata-Italic", size: size)
+        default: return .custom("Literata-Regular", size: size)
         }
     }
 
     // Labeled pill destination (Save / Share) — replaces the round icon buttons
     // with a cleaner, more tappable capsule that reads as a clear call-to-action.
-    func sharePill(name: String, icon: String, colors: [Color], action: @escaping () -> Void) -> some View {
+    /// Bottom action pill (design 2026-09-16): filled = the one accent pill
+    /// (share); outlined = quiet hair-border secondary (save). Fixed light
+    /// colours to match the sheet's fixed paper ground.
+    func sharePill(name: String, icon: String, filled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: 9) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                 Text(name)
-                    .font(ToskaFont.sans(15, weight: .semibold))
+                    .font(ToskaFont.sans(14, weight: .semibold))
             }
-            .foregroundColor(.white)
+            .foregroundColor(filled ? Color(hex: "F8F5EE") : Color(hex: "25222C"))
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(
-                Capsule().fill(
-                    LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-                )
-            )
-            .overlay(Capsule().stroke(.white.opacity(0.16), lineWidth: 0.75))
-            .shadow(color: colors.first?.opacity(0.35) ?? .clear, radius: 9, y: 4)
+            .frame(height: 52)
+            .background(filled ? Color(hex: "3A2D5C") : Color.clear, in: Capsule())
+            .overlay(Capsule().stroke(filled ? Color.clear : Color(hex: "DFD9D1"), lineWidth: 1))
+            .contentShape(Capsule())
         }
         .buttonStyle(SharePressStyle())
     }
@@ -961,7 +968,7 @@ struct ShareCardView: View {
             }
 
             Text(quoteMark)
-                .font(.custom("Newsreader-Medium", size: 34))
+                .font(.custom("Literata-Regular", size: 34))
                 .foregroundColor(accentColor.opacity(isDarkStyle ? 0.18 : 0.14))
                 .padding(.bottom, 2)
 
@@ -1013,11 +1020,11 @@ struct ShareCardView: View {
                         .frame(width: 14, height: 14)
                         .overlay(
                             Text("t")
-                                .font(.custom("Newsreader-Italic", size: 10))
+                                .font(.custom("Literata-Italic", size: 10))
                                 .foregroundColor(isDarkStyle ? .white.opacity(0.5) : brandTextColor.opacity(0.4))
                         )
                     Text("toska")
-                        .font(.custom("Newsreader-Italic", size: 12))
+                        .font(.custom("Literata-Italic", size: 12))
                         .foregroundColor(isDarkStyle ? .white.opacity(0.25) : brandTextColor.opacity(0.3))
                 }
 
@@ -1176,10 +1183,10 @@ struct ShareCardView: View {
     // measures with these fonts, and a mismatch reopens the truncation gap.
     private func measuringUIFont(size: CGFloat) -> UIFont {
         switch selectedFont {
-        case 1: return UIFont(name: "HankenGrotesk-Regular", size: size) ?? .systemFont(ofSize: size)
+        case 1: return UIFont(name: "InstrumentSans-Regular", size: size) ?? .systemFont(ofSize: size)
         case 2: return UIFont(name: "AmericanTypewriter", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
-        case 3: return UIFont(name: "Newsreader-Italic", size: size) ?? .italicSystemFont(ofSize: size)
-        default: return UIFont(name: "Newsreader-Medium", size: size) ?? .systemFont(ofSize: size)
+        case 3: return UIFont(name: "Literata-Italic", size: size) ?? .italicSystemFont(ofSize: size)
+        default: return UIFont(name: "Literata-Regular", size: size) ?? .systemFont(ofSize: size)
         }
     }
 

@@ -408,34 +408,33 @@ struct ProfileView: View {
             }
         } label: {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrowshape.turn.up.left").font(.system(size: 8))
-                    Text("replying to \(reply.parentHandle)").font(ToskaFont.sans(11, weight: .medium))
-                    Text("·").font(ToskaFont.sans(8)).foregroundColor(Color.toskaDivider)
-                    Text(reply.replyTime).font(ToskaFont.sans(11, weight: .light)).foregroundColor(Color.toskaInactiveGray)
-                }.foregroundColor(Color.toskaTextLight)
-                
+                HStack(spacing: 6) {
+                    Text("replying to \(reply.parentHandle)").font(ToskaFont.sans(11.5, weight: .medium))
+                    Text("·").font(ToskaFont.sans(11.5)).foregroundColor(ToskaColor.dot)
+                    Text(reply.replyTime).font(ToskaFont.sans(11.5)).foregroundColor(ToskaColor.text3)
+                }.foregroundColor(ToskaColor.handle)
+
                 Text(reply.parentText)
-                    .font(ToskaFont.sans(11))
-                    .foregroundColor(Color.toskaTimestamp)
+                    .font(ToskaFont.serifItalic(13))
+                    .foregroundColor(ToskaColor.text2)
                     .lineLimit(1)
-                    .padding(.leading, 8)
+                    .padding(.leading, 10)
                     .overlay(
                         Rectangle()
-                            .fill(Color.toskaDivider)
-                            .frame(width: 1.5),
+                            .fill(ToskaColor.divider2)
+                            .frame(width: 2),
                         alignment: .leading
                     )
-                
+
                 Text(reply.replyText)
-                    .font(ToskaFont.serif(14))
-                    .foregroundColor(Color.toskaTextDark)
-                    .lineSpacing(3)
+                    .font(ToskaFont.serif(16))
+                    .foregroundColor(ToskaColor.body)
+                    .lineSpacing(5)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            .padding(.horizontal, 28).padding(.vertical, 18)
             .background(LateNightTheme.feedBackground)
-            .overlay(Rectangle().fill(LateNightTheme.divider).frame(height: 0.5), alignment: .bottom)
+            .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 1), alignment: .bottom)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -490,23 +489,22 @@ struct ProfileView: View {
                 }
         }
     
+    // Empty state (design 2026-09-16): italic serif line + a soft 12.5
+    // explainer, centered — no icon.
     func emptyState(icon: String = "tray", title: String, subtitle: String) -> some View {
-            VStack(spacing: 16) {
-                Image(systemName: icon)
-                    .font(.system(size: 28, weight: .ultraLight))
-                    .foregroundColor(Color.toskaBlue.opacity(0.4))
-                    .padding(.bottom, 4)
+            VStack(spacing: 8) {
                 Text(title)
-                    .font(ToskaFont.serifItalic(18))
-                    .foregroundColor(Color.toskaTextLight)
+                    .font(ToskaFont.serifItalic(17))
+                    .foregroundColor(ToskaColor.text2)
                 Text(subtitle)
-                    .font(ToskaFont.sans(11))
-                    .foregroundColor(Color.toskaDivider)
+                    .font(ToskaFont.sans(12.5))
+                    .foregroundColor(ToskaColor.text2)
+                    .lineSpacing(4)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                    .padding(.horizontal, 40)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 60)
+            .padding(.vertical, 56)
         }
     
     func shareStreak() {
@@ -1135,115 +1133,95 @@ struct ProfileView: View {
 
     // MARK: - Profile sections (extracted for the swipeable tab pager)
 
-    private var profileIdentitySection: some View {
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            Text("anonymous")
-                                                .font(ToskaFont.eyebrow)
-                                                .textCase(.uppercase)
-                                                .tracking(1.4)
-                                                .foregroundColor(ToskaColor.text3)
-
-                                            Text("@\(userHandle)")
-                                                .font(ToskaFont.serifMedium(22))
-                                                .tracking(-0.4)
-                                                .foregroundColor(ToskaColor.text)
-
-                                            Text("no name, no face. just the things you needed to say.")
-                                                .font(ToskaFont.serifItalic(14))
-                                                .foregroundColor(ToskaColor.text2)
-                                                .lineSpacing(3)
-                                                .fixedSize(horizontal: false, vertical: true)
-
-                                            // Joined date (Twitter-style) — calendar + month/year.
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "calendar")
-                                                    .font(.system(size: 11, weight: .medium))
-                                                Text("joined \(joinedDate.lowercased())")
-                                                    .font(ToskaFont.sans(12, weight: .regular))
-                                            }
-                                            .foregroundColor(ToskaColor.text3)
-                                            .padding(.top, 4)
-
-                                            // Stats row — posts · following · followers · felt.
-                                            // A calm, spaced row (following/followers tappable to
-                                            // their lists). Count bold in text color, label muted.
-                                            HStack(spacing: 18) {
-                                                HStack(spacing: 4) {
-                                                    Text("\(postCount)")
-                                                        .font(ToskaFont.sans(13, weight: .bold))
-                                                        .foregroundColor(ToskaColor.text)
-                                                    Text("posts")
-                                                        .font(ToskaFont.sans(13, weight: .regular))
-                                                        .foregroundColor(ToskaColor.text2)
-                                                }
-                                                NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
-                                                    HStack(spacing: 4) {
-                                                        Text("\(followingCount)")
-                                                            .font(ToskaFont.sans(13, weight: .bold))
-                                                            .foregroundColor(ToskaColor.text)
-                                                        Text("following")
-                                                            .font(ToskaFont.sans(13, weight: .regular))
-                                                            .foregroundColor(ToskaColor.text2)
-                                                    }
-                                                }
-                                                NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
-                                                    HStack(spacing: 4) {
-                                                        Text("\(followerCount)")
-                                                            .font(ToskaFont.sans(13, weight: .bold))
-                                                            .foregroundColor(ToskaColor.text)
-                                                        Text("followers")
-                                                            .font(ToskaFont.sans(13, weight: .regular))
-                                                            .foregroundColor(ToskaColor.text2)
-                                                    }
-                                                }
-                                                HStack(spacing: 4) {
-                                                    Text("\(totalLikes)")
-                                                        .font(ToskaFont.sans(13, weight: .bold))
-                                                        .foregroundColor(ToskaColor.text)
-                                                    Text("felt")
-                                                        .font(ToskaFont.sans(13, weight: .regular))
-                                                        .foregroundColor(ToskaColor.text2)
-                                                }
-                                            }
-                                            .padding(.top, 6)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 8)
-                                        .padding(.bottom, 16)
-            .padding(.bottom, 4)
+    /// One stat element — count semibold ink, word soft, 12pt tabular
+    /// (design 2026-09-16).
+    private func profileStat(_ count: Int, _ word: String) -> some View {
+        (Text("\(count) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
+            + Text(word).foregroundColor(ToskaColor.text2))
+            .font(ToskaFont.sans(12))
+            .monospacedDigit()
     }
 
-    private var profileTabSelector: some View {
-                                        HStack(spacing: 0) {
-                                            ForEach(0..<tabIcons.count, id: \.self) { index in
-                                                Button {
-                                                    withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
-                                                } label: {
-                                                    VStack(spacing: 8) {
-                                                        Image(systemName: selectedTab == index ? tabIcons[index].1 : tabIcons[index].0)
-                                                            .font(.system(size: 18, weight: selectedTab == index ? .medium : .regular))
-                                                            // Purple accent on the active profile tab (icon +
-                                                            // underline), matching the feed / most-felt tabs.
-                                                            .foregroundColor(selectedTab == index ? ToskaColor.accent : ToskaColor.time)
-                                                        Capsule()
-                                                            .fill(selectedTab == index ? ToskaColor.accent : Color.clear)
-                                                            .frame(width: 26, height: 2)
-                                                    }
-                                                    .frame(maxWidth: .infinity)
-                                                    .padding(.top, 12)
+    private var profileIdentitySection: some View {
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            Text("anonymous")
+                                                .font(ToskaFont.sans(10.5, weight: .semibold))
+                                                .textCase(.uppercase)
+                                                .tracking(0.74)
+                                                .foregroundColor(ToskaColor.text2)
+
+                                            Text("@\(userHandle)")
+                                                .font(ToskaFont.serif(24))
+                                                .tracking(-0.36)
+                                                .foregroundColor(ToskaColor.text)
+                                                .padding(.top, 8)
+
+                                            Text("no name, no face. just the things you needed to say.")
+                                                .font(ToskaFont.serifItalic(15))
+                                                .foregroundColor(ToskaColor.text2)
+                                                .lineSpacing(5)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                                .padding(.top, 8)
+
+                                            Text("joined \(joinedDate.lowercased())")
+                                                .font(ToskaFont.sans(11.5))
+                                                .foregroundColor(ToskaColor.text3)
+                                                .padding(.top, 12)
+
+                                            // Stats line — posts · following · followers · felt
+                                            // (following/followers tappable to their lists).
+                                            HStack(spacing: 20) {
+                                                profileStat(postCount, "posts")
+                                                NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
+                                                    profileStat(followingCount, "following")
                                                 }
-                                                .accessibilityLabel(tabAccessibilityLabels[index])
+                                                NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
+                                                    profileStat(followerCount, "followers")
+                                                }
+                                                profileStat(totalLikes, "felt")
                                             }
+                                            .padding(.top, 18)
                                         }
-                                        .padding(.horizontal, 8)
-                                        .overlay(
-                                            Rectangle().fill(ToskaColor.divider).frame(height: 1),
-                                            alignment: .bottom
-                                        )
-                                        // Breathing room between the tab underline/divider
-                                        // and the first content card below it.
-                                        .padding(.bottom, 8)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 28)
+                                        .padding(.top, 20)
+                                        .padding(.bottom, 20)
+    }
+
+    // Content tabs as TEXT tabs (design 2026-09-16): posts / felt / saved /
+    // replies / reposts at 12.5pt, active = ink semibold + 1.5pt ink
+    // underline, inactive = soft. Hairline above (closing the identity
+    // section) and below.
+    private let tabTitles = ["posts", "felt", "saved", "replies", "reposts"]
+
+    private var profileTabSelector: some View {
+                                        VStack(spacing: 0) {
+                                            Rectangle().fill(ToskaColor.divider).frame(height: 1)
+                                            HStack(spacing: 22) {
+                                                ForEach(0..<tabTitles.count, id: \.self) { index in
+                                                    let isSel = selectedTab == index
+                                                    Button {
+                                                        withAnimation(.easeInOut(duration: 0.15)) { selectedTab = index }
+                                                    } label: {
+                                                        Text(tabTitles[index])
+                                                            .font(ToskaFont.sans(12.5, weight: isSel ? .semibold : .regular))
+                                                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
+                                                            .padding(.top, 14)
+                                                            .padding(.bottom, 12)
+                                                            .overlay(alignment: .bottom) {
+                                                                Rectangle()
+                                                                    .fill(isSel ? ToskaColor.text : Color.clear)
+                                                                    .frame(height: 1.5)
+                                                            }
+                                                            .contentShape(Rectangle())
+                                                    }
+                                                    .accessibilityLabel(tabAccessibilityLabels[index])
+                                                }
+                                                Spacer(minLength: 0)
+                                            }
+                                            .padding(.horizontal, 28)
+                                            Rectangle().fill(ToskaColor.divider).frame(height: 1)
+                                        }
     }
 
     @ViewBuilder

@@ -109,48 +109,55 @@ struct LateNightTheme {
         LateNightThemeManager.shared.isLateNight
     }
 
-    // Backgrounds. Late-night carries a faint VIOLET cast (2026 brand pass):
-    // after dark the whole app drifts toward dusk-purple, reinforcing the
-    // "midnight / toska" identity. Daytime stays clean neutral so reading is
-    // crisp; the purple lives in the accent + the night theme.
-    static var background: Color      { isLateNight ? Color(hex: "0B0A10") : Color(hex: "EEEFF1") }
-    // Clean white feed surface (2026 redesign mockup) — posts sit directly on
-    // white with hairline dividers; dark theme keeps the near-black ground.
-    static var feedBackground: Color  { isLateNight ? Color(hex: "0B0A10") : Color(hex: "FFFFFF") }
-    static var bg2: Color             { isLateNight ? Color(hex: "08070C") : Color(hex: "E7E8EB") }
-    static var cardBackground: Color  { isLateNight ? Color(hex: "16141C") : Color(hex: "FFFFFF") }
-    static var card2: Color           { isLateNight ? Color(hex: "1E1B27") : Color(hex: "F6F7F8") }
-    static var inputBackground: Color { isLateNight ? Color(hex: "1D1A25") : Color(hex: "E9EBEE") }
+    // 2026-09-16 redesign: STONE PAPER surfaces. Day values come straight from
+    // the design's token table (design/toska_design_2026-09-16.dc.html,
+    // oklch→sRGB); night values are derived exactly the way the web does it —
+    // the [data-theme="night"] block in webapp/styles.css, converted to hex.
+    // Paper = warm stone, ink = near-black plum, one ink-violet accent.
+    static var background: Color      { isLateNight ? Color(hex: "14121A") : Color(hex: "FAF7F3") }
+    // Posts sit directly on the paper with hairline dividers — no cards.
+    static var feedBackground: Color  { isLateNight ? Color(hex: "14121A") : Color(hex: "FAF7F3") }
+    static var bg2: Color             { isLateNight ? Color(hex: "201E26") : Color(hex: "F1EDE4") }
+    static var cardBackground: Color  { isLateNight ? Color(hex: "14121A") : Color(hex: "FAF7F3") }
+    static var card2: Color           { isLateNight ? Color(hex: "1B1921") : Color(hex: "F5F1EA") }
+    static var inputBackground: Color { isLateNight ? Color(hex: "201E26") : Color(hex: "F1EDE4") }
 
-    // Text
-    static var primaryText: Color   { isLateNight ? Color(hex: "E6E7EA") : Color.toskaInkBlack }
-    // Day values darkened for WCAG (2026-07-07 a11y round): secondary 8A8D96→
-    // 72757E hits 4.5:1 AA body-text on white; tertiary A9ACB4→91949C hits the
-    // 3:1 floor for interactive icons (the feed action row uses text3). Night
-    // values already pass. Timestamp/meta (timeText) deliberately stays below —
-    // whisper-quiet metadata is brand voice, and it's non-interactive.
-    static var secondaryText: Color { isLateNight ? Color(hex: "82868D") : Color(hex: "72757E") }
-    static var tertiaryText: Color  { isLateNight ? Color(hex: "5C5F66") : Color(hex: "91949C") }
-    static var handleText: Color    { isLateNight ? Color(hex: "B6B9BE") : Color(hex: "2A2C32") }
+    // Text — ink (posts, wordmark), ink2 (letter/reply bodies), meta (handles,
+    // timestamps, stats words), soft (secondary UI, inactive tabs), faint
+    // (tertiary/time).
+    static var primaryText: Color   { isLateNight ? Color(hex: "E8E4DD") : Color(hex: "25222C") }
+    static var bodyText: Color      { isLateNight ? Color(hex: "D4D0CA") : Color(hex: "33303B") }
+    static var secondaryText: Color { isLateNight ? Color(hex: "93909A") : Color(hex: "5E5B66") }
+    static var tertiaryText: Color  { isLateNight ? Color(hex: "6A6770") : Color(hex: "87848F") }
+    static var handleText: Color    { isLateNight ? Color(hex: "9F9DA6") : Color(hex: "56535E") }
 
-    // Dividers
-    static var divider: Color { isLateNight ? Color(hex: "222427") : Color(hex: "E2E4E8") }
+    // Dividers — hair (between posts, chrome hairlines), hair2 (stats-line
+    // separators, outlined chips), dotSeparator (the "·" glyphs).
+    static var divider: Color       { isLateNight ? Color(hex: "27252D") : Color(hex: "E8E3DC") }
+    static var divider2: Color      { isLateNight ? Color(hex: "312F37") : Color(hex: "DFD9D1") }
+    static var dotSeparator: Color  { isLateNight ? Color(hex: "5E5C65") : Color(hex: "93909B") }
 
-    // Accent — the app's signature interactive color. 2026 brand pass: shifted
-    // from a cool blue-gray to a DUSKY PLUM. "toska" is melancholic, nocturnal
-    // longing — purple (twilight/bruise/midnight) is truer to that than the old
-    // neutral blue, and more distinctive. Kept muted/grown-up, not pastel. This
-    // single token drives the compose +, the active tab underline, selected
-    // states, toggles, and links, so the whole app wears the plum from here.
-    static var accent: Color { isLateNight ? Color(hex: "9387C0") : Color(hex: "6D55C9") }
+    // Accent — the one ink-violet. Drives primary buttons (write pill, send,
+    // post), toggles, selected states. accentText is the lighter cut used for
+    // accent-coloured TEXT ("write yours", "keep reading"); onAccent is the
+    // paper-toned text sitting ON accent fills.
+    static var accent: Color     { isLateNight ? Color(hex: "A79AD8") : Color(hex: "3A2D5C") }
+    static var accentText: Color { isLateNight ? Color(hex: "BAADEC") : Color(hex: "473871") }
+    static var onAccent: Color   { isLateNight ? Color(hex: "14121A") : Color(hex: "F8F5EE") }
+
+    // Today's-prompt band
+    static var promptBg: Color      { isLateNight ? Color(hex: "211C2B") : Color(hex: "EFE8FE") }
+    static var promptHair: Color    { isLateNight ? Color(hex: "302A3C") : Color(hex: "E5DEF5") }
+    static var promptEyebrow: Color { isLateNight ? Color(hex: "B2A3DE") : Color(hex: "534477") }
+    static var promptInk: Color     { isLateNight ? Color(hex: "E9E6EF") : Color(hex: "221D2F") }
 
     // Timestamp / meta tertiary, badge, and scrim
-    static var timeText: Color { isLateNight ? Color(hex: "4E5157") : Color(hex: "B7BAC1") }
+    static var timeText: Color { isLateNight ? Color(hex: "6A6770") : Color(hex: "87848F") }
     static var badge: Color    { Color.toskaWhisperPink }
     static var scrim: Color    { isLateNight ? Color.black.opacity(0.66) : Color.toskaInkBlack.opacity(0.38) }
 
     // Tab bar
-    static var selectedPill: Color { isLateNight ? Color(hex: "1c1e1f") : Color.toskaDividerHairline.opacity(0.6) }
+    static var selectedPill: Color { isLateNight ? Color(hex: "1B1921") : Color(hex: "F5F1EA") }
 
     // Post font size bumps slightly at night
     static var postFontSize: CGFloat { isLateNight ? 16 : 15 }

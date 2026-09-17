@@ -11,78 +11,80 @@ struct PasswordResetView: View {
     
     var body: some View {
         ZStack {
-            Color(hex: "faf8f5").ignoresSafeArea()
-            
+            LateNightTheme.background.ignoresSafeArea()
+
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     dismiss()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 8) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 13))
+                            .font(.system(size: 15, weight: .medium))
                         Text("back")
-                            .font(ToskaFont.sans(13))
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
                     }
-                    .foregroundColor(Color.toskaBlue)
+                    .foregroundColor(ToskaColor.body)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
-                .padding(.top, 16)
-                .padding(.bottom, 20)
-                
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+
                 Text("reset password")
-                    .font(ToskaFont.serifItalic(28))
-                    .foregroundColor(Color(hex: "111111"))
-                    .padding(.bottom, 4)
-                
+                    .font(ToskaFont.serif(28))
+                    .tracking(-0.6)
+                    .foregroundColor(ToskaColor.text)
+                    .padding(.bottom, 8)
+
                 Text("we'll send you a link to reset it.")
-                    .font(ToskaFont.sans(11))
-                    .foregroundColor(Color(hex: "aaaaaa"))
-                    .padding(.bottom, 24)
-                
-                Text("EMAIL")
-                    .font(ToskaFont.sans(11, weight: .medium))
-                    .foregroundColor(Color(hex: "bbbbbb"))
-                    .tracking(1.2)
-                    .padding(.bottom, 4)
-                
+                    .font(ToskaFont.serifItalic(15))
+                    .foregroundColor(ToskaColor.text2)
+                    .padding(.bottom, 32)
+
+                Text("your email")
+                    .font(ToskaFont.sans(10.5, weight: .semibold))
+                    .textCase(.uppercase)
+                    .tracking(0.74)
+                    .foregroundColor(ToskaColor.text2)
+                    .padding(.bottom, 8)
+
                 TextField("your@email.com", text: $email)
-                    .font(ToskaFont.sans(13))
-                    .padding(11)
-                    .background(isSent ? Color(hex: "e8eaed") : Color.white)
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(hex: "e8e2d9"), lineWidth: 0.5)
-                    )
+                    .font(ToskaFont.serif(16))
+                    .foregroundColor(ToskaColor.text)
+                    .tint(ToskaColor.accent)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 52)
+                    .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .disabled(isSent)
+                    .opacity(isSent ? 0.6 : 1)
                     .padding(.bottom, 16)
-                
+
                 if !errorMessage.isEmpty {
                     Text(errorMessage)
-                        .font(ToskaFont.sans(11))
-                        .foregroundColor(.red)
+                        .font(ToskaFont.sans(11.5))
+                        .foregroundColor(Color.toskaErrorRed)
                         .padding(.bottom, 10)
                 }
-                
+
                 if isSent {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 12))
-                            .foregroundColor(Color.toskaBlue)
                         Text("link sent")
-                            .font(ToskaFont.sans(12, weight: .medium))
-                            .foregroundColor(Color.toskaBlue)
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
                     }
+                    .foregroundColor(ToskaColor.accentText)
                     .padding(.bottom, 12)
-                    
+
                     Button {
                         isSent = false
                         sendReset()
                     } label: {
                         Text("didn't get it? resend")
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(Color.toskaBlue)
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
+                            .foregroundColor(ToskaColor.accentText)
                     }
                 } else {
                     Button {
@@ -90,24 +92,22 @@ struct PasswordResetView: View {
                     } label: {
                         ZStack {
                             if isLoading {
-                                ProgressView().tint(.white)
+                                ProgressView().tint(ToskaColor.onAccent)
                             } else {
                                 Text("send reset link")
-                                    .font(ToskaFont.sans(13, weight: .medium))
-                                    .foregroundColor(.white)
+                                    .font(ToskaFont.sans(14, weight: .semibold))
+                                    .foregroundColor(ToskaColor.onAccent)
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Color.toskaBlue)
-                        .cornerRadius(12)
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .background(ToskaColor.accent, in: Capsule())
                     }
                     .disabled(email.isEmpty || isLoading)
                 }
-                
+
                 Spacer()
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
         }
     }
     

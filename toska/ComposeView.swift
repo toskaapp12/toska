@@ -162,16 +162,17 @@ struct ComposeView: View {
         return isLetter ? "\(visibility) · letter" : visibility
     }
 
-    // A single toolbar glyph: gray when off, accent-on-soft-purple when on
-    // (matches the selected envelope in the mockup). Replaces the old white-on-
-    // plum bar.
-    @ViewBuilder func composeGlyph(_ system: String, active: Bool) -> some View {
-        Image(systemName: system)
-            .font(.system(size: 16, weight: .regular))
-            .foregroundColor(active ? ToskaColor.accent : ToskaColor.text2)
-            .frame(width: 34, height: 34)
-            .background(active ? ToskaColor.accent.opacity(0.12) : Color.clear,
-                        in: RoundedRectangle(cornerRadius: 9))
+    // A mode toggle as an OUTLINED CHIP (design 2026-09-16): hair2 outline +
+    // soft text when off; prompt-band tint + accent text when on.
+    @ViewBuilder func composeChip(_ label: String, active: Bool) -> some View {
+        Text(label)
+            .font(ToskaFont.sans(12, weight: active ? .semibold : .medium))
+            .foregroundColor(active ? ToskaColor.accentText : ToskaColor.text2)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 30)
+            .background(active ? ToskaColor.promptBg : Color.clear, in: Capsule())
+            .overlay(Capsule().stroke(active ? ToskaColor.promptHair : ToskaColor.divider2, lineWidth: 1))
+            .contentShape(Capsule())
     }
     /// Disabled when offline so the user gets visible feedback instead of
     /// the silent Firestore-offline-queue behavior. The offline banner
@@ -244,13 +245,17 @@ struct ComposeView: View {
                 // mid-word ("cance/l", "pos/t" inside the capsule). Content
                 // scales freely; fixed chrome shrinks-to-fit instead (HIG-
                 // sanctioned for controls).
-                HStack(spacing: 8) {
+                // cancel · save draft · post (accent pill) — 12.5pt quiet
+                // chrome (design 2026-09-16).
+                HStack(spacing: 10) {
                     Button { dismiss() } label: {
                         Text("cancel")
-                            .font(ToskaFont.sans(15))
+                            .font(ToskaFont.sans(12.5))
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                            .foregroundColor(LateNightTheme.secondaryText)
+                            .foregroundColor(ToskaColor.text2)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
 
                     Spacer()
@@ -262,92 +267,97 @@ struct ComposeView: View {
                     // a new entry or revising the open one.
                     Button { saveAsDraft() } label: {
                         Text(editingDraftId == nil ? "save draft" : "update")
-                            .font(ToskaFont.sans(15, weight: .semibold))
+                            .font(ToskaFont.sans(12.5))
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                            .foregroundColor(canSave ? ToskaColor.accent : ToskaColor.text3)
+                            .foregroundColor(canSave ? ToskaColor.text2 : ToskaColor.text3)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .disabled(!canSave)
                     .accessibilityLabel(editingDraftId == nil ? "Save as draft" : "Update draft")
 
                     Button { attemptPost() } label: {
                         Text(isPosting ? "posting..." : "post")
-                            .font(ToskaFont.sans(15, weight: .semibold))
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
-                            .foregroundColor(canPost ? .white : ToskaColor.text2)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
+                            .foregroundColor(canPost ? ToskaColor.onAccent : ToskaColor.text2)
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 40)
                             .background(canPost ? ToskaColor.accent : ToskaColor.input)
                             .clipShape(Capsule())
                     }
                     .disabled(!canPost)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 22)
+                .padding(.top, 2)
+                .padding(.bottom, 6)
 
                 // MARK: - Toolbar (formerly at the bottom; moved to sit right
                 // under the cancel/save/post header so the modifiers are
                 // within easy reach without scrolling past the text editor).
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 1)
 
-                HStack(spacing: 4) {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
-                    } label: {
-                        composeGlyph("tag", active: showTagPicker || selectedTag != nil)
-                    }
-                    .accessibilityLabel("Tag")
+                // Mode toggles as outlined chips (design 2026-09-16), the
+                // current-mode summary pinned trailing. The chip row scrolls
+                // if the selected feeling name makes it long.
+                HStack(spacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
+                            } label: {
+                                composeChip(selectedTag ?? "feeling", active: showTagPicker || selectedTag != nil)
+                            }
+                            .accessibilityLabel("Tag")
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            isWhisper.toggle()
-                            if isWhisper { expiresAtMidnight = false }
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
+                                if isLetter && !letterHintSeen { letterHintSeen = true; activeHint = .letter }
+                            } label: {
+                                composeChip("letter", active: isLetter)
+                            }
+                            .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    isWhisper.toggle()
+                                    if isWhisper { expiresAtMidnight = false }
+                                }
+                                if isWhisper && !whisperHintSeen { whisperHintSeen = true; activeHint = .whisper }
+                            } label: {
+                                composeChip("whisper", active: isWhisper)
+                            }
+                            .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    expiresAtMidnight.toggle()
+                                    if expiresAtMidnight { isWhisper = false }
+                                }
+                                if expiresAtMidnight && !midnightHintSeen { midnightHintSeen = true; activeHint = .midnight }
+                            } label: {
+                                composeChip("midnight", active: expiresAtMidnight)
+                            }
+                            .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
+
+                            Button { showGifPicker = true } label: {
+                                composeChip("GIF", active: selectedGifUrl != nil)
+                            }
+                            .accessibilityLabel("Add GIF")
                         }
-                        if isWhisper && !whisperHintSeen { whisperHintSeen = true; activeHint = .whisper }
-                    } label: {
-                        composeGlyph(isWhisper ? "eye.fill" : "eye", active: isWhisper)
+                        .padding(.vertical, 7)
                     }
-                    .accessibilityLabel(isWhisper ? "Whisper on, disappears in 1 hour" : "Whisper")
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            expiresAtMidnight.toggle()
-                            if expiresAtMidnight { isWhisper = false }
-                        }
-                        if expiresAtMidnight && !midnightHintSeen { midnightHintSeen = true; activeHint = .midnight }
-                    } label: {
-                        composeGlyph(expiresAtMidnight ? "moon.fill" : "moon", active: expiresAtMidnight)
-                    }
-                    .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
-
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) { isLetter.toggle() }
-                        if isLetter && !letterHintSeen { letterHintSeen = true; activeHint = .letter }
-                    } label: {
-                        composeGlyph(isLetter ? "envelope.fill" : "envelope", active: isLetter)
-                    }
-                    .accessibilityLabel(isLetter ? "Letter mode on" : "Letter mode")
-
-                    Button { showGifPicker = true } label: {
-                        Text("GIF")
-                            .font(ToskaFont.sans(13, weight: .bold))
-                            .foregroundColor(selectedGifUrl != nil ? ToskaColor.accent : ToskaColor.text2)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                    }
-                    .accessibilityLabel("Add GIF")
-
-                    Spacer()
-
-                    // Mode summary (matches the 2026 mockup): "public · letter",
-                    // "whisper", "midnight · letter", etc.
+                    // Mode summary: "public · letter", "whisper", etc.
                     Text(composeStatusText)
-                        .font(ToskaFont.sans(13))
-                        .foregroundColor(ToskaColor.text3)
+                        .font(ToskaFont.sans(12, weight: .semibold))
+                        .foregroundColor(ToskaColor.text)
+                        .lineLimit(1)
+                        .layoutPriority(1)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 22)
 
                 // Tag picker expansion now drops DOWN from the toolbar above
                 // (was originally pinned to the bottom toolbar with a
@@ -422,14 +432,14 @@ struct ComposeView: View {
                         Text("dont have to share it. tap save and it stays just for you.")
                             .font(ToskaFont.sans(11))
                     }
-                    .foregroundColor(Color.toskaBlue.opacity(0.75))
-                    .padding(.horizontal, 16)
+                    .foregroundColor(ToskaColor.accentText)
+                    .padding(.horizontal, 22)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.toskaBlue.opacity(0.06))
+                    .background(ToskaColor.promptBg)
                 }
 
-                Rectangle().fill(LateNightTheme.divider).frame(height: 0.5)
+                Rectangle().fill(LateNightTheme.divider).frame(height: 1)
 
                 // MARK: - Compose area
                 ScrollView {
@@ -438,20 +448,23 @@ struct ComposeView: View {
 
                         // Text input
                         ZStack(alignment: .topLeading) {
+                            // The textarea IS the page (design 2026-09-16):
+                            // Literata 19/1.66, soft placeholder, accent caret.
                             if text.isEmpty {
                                 Text(composePlaceholder)
-                                    .font(ToskaFont.serif(18))
-                                    .foregroundColor(LateNightTheme.isLateNight ? Color(hex: "3a3835") : Color(hex: "c0c3ca"))
-                                    .padding(.horizontal, 16)
+                                    .font(ToskaFont.serif(19))
+                                    .foregroundColor(ToskaColor.text2)
+                                    .padding(.horizontal, 28)
                                     .padding(.top, 12)
                             }
 
                             TextEditor(text: $text)
-                                                            .font(ToskaFont.serif(18))
+                                                            .font(ToskaFont.serif(19))
                                                             .foregroundColor(LateNightTheme.primaryText)
-                                                            .lineSpacing(5)
+                                                            .lineSpacing(7)
+                                                            .tint(ToskaColor.accent)
                                                             .scrollContentBackground(.hidden)
-                                                            .padding(.horizontal, 12)
+                                                            .padding(.horizontal, 24)
                                                             .padding(.top, 4)
                                                             .frame(minHeight: 200)
                                                             .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
@@ -511,14 +524,14 @@ struct ComposeView: View {
                             // check + the onChange truncation above.
                             HStack {
                                 Spacer()
-                                Text("\(activeCharLimit - text.utf16.count)")
-                                    .font(ToskaFont.sans(13))
+                                Text("\(activeCharLimit - text.utf16.count) left")
+                                    .font(ToskaFont.sans(11.5))
                                     .foregroundColor(
                                         text.utf16.count >= activeCharLimit
                                             ? Color.toskaErrorRed
                                             : (activeCharLimit - text.utf16.count < 100
                                                 ? Color.toskaAccentTan
-                                                : ToskaColor.text3)
+                                                : ToskaColor.text2)
                                     )
                                     .monospacedDigit()
                                     // Backing chip: the counter floats over the
@@ -532,7 +545,7 @@ struct ComposeView: View {
                                     .padding(.vertical, 2)
                                     .background(Capsule().fill(LateNightTheme.feedBackground.opacity(0.92)))
                             }
-                            .padding(.horizontal, 12)
+                            .padding(.horizontal, 24)
                             .padding(.top, 12)
                             .allowsHitTesting(false)
                         }
@@ -591,64 +604,32 @@ struct ComposeView: View {
                     }
                 }
 
-                // Letter mode banner
+                // Mode banners — explainer copy for the active mode, in the
+                // prompt-band tint (the chips carry the on/off state).
                 if isLetter {
-                    HStack(spacing: 8) {
-                        Image(systemName: "envelope.open")
-                            .font(.system(size: 11))
-                        Text("writing a letter · up to 2,000 characters")
-                            .font(ToskaFont.sans(11, weight: .medium))
-                        Spacer()
-                        Button { isLetter = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color.toskaAccentGold.opacity(0.5))
-                        }
-                    }
-                    .foregroundColor(Color.toskaAccentGold)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.toskaAccentGold.opacity(0.06))
+                    composeModeBanner(icon: "envelope.open",
+                                      text: "writing a letter · up to 2,000 characters") { isLetter = false }
                 }
-
-                // Whisper mode banner
                 if isWhisper {
-                    HStack(spacing: 8) {
-                        Image(systemName: "eye.slash")
-                            .font(.system(size: 11))
-                        Text("whisper · disappears in 1 hour")
-                            .font(ToskaFont.sans(11, weight: .medium))
-                        Spacer()
-                        Button { isWhisper = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color.toskaWhisperPink.opacity(0.5))
-                        }
-                    }
-                    .foregroundColor(Color.toskaWhisperPink)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.toskaWhisperPink.opacity(0.06))
+                    composeModeBanner(icon: "eye.slash",
+                                      text: "whisper · disappears in 1 hour") { isWhisper = false }
+                }
+                if expiresAtMidnight {
+                    composeModeBanner(icon: "moon.stars",
+                                      text: "this post disappears at midnight") { expiresAtMidnight = false }
                 }
 
-                // Midnight mode banner
-                if expiresAtMidnight {
-                    HStack(spacing: 8) {
-                        Image(systemName: "moon.stars")
-                            .font(.system(size: 11))
-                        Text("this post disappears at midnight")
-                            .font(ToskaFont.sans(11, weight: .medium))
-                        Spacer()
-                        Button { expiresAtMidnight = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .medium))
-                                .foregroundColor(Color.toskaMidnightPurple.opacity(0.5))
-                        }
-                    }
-                    .foregroundColor(Color.toskaMidnightPurple)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color.toskaMidnightPurple.opacity(0.06))
+                // Footer note (design 2026-09-16) — hairline + the promise.
+                VStack(alignment: .leading, spacing: 0) {
+                    Rectangle().fill(LateNightTheme.divider).frame(height: 1)
+                    Text("no name, no photo. read by a safety check before it goes live.")
+                        .font(ToskaFont.sans(12))
+                        .foregroundColor(ToskaColor.text2)
+                        .lineSpacing(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 14)
+                        .padding(.bottom, 12)
                 }
 
             }
@@ -973,6 +954,32 @@ struct ComposeView: View {
             Text("find it anytime in settings › drafts — you can edit it or post it whenever you're ready.")
         }
         } // close NavigationStack
+    }
+
+    // MARK: - Mode Banner
+
+    /// Explainer strip for an active compose mode (letter/whisper/midnight):
+    /// accent text on the prompt-band tint, with a dismiss ✕ that turns the
+    /// mode off.
+    func composeModeBanner(icon: String, text: String, off: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+            Text(text)
+                .font(ToskaFont.sans(11.5, weight: .medium))
+            Spacer()
+            Button(action: off) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(ToskaColor.accentText.opacity(0.6))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+        }
+        .foregroundColor(ToskaColor.accentText)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 6)
+        .background(ToskaColor.promptBg)
     }
 
     // MARK: - Warning Banner

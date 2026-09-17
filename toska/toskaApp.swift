@@ -243,7 +243,7 @@ private struct PrivacyShieldView: View {
         ZStack {
             Color.white.ignoresSafeArea()
             Text("toska")
-                .font(.custom("Newsreader-Medium", size: 34))
+                .font(.custom("Literata-Regular", size: 34))
                 .foregroundColor(Color(red: 0.427, green: 0.333, blue: 0.788))
         }
     }

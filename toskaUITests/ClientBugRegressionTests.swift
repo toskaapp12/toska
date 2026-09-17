@@ -276,7 +276,7 @@ final class ClientBugRegressionTests: XCTestCase {
             throw XCTSkip("No seeded own post found on profile — run WalkthroughUITests once to seed one")
         }
         forceTap(ownRow)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
         snap("01a-own-post-detail")
 
         // Edit: capture the original, replace the whole body with marker text.
@@ -293,7 +293,7 @@ final class ClientBugRegressionTests: XCTestCase {
 
         // Back on detail: the NEW text must be visible (H3 regression: it
         // used to revert to the pre-edit value).
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 10), "Didn't return to post detail after save")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 10), "Didn't return to post detail after save")
         let newTextOnDetail = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
         XCTAssertTrue(waitFor(newTextOnDetail, 10), "Edited text not shown on detail right after save (edit reverted)")
         snap("01c-detail-after-save")
@@ -317,7 +317,7 @@ final class ClientBugRegressionTests: XCTestCase {
         XCTAssertNotNil(editedRow, "Edited post row not found on profile after edit")
         guard let editedRow else { return }
         forceTap(editedRow)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't re-open")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't re-open")
         let newTextOnRepush = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
         XCTAssertTrue(waitFor(newTextOnRepush, 10), "Edited text lost after pop + re-push (H3 regression)")
         snap("01d-detail-after-repush")
@@ -329,7 +329,7 @@ final class ClientBugRegressionTests: XCTestCase {
         XCTAssertTrue(save2.isEnabled, "restore save disabled")
         save2.tap()
         proceedThroughEditInterstitials()
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 10), "Didn't return to detail after restore")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 10), "Didn't return to detail after restore")
         let originalPrefix = String(original.prefix(20))
         let restored = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", originalPrefix)).firstMatch
         XCTAssertTrue(waitFor(restored, 10), "Original text not restored on detail")
@@ -492,7 +492,7 @@ final class ClientBugRegressionTests: XCTestCase {
         // server truth via checkIfSaved — the drift bug showed stale state here
         // or lost it on the way back).
         forceTap(row)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
         let detailUnsave = app.buttons["Unsave post"].firstMatch
         XCTAssertTrue(waitFor(detailUnsave, 8), "Detail shows post as NOT saved after feed save (state drift)")
         snap("03c-detail-saved")
@@ -533,7 +533,7 @@ final class ClientBugRegressionTests: XCTestCase {
             throw XCTSkip("No seeded post row visible in feed")
         }
         forceTap(row)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
 
         let replyField = app.textFields["say something gently…"]
         XCTAssertTrue(waitFor(replyField, 8), "Reply field missing")

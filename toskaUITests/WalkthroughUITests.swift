@@ -377,10 +377,16 @@ final class WalkthroughUITests: XCTestCase {
         // first, so the post-tap assertion below can only be satisfied by OUR
         // repost sticking, not by leftover state from a previous run.
         for _ in 0..<3 where enabledUndo.exists {
+            nudgeRowIntoSafeBand(enabledUndo)
             forceTap(enabledUndo)
             sleep(3) // let the un-repost transaction settle
         }
         XCTAssertTrue(waitFor(enabledRepost, 10), "No enabled un-reposted post found in feed")
+        // 2026-09-17: the redesign's larger post text means the first enabled
+        // repost control can sit BELOW the fold under the floating bar, where
+        // forceTap's coordinate tap lands on the bar — scroll it into the safe
+        // band first (same treatment findRow gives rows).
+        nudgeRowIntoSafeBand(enabledRepost)
         snap("05z1-before-repost")
         // forceTap: the repost glyph sits under the floating glass tab bar, so a
         // plain .tap() fails XCUITest's hittability check (not a repost bug).
@@ -409,14 +415,19 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertNotNil(firstPost, "No post row found in feed")
         guard let firstPost else { return }
         forceTap(firstPost)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
         sleep(1)
         snap("05a-post-detail")
 
-        let like = app.buttons["Like post"].firstMatch
-        if like.exists { like.tap(); sleep(1); snap("05b-after-like") }
-        let save = app.buttons["Save post"].firstMatch
-        if save.exists { save.tap(); sleep(1) }
+        // The feed's rows stay in the hierarchy BEHIND the pushed detail and
+        // can shadow firstMatch with an occluded button — take the HITTABLE
+        // match (the detail's own stats line). (2026-09-17 gate)
+        let like = app.buttons.matching(NSPredicate(format: "label == 'Like post'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable })
+        if let like { like.tap(); sleep(1); snap("05b-after-like") }
+        let save = app.buttons.matching(NSPredicate(format: "label == 'Save post'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable })
+        if let save { save.tap(); sleep(1) }
 
         // reply (T-2 path: client writes pending_validation; staging validateReply promotes)
         let replyField = app.textFields["say something gently…"]
@@ -639,7 +650,7 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertNotNil(row, "Long post row not found on profile")
         guard let row else { return }
         forceTap(row)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
         let detailShare = app.buttons["Share post"].firstMatch
         XCTAssertTrue(waitFor(detailShare, 8), "Share button not found on detail")
         forceTap(detailShare)
@@ -665,7 +676,7 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertNotNil(firstPost, "No post row found in feed")
         guard let firstPost else { return }
         forceTap(firstPost)
-        XCTAssertTrue(waitFor(app.staticTexts["post"], 8), "Post detail didn't open (header 'post' missing)")
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open (header 'post' missing)")
         sleep(1)
         snap("14a-post-detail")
         // PostDetailView's header ellipsis exposes "Report or block" on others'

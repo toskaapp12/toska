@@ -111,11 +111,24 @@ struct MainTabView: View {
             // last row still clears the pill.
 
             // MARK: - Tab bar
-            // Always visible (the hide preference is intentionally ignored,
-            // see .onPreferenceChange below). Sits in the ZStack overlay so
-            // it stays at the screen bottom; the inner content VStack above
-            // is padded to leave room.
+            // Floating pill (design 2026-09-16): 26pt radius, translucent
+            // paper over blur, hair border, soft lifted shadow — home /
+            // most-felt / accent WRITE pill / bell / person. A paper fade
+            // behind it keeps the last rows readable as they scroll under.
             if !tabBarHidden {
+            LinearGradient(
+                stops: [
+                    .init(color: LateNightTheme.background, location: 0.0),
+                    .init(color: LateNightTheme.background.opacity(0.72), location: 0.45),
+                    .init(color: LateNightTheme.background.opacity(0.0), location: 1.0),
+                ],
+                startPoint: .bottom, endPoint: .top
+            )
+            .frame(height: 150)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .allowsHitTesting(false)
+            .ignoresSafeArea()
+
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     Button {
@@ -127,31 +140,35 @@ struct MainTabView: View {
                         withAnimation(.easeInOut(duration: 0.15)) { selectedTab = .feed }
                     } label: {
                         Image(systemName: selectedTab == .feed ? "house.fill" : "house")
-                            .font(.system(size: 20, weight: selectedTab == .feed ? .medium : .light))
-                            .foregroundColor(selectedTab == .feed ? LateNightTheme.handleText : LateNightTheme.timeText)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .font(.system(size: 19, weight: .regular))
+                            .foregroundColor(selectedTab == .feed ? LateNightTheme.primaryText : LateNightTheme.secondaryText)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .accessibilityLabel("Home")
 
-                    tabIcon(icon: "sparkle", activeIcon: "sparkle", tab: .top)
+                    tabIcon(icon: "chart.line.uptrend.xyaxis", activeIcon: "chart.line.uptrend.xyaxis", tab: .top)
 
-                    // Compose button
+                    // Write pill — the one accent fill on the bar.
                     Button {
                         HapticManager.play(.tabSwitch)
                         showCompose = true
                     } label: {
-                        ZStack {
-                            Circle()
-                                .fill(ToskaColor.accent)
-                                .frame(width: 50, height: 50)
-                            Image(systemName: "plus")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundColor(.white)
+                        HStack(spacing: 8) {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14, weight: .medium))
+                            Text("write")
+                                .font(ToskaFont.sans(12.5, weight: .semibold))
                         }
-                        .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+                        .foregroundColor(ToskaColor.onAccent)
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 20)
+                        .background(ToskaColor.accent, in: Capsule())
+                        // Natural width — inside an HStack of flexible icon
+                        // slots the pill must NOT flex, or it gets squeezed
+                        // into a circle and the label wraps vertically.
+                        .fixedSize()
                     }
                     .accessibilityLabel("New post")
-                    .frame(maxWidth: .infinity)
 
                     // Notifications with badge
                     Button {
@@ -168,16 +185,16 @@ struct MainTabView: View {
                         }
                     } label: {
                         Image(systemName: selectedTab == .notifications ? "bell.fill" : "bell")
-                            .font(.system(size: 20, weight: selectedTab == .notifications ? .medium : .light))
-                            .foregroundColor(selectedTab == .notifications ? LateNightTheme.handleText : LateNightTheme.timeText)
+                            .font(.system(size: 19, weight: .regular))
+                            .foregroundColor(selectedTab == .notifications ? LateNightTheme.primaryText : LateNightTheme.secondaryText)
                             .overlay(alignment: .topTrailing) {
                                 if unreadCount > 0 {
                                     Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
                                         .font(ToskaFont.sans(11, weight: .bold))
-                                        .foregroundColor(.white)
+                                        .foregroundColor(ToskaColor.onAccent)
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 2)
-                                        .background(ToskaColor.badge)
+                                        .background(ToskaColor.accent)
                                         .clipShape(Capsule())
                                         // Hug the bell's top-right corner. Overlay
                                         // attaches to the bell's bounding box (vs.
@@ -187,37 +204,35 @@ struct MainTabView: View {
                                         .offset(x: 8, y: -6)
                                 }
                             }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(maxWidth: .infinity, minHeight: 44)
                     }
                     .accessibilityLabel("Notifications\(unreadCount > 0 ? ", \(unreadCount) unread" : "")")
 
                     tabIcon(icon: "person", activeIcon: "person.fill", tab: .profile)
                 }
-                .frame(height: 62)
                 .padding(.horizontal, 14)
-                // Instagram-style floating "home bar": the tab row is a rounded
-                // pill lifted OFF the bottom edge — detached on the sides and
-                // above the home indicator, an elevated white (card) surface with
-                // a bold two-layer drop shadow — instead of a flat edge-to-edge
-                // panel. The page shows behind/below it so it reads as floating.
-                // SOLID white pill (2026 mockup). Was a frosted-glass material
-                // (.thinMaterial/.glassEffect), but SwiftUI materials render their
-                // full RECTANGULAR bounds as an opaque box behind the capsule
-                // (the "rectangle bar behind the bottom tab") — and they flash
-                // during scroll/transitions. A plain card-colored capsule fill
-                // matches the mockup and has no rectangle artifact.
-                .background(LateNightTheme.cardBackground, in: Capsule())
-                .overlay(
-                    Capsule().stroke(Color.black.opacity(LateNightTheme.isLateNight ? 0.0 : 0.05), lineWidth: 0.5)
+                .padding(.vertical, 8)
+                // Translucent paper pill: paper at 76% over a blur, hair
+                // border, one soft lifted shadow (the design's shadow-lift).
+                .background(
+                    LateNightTheme.background.opacity(0.76),
+                    in: RoundedRectangle(cornerRadius: 26, style: .continuous)
                 )
-                .shadow(color: .black.opacity(0.10), radius: 8, x: 0, y: 4)
-                .shadow(color: .black.opacity(0.16), radius: 28, x: 0, y: 14)
+                .background(
+                    .ultraThinMaterial,
+                    in: RoundedRectangle(cornerRadius: 26, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(LateNightTheme.divider, lineWidth: 1)
+                )
+                .shadow(color: Color(hex: "3A2D5C").opacity(LateNightTheme.isLateNight ? 0.0 : 0.22), radius: 17, x: 0, y: 9)
                 // Outer margins detach the pill from the screen edges and lift it
                 // above the home indicator (the enclosing ZStack ignores the
                 // bottom safe area, so this padding is the manual home-indicator
                 // clearance).
-                .padding(.horizontal, 16)
-                .padding(.bottom, 30)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 26)
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
             } // end if !tabBarHidden
@@ -469,9 +484,9 @@ struct MainTabView: View {
             }
         } label: {
             Image(systemName: selectedTab == tab ? activeIcon : icon)
-                .font(.system(size: 20, weight: selectedTab == tab ? .medium : .light))
-                .foregroundColor(selectedTab == tab ? LateNightTheme.handleText : LateNightTheme.timeText)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .font(.system(size: 19, weight: selectedTab == tab ? .medium : .regular))
+                .foregroundColor(selectedTab == tab ? LateNightTheme.primaryText : LateNightTheme.secondaryText)
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
         .accessibilityLabel(
             tab == .feed ? "Home" :

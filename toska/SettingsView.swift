@@ -82,7 +82,7 @@ struct SettingsView: View {
                 }
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
+                    VStack(spacing: 20) {
 
                         // MARK: - Moderation (admins only — gated by AdminManager /
                         // firestore.rules isAdmin(); invisible to everyone else).
@@ -95,16 +95,16 @@ struct SettingsView: View {
                                             settingsIcon("checkmark.shield.fill", Color.toskaAccentGold)
                                             VStack(alignment: .leading, spacing: 4) {
                                                 Text("moderation")
-                                                    .font(ToskaFont.sans(15, weight: .medium))
-                                                    .foregroundColor(Color.toskaTextDark)
+                                                    .font(ToskaFont.sans(13.5, weight: .medium))
+                                                    .foregroundColor(ToskaColor.text)
                                                 Text("review reports, flagged + crisis posts")
                                                     .font(ToskaFont.sans(12))
                                                     .foregroundColor(Color.toskaTextLight)
                                             }
                                             Spacer()
                                             Image(systemName: "chevron.right")
-                                                .font(.system(size: 12, weight: .regular))
-                                                .foregroundColor(Color.toskaDivider)
+                                                .font(.system(size: 14, weight: .regular))
+                                                .foregroundColor(ToskaColor.dot)
                                         }
                                         .padding(.vertical, 16)
                                         .padding(.horizontal, 16)
@@ -124,19 +124,19 @@ struct SettingsView: View {
                                 // this toggle is the consent for each, so the
                                 // scope can't live only in a one-time popup.
                                 toggleRow("allow sharing", subtitle: "let people share your words as image cards, and let a few be featured on toskaapp.com — always without your handle", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 toggleRow("show follower count", subtitle: "let others see how many people follow you", icon: "person.2.fill", iconColor: Color.toskaBlue, isOn: $settings.showFollowerCount)
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 toggleRow("share anonymous usage data", subtitle: "helps us fix bugs and improve the app. never includes what you wrote.", icon: "chart.bar.fill", iconColor: Color.toskaMidGray, isOn: $shareAnonymousUsage)
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 actionRow("view content policy", icon: "doc.text.fill", iconColor: Color.toskaMidGray) { showContentPolicy = true }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 actionRow("privacy policy", icon: "hand.raised.fill", iconColor: Color.toskaBlue) {
                                     if let url = URL(string: "https://www.toskaapp.com/privacy") {
                                         UIApplication.shared.open(url)
                                     }
                                 }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 actionRow("terms of service", icon: "doc.plaintext.fill", iconColor: Color.toskaMidGray) {
                                     if let url = URL(string: "https://www.toskaapp.com/terms") {
                                         UIApplication.shared.open(url)
@@ -156,17 +156,17 @@ struct SettingsView: View {
                                 // neighbor tiles; the plum accent matches the toggles' tint.
                                 toggleRow("push notifications", subtitle: "know when someone feels what you said", icon: "bell.badge.fill", iconColor: ToskaColor.accent, isOn: $settings.pushEnabled)
                                 if settings.pushEnabled {
-                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                     miniToggle("likes", isOn: $settings.notifyLikes)
-                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                     miniToggle("replies", isOn: $settings.notifyReplies)
-                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                     miniToggle("reposts", isOn: $settings.notifyReposts)
-                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                     miniToggle("saves", isOn: $settings.notifySaves)
-                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                     miniToggle("new followers", isOn: $settings.notifyFollows)
-                                    Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                    Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                     miniToggle("milestones", isOn: $settings.notifyMilestones)
                                 }
                             }
@@ -179,33 +179,33 @@ struct SettingsView: View {
                             groupHeader("content")
                             VStack(spacing: 0) {
                                 toggleRow("gentle check-in", subtitle: "we'll check in on softer signals. crisis language always shows resources.", icon: "heart.text.square.fill", iconColor: Color.toskaWhisperPink, isOn: $settings.gentleCheckIn)
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: DraftsView()) {
                                     HStack(alignment: .top, spacing: 12) {
                                         settingsIcon("square.and.pencil", Color.toskaAccentGold)
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text("drafts")
-                                                .font(ToskaFont.sans(15, weight: .medium))
-                                                .foregroundColor(Color.toskaTextDark)
+                                                .font(ToskaFont.sans(13.5, weight: .medium))
+                                                .foregroundColor(ToskaColor.text)
                                             Text("things you wrote but didnt share")
                                                 .font(ToskaFont.sans(12))
                                                 .foregroundColor(Color.toskaTextLight)
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .regular))
-                                            .foregroundColor(Color.toskaDivider)
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(ToskaColor.dot)
                                     }
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: WeeklyRecapView().navigationBarHidden(true)) {
                                     HStack(alignment: .top, spacing: 12) {
                                         settingsIcon("calendar", Color.toskaAccentTan)
                                         VStack(alignment: .leading, spacing: 4) {
                                             Text("your week")
-                                                .font(ToskaFont.sans(15, weight: .medium))
+                                                .font(ToskaFont.sans(13.5, weight: .medium))
                                                 .foregroundColor(ToskaColor.text)
                                             Text("a quiet recap of what you felt this week")
                                                 .font(ToskaFont.sans(12))
@@ -213,53 +213,53 @@ struct SettingsView: View {
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .regular))
-                                            .foregroundColor(ToskaColor.text3)
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(ToskaColor.dot)
                                     }
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
                                     HStack(spacing: 12) {
                                         settingsIcon("person.2.fill", Color.toskaBlue)
                                         Text("followers")
-                                            .font(ToskaFont.sans(15, weight: .medium))
+                                            .font(ToskaFont.sans(13.5, weight: .medium))
                                             .foregroundColor(ToskaColor.text)
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .regular))
-                                            .foregroundColor(ToskaColor.text3)
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(ToskaColor.dot)
                                     }
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
                                     HStack(spacing: 12) {
                                         settingsIcon("person.fill.checkmark", Color.toskaFollowGreen)
                                         Text("following")
-                                            .font(ToskaFont.sans(15, weight: .medium))
+                                            .font(ToskaFont.sans(13.5, weight: .medium))
                                             .foregroundColor(ToskaColor.text)
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .regular))
-                                            .foregroundColor(ToskaColor.text3)
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(ToskaColor.dot)
                                     }
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: BlockedUsersListView()) {
                                     HStack(spacing: 12) {
                                         settingsIcon("hand.raised.slash.fill", Color.toskaMidGray)
                                         Text("blocked users")
-                                            .font(ToskaFont.sans(15, weight: .medium))
-                                            .foregroundColor(Color.toskaTextDark)
+                                            .font(ToskaFont.sans(13.5, weight: .medium))
+                                            .foregroundColor(ToskaColor.text)
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .regular))
-                                            .foregroundColor(Color.toskaDivider)
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(ToskaColor.dot)
                                     }
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
@@ -275,10 +275,10 @@ struct SettingsView: View {
                                                     VStack(spacing: 0) {
                                                         actionRow("change email", icon: "envelope.fill", iconColor: Color.toskaBlue) { showChangeEmail = true }
                                                         if Auth.auth().currentUser?.providerData.contains(where: { $0.providerID == "password" }) == true {
-                                                            Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                                            Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                                             actionRow("change password", icon: "key.fill", iconColor: Color.toskaMidGray) { showChangePassword = true }
                                                         }
-                                                        Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                                        Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                                         actionRow(isExporting ? "preparing export..." : "export my data", icon: "square.and.arrow.down.fill", iconColor: Color.toskaBlue) {
                                                             exportData()
                                                         }
@@ -305,7 +305,7 @@ struct SettingsView: View {
                                                                     .frame(width: 18)
                                                                 Text(providerLabel(provider.providerID))
                                                                     .font(ToskaFont.sans(13))
-                                                                    .foregroundColor(Color.toskaTextDark)
+                                                                    .foregroundColor(ToskaColor.text)
                                                                 Spacer()
                                                                 if let email = provider.email, !email.isEmpty {
                                                                     Text(email)
@@ -321,7 +321,7 @@ struct SettingsView: View {
                                                             }
                                                         }
                                                         if providers.count == 1 && !providers.contains(where: { $0.providerID == "password" }) {
-                                                            Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                                            Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                                             actionRow("add a backup sign-in", icon: "key.fill", iconColor: Color.toskaBlue) { showLinkBackup = true }
                                                         }
                                                     }
@@ -346,14 +346,14 @@ struct SettingsView: View {
                                     HStack(spacing: 12) {
                                         settingsIcon("rectangle.portrait.and.arrow.right", Color.toskaMidGray)
                                         Text("sign out")
-                                            .font(ToskaFont.sans(15, weight: .medium))
-                                            .foregroundColor(Color.toskaTextDark)
+                                            .font(ToskaFont.sans(13.5, weight: .medium))
+                                            .foregroundColor(ToskaColor.text)
                                         Spacer()
                                     }
                                     .padding(.vertical, 16)
                                     .padding(.horizontal, 16)
                                 }
-                                Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5).padding(.leading, 52)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 // MARK: - Delete Account
                                 Button {
                                     showDeleteAlert = true
@@ -361,7 +361,7 @@ struct SettingsView: View {
                                     HStack(spacing: 12) {
                                         settingsIcon("trash.fill", Color.toskaErrorRed)
                                         Text(isDeleting ? "deleting..." : "delete account")
-                                            .font(ToskaFont.sans(15, weight: .medium))
+                                            .font(ToskaFont.sans(13.5, weight: .medium))
                                             .foregroundColor(Color.toskaErrorRed)
                                         Spacer()
                                     }
@@ -545,46 +545,44 @@ struct SettingsView: View {
     // MARK: - Components
     
     func settingsGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             content()
         }
-        .padding(.horizontal, 16)
     }
 
+    /// Section eyebrow (design 2026-09-16): 10.5 semibold uppercase, soft,
+    /// closed by a hairline the rows continue.
     func groupHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(ToskaFont.sans(13, weight: .regular))
-            .foregroundColor(ToskaColor.text2)
-            .tracking(0.1)
-            .padding(.leading, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title.uppercased())
+                .font(ToskaFont.sans(10.5, weight: .semibold))
+                .tracking(0.74)
+                .foregroundColor(ToskaColor.text2)
+                .padding(.horizontal, 28)
+                .padding(.top, 10)
+                .padding(.bottom, 10)
+            Rectangle().fill(ToskaColor.divider).frame(height: 1)
+        }
     }
 
-    /// iOS-Settings-style leading icon square: a white SF Symbol centered in a
-    /// 29×29 rounded square filled with the row's tint. Shared by toggleRow,
-    /// actionRow, and the inline NavigationLink rows so every row lines up.
+    /// The iOS-Settings icon tile is GONE in the 2026-09-16 design — rows are
+    /// text + hairlines only. Kept as an empty view so the many inline call
+    /// sites (admin/account rows) de-tile without touching each one.
     func settingsIcon(_ icon: String, _ iconColor: Color) -> some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .fill(iconColor)
-            .frame(width: 29, height: 29)
-            .overlay(
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
-            )
+        EmptyView()
     }
 
     func toggleRow(_ title: String, subtitle: String? = nil, icon: String, iconColor: Color, isOn: Binding<Bool>) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            settingsIcon(icon, iconColor)
+        HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(ToskaFont.sans(15, weight: .medium))
-                    .foregroundColor(Color.toskaTextDark)
+                    .font(ToskaFont.sans(13.5, weight: .medium))
+                    .foregroundColor(ToskaColor.text)
                 if let sub = subtitle {
                     Text(sub)
                         .font(ToskaFont.sans(12))
-                        .foregroundColor(Color.toskaTimestamp)
-                        .lineSpacing(1)
+                        .foregroundColor(ToskaColor.text2)
+                        .lineSpacing(3)
                 }
             }
             Spacer()
@@ -596,8 +594,9 @@ struct SettingsView: View {
                 // would announce a bare "switch". Restore the row's purpose.
                 .accessibilityLabel(title)
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 28)
+        .frame(minHeight: 44)
     }
 
     func miniToggle(_ title: String, isOn: Binding<Bool>) -> some View {
@@ -613,26 +612,25 @@ struct SettingsView: View {
                 .accessibilityLabel(title)
         }
         .padding(.vertical, 8)
-        .padding(.trailing, 16)
-        // Iconless sub-rows align their text to where the parent row's title
-        // begins (icon square 29 + 11 spacing + 14 row inset = ~52 leading).
-        .padding(.leading, 52)
+        .padding(.trailing, 28)
+        // Sub-rows indent a step past their parent row's title.
+        .padding(.leading, 44)
     }
 
     func actionRow(_ title: String, icon: String, iconColor: Color, action: @escaping () -> Void) -> some View {
         Button { action() } label: {
-            HStack(spacing: 12) {
-                settingsIcon(icon, iconColor)
+            HStack(spacing: 18) {
                 Text(title)
-                    .font(ToskaFont.sans(15, weight: .medium))
-                    .foregroundColor(Color.toskaTextDark)
+                    .font(ToskaFont.sans(13.5, weight: .medium))
+                    .foregroundColor(ToskaColor.text)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.toskaDivider)
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(ToskaColor.dot)
             }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .padding(.horizontal, 28)
+            .frame(minHeight: 44)
         }
     }
     
@@ -1184,7 +1182,7 @@ struct ChangeEmailView: View {
                         Text("cancel").font(ToskaFont.sans(13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
-                    Text("change email").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(Color.toskaTextDark)
+                    Text("change email").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(ToskaColor.text)
                     Spacer()
                     Button { updateEmail() } label: {
                         Text("save").font(ToskaFont.sans(13, weight: .semibold)).foregroundColor(.white)
@@ -1206,7 +1204,7 @@ struct ChangeEmailView: View {
                     
                     Text(Auth.auth().currentUser?.email ?? "unknown")
                         .font(ToskaFont.sans(13))
-                        .foregroundColor(Color.toskaTextDark)
+                        .foregroundColor(ToskaColor.text)
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.toskaBorderLight.opacity(0.5))
@@ -1317,7 +1315,7 @@ struct ChangePasswordView: View {
                         Text("cancel").font(ToskaFont.sans(13)).foregroundColor(Color.toskaMidGray)
                     }
                     Spacer()
-                    Text("change password").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(Color.toskaTextDark)
+                    Text("change password").font(ToskaFont.sans(13, weight: .medium)).foregroundColor(ToskaColor.text)
                     Spacer()
                     Button { updatePassword() } label: {
                         Text("save").font(ToskaFont.sans(13, weight: .semibold)).foregroundColor(.white)
@@ -1465,20 +1463,18 @@ struct BlockedUsersListView: View {
             VStack(spacing: 0) {
                 if isLoading {
                     Spacer()
-                    ProgressView().tint(Color.toskaBlue)
+                    ProgressView().tint(ToskaColor.accent)
                     Spacer()
                 } else if blocked.isEmpty {
                     Spacer()
                     VStack(spacing: 8) {
-                        Image(systemName: "person.slash")
-                            .font(.system(size: 28, weight: .light))
-                            .foregroundColor(Color.toskaDivider)
-                        Text("no blocked users")
-                            .font(ToskaFont.sans(13, weight: .medium))
-                            .foregroundColor(Color.toskaTextLight)
+                        Text("no blocked users.")
+                            .font(ToskaFont.serifItalic(17))
+                            .foregroundColor(ToskaColor.text2)
                         Text("people you block will show up here. you can unblock them any time.")
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(Color.toskaPlaceholderGray)
+                            .font(ToskaFont.sans(12.5))
+                            .foregroundColor(ToskaColor.text2)
+                            .lineSpacing(4)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 40)
                     }
@@ -1487,45 +1483,35 @@ struct BlockedUsersListView: View {
                     ScrollView {
                         VStack(spacing: 0) {
                             ForEach(blocked) { row in
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(Color.toskaBlue.opacity(0.1))
-                                            .frame(width: 36, height: 36)
-                                        Text(String(row.handle.replacingOccurrences(of: "anonymous_", with: "").prefix(1)).uppercased())
-                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                            .foregroundColor(Color.toskaBlue)
-                                    }
+                                // Hairline row (design 2026-09-16): handle +
+                                // blocked-when, "unblock" as an outlined chip.
+                                HStack(spacing: 18) {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(row.handle)
-                                            .font(ToskaFont.sans(13, weight: .semibold))
-                                            .foregroundColor(Color.toskaTextDark)
+                                            .font(ToskaFont.sans(13.5, weight: .medium))
+                                            .foregroundColor(ToskaColor.text)
                                         Text("blocked \(FeedView.timeAgoString(from: row.blockedAt)) ago")
-                                            .font(ToskaFont.sans(11))
-                                            .foregroundColor(Color.toskaTextLight)
+                                            .font(ToskaFont.sans(12))
+                                            .foregroundColor(ToskaColor.text2)
                                     }
                                     Spacer()
                                     Button {
                                         unblock(row)
                                     } label: {
                                         Text("unblock")
-                                            .font(ToskaFont.sans(11, weight: .medium))
-                                            .foregroundColor(Color.toskaBlue)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 8)
-                                            .background(Color.toskaBlue.opacity(0.08))
-                                            .cornerRadius(8)
+                                            .font(ToskaFont.sans(12, weight: .semibold))
+                                            .foregroundColor(ToskaColor.accentText)
+                                            .padding(.horizontal, 14)
+                                            .frame(minHeight: 32)
+                                            .overlay(Capsule().stroke(ToskaColor.divider2, lineWidth: 1))
+                                            .contentShape(Capsule())
                                     }
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                Divider().padding(.leading, 68)
+                                .padding(.horizontal, 28)
+                                .padding(.vertical, 14)
+                                Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                             }
                         }
-                        .background(LateNightTheme.cardBackground)
-                        .cornerRadius(12)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
                     }
                 }
             }
@@ -1626,7 +1612,7 @@ struct LinkBackupAuthView: View {
                 Spacer()
                 Text("add a backup")
                     .font(ToskaFont.sans(15, weight: .semibold))
-                    .foregroundColor(Color.toskaTextDark)
+                    .foregroundColor(ToskaColor.text)
                 Spacer()
                 Image(systemName: "xmark").font(.system(size: 13)).foregroundColor(.clear).accessibilityHidden(true)
             }

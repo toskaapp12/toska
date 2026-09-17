@@ -462,7 +462,7 @@ struct PostDetailView: View {
                 // still works as a redundant gesture alongside the system
                 // swipe-from-left and the back chevron).
                 ToskaHeader(
-                    title: "post",
+                    title: "",
                     onBack: { dismiss() }
                 ) {
                     // Menu (popover anchored under the ⋯ button) instead of
@@ -518,7 +518,7 @@ struct PostDetailView: View {
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17, weight: .regular))
-                            .foregroundColor(Color.toskaTimestamp)
+                            .foregroundColor(ToskaColor.dot)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
@@ -548,8 +548,22 @@ struct PostDetailView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         postHeaderSection
-                            .padding(.horizontal, 16)
-                            .padding(.top, 16)
+                            .padding(.horizontal, 28)
+                            .padding(.top, 8)
+
+                        // Hairline + "27 REPLIES" eyebrow (design 2026-09-16).
+                        Rectangle().fill(ToskaColor.divider).frame(height: 1)
+                        let replyEyebrowCount = replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList))
+                        if replyEyebrowCount > 0 {
+                            Text(replyEyebrowCount == 1 ? "1 reply" : "\(replyEyebrowCount) replies")
+                                .font(ToskaFont.sans(10.5, weight: .semibold))
+                                .textCase(.uppercase)
+                                .tracking(0.74)
+                                .foregroundColor(ToskaColor.text2)
+                                .padding(.horizontal, 28)
+                                .padding(.top, 20)
+                                .padding(.bottom, 4)
+                        }
 
                         if replyLoadFailed {
                             ToskaErrorBanner("couldn't load replies — check your connection") {
@@ -573,9 +587,9 @@ struct PostDetailView: View {
                                     ForEach(0..<min(max(localReplyCount, 1), 5), id: \.self) { _ in
                                         SkeletonReplyRow()
                                         Rectangle()
-                                            .fill(Color.toskaBorderLight.opacity(0.5))
-                                            .frame(height: 0.5)
-                                            .padding(.leading, 16)
+                                            .fill(ToskaColor.divider)
+                                            .frame(height: 1)
+                                            .padding(.leading, 28)
                                     }
                                 }
                                 .transition(.opacity)
@@ -584,12 +598,12 @@ struct PostDetailView: View {
                                                     VStack(spacing: 8) {
                                                         Text("\"some words just need\na witness.\"")
                                                             .font(ToskaFont.serifItalic(18))
-                                                            .foregroundColor(Color.toskaTimestamp)
+                                                            .foregroundColor(ToskaColor.text2)
                                                             .multilineTextAlignment(.center)
                                                             .lineSpacing(4)
                                                         Text("be the first to reply")
-                                                            .font(ToskaFont.sans(11))
-                                                            .foregroundColor(Color.toskaDivider)
+                                                            .font(ToskaFont.sans(11.5))
+                                                            .foregroundColor(ToskaColor.text3)
                                                     }
                                                     .frame(maxWidth: .infinity)
                                                     .padding(.vertical, 40)
@@ -612,8 +626,8 @@ struct PostDetailView: View {
                                                      : "show \(item.hiddenChildren) more replies")
                                                     .font(ToskaFont.sans(11, weight: .medium))
                                             }
-                                            .foregroundColor(Color.toskaBlue)
-                                            .padding(.leading, 18 + indent + 18)
+                                            .foregroundColor(ToskaColor.accentText)
+                                            .padding(.leading, 28 + indent + 18)
                                             .padding(.vertical, 8)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .contentShape(Rectangle())
@@ -621,9 +635,9 @@ struct PostDetailView: View {
                                         .buttonStyle(.plain)
                                         if index < flat.count - 1 {
                                             Rectangle()
-                                                .fill(Color.toskaBorderLight.opacity(0.3))
-                                                .frame(height: 0.5)
-                                                .padding(.leading, 18 + indent)
+                                                .fill(ToskaColor.divider)
+                                                .frame(height: 1)
+                                                .padding(.leading, 28 + indent)
                                         }
                                     } else {
                                     SwipeToReplyRow(
@@ -656,9 +670,9 @@ struct PostDetailView: View {
                                     )
                                     if index < flat.count - 1 {
                                         Rectangle()
-                                            .fill(Color.toskaBorderLight.opacity(item.depth > 0 ? 0.3 : 0.5))
-                                            .frame(height: 0.5)
-                                            .padding(.leading, 18 + indent)
+                                            .fill(ToskaColor.divider)
+                                            .frame(height: 1)
+                                            .padding(.leading, 28 + indent)
                                     }
                                     } // end else (regular row branch)
                                 }
@@ -674,7 +688,7 @@ struct PostDetailView: View {
 
     var replyBarView: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
+            Rectangle().fill(ToskaColor.divider).frame(height: 1)
 
             if let gifUrl = replyGifUrl {
                 HStack {
@@ -706,8 +720,8 @@ struct PostDetailView: View {
             if let handle = replyingToHandle {
                 HStack(spacing: 8) {
                     Text("replying to \(handle)")
-                        .font(ToskaFont.sans(11))
-                        .foregroundColor(Color.toskaBlue)
+                        .font(ToskaFont.sans(11.5))
+                        .foregroundColor(ToskaColor.accentText)
                     Spacer()
                     Button {
                         replyingToId = nil
@@ -715,26 +729,22 @@ struct PostDetailView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundColor(Color.toskaTimestamp)
+                            .foregroundColor(ToskaColor.dot)
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 22)
                 .padding(.vertical, 8)
             }
 
-            HStack(spacing: 8) {
-                TextField("say something gently…", text: $replyText)
+            HStack(spacing: 12) {
+                TextField("say something kind, anonymously…", text: $replyText)
                 .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
-                    .font(.system(size: 14))
+                    .font(ToskaFont.sans(14))
+                    .foregroundColor(ToskaColor.text)
                     .focused($replyFocused)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(ToskaColor.input)
-                    .clipShape(Capsule())
-                    // Subtle hairline so the field reads as a distinct input
-                    // against the near-same-gray bar background instead of
-                    // blending into it.
-                    .overlay(Capsule().stroke(ToskaColor.divider.opacity(0.6), lineWidth: 0.5))
+                    .frame(minHeight: 44)
+                    .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .onChange(of: replyText) { _, newValue in
                         // Truncate on UTF-16 length to match the Firestore rule's
                         // size() check (mirrors ComposeView) so heavy-emoji replies
@@ -784,23 +794,28 @@ struct PostDetailView: View {
                 // silently returned.
                 let replyIsSendable = replyText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
                 Button { sendReply() } label: {
-                    ZStack {
-                        Circle()
-                            .fill(replyIsSendable ? ToskaColor.accent : ToskaColor.input)
-                            .frame(width: 40, height: 40)
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(replyIsSendable ? .white : ToskaColor.text3)
-                    }
+                    Text("send")
+                        .font(ToskaFont.sans(12.5, weight: .semibold))
+                        .foregroundColor(replyIsSendable ? ToskaColor.onAccent : ToskaColor.text3)
+                        .frame(minHeight: 44)
+                        .padding(.horizontal, 18)
+                        .background(replyIsSendable ? ToskaColor.accent : ToskaColor.input, in: Capsule())
                 }
                 .disabled(!replyIsSendable)
+                .accessibilityLabel("Send reply")
             }
-            .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+            .padding(.horizontal, 22)
+                        .padding(.top, 14)
+                        .padding(.bottom, 10)
                     }
+        // Translucent paper bar over blur (design 2026-09-16) — the thread
+        // shows through faintly behind the composer.
         .background(
-            LateNightTheme.cardBackground.ignoresSafeArea(edges: .bottom)
-                .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 0.5), alignment: .top)
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                LateNightTheme.background.opacity(0.82)
+            }
+            .ignoresSafeArea(edges: .bottom)
         )
            }
 
@@ -808,166 +823,175 @@ struct PostDetailView: View {
 
     var postHeaderSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header mirrors the feed row: emotion avatar as the left anchor,
-            // handle + time stacked beside it, and the feeling as a pill on the
-            // trailing edge — so tapping into a post feels continuous with the feed.
-            HStack(alignment: .center, spacing: 11) {
-                emotionAvatar(for: tag, size: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Button {
-                        if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(handle)
-                                .font(ToskaFont.sans(15, weight: .semibold))
-                                .foregroundColor(ToskaColor.text2)
-                            if isOwnPost {
-                                Text("· you")
-                                    .font(ToskaFont.sans(11, weight: .medium))
-                                    .foregroundColor(ToskaColor.text3)
-                            }
-                        }
-                    }
-                    Text(time)
-                        .font(ToskaFont.sans(12))
-                        .foregroundColor(ToskaColor.time)
-                }
-                Spacer()
-                if let tag = tag {
-                    Text(tag)
-                        .font(ToskaFont.sans(11, weight: .semibold))
-                        .foregroundColor(tagColor(for: tag))
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(tagColor(for: tag).opacity(0.14))
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.bottom, 16)
-
+            // Words FIRST (design 2026-09-16) — Literata 17/1.68, ink. The
+            // avatar/pill header is gone; the handle lives in the meta line.
             Text(postText)
-                .toskaPostDetailBody()
+                .font(ToskaFont.serif(17))
+                .lineSpacing(6.5)
                 .foregroundColor(ToskaColor.text)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 16)
 
             // Attached GIF, if the post has one. Read from Firestore by the
-            // live listener (data["gifUrl"]) — PostDetailView previously never
-            // rendered the post's GIF, so opening a GIF post from the feed
-            // showed only the text. StableGifPreview (shared from ComposeView)
-            // sidesteps SwiftUI's AsyncImage cancellation issue inside views
-            // that recompute frequently.
+            // live listener (data["gifUrl"]). StableGifPreview (shared from
+            // ComposeView) sidesteps SwiftUI's AsyncImage cancellation issue
+            // inside views that recompute frequently.
             if let gifUrl = postGifUrl, !gifUrl.isEmpty {
                 StableGifPreview(urlString: gifUrl)
-                    .padding(.bottom, 16)
+                    .padding(.top, 12)
             }
 
+            // Meta line — dot + coloured feeling · handle (opens the author's
+            // profile) · time; letters read "letter · N min · 2d".
+            HStack(spacing: 8) {
+                if let tag = tag {
+                    Circle()
+                        .fill(tagDotColor(for: tag))
+                        .frame(width: 5, height: 5)
+                    Text(tag)
+                        .font(ToskaFont.sans(11.5, weight: .medium))
+                        .foregroundColor(tagColor(for: tag))
+                    Text("·").foregroundColor(ToskaColor.dot)
+                }
+                Button {
+                    if !isOwnPost && !authorUserId.isEmpty { showOtherProfile = true }
+                } label: {
+                    Text(handle)
+                }
+                .buttonStyle(.plain)
+                if isOwnPost {
+                    Text("· you").foregroundColor(ToskaColor.time)
+                }
+                Text("·").foregroundColor(ToskaColor.dot)
+                Text(detailTimeText)
+            }
+            .font(ToskaFont.sans(11.5))
+            .foregroundColor(ToskaColor.handle)
+            .padding(.top, 14)
+
+            // Stats line — same shape as the feed but 12.5pt here (design):
+            // "318 felt this | 27 replies | 3 reposts" + bookmark/share
+            // trailing. The words are the actions; like/repost stay read-only
+            // on your OWN post (guards + rules deny them).
             HStack(spacing: 12) {
-                            HStack(spacing: 4) {
-                                Text(formatFull(likeCount))
-                                    .font(ToskaFont.sans(12, weight: .bold))
-                                    .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextDark)
-                                    .scaleEffect(likePulse ? 1.15 : 1.0)
-                                    .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
-                                Text("felt this")
-                                    .font(ToskaFont.sans(11, weight: .medium))
-                                    .foregroundColor(likePulse ? Color.toskaBlue : Color.toskaTextLight)
-                            }
-                            // replyList.count is ROOT replies only (nested live in
-                            // .children), so it undercounted threaded posts. Count the
-                            // whole tree; fall back to (and never drop below) the LIVE
-                            // server count (localReplyCount — the `replies` init param
-                            // is 0 on the push path and never updates). (2026-08-05)
-                            statLabel(count: replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList)), label: "replies")
-                            // 2026-07-30 owner: show reposts alongside felt/replies.
-                            // Must render localRepostCount, not the immutable
-                            // `reposts` init param — the listener + repostPost
-                            // maintain the live value, and the init param froze
-                            // the visible count until the view was reopened.
-                            // (2026-08-05)
-                            statLabel(count: localRepostCount, label: "reposts")
-                            Spacer()
-                        }
-                        .padding(.bottom, 8)
+                if isOwnPost {
+                    feltStat
+                        .accessibilityLabel("\(formatFull(likeCount)) people felt this")
+                } else {
+                    Button { toggleLike() } label: { feltStat }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                    .accessibilityValue("\(formatFull(likeCount)) people felt this")
+                    .scaleEffect(likePulse ? 1.1 : 1.0)
+                    .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                }
 
-            Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
+                detailStatSeparator
 
-            HStack(spacing: 0) {
-                           Button { replyFocused = true } label: {
-                               Image(systemName: "bubble.left")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(Color.toskaTextLight)
-                           }
-                           .accessibilityLabel("Reply")
-                           .frame(maxWidth: .infinity)
+                // replyList.count is ROOT replies only (nested live in
+                // .children), so it undercounted threaded posts. Count the
+                // whole tree; fall back to (and never drop below) the LIVE
+                // server count (localReplyCount — the `replies` init param
+                // is 0 on the push path and never updates). (2026-08-05)
+                Button { replyFocused = true } label: {
+                    detailStatText(replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList)), "reply", "replies")
+                        .padding(.vertical, 11)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reply")
 
-                           // LOW-P3-7 (2026-07-20 launch audit): hide like + repost
-                           // on your OWN post. Both are no-ops on own content
-                           // (PostInteractionManager guards + rules deny self-like/
-                           // self-repost), and the reply row already hides them on
-                           // own replies — this makes the post row consistent.
-                           if !isOwnPost {
-                               Button { toggleLike() } label: {
-                                   Image(systemName: isLiked ? "heart.fill" : "heart")
-                                       .font(.system(size: 15, weight: isLiked ? .medium : .light))
-                                       .foregroundColor(isLiked ? Color.toskaWhisperPink : Color.toskaTextLight)
-                               }
-                               .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                               .accessibilityValue("\(formatFull(likeCount)) people felt this")
-                               .frame(maxWidth: .infinity)
+                detailStatSeparator
 
-                               Button { repostPost() } label: {
-                                   Image(systemName: "arrow.2.squarepath")
-                                       .font(.system(size: 15, weight: .light))
-                                       .foregroundColor(isReposted ? Color.toskaMovingOnGreen : Color.toskaTextLight)
-                               }
-                               .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
-                               .frame(maxWidth: .infinity)
-                               // Whispers can't be reposted (ephemeral — the copy would
-                               // outlive the original). Midnight posts are caught by the
-                               // tap-time fetch in PostInteractionManager.repost; the
-                               // detail view doesn't carry that flag.
-                               .disabled(isWhisper)
-                               .opacity(isWhisper ? 0.3 : 1.0)
-                           }
+                // Must render localRepostCount, not the immutable `reposts`
+                // init param — the listener + repostPost maintain the live
+                // value. (2026-08-05) Whispers can't be reposted (ephemeral —
+                // the copy would outlive the original); midnight posts are
+                // caught by the tap-time fetch in PostInteractionManager.
+                if isOwnPost {
+                    detailStatText(localRepostCount, "repost", "reposts")
+                        .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                } else {
+                    Button { repostPost() } label: {
+                        detailStatText(localRepostCount, "repost", "reposts")
+                            .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
+                            .padding(.vertical, 11)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+                    .disabled(isWhisper)
+                    .opacity(isWhisper ? 0.3 : 1.0)
+                }
 
-                           Button { toggleSave() } label: {
-                               Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                   .font(.system(size: 15, weight: .light))
-                                   .foregroundColor(isSaved ? Color.toskaBlue : Color.toskaTextLight)
-                           }
-                           .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
-                           .frame(maxWidth: .infinity)
+                Spacer(minLength: 16)
 
-                           // Share — opens ShareCardView (the same path as the
-                           // feed row's share button). Hidden for letters &
-                           // whispers, which are private/ephemeral and not
-                           // shareable, AND for posts whose author revoked
-                           // sharing consent (isShareable, live-mirrored from
-                           // the listener) — this now fully mirrors the feed
-                           // row's gating; previously consent revocation never
-                           // reached this surface.
-                           if isShareable && !isLetter && !isWhisper && !isMidnight {
-                               Button { showShareCard = true } label: {
-                                   Image(systemName: "square.and.arrow.up")
-                                       .font(.system(size: 15, weight: .light))
-                                       .foregroundColor(Color.toskaTextLight)
-                               }
-                               .accessibilityLabel("Share post")
-                               .frame(maxWidth: .infinity)
-                           }
-                       }
-                       .padding(.vertical, 8)
-            Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
+                Button { toggleSave() } label: {
+                    Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundColor(isSaved ? ToskaColor.accentText : ToskaColor.dot)
+                        // 44pt-band hit area (2026-09-17 gate finding).
+                        .frame(minWidth: 36, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
+
+                // Share — hidden for letters & whispers (private/ephemeral,
+                // not shareable) AND for posts whose author revoked sharing
+                // consent (isShareable, live-mirrored from the listener).
+                if isShareable && !isLetter && !isWhisper && !isMidnight {
+                    Button { showShareCard = true } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundColor(ToskaColor.dot)
+                            .frame(minWidth: 36, minHeight: 44, alignment: .trailing)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Share post")
+                }
+            }
+            .font(ToskaFont.sans(12.5))
+            .monospacedDigit()
+            // Never wrap a stat to two lines — on narrow devices the row
+            // shrinks slightly instead (wrapping made the felt-this button
+            // unhittable in the 2026-09-17 gate run).
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .foregroundColor(ToskaColor.handle)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(.top, 4)
         }
     }
 
     // MARK: - UI Helpers
 
-    func statLabel(count: Int, label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(formatFull(count)).font(ToskaFont.sans(11, weight: .semibold)).foregroundColor(Color.toskaTextDark)
-            Text(label).font(ToskaFont.sans(11)).foregroundColor(Color.toskaTextLight)
+    /// "letter · 3 min · 2d" for letters (reading time at ~200 wpm), plain
+    /// relative time otherwise.
+    private var detailTimeText: String {
+        guard isLetter else { return time }
+        let words = postText.split { $0.isWhitespace || $0.isNewline }.count
+        let mins = max(1, Int((Double(words) / 200.0).rounded(.up)))
+        return "letter · \(mins) min · \(time)"
+    }
+
+    private var feltStat: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isLiked ? "heart.fill" : "heart")
+                .font(.system(size: 15, weight: .regular))
+            detailStatText(likeCount, "felt this", "felt this")
         }
+        .foregroundColor(isLiked ? (tag.map { tagColor(for: $0) } ?? ToskaColor.accentText) : ToskaColor.handle)
+        .padding(.vertical, 11)
+    }
+
+    private func detailStatText(_ count: Int, _ one: String, _ many: String) -> Text {
+        Text("\(formatFull(count)) ").fontWeight(.semibold)
+            + Text(count == 1 ? one : many)
+    }
+
+    private var detailStatSeparator: some View {
+        Rectangle()
+            .fill(ToskaColor.divider2)
+            .frame(width: 1, height: 12)
     }
 
     func actionButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -2341,6 +2365,12 @@ struct SwipeToReplyRow: View {
     @State private var showReportSheet = false
     @State private var showBlockConfirm = false
 
+    private var replyStatSeparator: some View {
+        Rectangle()
+            .fill(ToskaColor.divider2)
+            .frame(width: 1, height: 11)
+    }
+
     var body: some View {
         // The row body — wrapped below in a NavigationLink so the whole row
         // is tappable to open the reply as its own page (ReplyDetailView).
@@ -2354,21 +2384,32 @@ struct SwipeToReplyRow: View {
             ReplyDetailView(postId: postId, reply: item.reply)
                 .navigationBarHidden(true)
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Words first (design 2026-09-16): reply text at Literata
+                // 16/1.7 in ink2, then the meta line, then the stats line.
+                Text(item.reply.text)
+                    .font(ToskaFont.serif(16))
+                    .lineSpacing(6)
+                    .foregroundColor(ToskaColor.body)
+                // M-1: the author's own held reply shows an "under review"
+                // banner (it's hidden from everyone else). The interaction row
+                // is suppressed below since a hidden reply can't be engaged with.
+                if item.reply.isPending {
+                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel)
+                        .padding(.top, 8)
+                }
+
+                // Meta line — handle · time (replies carry no feeling tag);
+                // nested replies keep a small accent tick, and the report/
+                // block ⋯ menu sits at the trailing edge.
                 HStack(spacing: 8) {
                     if item.depth > 0 {
-                        Rectangle().fill(Color.toskaBlue.opacity(0.2))
-                            .frame(width: 2, height: 16).cornerRadius(1).padding(.trailing, 4)
+                        Rectangle().fill(ToskaColor.divider2)
+                            .frame(width: 2, height: 12).cornerRadius(1)
                     }
                     Text(item.reply.handle)
-                        .font(ToskaFont.sans(13, weight: .medium))
-                        .foregroundColor(ToskaColor.text2)
-                    Text("·")
-                        .font(ToskaFont.sans(11))
-                        .foregroundColor(Color.toskaDivider)
+                    Text("·").foregroundColor(ToskaColor.dot)
                     Text(item.reply.time)
-                        .font(ToskaFont.sans(12))
-                        .foregroundColor(Color.toskaTimestamp)
                     Spacer()
                     // Per-reply report/block menu. Hidden on your own replies
                     // and when postId is unknown (empty string parent).
@@ -2389,7 +2430,7 @@ struct SwipeToReplyRow: View {
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 13))
-                                .foregroundColor(Color.toskaTimestamp)
+                                .foregroundColor(ToskaColor.dot)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .contentShape(Rectangle())
@@ -2397,42 +2438,40 @@ struct SwipeToReplyRow: View {
                         .accessibilityLabel("More options for \(item.reply.handle)'s reply")
                     }
                 }
-                Text(item.reply.text)
-                    .toskaReplyBody()
-                    .foregroundColor(ToskaColor.text)
-                // M-1: the author's own held reply shows an "under review"
-                // banner (it's hidden from everyone else). The interaction row
-                // is suppressed below since a hidden reply can't be engaged with.
-                if item.reply.isPending {
-                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel)
-                        .padding(.top, 4)
-                }
-                // Interactive action row — like, save, repost. Matches the
-                // affordances on a top-level post. Each icon is hidden when
-                // the corresponding handler isn't wired (defensive — current
-                // PostDetailView always wires all three; older call sites or
-                // future read-only renders pass nil). Hides the repost icon
-                // on the user's own reply since reposting yourself doesn't
-                // make sense and the PostInteractionManager.repostReply guard
-                // would reject it anyway.
+                .font(ToskaFont.sans(11.5))
+                .foregroundColor(ToskaColor.handle)
+                .padding(.top, 14)
+
+                // Stats line — "62 felt this | reply" (design), with the kept
+                // repost/bookmark/share affordances in the same quiet style.
+                // Repost hides on the user's own reply (the manager guard
+                // would reject it anyway).
                 if !item.reply.isPending && (onToggleLike != nil || onToggleSave != nil || onRepost != nil || onComment != nil || onShare != nil) {
-                    // Layout mirrors FeedPostRow's action bar (FeedView.swift:790)
-                    // exactly: comment / repost / bookmark / share clustered on the
-                    // left at 28pt spacing, then Spacer, then heart on the right
-                    // with its count. Same icon sizes (14pt for the count-bearing
-                    // icons, 16pt for plain ones), same active colors (5a9e8f
-                    // for repost-active, c47a8a for like-active). The only thing
-                    // that differs from a top-level post is the absence of a
-                    // "context-menu on long-press" — kept tight to the canonical
-                    // tap-row for reply density.
-                    HStack(spacing: 24) {
+                    HStack(spacing: 14) {
+                        if let onToggleLike = onToggleLike {
+                            Button {
+                                onToggleLike()
+                            } label: {
+                                HStack(spacing: 7) {
+                                    Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
+                                        .font(.system(size: 13.5, weight: .regular))
+                                    (Text("\(item.reply.likes) ").fontWeight(.semibold)
+                                        + Text("felt this"))
+                                }
+                                .foregroundColor(item.reply.isLiked ? ToskaColor.accentText : ToskaColor.handle)
+                                .padding(.vertical, 11)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
+                        }
                         if let onComment = onComment {
+                            replyStatSeparator
                             Button {
                                 onComment()
                             } label: {
-                                Image(systemName: "bubble.left")
-                                    .font(.system(size: 17, weight: .regular))
-                                    .foregroundColor(Color.toskaDivider)
+                                Text("reply")
+                                    .padding(.vertical, 11)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -2440,30 +2479,28 @@ struct SwipeToReplyRow: View {
                         }
                         if let onRepost = onRepost,
                            item.reply.authorId != Auth.auth().currentUser?.uid {
+                            replyStatSeparator
                             Button {
                                 onRepost()
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.2.squarepath")
-                                        .font(.system(size: 17, weight: .regular))
-                                    if item.reply.repostCount > 0 {
-                                        Text("\(item.reply.repostCount)")
-                                            .font(ToskaFont.sans(12))
-                                    }
-                                }
-                                .foregroundColor(item.reply.isReposted ? Color.toskaMovingOnGreen : Color.toskaDivider)
-                                .contentShape(Rectangle())
+                                (Text("\(item.reply.repostCount) ").fontWeight(.semibold)
+                                    + Text(item.reply.repostCount == 1 ? "repost" : "reposts"))
+                                    .foregroundColor(item.reply.isReposted ? ToskaColor.accentText : ToskaColor.handle)
+                                    .padding(.vertical, 11)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(item.reply.isReposted ? "Undo repost" : "Repost reply")
                         }
+                        Spacer(minLength: 12)
                         if let onToggleSave = onToggleSave {
                             Button {
                                 onToggleSave()
                             } label: {
                                 Image(systemName: item.reply.isSaved ? "bookmark.fill" : "bookmark")
-                                    .font(.system(size: 17, weight: .regular))
-                                    .foregroundColor(item.reply.isSaved ? Color.toskaBlue : Color.toskaDivider)
+                                    .font(.system(size: 13.5, weight: .regular))
+                                    .foregroundColor(item.reply.isSaved ? ToskaColor.accentText : ToskaColor.dot)
+                                    .frame(minWidth: 36, minHeight: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -2474,39 +2511,25 @@ struct SwipeToReplyRow: View {
                                 onShare()
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 17, weight: .regular))
-                                    .foregroundColor(Color.toskaDivider)
+                                    .font(.system(size: 13.5, weight: .regular))
+                                    .foregroundColor(ToskaColor.dot)
+                                    .frame(minWidth: 36, minHeight: 44, alignment: .trailing)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Share reply")
                         }
-                        Spacer()
-                        if let onToggleLike = onToggleLike {
-                            Button {
-                                onToggleLike()
-                            } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
-                                        .font(.system(size: 17, weight: .regular))
-                                    if item.reply.likes > 0 {
-                                        Text("\(item.reply.likes)")
-                                            .font(ToskaFont.sans(12))
-                                    }
-                                }
-                                .foregroundColor(item.reply.isLiked ? Color.toskaWhisperPink : Color.toskaDivider)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(item.reply.isLiked ? "Unlike reply" : "Like reply")
-                        }
                     }
-                    .padding(.top, 8)
+                    .font(ToskaFont.sans(11.5))
+                    .monospacedDigit()
+                    .foregroundColor(ToskaColor.handle)
+                    .frame(minHeight: 44)
+                    .padding(.top, 4)
                 }
             }
-            .padding(.leading, 18 + indent)
-            .padding(.trailing, 16)
-            .padding(.vertical, 16)
+            .padding(.leading, 28 + indent)
+            .padding(.trailing, 22)
+            .padding(.vertical, 20)
             .background(LateNightTheme.feedBackground)
             .contentShape(Rectangle())
         } // end NavigationLink label

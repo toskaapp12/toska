@@ -23,48 +23,50 @@ struct SignInView: View {
         // own @Environment(\.dismiss) and pops the navigation stack.
         NavigationStack {
         ZStack {
-            Color(hex: "faf8f5").ignoresSafeArea()
+            LateNightTheme.background.ignoresSafeArea()
             
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     dismiss()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 8) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 13))
+                            .font(.system(size: 15, weight: .medium))
                         Text("back")
-                            .font(ToskaFont.sans(13))
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
                     }
-                    .foregroundColor(Color.toskaBlue)
+                    .foregroundColor(ToskaColor.body)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
-                .padding(.top, 16)
-                .padding(.bottom, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
                 
                 Text("welcome back.")
-                    .font(ToskaFont.serifItalic(28))
-                    .foregroundColor(Color(hex: "111111"))
-                    .padding(.bottom, 4)
-                
+                    .font(ToskaFont.serif(28))
+                    .tracking(-0.6)
+                    .foregroundColor(ToskaColor.text)
+                    .padding(.bottom, 8)
+
                 Text("its still here when youre ready.")
-                    .font(ToskaFont.sans(11))
-                    .foregroundColor(Color.toskaTextLight)
-                    .padding(.bottom, 24)
+                    .font(ToskaFont.serifItalic(15))
+                    .foregroundColor(ToskaColor.text2)
+                    .padding(.bottom, 32)
                 
-                Text("EMAIL")
-                    .font(ToskaFont.sans(11, weight: .medium))
-                    .foregroundColor(Color(hex: "bbbbbb"))
-                    .tracking(1.2)
-                    .padding(.bottom, 4)
+                Text("your email")
+                    .font(ToskaFont.sans(10.5, weight: .semibold))
+                    .textCase(.uppercase)
+                    .tracking(0.74)
+                    .foregroundColor(ToskaColor.text2)
+                    .padding(.bottom, 8)
                 
                 TextField("your@email.com", text: $email)
-                    .font(ToskaFont.sans(13))
-                    .padding(11)
-                    .background(Color.white)
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(hex: "e8e2d9"), lineWidth: 0.5)
-                    )
+                    .font(ToskaFont.serif(16))
+                    .foregroundColor(ToskaColor.text)
+                    .tint(ToskaColor.accent)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 52)
+                    .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -73,11 +75,12 @@ struct SignInView: View {
                     .accessibilityIdentifier("emailField")
                     .accessibilityLabel("email address")
                 
-                Text("PASSWORD")
-                    .font(ToskaFont.sans(11, weight: .medium))
-                    .foregroundColor(Color(hex: "bbbbbb"))
-                    .tracking(1.2)
-                    .padding(.bottom, 4)
+                Text("your password")
+                    .font(ToskaFont.sans(10.5, weight: .semibold))
+                    .textCase(.uppercase)
+                    .tracking(0.74)
+                    .foregroundColor(ToskaColor.text2)
+                    .padding(.bottom, 8)
                 
                 Group {
                     if showPassword {
@@ -88,22 +91,20 @@ struct SignInView: View {
                         SecureField("••••••••", text: $password)
                     }
                 }
-                    .font(ToskaFont.sans(13))
-                    .padding(11)
-                    .padding(.trailing, 38)   // room for the eye toggle
-                    .background(Color.white)
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color(hex: "e8e2d9"), lineWidth: 0.5)
-                    )
+                    .font(ToskaFont.serif(16))
+                    .foregroundColor(ToskaColor.text)
+                    .tint(ToskaColor.accent)
+                    .padding(.horizontal, 16)
+                    .padding(.trailing, 28)   // room for the eye toggle
+                    .frame(minHeight: 52)
+                    .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     // Eye as an overlay (constrained to the field's own height) so it
                     // can't stretch the field vertically the way a maxHeight button did.
                     .overlay(alignment: .trailing) {
                         Button { showPassword.toggle() } label: {
                             Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
                                 .font(.system(size: 14))
-                                .foregroundColor(Color(hex: "999999"))
+                                .foregroundColor(ToskaColor.dot)
                                 .padding(.horizontal, 12)
                                 .contentShape(Rectangle())
                         }
@@ -119,8 +120,8 @@ struct SignInView: View {
                     Button("forgot password?") {
                         showReset = true
                     }
-                    .font(.system(size: 10))
-                    .foregroundColor(Color.toskaBlue)
+                    .font(ToskaFont.sans(11.5, weight: .semibold))
+                    .foregroundColor(ToskaColor.accentText)
                 }
                 .padding(.bottom, 20)
                 
@@ -136,17 +137,15 @@ struct SignInView: View {
                 } label: {
                     ZStack {
                         if isLoading {
-                            ProgressView().tint(.white)
+                            ProgressView().tint(ToskaColor.onAccent)
                         } else {
                             Text("sign in")
-                                .font(ToskaFont.sans(13, weight: .medium))
-                                .foregroundColor(.white)
+                                .font(ToskaFont.sans(14, weight: .semibold))
+                                .foregroundColor(ToskaColor.onAccent)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .background(Color.toskaBlue)
-                    .cornerRadius(12)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(ToskaColor.accent, in: Capsule())
                     .accessibilityIdentifier("signInButton")
                 }
                 .disabled(isLoading)
@@ -163,14 +162,14 @@ struct SignInView: View {
                         showCreate = true
                     } label: {
                         Text("no account? create one")
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(Color.toskaBlue)
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
+                            .foregroundColor(ToskaColor.accentText)
                     }
                     Spacer()
                 }
                 .padding(.bottom, 32)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
         }
         .navigationDestination(isPresented: $showReset) {
             PasswordResetView().navigationBarHidden(true)

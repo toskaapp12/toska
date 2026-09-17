@@ -13,9 +13,10 @@ import SwiftUI
 // bodies, screen titles, emotional headlines) and system SANS for all UI
 // chrome (handles, timestamps, labels, buttons, counts, chips).
 //
-// Serif = Newsreader (bundled in Fonts/, registered via Info.plist UIAppFonts).
+// Serif = Literata (bundled in Fonts/, registered via Info.plist UIAppFonts).
 // Three static instances are shipped: Regular (400), Medium (500), Italic (400).
-// Sans = SF Pro / system.
+// Sans = Instrument Sans (400/500/600). 2026-09-16 redesign: stone paper +
+// Literata/Instrument Sans, matching the web (webapp/styles.css).
 
 // MARK: - Type Ramp
 //
@@ -35,9 +36,9 @@ enum ToskaFont {
     // accessibility for a reading product. At the DEFAULT content size the
     // rendered size is exactly `size` (no visual change); larger accessibility
     // sizes scale proportionally so a low-vision user can actually read posts.
-    static func serif(_ size: CGFloat) -> Font       { .custom("Newsreader-Regular", size: size, relativeTo: .body) }
-    static func serifMedium(_ size: CGFloat) -> Font { .custom("Newsreader-Medium",  size: size, relativeTo: .body) }
-    static func serifItalic(_ size: CGFloat) -> Font { .custom("Newsreader-Italic",  size: size, relativeTo: .body) }
+    static func serif(_ size: CGFloat) -> Font       { .custom("Literata-Regular", size: size, relativeTo: .body) }
+    static func serifMedium(_ size: CGFloat) -> Font { .custom("Literata-Medium",  size: size, relativeTo: .body) }
+    static func serifItalic(_ size: CGFloat) -> Font { .custom("Literata-Italic",  size: size, relativeTo: .body) }
 
     // ───────────────────────────────────────────────────────────────────────
     // TOSKA TYPE SCALE — one limited 8-step ramp. Premium apps use few sizes;
@@ -58,28 +59,28 @@ enum ToskaFont {
     // Serif — content only (the locked ramp)
     static var screenTitle: Font    { serifMedium(24) }   // 24 / 500, tracking -0.5, lowercase
     static var greeting: Font       { serifItalic(18) }   // italic 18 / 400
-    // 2026-07-30 owner feedback: Newsreader 400 at 16px reads faint/airy —
-    // "not engaging". Medium cut puts real ink on the page at the same size;
-    // color was already near-black, weight was the problem.
-    static var postBody: Font       { serifMedium(16) }   // 16 / 500 reading body
+    // 2026-07-30 owner feedback: Newsreader 400 at 16px read faint/airy, so
+    // the body ran at Medium. Literata's 400 puts real ink on the page on its
+    // own (it is a heavier cut), so the reading body is back at 400.
+    static var postBody: Font       { serif(16) }         // 16 / 400 reading body
     static var postDetailBody: Font { serif(22) }         // 22 / 400, line-height 1.45
     static var replyBody: Font      { serif(16) }         // 16 / 400, line-height 1.5
 
-    // Sans = Hanken Grotesk (bundled in Fonts/, registered via Info.plist).
+    // Sans = Instrument Sans (bundled in Fonts/, registered via Info.plist).
     // Used for all UI chrome — usernames, tabs, mood labels, counts, eyebrows.
-    // (Newsreader serif stays on content: wordmark, post text, prompt, headlines.)
+    // (Literata serif stays on content: wordmark, post text, prompt, headlines.)
+    // The family ships 400/500/600 only; bold requests clamp to SemiBold.
     static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         let name: String
         switch weight {
-        case .medium:                 name = "HankenGrotesk-Medium"
-        case .semibold:               name = "HankenGrotesk-SemiBold"
-        case .bold, .heavy, .black:   name = "HankenGrotesk-Bold"
-        default:                      name = "HankenGrotesk-Regular"
+        case .medium:                             name = "InstrumentSans-Medium"
+        case .semibold, .bold, .heavy, .black:    name = "InstrumentSans-SemiBold"
+        default:                                  name = "InstrumentSans-Regular"
         }
         return .custom(name, size: size, relativeTo: .body)
     }
 
-    // Sans — all UI chrome (Hanken Grotesk), snapped to the scale above
+    // Sans — all UI chrome (Instrument Sans), snapped to the scale above
     static var eyebrow: Font     { sans(11, weight: .semibold) }  // UPPERCASE, tracking 1.4
     static var handle: Font      { sans(13, weight: .medium) }    // understated username — content leads, not the chrome
     static var meta: Font        { sans(12, weight: .regular) }   // timestamp: smaller + lower contrast
@@ -135,6 +136,17 @@ enum ToskaColor {
     static var time: Color     { LateNightTheme.timeText }
     static var badge: Color    { LateNightTheme.badge }
     static var scrim: Color    { LateNightTheme.scrim }
+
+    // 2026-09-16 redesign tokens (see LateNightTheme for the day/night values)
+    static var body: Color          { LateNightTheme.bodyText }      // ink2 — letter/reply bodies
+    static var divider2: Color      { LateNightTheme.divider2 }      // hair2 — stats separators, chips
+    static var dot: Color           { LateNightTheme.dotSeparator }  // the "·" separators
+    static var accentText: Color    { LateNightTheme.accentText }    // "write yours", "keep reading"
+    static var onAccent: Color      { LateNightTheme.onAccent }      // text on accent fills
+    static var promptBg: Color      { LateNightTheme.promptBg }
+    static var promptHair: Color    { LateNightTheme.promptHair }
+    static var promptEyebrow: Color { LateNightTheme.promptEyebrow }
+    static var promptInk: Color     { LateNightTheme.promptInk }
 }
 
 // MARK: - Emotion Tag Tints

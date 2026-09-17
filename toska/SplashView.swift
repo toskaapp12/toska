@@ -24,66 +24,66 @@ struct SplashView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
+        // Stone-paper entry (design 2026-09-16): left-aligned wordmark +
+        // italic tagline, one accent pill, quiet outlined secondary, then
+        // Apple (ink fill) + Google (paper, hair border). Email+password,
+        // Apple, and Google all stay — no code screen (owner declined it).
         ZStack {
-            Color.toskaBlue
+            LateNightTheme.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 Spacer()
-
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white.opacity(0.18))
-                        .frame(width: 60, height: 60)
-                    Text("t")
-                        .font(ToskaFont.serifItalic(42))
-                        .foregroundColor(.white)
-                }
-                .padding(.bottom, 14)
 
                 Text("toska")
-                    .font(ToskaFont.serifItalic(42))
-                    .foregroundColor(.white)
-                    .padding(.bottom, 6)
+                    .font(ToskaFont.serif(30))
+                    .tracking(-0.9)
+                    .foregroundColor(ToskaColor.text)
 
-                Text("for the things you couldnt say to your ex")
-                    .font(ToskaFont.serifItalic(12))
-                    .foregroundColor(.white.opacity(0.3))
+                Text("somewhere to put it down,\nwhere nobody knows it's you.")
+                    .font(ToskaFont.serifItalic(19))
+                    .foregroundColor(ToskaColor.body)
+                    .lineSpacing(6)
+                    .padding(.top, 16)
 
                 Spacer()
 
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     Button {
                         showCreateAccount = true
                     } label: {
                         Text("im new here")
-                            .font(ToskaFont.sans(15, weight: .medium))
-                            .foregroundColor(Color(hex: "1a1c22"))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color.white)
-                            .cornerRadius(14)
+                            .font(ToskaFont.sans(14, weight: .semibold))
+                            .foregroundColor(ToskaColor.onAccent)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                            .background(ToskaColor.accent, in: Capsule())
                     }
 
                     Button {
                         showSignIn = true
                     } label: {
                         Text("sign in")
-                            .font(ToskaFont.sans(15, weight: .regular))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(Color.white.opacity(0.14))
-                            .cornerRadius(14)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.white.opacity(0.25), lineWidth: 0.5)
-                            )
+                            .font(ToskaFont.sans(14, weight: .semibold))
+                            .foregroundColor(ToskaColor.text)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                            .overlay(Capsule().stroke(ToskaColor.divider2, lineWidth: 1))
+                            .contentShape(Capsule())
                     }
 
+                    HStack(spacing: 16) {
+                        Rectangle().fill(ToskaColor.divider).frame(height: 1)
+                        Text("or")
+                            .font(ToskaFont.sans(10.5, weight: .semibold))
+                            .textCase(.uppercase)
+                            .tracking(0.74)
+                            .foregroundColor(ToskaColor.text3)
+                        Rectangle().fill(ToskaColor.divider).frame(height: 1)
+                    }
+                    .padding(.vertical, 8)
+
                     // Official Sign in with Apple button (HIG-compliant).
-                    // Splash sits on toskaBlue (a dark/blue ground), so the
-                    // .white style reads best against it.
+                    // On the light paper ground the .black style = the
+                    // design's ink-filled pill.
                     SignInWithAppleButton(.signIn, onRequest: { request in
                         appleHelper.prepareRequest(request)
                     }, onCompletion: { result in
@@ -102,83 +102,79 @@ struct SplashView: View {
                             isSigningIn = false
                         }
                     })
-                    .signInWithAppleButtonStyle(.white)
+                    .signInWithAppleButtonStyle(.black)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .cornerRadius(10)
+                    .frame(height: 50)
+                    .cornerRadius(25)
                     .disabled(isSigningIn)
 
-                    // Google-branding-compliant button: white surface, dark-gray
-                    // label, subtle border. Uses the official multicolor "G"
-                    // asset ("GoogleG" in Assets.xcassets) when present; falls
-                    // back to the blue placeholder glyph if the asset hasn't been
-                    // added yet, so the build is never broken. A-2: drop
-                    // google_g.png (@1x/@2x/@3x) from Google's branding kit into
-                    // GoogleG.imageset and the official mark renders automatically.
+                    // Google-branding-compliant button: neutral paper surface,
+                    // dark label, hair border (design: "Google = paper with
+                    // hair border"). Uses the official multicolor "G" asset
+                    // ("GoogleG" in Assets.xcassets) when present; falls back
+                    // to the blue placeholder glyph if the asset hasn't been
+                    // added yet, so the build is never broken.
                     Button {
                         signInWithGoogle()
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 10) {
                             if googleSigningIn {
                                 ProgressView()
                                     .progressViewStyle(.circular)
-                                    .tint(Color(hex: "3C4043"))
+                                    .tint(ToskaColor.text)
                             } else {
                                 if UIImage(named: "GoogleG") != nil {
                                     Image("GoogleG")
                                         .resizable()
                                         .scaledToFit()
-                                        .frame(width: 18, height: 18)
+                                        .frame(width: 17, height: 17)
                                 } else {
                                     Text("G")
-                                        .font(.system(size: 18, weight: .bold))
+                                        .font(.system(size: 17, weight: .bold))
                                         .foregroundColor(Color(hex: "4285F4"))
                                 }
-                                // The native Sign in with Apple button renders its
-                                // label at ~17pt; match that (19 was too big, 15 too
-                                // small) so the two buttons read as the same size.
                                 Text("Sign in with Google")
                                     .font(.system(size: 17, weight: .medium))
-                                    .foregroundColor(Color(hex: "3C4043"))
+                                    .foregroundColor(ToskaColor.text)
                             }
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(Color.white)
-                        .cornerRadius(10)
+                        .frame(height: 50)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(hex: "DADCE0"), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                                .stroke(ToskaColor.divider2, lineWidth: 1)
                         )
+                        .contentShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
                     }
                     .disabled(isSigningIn)
 
                     if !errorMessage.isEmpty {
                         Text(errorMessage)
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(ToskaFont.sans(11.5))
+                            .foregroundColor(Color.toskaErrorRed)
                             .padding(.top, 2)
                     }
 
                     HStack(spacing: 0) {
-                        Text("by being here you agree to our ")
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(.white.opacity(0.3))
+                        Text("by continuing you agree to the ")
+                            .foregroundColor(ToskaColor.text3)
                         Link("terms", destination: URL(string: "https://www.toskaapp.com/terms")!)
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(ToskaColor.accentText)
+                            .fontWeight(.semibold)
                         Text(" and ")
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(.white.opacity(0.3))
+                            .foregroundColor(ToskaColor.text3)
                         Link("privacy policy", destination: URL(string: "https://www.toskaapp.com/privacy")!)
-                            .font(ToskaFont.sans(11))
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(ToskaColor.accentText)
+                            .fontWeight(.semibold)
+                        Text(". 18 or older.")
+                            .foregroundColor(ToskaColor.text3)
                     }
-                    .padding(.top, 4)
+                    .font(ToskaFont.sans(11))
+                    .padding(.top, 8)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 48)
+                .padding(.bottom, 40)
             }
+            .padding(.horizontal, 32)
         }
         .fullScreenCover(isPresented: $showCreateAccount) {
             EdgeSwipeDismissWrapper { CreateAccountView() }

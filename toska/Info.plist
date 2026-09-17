@@ -31,6 +31,12 @@
 		<string>HankenGrotesk-Medium.ttf</string>
 		<string>HankenGrotesk-SemiBold.ttf</string>
 		<string>HankenGrotesk-Bold.ttf</string>
+		<string>Literata-Regular.ttf</string>
+		<string>Literata-Medium.ttf</string>
+		<string>Literata-Italic.ttf</string>
+		<string>InstrumentSans-Regular.ttf</string>
+		<string>InstrumentSans-Medium.ttf</string>
+		<string>InstrumentSans-SemiBold.ttf</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

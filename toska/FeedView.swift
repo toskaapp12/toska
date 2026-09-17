@@ -79,8 +79,11 @@ struct FeedView: View {
     // tag chips / trending / "feeling people" experience.
     @ViewBuilder private var headerSection: some View {
             HStack {
+                            // Wordmark — Literata 20, ink (design 2026-09-16).
                             Text("toska")
-                                .toskaScreenTitle()
+                                .font(ToskaFont.serif(20))
+                                .tracking(-0.24)
+                                .foregroundColor(ToskaColor.text)
                             Spacer()
                             // Search toggle (2026 mockup): a magnifying glass in the
                             // top-right reveals the search bar below the header.
@@ -98,15 +101,15 @@ struct FeedView: View {
                                 }
                             } label: {
                                 Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 19, weight: .regular))
-                                    .foregroundColor(ToskaColor.text)
+                                    .font(.system(size: 18, weight: .regular))
+                                    .foregroundColor(ToskaColor.text2)
+                                    .frame(width: 44, height: 44, alignment: .trailing)
                                     .contentShape(Rectangle())
                             }
                             .accessibilityLabel("Search")
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 6)
     }
 
     // Header search bar — revealed by the 🔍 toggle. Sits between the header and
@@ -220,10 +223,10 @@ struct FeedView: View {
                              : "\(newPostsBadgeCount) new posts · tap to see")
                             .font(ToskaFont.sans(12, weight: .medium))
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(ToskaColor.onAccent)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color.toskaBlue)
+                    .background(ToskaColor.accent)
                     .clipShape(Capsule())
                     .padding(.bottom, 4)
                 }
@@ -232,15 +235,11 @@ struct FeedView: View {
             }
     }
 
-    // MARK: - Feed tabs (clean underline style)
-    // Replaced the heavy full-width segmented pill track with light
-    // text tabs + a short underline indicator under the selected one —
-    // quieter and more modern, doesn't compete with the cards below.
+    // MARK: - Feed tabs
+    // Text tabs (design 2026-09-16): "for you" / "following" at 13pt, active
+    // ink semibold, inactive soft — NO underline, the weight + ink carry it.
     @ViewBuilder private var feedTabs: some View {
-            // Left-aligned text tabs (2026 mockup): "for you" / "following" grouped
-            // at the leading edge with a short underline under the active one — not
-            // spread across the full width.
-            HStack(spacing: ToskaSpace.xl) {
+            HStack(spacing: 20) {
                 ForEach(0..<vm.tabs.count, id: \.self) { index in
                     let isSel = vm.selectedTab == index
                     Button {
@@ -248,22 +247,18 @@ struct FeedView: View {
                             vm.selectedTab = index
                         }
                     } label: {
-                        VStack(spacing: 8) {
-                            Text(vm.tabs[index])
-                                .font(ToskaFont.sans(16, weight: isSel ? .semibold : .regular))
-                                .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
-                            Capsule()
-                                .fill(isSel ? ToskaColor.accent : Color.clear)
-                                .frame(width: 24, height: 2)
-                        }
-                        .contentShape(Rectangle())
+                        Text(vm.tabs[index])
+                            .font(ToskaFont.sans(13, weight: isSel ? .semibold : .regular))
+                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.horizontal, 28)
+            .padding(.top, 2)
             .padding(.bottom, 4)
     }
 
@@ -303,7 +298,7 @@ struct FeedView: View {
 
             Rectangle()
                 .fill(LateNightTheme.divider)
-                .frame(height: 0.5)
+                .frame(height: 1)
 
             SwipePager(selection: $vm.selectedTab, ids: [0, 1]) { tab in
                 FeedColumn(vm: vm, tab: tab, searchText: $searchText, searchFocused: $searchFocused)
@@ -664,8 +659,9 @@ struct FeedPostRow: View, Equatable {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-                HStack(alignment: .top, spacing: 12) {
-                emotionAvatar(for: tag, size: 34)
+                // 2026-09-16 design: no avatar, no card — words first, then the
+                // feeling line (dot + coloured word · handle · time), then the
+                // stats line, separated from the next post by a full hairline.
                 VStack(alignment: .leading, spacing: 0) {
                 // Tapping the post content PUSHES PostDetailView in from the
                 // right (real navigation), not a modal pop-up. A
@@ -712,8 +708,8 @@ struct FeedPostRow: View, Equatable {
                             .lineSpacing(1)
                             .multilineTextAlignment(.leading)
                     }
-                    .foregroundColor(ToskaColor.accent)
-                    .padding(.bottom, 8)
+                    .foregroundColor(ToskaColor.accentText)
+                    .padding(.bottom, 10)
                 }
                 // Repost provenance — small "@reposter reposted" line above
                 // the handle row when this post is a repost. Without this,
@@ -723,131 +719,48 @@ struct FeedPostRow: View, Equatable {
                 // is set (FeedView passes it for reposts; other call sites
                 // pass nil so this row is hidden there).
                 if let reposter = reposterHandle, !reposter.isEmpty {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 5) {
                         Image(systemName: "arrow.2.squarepath")
                             .font(.system(size: 10, weight: .regular))
                         Text("\(reposter) reposted")
-                            .font(ToskaFont.sans(11, weight: .medium))
+                            .font(ToskaFont.sans(11.5, weight: .medium))
                     }
-                    .foregroundColor(ToskaColor.text3)
-                    .padding(.bottom, 8)
+                    .foregroundColor(ToskaColor.handle)
+                    .padding(.bottom, 10)
                 }
 
-                // Handle row — compact: handle is the anchor with the
-                // separator dot and time trailing it.
-                    HStack(spacing: 4) {
-                                            // De-emphasized: a quiet secondary
-                                            // gray (not the loud accent) so the
-                                            // post TEXT leads the card and the
-                                            // random anonymous handle recedes —
-                                            // fits the anonymity-first brand.
-                                            Text(handle)
-                                                .font(ToskaFont.handle)
-                                                .foregroundColor(ToskaColor.text2)
-
-                                            Circle()
-                                                .fill(ToskaColor.text3)
-                                                .frame(width: 2.5, height: 2.5)
-
-                                            Text(time)
-                                                .font(ToskaFont.meta)
-                                                .foregroundColor(ToskaColor.text3)
-
-                                            Spacer()
-
-                                            if let rank = rank {
-                                                Text(String(format: "%02d", rank))
-                                                    .font(ToskaFont.serifItalic(13))
-                                                    .foregroundColor(ToskaColor.text3)
-                                                    .padding(.trailing, 4)
-                                            }
-
-                                            if isMidnightPost {
-                                                Image(systemName: "moon.fill")
-                                                    .font(.system(size: 9))
-                                                    .foregroundColor(Color.toskaMidnightPurple.opacity(0.5))
-                                            }
-
-                                            if isWhisperPost {
-                                                Image(systemName: "eye.slash")
-                                                    .font(.system(size: 9))
-                                                    .foregroundColor(Color.toskaWhisperPink.opacity(0.5))
-                                            }
-
-                                            // Emotion tag on the RIGHT of the header row
-                                            // (2026 mockup): a colored dot + the tag name
-                                            // in the tag's color. Replaces the filled pill
-                                            // that used to sit below the post text. Report
-                                            // / block moved to the long-press menu.
-                                            if let tag = tag {
-                                                Text(tag)
-                                                    .font(ToskaFont.sans(12, weight: .semibold))
-                                                    .foregroundColor(tagColor(for: tag))
-                                                    .padding(.horizontal, 10)
-                                                    .padding(.vertical, 4)
-                                                    .background(Capsule().fill(tagColor(for: tag).opacity(0.18)))
-                                            }
-                                        }
-                                        .padding(.bottom, 8)
-                
-                // Post text
+                // Post text — words FIRST (design order). Feed posts read at
+                // Literata 18.5/1.62; letters at 17/1.68 (they run longer, the
+                // slightly smaller size + looser leading reads like a letter).
                 if !text.isEmpty {
                     if isLetter && !isLetterExpanded {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "envelope.open")
-                                    .font(.system(size: 9))
-                                Text("letter")
-                                    .font(ToskaFont.sans(10, weight: .semibold))
-                            }
-                            .foregroundColor(Color.toskaAccentGold)
-                            
+                        VStack(alignment: .leading, spacing: 0) {
                             Text(text)
-                                                            .font(ToskaFont.postBody)
-                                                            .foregroundColor(ToskaColor.text)
-                                                            .lineSpacing(ToskaLineSpacing.body)
-                                                            .lineLimit(3)
-                            
+                                .font(ToskaFont.serif(17))
+                                .foregroundColor(ToskaColor.text)
+                                .lineSpacing(6.5)
+                                .lineLimit(4)
+                                .multilineTextAlignment(.leading)
                             Button {
-                                                            withAnimation(.easeInOut(duration: 0.2)) {
-                                                                onLetterExpand?()
-                                                            }
-                                                        } label: {
-                                Text("read this letter...")
-                                    .font(ToskaFont.sans(13, weight: .medium))
-                                    .foregroundColor(Color.toskaBlue)
-                                    .padding(.top, 4)
-                            }
-                        }
-                                                .padding(.bottom, 4)
-                                            } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if isLetter {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "envelope.open")
-                                        .font(.system(size: 9))
-                                    Text("letter")
-                                        .font(ToskaFont.sans(10, weight: .semibold))
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    onLetterExpand?()
                                 }
-                                .foregroundColor(Color.toskaAccentGold)
+                            } label: {
+                                Text("keep reading")
+                                    .font(ToskaFont.sans(12, weight: .semibold))
+                                    .foregroundColor(ToskaColor.accentText)
+                                    .padding(.top, 13)
+                                    .contentShape(Rectangle())
                             }
-                            
-                            Text(text)
-                                                            .font(ToskaFont.postBody)
-                                                            .foregroundColor(ToskaColor.text)
-                                                            // Comfortable journal-like line height — the post
-                                                            // text is the focus, so give it room to breathe.
-                                                            .lineSpacing(ToskaLineSpacing.body)
-                                                            .multilineTextAlignment(.leading)
                         }
-                        .padding(.bottom, 8)
-                                            }
-                                        }
-                                        
-                                        // Tag now renders as a colored dot + name on the
-                                        // RIGHT of the header row (see handle row above) —
-                                        // the old filled pill below the text was removed
-                                        // to match the 2026 mockup.
+                    } else {
+                        Text(text)
+                            .font(isLetter ? ToskaFont.serif(17) : ToskaFont.serif(18.5))
+                            .foregroundColor(ToskaColor.text)
+                            .lineSpacing(isLetter ? 6.5 : 6)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
 
                                         // GIF — animated. Uses StableGifPreview
                                         // (shared from ComposeView) so frames
@@ -857,8 +770,12 @@ struct FeedPostRow: View, Equatable {
                                         // doesn't iterate GIF frames.
                 if let gifUrl = gifUrl, !gifUrl.isEmpty {
                     StableGifPreview(urlString: gifUrl, maxHeight: 200)
-                        .padding(.bottom, 8)
+                        .padding(.top, 12)
                 }
+
+                // Meta line — 5pt dot + coloured feeling word · handle · time
+                // (11.5pt Instrument Sans). Letters show "letter · N min · 2d".
+                metaLine
                   }
                   .frame(maxWidth: .infinity, alignment: .leading)
                   .contentShape(Rectangle())
@@ -874,15 +791,31 @@ struct FeedPostRow: View, Equatable {
                 // no detail to open — disable the link so tapping them is inert.
                 .disabled(postId.isEmpty)
 
-                    // Action bar — larger icons + a bit tighter spacing so
-                                    // the row feels more substantial without crowding.
+                    // Stats line — "41 felt this | 2 replies | 3 reposts" with
+                                    // hairline separators, bookmark + share trailing
+                                    // (design 2026-09-16). Zeros included so every row
+                                    // has the same shape; numerals tabular. The words
+                                    // ARE the actions: felt this = like, replies opens
+                                    // the post, reposts toggles the repost.
                                     if !postId.isEmpty {
-                                        // reply/repost/like grouped tight on the left,
-                                        // bookmark/share pushed right (2026 mockup) — the
-                                        // Even action spacing on the grid; one flexible
-                                        // Spacer before bookmark splits the row.
-                                        HStack(spacing: ToskaSpace.xl) {
-                                            // reply
+                                        HStack(spacing: 12) {
+                                            // felt this (like) — with the burst overlay;
+                                            // read-only on your own post (M4).
+                                            if isOwnPost {
+                                                feltLabel
+                                                    .accessibilityLabel(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                            } else {
+                                                Button { toggleLike() } label: { feltLabel }
+                                                .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                                                .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                                .buttonStyle(ToskaTapStyle())
+                                                .scaleEffect(likePulse ? 1.1 : 1.0)
+                                                .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                            }
+
+                                            statSeparator
+
+                                            // replies — opens the post
                                             NavigationLink {
                                                 PostDetailView(
                                                     postId: postId,
@@ -903,91 +836,73 @@ struct FeedPostRow: View, Equatable {
                                                 )
                                                 .navigationBarHidden(true)
                                             } label: {
-                                                actionLabel(icon: "bubble.left", count: replies, isActive: false)
+                                                statText(replies, "reply", "replies")
+                                                    .padding(.vertical, 11)
                                             }
                                             .accessibilityLabel("Reply")
                                             .accessibilityValue(replies == 1 ? "1 reply" : "\(replies) replies")
                                             .buttonStyle(ToskaTapStyle())
 
-                                            if isOwnPost {
-                                                // Own post: counts stay visible but read-only —
-                                                // unlike PostDetailView (which has a stats row and
-                                                // can hide these outright), the feed row's buttons
-                                                // ARE the count display.
-                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: false)
-                                                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                                actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "C25C7C")
-                                                    .accessibilityLabel(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                            } else {
-                                            // repost
-                                            Button { repostPost() } label: {
-                                                actionLabel(icon: "arrow.2.squarepath", count: localRepostCount, isActive: isReposted, activeColor: "3E9B72")
-                                            }
-                                            .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
-                                            .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                            .buttonStyle(ToskaTapStyle())
-                                            // Ephemeral posts can't be reposted (the copy
-                                            // would outlive the original — see
+                                            statSeparator
+
+                                            // reposts — toggles; read-only on own post,
+                                            // disabled for ephemeral posts (the copy would
+                                            // outlive the original — see
                                             // PostInteractionManager.repost).
-                                            .disabled(isRepostPost || isWhisperPost || isMidnightPost)
-                                            .opacity((isRepostPost || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
-
-                                            // like (with burst overlay — only visible mid-animation;
-                                            // allowsHitTesting(false) so taps still hit the button)
-                                            Button { toggleLike() } label: {
-                                                ZStack {
-                                                    actionLabel(icon: isLiked ? "heart.fill" : "heart", count: localLikeCount, isActive: isLiked, activeColor: "C25C7C")
-                                                    Image(systemName: "heart.fill")
-                                                        .font(.system(size: 15, weight: .regular))
-                                                        .foregroundColor(ToskaColor.badge)
-                                                        .scaleEffect(likeBurstScale)
-                                                        .opacity(likeBurstOpacity)
-                                                        .allowsHitTesting(false)
-                                                        .alignmentGuide(.leading) { $0[.leading] }
+                                            if isOwnPost {
+                                                statText(localRepostCount, "repost", "reposts")
+                                                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                            } else {
+                                                Button { repostPost() } label: {
+                                                    statText(localRepostCount, "repost", "reposts")
+                                                        .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
+                                                        .padding(.vertical, 11)
                                                 }
-                                            }
-                                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                                            .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                            .buttonStyle(ToskaTapStyle())
-                                            .scaleEffect(likePulse ? 1.15 : 1.0)
-                                            .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
+                                                .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+                                                .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                                .buttonStyle(ToskaTapStyle())
+                                                .disabled(isRepostPost || isWhisperPost || isMidnightPost)
+                                                .opacity((isRepostPost || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
                                             }
 
-                                            // Flexible gap — pushes bookmark + share to
-                                            // the trailing edge.
                                             Spacer(minLength: 16)
 
-                                            // bookmark
+                                            // bookmark + share trailing, 14pt, dot colour
                                             Button { toggleSave() } label: {
                                                 Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                    .font(.system(size: 15, weight: .regular))
-                                                    .foregroundColor(isSaved ? ToskaColor.accent : ToskaColor.text3)
+                                                    .font(.system(size: 14, weight: .regular))
+                                                    .foregroundColor(isSaved ? ToskaColor.accentText : ToskaColor.dot)
+                                                    // 44pt-band hit area — the bare 14pt glyph
+                                                    // was a ~10pt-wide target (2026-09-17 gate).
+                                                    .frame(minWidth: 36, minHeight: 44)
+                                                    .contentShape(Rectangle())
                                             }
                                             .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
                                             .buttonStyle(ToskaTapStyle())
 
                                             // share — hidden for letters & whispers
-                                            // (those are private/ephemeral and not
-                                            // shareable) and when the author disabled
-                                            // sharing.
+                                            // (private/ephemeral, not shareable) and when
+                                            // the author disabled sharing.
                                             if isShareable && !isLetter && !isWhisperPost && !isMidnightPost {
                                                 Button { showShareCard = true } label: {
                                                     Image(systemName: "square.and.arrow.up")
-                                                        .font(.system(size: 15, weight: .regular))
-                                                        .foregroundColor(ToskaColor.text3)
+                                                        .font(.system(size: 14, weight: .regular))
+                                                        .foregroundColor(ToskaColor.dot)
+                                                        .frame(minWidth: 36, minHeight: 44, alignment: .trailing)
+                                                        .contentShape(Rectangle())
                                                 }
                                                 .accessibilityLabel("Share post")
                                                 .buttonStyle(ToskaTapStyle())
-                                            } else {
-                                                Color.clear.frame(width: 18, height: 1)
                                             }
                                         }
-                                        // reply/repost/heart on the left, bookmark/share
-                                        // pushed to the trailing edge (2026 mockup).
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.top, ToskaSpace.sm)
+                                        .font(ToskaFont.sans(11.5))
+                                        .monospacedDigit()
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                        .foregroundColor(ToskaColor.handle)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .padding(.top, 4)
                                     }
-                                }
                                 }
                                             // Span the full width so the whole card is one
                                             // tap target — without this the row is only as
@@ -998,24 +913,19 @@ struct FeedPostRow: View, Equatable {
                                             // tapping anywhere on the post opens it; the action
                                             // buttons still capture their own taps.
                                             .frame(maxWidth: .infinity, alignment: .leading)
-                                            // Content-first timeline (2026 redesign): posts
-                                            // sit DIRECTLY on the page background — no card
-                                            // surface, border, or shadow — separated only by
-                                            // air and an almost-invisible hairline, so the
-                                            // feed reads as one continuous stream of thoughts
-                                            // (X-style), not a stack of floating cards. The
-                                            // press highlight still lives in FeedRowPressStyle
-                                            // on the content link.
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 19)
+                                            // Content-first timeline (design 2026-09-16):
+                                            // posts sit DIRECTLY on the paper — no card
+                                            // surface, border, or shadow — separated by a
+                                            // full-bleed hairline. Padding 24/28 (letters
+                                            // breathe a little more, 30 vertical).
+                                            .padding(.horizontal, 28)
+                                            .padding(.top, isLetter ? 30 : 24)
+                                            .padding(.bottom, isLetter ? 26 : 18)
                                             .contentShape(Rectangle())
                                             .overlay(alignment: .bottom) {
                                                 Rectangle()
-                                                    // 2026-07-30 owner feedback: 0.5 opacity on the
-                                                    // already-pale divider nearly vanished — "very
-                                                    // slightly more viewable".
-                                                    .fill(ToskaColor.divider.opacity(0.8))
-                                                    .frame(height: 0.5)
+                                                    .fill(ToskaColor.divider)
+                                                    .frame(height: 1)
                                             }
                 .contextMenu {
                     // M4: like/repost are no-ops on your own post — omit them here
@@ -1199,20 +1109,92 @@ struct FeedPostRow: View, Equatable {
         }
     }
     
-    // MARK: - Action Label
+    // MARK: - Meta + stats pieces (design 2026-09-16)
 
-    func actionLabel(icon: String, count: Int, isActive: Bool, activeColor: String = "828AA0") -> some View {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(isActive ? Color(hex: activeColor) : ToskaColor.text3)
-                if count > 0 {
-                    Text(formatCount(count))
-                        .font(ToskaFont.actionCount)
-                        .foregroundColor(ToskaColor.text2)
-                }
+    /// Meta line under the words: 5pt dot + coloured feeling word · handle ·
+    /// time, all 11.5pt. Letters read "letter · N min · 2d". Ephemeral badges
+    /// and the most-felt rank keep their slots at the trailing edge.
+    @ViewBuilder private var metaLine: some View {
+        HStack(spacing: 8) {
+            if let tag = tag {
+                Circle()
+                    .fill(tagDotColor(for: tag))
+                    .frame(width: 5, height: 5)
+                Text(tag)
+                    .font(ToskaFont.sans(11.5, weight: .medium))
+                    .foregroundColor(tagColor(for: tag))
+                Text("·").foregroundColor(ToskaColor.dot)
+            }
+            Text(handle)
+            Text("·").foregroundColor(ToskaColor.dot)
+            Text(metaTimeText)
+            if isMidnightPost {
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(ToskaColor.dot)
+            }
+            if isWhisperPost {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 9))
+                    .foregroundColor(ToskaColor.dot)
+            }
+            if let rank = rank {
+                Spacer(minLength: 8)
+                Text(String(format: "%02d", rank))
+                    .font(ToskaFont.sans(11.5, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundColor(ToskaColor.accentText)
             }
         }
+        .font(ToskaFont.sans(11.5))
+        .foregroundColor(ToskaColor.handle)
+        .padding(.top, 14)
+    }
+
+    /// "letter · 3 min · 2d" for letters (reading time at ~200 wpm), plain
+    /// relative time otherwise.
+    private var metaTimeText: String {
+        guard isLetter else { return time }
+        let words = text.split { $0.isWhitespace || $0.isNewline }.count
+        let mins = max(1, Int((Double(words) / 200.0).rounded(.up)))
+        return "letter · \(mins) min · \(time)"
+    }
+
+    /// "41 felt this" — count semibold, word regular; the whole element takes
+    /// the feeling's text colour when liked (heart fills to match).
+    private var feltLabel: some View {
+        HStack(spacing: 7) {
+            ZStack {
+                Image(systemName: isLiked ? "heart.fill" : "heart")
+                    .font(.system(size: 14, weight: .regular))
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 14, weight: .regular))
+                    .scaleEffect(likeBurstScale)
+                    .opacity(likeBurstOpacity)
+                    .allowsHitTesting(false)
+            }
+            statText(localLikeCount, "felt this", "felt this")
+        }
+        .foregroundColor(isLiked ? likedTint : ToskaColor.handle)
+        .padding(.vertical, 11)
+    }
+
+    /// Liked state borrows the feeling's ink; untagged posts fall back to the
+    /// accent text colour.
+    private var likedTint: Color {
+        tag.map { tagColor(for: $0) } ?? ToskaColor.accentText
+    }
+
+    private func statText(_ count: Int, _ one: String, _ many: String) -> Text {
+        Text("\(formatCount(count)) ").fontWeight(.semibold)
+            + Text(count == 1 ? one : many)
+    }
+
+    private var statSeparator: some View {
+        Rectangle()
+            .fill(ToskaColor.divider2)
+            .frame(width: 1, height: 11)
+    }
     
     // MARK: - Like
         
@@ -1381,29 +1363,25 @@ struct FeedHeaderCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-                // Lavender prompt card (2026 mockup): "✦ TODAY'S PROMPT" eyebrow,
-                // serif-italic prompt, and a purple "respond" pill. Soft plum-tinted
-                // fill, rounded — the daily prompt is the app's hook, so it reads as
-                // a distinct accent card rather than plain text on the page.
-                VStack(alignment: .leading, spacing: ToskaSpace.md) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkle")
-                            .font(.system(size: 12, weight: .semibold))
-                        Text("today's prompt")
-                            .font(ToskaFont.sans(11, weight: .semibold))
-                            .textCase(.uppercase)
-                            .tracking(1.3)
-                    }
-                    .foregroundColor(ToskaColor.accent)
+                // Today's-prompt band (design 2026-09-16): full-bleed promptBg,
+                // uppercase eyebrow, Literata 20 prompt, "write yours" link —
+                // no pill, no counter, closed by a promptHair rule.
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("today's prompt")
+                        .font(ToskaFont.sans(10.5, weight: .semibold))
+                        .textCase(.uppercase)
+                        .tracking(0.74)
+                        .foregroundColor(ToskaColor.promptEyebrow)
 
                     Text(vm.todaysPrompt.0)
-                        .font(ToskaFont.serifItalic(18))
-                        .foregroundColor(ToskaColor.text)
-                        .lineSpacing(ToskaLineSpacing.body)
+                        .font(ToskaFont.serif(20))
+                        .foregroundColor(ToskaColor.promptInk)
+                        .lineSpacing(6)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 11)
 
-                    // Show "respond" unless there's a response FOR TODAY. A
+                    // Show "write yours" unless there's a response FOR TODAY. A
                     // plain nil-check kept the button hidden after a midnight
                     // rollover (todaysPromptResponse still held yesterday's
                     // answer until the next fetch), locking the user out of
@@ -1414,27 +1392,24 @@ struct FeedHeaderCard: View {
                             vm.showPromptCompose = true
                             HapticManager.play(.compose)
                         } label: {
-                            Text("respond")
-                                .font(ToskaFont.button())
-                                .foregroundColor(.white)
-                                .padding(.horizontal, ToskaSpace.xl)
-                                .padding(.vertical, ToskaSpace.sm)
-                                .background(ToskaColor.accent)
-                                .clipShape(Capsule())
+                            Text("write yours")
+                                .font(ToskaFont.sans(12, weight: .semibold))
+                                .foregroundColor(ToskaColor.accentText)
+                                .padding(.vertical, 10)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(.top, ToskaSpace.xxs)
+                        .padding(.top, 4)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(ToskaSpace.lg)
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(ToskaColor.accent.opacity(LateNightTheme.isLateNight ? 0.16 : 0.10))
-                )
-                .padding(.horizontal, ToskaSpace.md)
-                .padding(.top, ToskaSpace.md)
-                .padding(.bottom, 8)
+                .padding(EdgeInsets(top: 26, leading: 28, bottom: 18, trailing: 28))
+                .background(ToskaColor.promptBg)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(ToskaColor.promptHair)
+                        .frame(height: 1)
+                }
 
                 // ALWAYS-visible "your response" card (not gated by isExpanded).
                 // When the user has responded today, this sits right under the
@@ -1467,32 +1442,33 @@ struct FeedHeaderCard: View {
                         .navigationBarHidden(true)
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 5) {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 10))
-                                    .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                    .foregroundColor(ToskaColor.accentText)
                                 Text("your response")
-                                    .font(ToskaFont.sans(10, weight: .semibold))
-                                    .foregroundColor(Color.toskaBlue.opacity(0.7))
+                                    .font(ToskaFont.sans(10.5, weight: .semibold))
+                                    .textCase(.uppercase)
+                                    .tracking(0.74)
+                                    .foregroundColor(ToskaColor.accentText)
                                 Spacer()
                                 Text("tap to open")
-                                    .font(ToskaFont.sans(9))
-                                    .foregroundColor(Color.toskaTimestamp)
+                                    .font(ToskaFont.sans(10.5))
+                                    .foregroundColor(ToskaColor.text3)
                             }
                             Text(response.text)
-                                .font(ToskaFont.serif(14))
-                                .foregroundColor(ToskaColor.text)
-                                .lineSpacing(3)
+                                .font(ToskaFont.serif(15))
+                                .foregroundColor(ToskaColor.body)
+                                .lineSpacing(4)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.toskaBlue.opacity(0.06))
-                        .cornerRadius(10)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
+                        .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 28)
+                        .padding(.top, 14)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -1520,15 +1496,15 @@ struct TagItem {
 }
 
 let sharedTags: [TagItem] = [
-    TagItem(name: "longing", colorHex: "8781A0", icon: "moon.stars"),
-    TagItem(name: "numb", colorHex: "8A8A92", icon: "circle.dotted"),
-    TagItem(name: "anger", colorHex: "A87F72", icon: "flame"),
-    TagItem(name: "regret", colorHex: "928AA6", icon: "arrow.uturn.backward"),
-    TagItem(name: "acceptance", colorHex: "7E9488", icon: "leaf"),
-    TagItem(name: "confusion", colorHex: "A79A80", icon: "questionmark.circle"),
-    TagItem(name: "unsent", colorHex: "7E8A9C", icon: "envelope"),
-    TagItem(name: "moving on", colorHex: "789690", icon: "arrow.right.circle"),
-    TagItem(name: "still love you", colorHex: "A98A93", icon: "heart"),
+    TagItem(name: "longing", colorHex: "5A467D", icon: "moon.stars"),
+    TagItem(name: "numb", colorHex: "305380", icon: "circle.dotted"),
+    TagItem(name: "anger", colorHex: "803F33", icon: "flame"),
+    TagItem(name: "regret", colorHex: "76471D", icon: "arrow.uturn.backward"),
+    TagItem(name: "acceptance", colorHex: "145E3F", icon: "leaf"),
+    TagItem(name: "confusion", colorHex: "005E62", icon: "questionmark.circle"),
+    TagItem(name: "unsent", colorHex: "085A78", icon: "envelope"),
+    TagItem(name: "moving on", colorHex: "425C24", icon: "arrow.right.circle"),
+    TagItem(name: "still love you", colorHex: "7F3A42", icon: "heart"),
 ]
 
 // The SF Symbol for a tag — single source of truth (the same icon the compose
@@ -1552,7 +1528,9 @@ func tagSymbol(for tag: String?) -> String? {
 // soft circle in the feeling's color carrying its icon (a plain circle when
 // untagged). Shared so every surface renders it identically.
 @ViewBuilder func emotionAvatar(for tag: String?, size: CGFloat = 34) -> some View {
-    let tint = tag.map { tagColor(for: $0) } ?? ToskaColor.accent
+    // Tint uses the mid-lightness DOT colour — the dark text colour turns to
+    // mud behind a 0.22-opacity fill.
+    let tint = tag.map { tagDotColor(for: $0) } ?? ToskaColor.accent
     // Untagged (or a seed-only tag) → a neutral "written thought" quotation
     // glyph in plum, so every avatar carries an icon rather than an empty circle.
     let symbol = tagSymbol(for: tag) ?? "text.quote"
@@ -1596,23 +1574,47 @@ func timeOfDayLabel() -> String {
 // MARK: - Tag Color
 
 func tagColor(for tag: String) -> Color {
-    // 2026-07 palette "C" — muted / near-grey. Calm, restrained, editorial:
-    // each feeling is a desaturated neutral with only a whisper of hue, so the
-    // color never shouts (the icon + word carry the feeling). SINGLE SOURCE OF
-    // TRUTH with sharedTags below — the two are kept identical.
+    // 2026-09-16 design palette — each feeling has a TEXT colour (the word)
+    // and a DOT colour (the 5pt dot / avatar tint, see tagDotColor below).
+    // Values are the design's oklch pairs converted to sRGB; identical to the
+    // web's --em-* / --em-*-t variables. SINGLE SOURCE OF TRUTH with
+    // sharedTags below — the two are kept identical. rebuilding + lonely are
+    // seed-only tags absent from the design; their values are derived in the
+    // same oklch style (rebuilding shares moving-on's green family, lonely a
+    // muted slate-violet).
     switch tag {
-    case "longing":        return Color(hex: "8781A0")
-    case "rebuilding":     return Color(hex: "789690")
-    case "acceptance":     return Color(hex: "7E9488")
-    case "lonely":         return Color(hex: "7C8390")
-    case "numb":           return Color(hex: "8A8A92")
-    case "anger":          return Color(hex: "A87F72")
-    case "regret":         return Color(hex: "928AA6")
-    case "confusion":      return Color(hex: "A79A80")
-    case "unsent":         return Color(hex: "7E8A9C")
-    case "moving on":      return Color(hex: "789690")
-    case "still love you": return Color(hex: "A98A93")
-    default:               return Color(hex: "8A8A92")
+    case "longing":        return Color(hex: "5A467D")
+    case "rebuilding":     return Color(hex: "305F33")
+    case "acceptance":     return Color(hex: "145E3F")
+    case "lonely":         return Color(hex: "4F4F6D")
+    case "numb":           return Color(hex: "305380")
+    case "anger":          return Color(hex: "803F33")
+    case "regret":         return Color(hex: "76471D")
+    case "confusion":      return Color(hex: "005E62")
+    case "unsent":         return Color(hex: "085A78")
+    case "moving on":      return Color(hex: "425C24")
+    case "still love you": return Color(hex: "7F3A42")
+    default:               return Color(hex: "56535E")
+    }
+}
+
+// The feeling's DOT colour — the mid-lightness cut used for the 5pt dot next
+// to the word and for tinted fills (avatar circles), where the dark text
+// colour would read muddy.
+func tagDotColor(for tag: String) -> Color {
+    switch tag {
+    case "longing":        return Color(hex: "927BBD")
+    case "rebuilding":     return Color(hex: "629964")
+    case "acceptance":     return Color(hex: "4C9A73")
+    case "lonely":         return Color(hex: "8483A8")
+    case "numb":           return Color(hex: "5E88BF")
+    case "anger":          return Color(hex: "C17565")
+    case "regret":         return Color(hex: "B57C4D")
+    case "confusion":      return Color(hex: "35989D")
+    case "unsent":         return Color(hex: "4192B6")
+    case "moving on":      return Color(hex: "759554")
+    case "still love you": return Color(hex: "C26F76")
+    default:               return Color(hex: "93909B")
     }
 }
 
@@ -1922,11 +1924,11 @@ struct FeedColumn: View {
                                                     Text("say something")
                                                         .font(ToskaFont.sans(12, weight: .medium))
                                                 }
-                                                .foregroundColor(.white)
+                                                .foregroundColor(ToskaColor.onAccent)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 8)
-                                                .background(Color.toskaBlue)
-                                                .cornerRadius(10)
+                                                .background(ToskaColor.accent)
+                                                .clipShape(Capsule())
                                             }
                                             Button {
                                                 vm.showExplore = true
@@ -1937,11 +1939,11 @@ struct FeedColumn: View {
                                                     Text("explore")
                                                         .font(ToskaFont.sans(12, weight: .medium))
                                                 }
-                                                .foregroundColor(Color.toskaBlue)
+                                                .foregroundColor(ToskaColor.accentText)
                                                 .padding(.horizontal, 16)
                                                 .padding(.vertical, 8)
-                                                .background(Color.toskaBlue.opacity(0.1))
-                                                .cornerRadius(10)
+                                                .background(ToskaColor.input)
+                                                .clipShape(Capsule())
                                             }
                                         }
                                         .padding(.top, 4)

@@ -277,28 +277,43 @@ struct ToskaHeader<Trailing: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
             if let onBack = onBack {
+                // "back" text button (design 2026-09-16): chevron + the word,
+                // 12.5 semibold ink2 — not a bare chevron.
                 Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundColor(Color.toskaTextDark)
-                        .contentShape(Rectangle())
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .medium))
+                        Text("back")
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
+                    }
+                    .foregroundColor(ToskaColor.body)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Back")
             }
-            Text(title)
-                .toskaScreenTitle()
-                // Screen titles are single words ("post", "settings"); at
-                // accessibility type sizes the scaled serif wraps mid-word.
-                // Shrink-to-fit is HIG-sanctioned for chrome.
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .accessibilityAddTraits(.isHeader)
+            // Screen name stays for screens that pass one (the design's
+            // pushed pages show only "back"; callers pass "" there).
+            if !title.isEmpty {
+                Text(title)
+                    .font(ToskaFont.serif(20))
+                    .foregroundColor(ToskaColor.text)
+                    // Screen titles are single words ("post", "settings"); at
+                    // accessibility type sizes the scaled serif wraps mid-word.
+                    // Shrink-to-fit is HIG-sanctioned for chrome.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .accessibilityAddTraits(.isHeader)
+            }
             Spacer()
             trailing()
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 14)
+        .padding(.horizontal, 24)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(ToskaColor.divider).frame(height: 1)
+        }
     }
 }
 

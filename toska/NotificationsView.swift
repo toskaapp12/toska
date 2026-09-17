@@ -138,37 +138,20 @@ struct NotificationsView: View {
             VStack(spacing: 0) {
                 // Root tab — no back chevron. "mark read" appears only when there's
                 // something unread to clear.
+                // Single stream — the design's "mentions" tab was declined by
+                // the owner (TOSKA_IOS_REDESIGN_2026-09.md), so the old
+                // all/mentions tab pair is gone; notifTab stays 0.
                 ToskaHeader(title: "notifications", onBack: nil) {
                     if notifications.contains(where: { $0.isUnread }) {
                         Button { markAllRemainingAsRead() } label: {
                             Text("mark read")
-                                .font(ToskaFont.sans(14, weight: .semibold))
-                                .foregroundColor(ToskaColor.accent)
+                                .font(ToskaFont.sans(12.5, weight: .semibold))
+                                .foregroundColor(ToskaColor.accentText)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                         }
                     }
                 }
-
-                // all / mentions tabs (mentions = replies to you)
-                HStack(spacing: 24) {
-                    ForEach(0..<2, id: \.self) { i in
-                        Button { notifTab = i } label: {
-                            VStack(spacing: 6) {
-                                Text(["all", "mentions"][i])
-                                    .font(ToskaFont.sans(16, weight: notifTab == i ? .semibold : .regular))
-                                    .foregroundColor(notifTab == i ? ToskaColor.text : ToskaColor.text3)
-                                Rectangle()
-                                    .fill(notifTab == i ? ToskaColor.accent : Color.clear)
-                                    .frame(width: 22, height: 2)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
-                .padding(.bottom, 2)
-                .background(LateNightTheme.feedBackground)
 
                 // MARK: - Content
                 //
@@ -200,22 +183,16 @@ struct NotificationsView: View {
                             // Based on the FILTERED arrays, not `notifications` — so
                             // the "mentions" tab with no replies shows an empty state
                             // instead of a blank list.
-                            VStack(spacing: 16) {
+                            VStack(spacing: 8) {
                                 Spacer()
-                                Image(systemName: notifTab == 1 ? "bubble.left" : "heart.text.square")
-                                    .font(.system(size: 30, weight: .ultraLight))
-                                    .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                    .padding(.bottom, 4)
-                                Text(notifTab == 1 ? "\"no replies yet.\"" : "\"someone will feel\nwhat you wrote.\"")
-                                    .font(ToskaFont.serifItalic(20))
-                                    // text2, not toskaTimestamp (#c0c0c0 ≈ 1.6:1 on
-                                    // white) — the empty-state headline must be readable.
+                                Text("nothing here yet.")
+                                    .font(ToskaFont.serifItalic(17))
                                     .foregroundColor(ToskaColor.text2)
                                     .multilineTextAlignment(.center)
+                                Text(timeAwareNotifEmpty())
+                                    .font(ToskaFont.sans(12.5))
+                                    .foregroundColor(ToskaColor.text2)
                                     .lineSpacing(4)
-                                Text(notifTab == 1 ? "when someone replies to your moments, it lands here" : timeAwareNotifEmpty())
-                                    .font(ToskaFont.sans(11))
-                                    .foregroundColor(Color.toskaDivider)
                                     .multilineTextAlignment(.center)
                                 Spacer()
                             }
@@ -399,17 +376,18 @@ struct NotificationsView: View {
     // MARK: - Section Header
 
     func sectionHeader(_ title: String) -> some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 0) {
             Text(title)
-                .font(ToskaFont.eyebrow)
+                .font(ToskaFont.sans(10.5, weight: .semibold))
                 .textCase(.uppercase)
-                .tracking(1.4)
-                .foregroundColor(ToskaColor.text3)
-            Spacer()
+                .tracking(0.74)
+                .foregroundColor(ToskaColor.text2)
+                .padding(.horizontal, 28)
+                .padding(.top, 18)
+                .padding(.bottom, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Rectangle().fill(ToskaColor.divider).frame(height: 1)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
         .background(LateNightTheme.feedBackground)
     }
 
@@ -417,28 +395,23 @@ struct NotificationsView: View {
 
     func notifRow(_ notif: NotificationItem) -> some View {
             Button { handleNotifTap(notif) } label: {
+                // Row (design 2026-09-16): a 6pt type-coloured dot, then
+                // "handle followed you" at 13/1.55 with the handle semibold,
+                // time 11.5 soft beneath, full hairline after.
                 HStack(alignment: .top, spacing: 12) {
-                    // Type icon in a soft tinted circle (one color per class).
-                    ZStack {
-                        Circle()
-                            .fill(iconColor(for: notif.type).opacity(0.14))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: notif.icon)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(iconColor(for: notif.type))
-                    }
+                    Circle()
+                        .fill(iconColor(for: notif.type))
+                        .frame(width: 6, height: 6)
+                        .padding(.top, 7)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        // Title: bold actor + (optional "and N others") + action phrase.
+                    VStack(alignment: .leading, spacing: 4) {
                         (Text(notif.fromHandle.isEmpty ? "someone" : notif.fromHandle)
-                            .font(ToskaFont.sans(14, weight: .semibold))
-                            .foregroundColor(ToskaColor.text)
+                            .fontWeight(.semibold)
                          + Text(notif.othersCount > 0 ? " and \(notif.othersCount) \(notif.othersCount == 1 ? "other" : "others") " : " ")
-                            .font(ToskaFont.sans(14))
+                         + Text(notif.actionText))
+                            .font(ToskaFont.sans(13))
                             .foregroundColor(ToskaColor.text)
-                         + Text(notif.actionText)
-                            .font(ToskaFont.sans(14))
-                            .foregroundColor(ToskaColor.text2))
+                            .lineSpacing(3)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                             .multilineTextAlignment(.leading)
@@ -448,32 +421,34 @@ struct NotificationsView: View {
                         if let q = notif.quote, !q.isEmpty {
                             Text("\u{201C}\(q)\u{201D}")
                                 .font(ToskaFont.serifItalic(14))
-                                .foregroundColor(ToskaColor.text3)
+                                .foregroundColor(ToskaColor.text2)
                                 .lineSpacing(3)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
                                 .padding(.leading, 10)
                                 .overlay(alignment: .leading) {
-                                    Rectangle().fill(ToskaColor.divider).frame(width: 2)
+                                    Rectangle().fill(ToskaColor.divider2).frame(width: 2)
                                 }
+                                .padding(.top, 2)
                         }
 
                         // Reply body in its own soft bubble.
                         if let r = notif.replyText, !r.isEmpty {
                             Text(r)
                                 .font(ToskaFont.serif(14))
-                                .foregroundColor(ToskaColor.text)
+                                .foregroundColor(ToskaColor.body)
                                 .lineSpacing(3)
                                 .lineLimit(3)
                                 .multilineTextAlignment(.leading)
                                 .padding(.horizontal, 12).padding(.vertical, 8)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 10))
+                                .padding(.top, 2)
                         }
 
                         Text(notif.time)
-                            .font(ToskaFont.sans(12))
-                            .foregroundColor(notif.isUnread ? ToskaColor.accent : ToskaColor.time)
+                            .font(ToskaFont.sans(11.5))
+                            .foregroundColor(notif.isUnread ? ToskaColor.accentText : ToskaColor.handle)
                     }
 
                     Spacer(minLength: 8)
@@ -482,10 +457,10 @@ struct NotificationsView: View {
                         Circle().fill(ToskaColor.accent).frame(width: 7, height: 7).padding(.top, 6)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 17)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 20)
                 .background(notif.isUnread ? ToskaColor.accent.opacity(0.045) : Color.clear)
-                .overlay(Rectangle().fill(ToskaColor.divider.opacity(0.5)).frame(height: 0.5), alignment: .bottom)
+                .overlay(Rectangle().fill(ToskaColor.divider).frame(height: 1), alignment: .bottom)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

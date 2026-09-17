@@ -741,9 +741,9 @@ struct FeedPostRow: View, Equatable {
                     if isLetter && !isLetterExpanded {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(text)
-                                .font(ToskaFont.serif(16))
+                                .font(ToskaFont.serif(15.5))
                                 .foregroundColor(ToskaColor.text)
-                                .lineSpacing(6)
+                                .lineSpacing(5)
                                 .lineLimit(4)
                                 .multilineTextAlignment(.leading)
                                 .padding(.top, 10)
@@ -761,9 +761,9 @@ struct FeedPostRow: View, Equatable {
                         }
                     } else {
                         Text(text)
-                            .font(isLetter ? ToskaFont.serif(16) : ToskaFont.serif(17))
+                            .font(isLetter ? ToskaFont.serif(15.5) : ToskaFont.serif(16))
                             .foregroundColor(ToskaColor.text)
-                            .lineSpacing(isLetter ? 6 : 5.5)
+                            .lineSpacing(5)
                             .multilineTextAlignment(.leading)
                             .padding(.top, 10)
                     }
@@ -1384,7 +1384,7 @@ struct FeedHeaderCard: View {
                     Text(vm.todaysPrompt.0)
                         .font(ToskaFont.serif(18))
                         .foregroundColor(ToskaColor.promptInk)
-                        .lineSpacing(2)
+                        .lineSpacing(0)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 6)

@@ -73,7 +73,7 @@ struct PostDetailView: View {
     let initialIsSaved: Bool
     let initialIsReposted: Bool
 
-    init(postId: String, handle: String, text: String, tag: String?, likes: Int, reposts: Int, replies: Int, time: String, authorId: String = "", isAlreadyLiked: Bool = false, isAlreadySaved: Bool = false, isAlreadyReposted: Bool = false, gifUrl: String? = nil, isLetter: Bool = false, isWhisper: Bool = false) {
+    init(postId: String, handle: String, text: String, tag: String?, likes: Int, reposts: Int, replies: Int, time: String, authorId: String = "", isAlreadyLiked: Bool = false, isAlreadySaved: Bool = false, isAlreadyReposted: Bool = false, gifUrl: String? = nil, isLetter: Bool = false, isWhisper: Bool = false, isShareable: Bool = false) {
         self.postId = postId
         self.text = text
         self.likes = likes
@@ -103,6 +103,11 @@ struct PostDetailView: View {
         _postGifUrl = State(initialValue: gifUrl)
         _isLetter = State(initialValue: isLetter)
         _isWhisper = State(initialValue: isWhisper)
+        // Seed sharing consent from the caller when it KNOWS (the feed row
+        // passes its denormalized value, so the share icon doesn't pop in a
+        // frame after open — owner flagged it as "gone"). Unknown-value paths
+        // (push, profile) default false — fail-closed until the listener.
+        _isShareable = State(initialValue: isShareable)
     }
 
     @Environment(\.dismiss) var dismiss
@@ -549,7 +554,7 @@ struct PostDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         postHeaderSection
                             .padding(.horizontal, 28)
-                            .padding(.top, 8)
+                            .padding(.top, 18)
 
                         // Hairline + "27 REPLIES" eyebrow (design 2026-09-16).
                         Rectangle().fill(ToskaColor.divider).frame(height: 1)

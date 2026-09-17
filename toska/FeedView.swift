@@ -691,7 +691,8 @@ struct FeedPostRow: View, Equatable {
                         // matches the row — no pop-in reflow on open.
                         gifUrl: gifUrl,
                         isLetter: isLetter,
-                        isWhisper: isWhisperPost
+                        isWhisper: isWhisperPost,
+                        isShareable: isShareable
                     )
                     .navigationBarHidden(true)
                 } label: {
@@ -836,7 +837,8 @@ struct FeedPostRow: View, Equatable {
                                                     isAlreadyReposted: isReposted,
                                                     gifUrl: gifUrl,
                                                     isLetter: isLetter,
-                                                    isWhisper: isWhisperPost
+                                                    isWhisper: isWhisperPost,
+                                                    isShareable: isShareable
                                                 )
                                                 .navigationBarHidden(true)
                                             } label: {

@@ -157,21 +157,14 @@ struct TopView: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 4) {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(ToskaColor.accent)
-                Text("most felt")
-                    .toskaEyebrow()
-            }
-            Text("top")
-                .toskaScreenTitle()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 12)
+        Text("most felt")
+            .font(ToskaFont.serif(20))
+            .tracking(-0.24)
+            .foregroundColor(ToskaColor.text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.top, 6)
+            .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: - Period selector (segmented control)
@@ -180,31 +173,28 @@ struct TopView: View {
     // (feedTabs in FeedView) so the period selector reads as the same control
     // vocabulary across the app instead of a separate boxed segmented control.
     private var periodSelector: some View {
-        HStack(spacing: 0) {
-            ForEach(Period.allCases) { p in
-                let isSel = period == p
-                Button {
-                    if period != p {
-                        withAnimation(.easeInOut(duration: 0.18)) { period = p }
-                    }
-                } label: {
-                    VStack(spacing: 8) {
+        VStack(spacing: 0) {
+            HStack(spacing: 20) {
+                ForEach(Period.allCases) { p in
+                    let isSel = period == p
+                    Button {
+                        if period != p {
+                            withAnimation(.easeInOut(duration: 0.18)) { period = p }
+                        }
+                    } label: {
                         Text(p.rawValue)
-                            .font(ToskaFont.sans(13, weight: isSel ? .semibold : .regular))
-                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text3)
-                        Capsule()
-                            .fill(isSel ? ToskaColor.accent : Color.clear)
-                            .frame(width: 22, height: 2)
+                            .font(ToskaFont.sans(12.5, weight: isSel ? .semibold : .regular))
+                            .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
                     }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 28)
+            Rectangle().fill(ToskaColor.divider).frame(height: 1)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 
     // MARK: - Content
@@ -212,34 +202,28 @@ struct TopView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 24, weight: .light))
-                .foregroundColor(ToskaColor.text3)
-            Text("nothing yet")
-                .font(ToskaFont.sans(13))
+            Text("nothing yet.")
+                .font(ToskaFont.serifItalic(16))
                 .foregroundColor(ToskaColor.text2)
-            Text("everyones being quiet right now.")
-                .font(ToskaFont.sans(11))
+            Text("everyone is being quiet right now.")
+                .font(ToskaFont.sans(12.5))
                 .foregroundColor(ToskaColor.text3)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
+        .padding(.vertical, 72)
     }
 
     private var loadFailedState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 24, weight: .light))
-                .foregroundColor(ToskaColor.text3)
-            Text("couldnt load")
-                .font(ToskaFont.sans(13))
+            Text("couldnt load.")
+                .font(ToskaFont.serifItalic(16))
                 .foregroundColor(ToskaColor.text2)
             Text("pull down to try again.")
-                .font(ToskaFont.sans(11))
+                .font(ToskaFont.sans(12.5))
                 .foregroundColor(ToskaColor.text3)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
+        .padding(.vertical, 72)
     }
 
     // MARK: - Aggregation
@@ -376,40 +360,15 @@ struct TopPeriodColumn: View {
             ScrollView(showsIndicators: false) {
                 Color.clear.frame(height: 0).id("top")
 
-                // Summary line — serif italic with the two most-felt emotions
-                // tinted in their colors.
-                summaryLine
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
-
-                // Distribution bar — one segment per top post, colored by tag.
-                distributionBar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
-
-                // Hero — the single most-felt post.
-                if let hero = posts.first {
-                    heroCard(hero)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 24)
-                }
-
-                // The rest — ranked 02…N.
-                if posts.count > 1 {
-                    Text("the rest")
-                        .toskaEyebrow()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 4)
-
-                    ForEach(Array(posts.dropFirst().enumerated()), id: \.element.id) { idx, post in
-                        restRow(post, rank: idx + 2)
-                        Rectangle()
-                            .fill(ToskaColor.divider)
-                            .frame(height: 0.5)
-                            .padding(.leading, 52)
-                    }
+                // Uniform numbered list (design 2026-09-16): rank, feeling +
+                // felt-count meta, the words, hairlines. The old summary line,
+                // distribution bar, and hero card were aggregates the owner
+                // declined — removed with the redesign port.
+                ForEach(Array(posts.enumerated()), id: \.element.id) { idx, post in
+                    rankedRow(post, rank: idx + 1)
+                    Rectangle()
+                        .fill(ToskaColor.divider)
+                        .frame(height: 1)
                 }
 
                 Color.clear.frame(height: 130)
@@ -423,187 +382,50 @@ struct TopPeriodColumn: View {
         }
     }
 
-    // MARK: - Summary line
+    // MARK: - Ranked row
 
-    private var summaryLine: some View {
-        let top = topTags()
-        let lead: String = {
-            switch period {
-            case .today: return "today, the app most felt "
-            case .week:  return "this week the app is mostly feeling "
-            case .all:   return "of all time, the app most felt "
-            }
-        }()
-
-        var line = Text(lead)
-            .font(ToskaFont.serifItalic(17))
-            .foregroundColor(ToskaColor.text)
-
-        if let first = top.first {
-            line = line + Text(first)
-                .font(ToskaFont.serifItalic(17))
-                .foregroundColor(tagColor(for: first))
-        }
-        if top.count > 1 {
-            line = line + Text(" & ")
-                .font(ToskaFont.serifItalic(17))
-                .foregroundColor(ToskaColor.text)
-            line = line + Text(top[1])
-                .font(ToskaFont.serifItalic(17))
-                .foregroundColor(tagColor(for: top[1]))
-        }
-        line = line + Text(".")
-            .font(ToskaFont.serifItalic(17))
-            .foregroundColor(ToskaColor.text)
-
-        return line
-            .lineSpacing(3)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .multilineTextAlignment(.leading)
-    }
-
-    private var distributionBar: some View {
-        HStack(spacing: 4) {
-            ForEach(Array(posts.prefix(7).enumerated()), id: \.element.id) { _, post in
-                Rectangle()
-                    .fill(post.tag.map { tagColor(for: $0) } ?? ToskaColor.text3)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 5)
-            }
-        }
-        .clipShape(Capsule())
-    }
-
-    // MARK: - Hero card
-
-    private func heroCard(_ post: RankedPost) -> some View {
+    private func rankedRow(_ post: RankedPost, rank: Int) -> some View {
         NavigationLink {
             detail(for: post)
         } label: {
-            VStack(alignment: .leading, spacing: 14) {
-                // Avatar + handle header so the #1 hero matches the ranked rows
-                // below it; the "most felt" eyebrow sits beside the avatar.
-                HStack(spacing: 11) {
-                    emotionAvatar(for: post.tag, size: 38)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("most felt \(period.heroSuffix)")
-                            .font(ToskaFont.eyebrow)
-                            .textCase(.uppercase)
-                            .tracking(1.4)
-                            .foregroundColor(ToskaColor.accent)
-                        Text(post.handle)
-                            .font(ToskaFont.sans(13, weight: .semibold))
-                            .foregroundColor(ToskaColor.text2)
-                    }
-                    Spacer()
-                }
-
-                Text(post.text)
-                    .font(ToskaFont.serif(20))
-                    .foregroundColor(ToskaColor.text)
-                    .lineSpacing(4)
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(6)
-                    .minimumScaleFactor(0.6)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(alignment: .center) {
-                    if let tag = post.tag {
-                        emotionChip(tag)
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Text(formatCount(post.likes))
-                            .font(ToskaFont.sans(13, weight: .semibold))
-                            .foregroundColor(ToskaColor.text)
-                        Text("felt this")
-                            .font(ToskaFont.sans(13))
-                            .foregroundColor(ToskaColor.text2)
-                        if post.reposts > 0 {
-                            Text("· \(formatCount(post.reposts)) reposts")
-                                .font(ToskaFont.sans(13))
-                                .foregroundColor(ToskaColor.text2)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(ToskaSpace.lg)
-            .toskaCard()
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Rest row
-
-    private func restRow(_ post: RankedPost, rank: Int) -> some View {
-        NavigationLink {
-            detail(for: post)
-        } label: {
-            HStack(alignment: .top, spacing: 11) {
+            HStack(alignment: .top, spacing: 16) {
                 Text(String(format: "%02d", rank))
                     .font(ToskaFont.serifItalic(17))
-                    .foregroundColor(ToskaColor.text3)
-                    .frame(width: 22, alignment: .leading)
-                    .padding(.top, 4)
+                    .monospacedDigit()
+                    .foregroundColor(ToskaColor.dot)
+                    .frame(width: 26, alignment: .leading)
 
-                emotionAvatar(for: post.tag, size: 34)
-                    .padding(.top, 1)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 7) {
-                        Text(post.handle)
-                            .font(ToskaFont.sans(13, weight: .semibold))
-                            .foregroundColor(ToskaColor.text2)
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 8) {
                         if let tag = post.tag {
+                            Circle()
+                                .fill(tagDotColor(for: tag))
+                                .frame(width: 5, height: 5)
                             Text(tag)
-                                .font(ToskaFont.sans(11, weight: .semibold))
+                                .font(ToskaFont.sans(11.5, weight: .medium))
                                 .foregroundColor(tagColor(for: tag))
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(tagColor(for: tag).opacity(0.14))
-                                .clipShape(Capsule())
                         }
+                        Spacer(minLength: 8)
+                        Text("\(formatCount(max(0, post.likes))) felt this")
+                            .font(ToskaFont.sans(11.5))
+                            .monospacedDigit()
+                            .foregroundColor(ToskaColor.handle)
                     }
+
                     Text(post.text)
-                        .font(ToskaFont.serif(16))
+                        .font(ToskaFont.serif(15))
                         .foregroundColor(ToskaColor.text)
-                        .lineSpacing(3)
-                        .lineLimit(2)
+                        .lineSpacing(4.5)
+                        .lineLimit(3)
                         .multilineTextAlignment(.leading)
-                    HStack(spacing: 5) {
-                        Image(systemName: "heart.fill").font(.system(size: 12))
-                        Text("\(formatCount(post.likes))").font(ToskaFont.sans(12, weight: .medium))
-                        if post.reposts > 0 {
-                            Image(systemName: "arrow.2.squarepath").font(.system(size: 11)).padding(.leading, 6)
-                            Text("\(formatCount(post.reposts))").font(ToskaFont.sans(12, weight: .medium))
-                        }
-                    }
-                    .foregroundColor(ToskaColor.badge)
+                        .padding(.top, 8)
                 }
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 28)
             .padding(.vertical, 18)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Emotion chip (hero)
-
-    private func emotionChip(_ tag: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: ToskaEmotion.icon(tag))
-                .font(.system(size: 13, weight: .medium))
-            Text(tag)
-                .font(ToskaFont.chip)
-        }
-        .foregroundColor(tagColor(for: tag))
-        .padding(.vertical, 4)
-        .padding(.leading, 8)
-        .padding(.trailing, 12)
-        .background(tagColor(for: tag).opacity(0.13))
-        .clipShape(Capsule())
     }
 
     private func detail(for post: RankedPost) -> some View {

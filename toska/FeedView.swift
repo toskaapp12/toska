@@ -1367,10 +1367,19 @@ struct FeedHeaderCard: View {
     // daily moment, most-unsaid); removing the most-unsaid surface meant a
     // fresh user on a quiet day saw nothing — no prompt, no respond button.
 
+    /// Display-only sentence case for the prompt (owner 2026-09-17): the
+    /// stored prompts are lowercase (brand voice), the band capitalizes the
+    /// first letter.
+    private var displayPrompt: String {
+        let p = vm.todaysPrompt.0
+        guard let f = p.first else { return p }
+        return f.uppercased() + p.dropFirst()
+    }
+
     var body: some View {
         VStack(spacing: 0) {
                 // Today's-prompt band (design 2026-09-16): full-bleed promptBg,
-                // uppercase eyebrow, Literata 20 prompt, "write yours" link —
+                // uppercase eyebrow, compact serif prompt, "write yours" link —
                 // no pill, no counter, closed by a promptHair rule.
                 VStack(alignment: .leading, spacing: 0) {
                     Text("today's prompt")
@@ -1381,8 +1390,8 @@ struct FeedHeaderCard: View {
 
                     // Compact prompt (2026-09-17 owner cleanup): 18pt, snug
                     // leading, tight rhythm — the band was reading bulky.
-                    Text(vm.todaysPrompt.0)
-                        .font(ToskaFont.serif(18))
+                    Text(displayPrompt)
+                        .font(ToskaFont.serif(16))
                         .foregroundColor(ToskaColor.promptInk)
                         .lineSpacing(0)
                         .multilineTextAlignment(.leading)

@@ -743,6 +743,10 @@ struct PostDetailView: View {
 
             HStack(spacing: 12) {
                 TextField("say something kind, anonymously…", text: $replyText)
+                // Stable XCUITest selector — the placeholder is copy, not a
+                // contract (the 2026-09 redesign changing it silently broke
+                // the reply tests, which matched the old string).
+                .accessibilityIdentifier("replyField")
                 .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
                     .font(ToskaFont.sans(14))
                     .foregroundColor(ToskaColor.text)

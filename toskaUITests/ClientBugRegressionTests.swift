@@ -315,9 +315,20 @@ final class ClientBugRegressionTests: XCTestCase {
             editedRow = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 5)
         }
         XCTAssertNotNil(editedRow, "Edited post row not found on profile after edit")
-        guard let editedRow else { return }
-        forceTap(editedRow)
-        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't re-open")
+        guard editedRow != nil else { return }
+        // The .postEdited 700ms refetch can reorder the list between find and
+        // tap; a stale-frame tap then lands on the floating bar (→ feed tab).
+        // Re-find + re-nudge right before each attempt and bounce back if the
+        // tap mis-landed. (2026-09-17 — taller redesign rows widened the race.)
+        var reopened = false
+        for _ in 0..<3 {
+            if let row = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 2) {
+                forceTap(row)
+                if waitFor(app.buttons["Back"], 5) { reopened = true; break }
+                if app.buttons["Profile"].exists { app.buttons["Profile"].tap(); sleep(1); app.swipeDown(); app.swipeDown() }
+            }
+        }
+        XCTAssertTrue(reopened, "Post detail didn't re-open")
         let newTextOnRepush = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", marker)).firstMatch
         XCTAssertTrue(waitFor(newTextOnRepush, 10), "Edited text lost after pop + re-push (H3 regression)")
         snap("01d-detail-after-repush")
@@ -535,7 +546,7 @@ final class ClientBugRegressionTests: XCTestCase {
         forceTap(row)
         XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Post detail didn't open")
 
-        let replyField = app.textFields["say something gently…"]
+        let replyField = app.textFields["replyField"]
         XCTAssertTrue(waitFor(replyField, 8), "Reply field missing")
         replyField.tap()
         replyField.typeText("here with you, always. \(marker)")

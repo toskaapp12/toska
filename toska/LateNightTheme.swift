@@ -9,9 +9,21 @@ class LateNightThemeManager {
     private var backgroundObserver: Any?
     private var foregroundObserver: Any?
 
+    /// DEBUG-only preview hook (mirrors the share-card matrix env hook):
+    /// `SIMCTL_CHILD_TOSKA_FORCE_NIGHT=1 simctl launch …` forces the night
+    /// theme so it can be reviewed without waiting for midnight. Compiled
+    /// out of Release.
+    static var forcedNight: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["TOSKA_FORCE_NIGHT"] == "1"
+        #else
+        return false
+        #endif
+    }
+
     private init() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = hour < 5
+        isLateNight = Self.forcedNight || hour < 5
         startTimer()
 
         // queue: .main guarantees the callback runs on the main thread, so
@@ -42,7 +54,7 @@ class LateNightThemeManager {
 
     func refresh() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = hour < 5
+        isLateNight = Self.forcedNight || hour < 5
     }
 
     private func startTimer() {

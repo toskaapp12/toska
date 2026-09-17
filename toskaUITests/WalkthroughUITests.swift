@@ -430,7 +430,7 @@ final class WalkthroughUITests: XCTestCase {
         if let save { save.tap(); sleep(1) }
 
         // reply (T-2 path: client writes pending_validation; staging validateReply promotes)
-        let replyField = app.textFields["say something gently…"]
+        let replyField = app.textFields["replyField"]
         if waitFor(replyField, 6) {
             replyField.tap()
             replyField.typeText("here with you. (walkthrough)")

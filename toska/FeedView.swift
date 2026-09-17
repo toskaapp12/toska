@@ -741,9 +741,9 @@ struct FeedPostRow: View, Equatable {
                     if isLetter && !isLetterExpanded {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(text)
-                                .font(ToskaFont.serif(15.5))
+                                .font(ToskaFont.serif(14.5))
                                 .foregroundColor(ToskaColor.text)
-                                .lineSpacing(5)
+                                .lineSpacing(4.5)
                                 .lineLimit(4)
                                 .multilineTextAlignment(.leading)
                                 .padding(.top, 10)
@@ -761,9 +761,9 @@ struct FeedPostRow: View, Equatable {
                         }
                     } else {
                         Text(text)
-                            .font(isLetter ? ToskaFont.serif(15.5) : ToskaFont.serif(16))
+                            .font(isLetter ? ToskaFont.serif(14.5) : ToskaFont.serif(15))
                             .foregroundColor(ToskaColor.text)
-                            .lineSpacing(5)
+                            .lineSpacing(4.5)
                             .multilineTextAlignment(.leading)
                             .padding(.top, 10)
                     }

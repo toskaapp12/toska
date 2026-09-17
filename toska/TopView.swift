@@ -361,13 +361,17 @@ struct TopPeriodColumn: View {
             ScrollView(showsIndicators: false) {
                 Color.clear.frame(height: 0).id("top")
 
-                // Feeling distribution — one segment per ranked post, in the
-                // feeling's dot colour. (Owner 2026-09-17: the bar stays; only
-                // the "mostly feeling…" summary line was declined.)
-                distributionBar
+                // Summary line + feeling distribution (owner 2026-09-17:
+                // both stay — the serif line names the top feelings in their
+                // colours, the bar shows one segment per ranked post).
+                summaryLine
                     .padding(.horizontal, 28)
                     .padding(.top, 18)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 12)
+
+                distributionBar
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 16)
 
                 // Uniform numbered list (design 2026-09-16): rank, feeling +
                 // felt-count meta, the words, hairlines. The old summary line,
@@ -389,6 +393,33 @@ struct TopPeriodColumn: View {
                 }
             }
         }
+    }
+
+    // "this week the app is mostly feeling longing & acceptance." — the two
+    // most-frequent feelings on the board, tinted in their text colours.
+    private var summaryLine: some View {
+        let top = topTags()
+        let lead: String = {
+            switch period {
+            case .today: return "today, the app most felt "
+            case .week:  return "this week the app is mostly feeling "
+            case .all:   return "of all time, the app most felt "
+            }
+        }()
+        var line = Text(lead).foregroundColor(ToskaColor.text)
+        if let first = top.first {
+            line = line + Text(first).foregroundColor(tagColor(for: first))
+        }
+        if top.count > 1 {
+            line = line + Text(" & ").foregroundColor(ToskaColor.text)
+                + Text(top[1]).foregroundColor(tagColor(for: top[1]))
+        }
+        line = line + Text(".").foregroundColor(ToskaColor.text)
+        return line
+            .font(ToskaFont.serifItalic(16))
+            .lineSpacing(3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .multilineTextAlignment(.leading)
     }
 
     private var distributionBar: some View {

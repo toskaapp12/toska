@@ -552,6 +552,56 @@ final class WalkthroughUITests: XCTestCase {
         snap("10b-after-post")
     }
 
+    // MARK: 10c — compose mode chips (letter / whisper / midnight / feeling / GIF)
+    //
+    // The 2026-09 redesign turned the icon toolbar into outlined chips —
+    // verify each mode still wires up: toggling shows its banner, whisper and
+    // midnight stay mutually exclusive, the feeling picker opens + closes on
+    // selection, and the GIF chip pushes the picker and comes back.
+    func test10c_composeModeChips() throws {
+        try requireFeed()
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+
+        func chip(_ prefix: String) -> XCUIElement {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", prefix)).firstMatch
+        }
+        func banner(_ contains: String) -> XCUIElement {
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", contains)).firstMatch
+        }
+
+        forceTap(chip("Letter mode"))
+        XCTAssertTrue(waitFor(banner("writing a letter"), 4), "Letter banner missing")
+        snap("10c1-letter-on")
+
+        forceTap(chip("Whisper"))
+        XCTAssertTrue(waitFor(banner("disappears in 1 hour"), 4), "Whisper banner missing")
+
+        forceTap(chip("Midnight post"))
+        XCTAssertTrue(waitFor(banner("disappears at midnight"), 4), "Midnight banner missing")
+        sleep(1)
+        XCTAssertFalse(banner("disappears in 1 hour").exists, "Whisper should switch off when midnight turns on")
+        snap("10c2-midnight-letter")
+
+        forceTap(app.buttons["Tag"])
+        XCTAssertTrue(waitFor(app.staticTexts["how does this feel"], 4), "Feeling picker missing")
+        forceTap(app.buttons.matching(NSPredicate(format: "label CONTAINS 'longing'")).firstMatch)
+        sleep(1)
+        XCTAssertFalse(app.staticTexts["how does this feel"].exists, "Feeling picker should close after selection")
+        snap("10c3-feeling-selected")
+
+        forceTap(app.buttons["Add GIF"])
+        sleep(2)
+        snap("10c4-gif-picker")
+        let closeGifs = app.buttons["close GIF picker"]
+        XCTAssertTrue(waitFor(closeGifs, 6), "GIF picker didn't open")
+        forceTap(closeGifs)
+        sleep(1)
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 6), "Didn't return to compose from GIF picker")
+
+        app.buttons["cancel"].tap()
+    }
+
     // MARK: 11 — compose: PII warning fires on a FULL name (and not on lone first name)
 
     func test11_composePIIWarning() throws {

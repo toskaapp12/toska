@@ -518,6 +518,20 @@ describe("#2 trigger orchestration — validatePost", () => {
     assert.strictEqual(snap.get("moderationStatus"), "pending_review");
     assert.strictEqual(snap.get("pendingReason"), "pii");
   }).timeout(8000);
+
+  // GIF-only posts (owner 2026-09-17): blank text + gifUrl is a valid post;
+  // blank text with NO gif keeps the hard-delete guard.
+  it("GIF-only post (blank text + gifUrl) → promoted to live", async () => {
+    await db.doc("posts/pgif").set({ authorId: "u", text: "", gifUrl: "https://media.giphy.com/media/abc/giphy.gif", likeCount: 0, repostCount: 0, replyCount: 0, createdAt: new Date() });
+    await fns.validatePost.run({ id: "e6", data: await snapOf("posts/pgif"), params: { postId: "pgif" } });
+    assert.strictEqual((await db.doc("posts/pgif").get()).get("moderationStatus"), "live");
+  }).timeout(8000);
+
+  it("blank post with NO gif → still hard-deleted", async () => {
+    await db.doc("posts/pblank").set({ authorId: "u", text: "   ", likeCount: 0, repostCount: 0, replyCount: 0, createdAt: new Date() });
+    await fns.validatePost.run({ id: "e7", data: await snapOf("posts/pblank"), params: { postId: "pblank" } });
+    assert.strictEqual((await db.doc("posts/pblank").get()).exists, false);
+  }).timeout(8000);
 });
 
 // ─────────────────────────────────────────────────────────────────────

@@ -2419,8 +2419,12 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   }
 
   const text = postData.text;
+  // GIF-only posts (owner 2026-09-17): blank text is valid when a gifUrl is
+  // present (the rules host-lock already constrained it to giphy.com). All
+  // later text checks (length / PII / crisis / moderation) are no-ops on "".
+  const hasGif = typeof postData.gifUrl === "string" && postData.gifUrl.length > 0;
 
-  if (typeof text !== "string" || text.trim().length === 0) {
+  if (typeof text !== "string" || (text.trim().length === 0 && !hasGif)) {
     console.warn(`Deleting post ${postId} — missing or blank text`);
     await db.collection("posts").doc(postId).delete();
     return;

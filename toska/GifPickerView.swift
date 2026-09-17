@@ -185,13 +185,43 @@ struct GifPickerView: View {
         }
         .background(Color(hex: "f0f1f3"))
         .onAppear {
-            fetchTrending()
+            // Serve the prefetched trending set instantly when it's fresh
+            // (ComposeView warms it on open); fall back to a live fetch.
+            if !GifTrendingCache.items.isEmpty,
+               Date().timeIntervalSince(GifTrendingCache.fetchedAt) < 300 {
+                gifs = GifTrendingCache.items
+                isLoading = false
+            } else {
+                fetchTrending()
+            }
         }
     }
     
     func fetchTrending() {
         isLoading = true
         fetchGifs(mode: "trending", query: nil)
+    }
+
+    /// Fire-and-forget trending prefetch — called from ComposeView.onAppear so
+    /// the picker opens with content already there (owner 2026-09-17: "takes
+    /// a second to load when you tap GIF").
+    static func warmTrendingCache() {
+        Task { @MainActor in
+            guard GifTrendingCache.items.isEmpty
+                    || Date().timeIntervalSince(GifTrendingCache.fetchedAt) >= 300,
+                  !GifTrendingCache.isWarming else { return }
+            GifTrendingCache.isWarming = true
+            defer { GifTrendingCache.isWarming = false }
+            let callable = Functions.functions().httpsCallable("giphyProxy")
+            guard let result = try? await callable.call(["mode": "trending", "limit": 30] as [String: Any]),
+                  let json = result.data as? [String: Any],
+                  let dataArray = json["data"] as? [[String: Any]] else { return }
+            let items = GifPickerView.parseGifs(dataArray)
+            if !items.isEmpty {
+                GifTrendingCache.items = items
+                GifTrendingCache.fetchedAt = Date()
+            }
+        }
     }
 
     func searchGifs(query: String) {
@@ -251,7 +281,18 @@ struct GifPickerView: View {
                 fetchError = "couldn't load GIFs. try again in a bit."
                 return
             }
-            gifs = dataArray.compactMap { item in
+            gifs = GifPickerView.parseGifs(dataArray)
+            if mode == "trending" && !gifs.isEmpty {
+                GifTrendingCache.items = gifs
+                GifTrendingCache.fetchedAt = Date()
+            }
+            isLoading = false
+        }
+    }
+
+    /// Shared Giphy-response parser (instance fetch + static warm path).
+    static func parseGifs(_ dataArray: [[String: Any]]) -> [GifItem] {
+            return dataArray.compactMap { item in
                 guard let id = item["id"] as? String,
                       let images = item["images"] as? [String: Any] else { return nil }
 
@@ -289,9 +330,15 @@ struct GifPickerView: View {
 
                 return GifItem(id: id, url: fullUrl, previewUrl: previewUrl)
             }
-            isLoading = false
-        }
     }
+}
+
+/// Session-lived trending cache backing the picker's instant open.
+@MainActor
+enum GifTrendingCache {
+    static var items: [GifItem] = []
+    static var fetchedAt: Date = .distantPast
+    static var isWarming = false
 }
 
 struct GifItem: Identifiable {

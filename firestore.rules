@@ -1096,10 +1096,14 @@ service cloud.firestore {
         && hasConfirmedAdult()
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.text is string
-        && request.resource.data.text.size() > 0
         && request.resource.data.text.size() <= 2000
-        // FIX: added text.size() > 0 to match the server-side validatePost
-        // Cloud Function guard. A blank post cannot be created from the client.
+        // GIF-only posts (owner 2026-09-17): empty text is allowed ONLY when
+        // a gifUrl accompanies it (host-locked + capped by the clause below).
+        // A blank post with no GIF still cannot be created.
+        && (request.resource.data.text.size() > 0
+            || ('gifUrl' in request.resource.data.keys()
+                && request.resource.data.gifUrl is string
+                && request.resource.data.gifUrl.size() > 0))
         && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt', 'likeCount', 'repostCount', 'replyCount'])
         // Schema lockdown — only the documented post fields can land on a post
         // doc. Without hasOnly, a malicious or buggy client could attach

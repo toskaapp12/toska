@@ -1400,12 +1400,13 @@ struct FeedHeaderCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 6)
 
-                    // Show "write yours" unless there's a response FOR TODAY. A
-                    // plain nil-check kept the button hidden after a midnight
-                    // rollover (todaysPromptResponse still held yesterday's
-                    // answer until the next fetch), locking the user out of
-                    // the new day's prompt. nil?.promptDate != today, so the
-                    // no-response case still shows the button.
+                    // "write yours" until there's a response FOR TODAY, then a
+                    // compact "your response" opener (owner 2026-09-17: the
+                    // response lives in the feed like any post — no pinned
+                    // card at the top; this link is how the author revisits
+                    // it). The promptDate == today check also survives the
+                    // midnight rollover (yesterday's cached answer must not
+                    // lock the new day's prompt).
                     if vm.todaysPromptResponse?.promptDate != vm.todaysPromptDateString {
                         Button {
                             vm.showPromptCompose = true
@@ -1422,6 +1423,34 @@ struct FeedHeaderCard: View {
                                 .contentShape(Rectangle().inset(by: -10))
                         }
                         .buttonStyle(.plain)
+                    } else if let response = vm.todaysPromptResponse {
+                        NavigationLink {
+                            PostDetailView(
+                                postId: response.id,
+                                handle: response.handle,
+                                text: response.text,
+                                tag: response.tag,
+                                likes: response.likes,
+                                reposts: response.reposts,
+                                replies: response.replies,
+                                time: response.time,
+                                authorId: response.authorId
+                            )
+                            .navigationBarHidden(true)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 12))
+                                Text("your response")
+                                    .font(ToskaFont.sans(12.5, weight: .semibold))
+                            }
+                            .foregroundColor(ToskaColor.accentText)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                            .contentShape(Rectangle().inset(by: -10))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("View your response")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1431,69 +1460,6 @@ struct FeedHeaderCard: View {
                     Rectangle()
                         .fill(ToskaColor.promptHair)
                         .frame(height: 1)
-                }
-
-                // ALWAYS-visible "your response" card (not gated by isExpanded).
-                // When the user has responded today, this sits right under the
-                // prompt header in the collapsed state so it's immediately
-                // visible. Tap pushes PostDetailView (where the existing ⋯
-                // menu surfaces edit/delete on own posts).
-                // promptDate must match TODAY: after a midnight rollover with
-                // the app still in memory, todaysPromptResponse can hold
-                // yesterday's answer until the next fetch — rendering it under
-                // the new day's prompt misattributes it. The respond button
-                // above uses the same date check, so post-rollover the card
-                // hides and the button returns immediately.
-                if let response = vm.todaysPromptResponse,
-                   response.promptDate == vm.todaysPromptDateString {
-                    NavigationLink {
-                        PostDetailView(
-                            postId: response.id,
-                            handle: response.handle,
-                            text: response.text,
-                            tag: response.tag,
-                            likes: response.likes,
-                            reposts: response.reposts,
-                            replies: response.replies,
-                            time: response.time,
-                            authorId: response.authorId,
-                            isAlreadyLiked: false,
-                            isAlreadySaved: false,
-                            isAlreadyReposted: false
-                        )
-                        .navigationBarHidden(true)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(ToskaColor.accentText)
-                                Text("your response")
-                                    .font(ToskaFont.sans(10.5, weight: .semibold))
-                                    .textCase(.uppercase)
-                                    .tracking(0.74)
-                                    .foregroundColor(ToskaColor.accentText)
-                                Spacer()
-                                Text("tap to open")
-                                    .font(ToskaFont.sans(10.5))
-                                    .foregroundColor(ToskaColor.text3)
-                            }
-                            Text(response.text)
-                                .font(ToskaFont.serif(15))
-                                .foregroundColor(ToskaColor.body)
-                                .lineSpacing(4)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .padding(.horizontal, 28)
-                        .padding(.top, 14)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
                 }
 
             }
@@ -1798,7 +1764,11 @@ struct FeedColumn: View {
                                                                                                                                                         isLetterExpanded: vm.expandedLetterIds.contains(post.id),
                                                                                                                                                         onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
                                                                                                                                                         reposterHandle: (post.isRepost && post.originalHandle != nil) ? post.handle : nil,
-                                                                                                                                                        promptText: FeedView.promptText(for: post.promptDate)
+                                                                                                                                                        // Others see the prompt above a response for
+                                                                                                                                                        // context; the AUTHOR already sees today's prompt
+                                                                                                                                                        // in the band — repeating it on their own row read
+                                                                                                                                                        // as clutter (owner 2026-09-17).
+                                                                                                                                                        promptText: post.authorId == Auth.auth().currentUser?.uid ? nil : FeedView.promptText(for: post.promptDate)
                                                                                                                                                                                                                                                                                                     )
                                                                                                                                                                                                                                                                                                     .equatable()
                                                                                                                                                                                                                                                                                                     .id(post.id)

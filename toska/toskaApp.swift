@@ -256,6 +256,13 @@ struct toskaApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        // GIFs are fetched with URLSession.shared (picker cells, compose
+        // preview, feed rows all hit the same Giphy URLs). The default
+        // URLCache is too small to hold even one animated GIF, so every
+        // surface re-downloaded the same bytes — the "GIF takes a second"
+        // the owner flagged (2026-09-17). 64MB memory / 256MB disk lets the
+        // compose preview seed the cache and the feed render instantly.
+        URLCache.shared = URLCache(memoryCapacity: 64 << 20, diskCapacity: 256 << 20)
         #if DEBUG
         // No-op unless SHARECARD_MATRIX_OUT is set in the environment.
         Task { @MainActor in ShareCardMatrixHarness.runIfRequested() }

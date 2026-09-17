@@ -343,6 +343,32 @@ describe("post create: gifUrl host-lock (audit 2026-07-19)", () => {
   });
 });
 
+describe("post create: GIF-only posts (owner 2026-09-17)", () => {
+  beforeEach(async () => { await setUserDoc("alice"); });
+
+  function post(fields) {
+    return env.authenticatedContext("alice").firestore()
+      .collection("posts").doc("gonly1").set({
+        authorId: "alice", authorHandle: "handle_alice",
+        createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+        ...fields,
+      });
+  }
+
+  it("allows empty text WITH a host-locked gifUrl (GIF-only post)", async () => {
+    await assertSucceeds(post({ text: "", gifUrl: "https://media.giphy.com/media/abc/giphy.gif" }));
+  });
+  it("still DENIES a fully blank post (no text, no gif)", async () => {
+    await assertFails(post({ text: "" }));
+  });
+  it("DENIES empty text with an empty gifUrl string", async () => {
+    await assertFails(post({ text: "", gifUrl: "" }));
+  });
+  it("DENIES empty text with a non-giphy gifUrl (host-lock still applies)", async () => {
+    await assertFails(post({ text: "", gifUrl: "https://evil.example.com/x.gif" }));
+  });
+});
+
 describe("post create: expiresAt bounded to the near future (audit 2026-07-17)", () => {
   // expiresAt is computed from the DEVICE clock (whisper +1h, midnight ≤
   // ~24h+DST). The rule bounds it to request.time + 26h so a skewed clock or

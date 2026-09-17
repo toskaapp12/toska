@@ -174,7 +174,7 @@ struct TopView: View {
     // vocabulary across the app instead of a separate boxed segmented control.
     private var periodSelector: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 20) {
+            HStack(spacing: 28) {
                 ForEach(Period.allCases) { p in
                     let isSel = period == p
                     Button {
@@ -185,7 +185,7 @@ struct TopView: View {
                         Text(p.rawValue)
                             .font(ToskaFont.sans(12.5, weight: isSel ? .semibold : .regular))
                             .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
-                            .padding(.vertical, 10)
+                            .padding(.vertical, 12)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -193,6 +193,7 @@ struct TopView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 28)
+            .padding(.top, 2)
             Rectangle().fill(ToskaColor.divider).frame(height: 1)
         }
     }
@@ -360,6 +361,14 @@ struct TopPeriodColumn: View {
             ScrollView(showsIndicators: false) {
                 Color.clear.frame(height: 0).id("top")
 
+                // Feeling distribution — one segment per ranked post, in the
+                // feeling's dot colour. (Owner 2026-09-17: the bar stays; only
+                // the "mostly feeling…" summary line was declined.)
+                distributionBar
+                    .padding(.horizontal, 28)
+                    .padding(.top, 18)
+                    .padding(.bottom, 14)
+
                 // Uniform numbered list (design 2026-09-16): rank, feeling +
                 // felt-count meta, the words, hairlines. The old summary line,
                 // distribution bar, and hero card were aggregates the owner
@@ -380,6 +389,18 @@ struct TopPeriodColumn: View {
                 }
             }
         }
+    }
+
+    private var distributionBar: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(posts.prefix(7).enumerated()), id: \.element.id) { _, post in
+                Rectangle()
+                    .fill(post.tag.map { tagDotColor(for: $0) } ?? ToskaColor.dot)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 5)
+            }
+        }
+        .clipShape(Capsule())
     }
 
     // MARK: - Ranked row

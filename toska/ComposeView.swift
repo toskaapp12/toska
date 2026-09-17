@@ -180,11 +180,10 @@ struct ComposeView: View {
     /// the silent Firestore-offline-queue behavior. The offline banner
     /// already explains the state; the inert button reinforces it.
     var canPost: Bool {
-        // Text is required. firestore.rules and the validatePost Cloud Function
-        // both enforce `text.size() > 0`, so a GIF-only post (empty body) is
-        // rejected server-side and would loop on the generic "couldnt post"
-        // error forever. The GIF is a supplement to text, not a standalone post.
-        !trimmedText.isEmpty
+        // Words OR a GIF (owner 2026-09-17): a GIF alone is a valid post.
+        // firestore.rules + validatePost were updated in the same change to
+        // accept empty text when a host-locked gifUrl is present.
+        (!trimmedText.isEmpty || selectedGifUrl != nil)
             && effectiveCharCount <= activeCharLimit   // block over-limit (e.g. toggling letter→normal with a long body) so it can't hit the server rule and fail
             && !isPosting
             && NetworkMonitor.shared.isConnected
@@ -869,6 +868,9 @@ struct ComposeView: View {
         // editor (.scrollDismissesKeyboard above) or the cancel/post buttons.
         .onAppear {
                     HapticManager.play(.compose)
+                    // Warm the GIF picker's trending set so tapping the GIF
+                    // chip opens with content already loaded.
+                    GifPickerView.warmTrendingCache()
                     // N-4: load any persisted draft from the protected store
                     // (migrates + scrubs a legacy UserDefaults copy on first read)
                     // before the restore logic below reads draftText/draftTag.

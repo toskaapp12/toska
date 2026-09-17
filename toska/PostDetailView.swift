@@ -954,7 +954,7 @@ struct PostDetailView: View {
                     .accessibilityLabel("Share post")
                 }
             }
-            .font(ToskaFont.sans(12.5))
+            .font(ToskaFont.sans(11.5))
             .monospacedDigit()
             // Never wrap a stat to two lines — on narrow devices the row
             // shrinks slightly instead (wrapping made the felt-this button
@@ -999,7 +999,7 @@ struct PostDetailView: View {
     private var detailStatSeparator: some View {
         Rectangle()
             .fill(ToskaColor.divider2)
-            .frame(width: 1, height: 12)
+            .frame(width: 1, height: 11)
     }
 
     func actionButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -2437,8 +2437,8 @@ struct SwipeToReplyRow: View {
                 .foregroundColor(ToskaColor.handle)
 
                 Text(item.reply.text)
-                    .font(ToskaFont.serif(16))
-                    .lineSpacing(6)
+                    .font(ToskaFont.serif(15))
+                    .lineSpacing(4.5)
                     .foregroundColor(ToskaColor.body)
                     .padding(.top, 8)
                 // M-1: the author's own held reply shows an "under review"

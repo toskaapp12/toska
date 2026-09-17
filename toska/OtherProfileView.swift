@@ -116,36 +116,31 @@ struct OtherProfileView: View {
                         // calendar/join 8-9pt → 11pt; follow button text
                         // 12pt → 14pt with bigger pill.
                         VStack(alignment: .leading, spacing: 16) {
-                            // Matches your own profile's identity treatment.
+                            // Matches your own profile's identity treatment
+                            // (design 2026-09-16 continuity pass).
                             Text("anonymous")
-                                .font(ToskaFont.eyebrow)
+                                .font(ToskaFont.sans(10.5, weight: .semibold))
                                 .textCase(.uppercase)
-                                .tracking(1.4)
-                                .foregroundColor(Color.toskaTimestamp)
+                                .tracking(0.74)
+                                .foregroundColor(ToskaColor.text2)
 
                             if !joinedDate.isEmpty {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "calendar").font(.system(size: 10))
-                                    Text("joined \(joinedDate)").font(ToskaFont.sans(11))
-                                }
-                                .foregroundColor(Color.toskaTimestamp)
+                                Text("joined \(joinedDate.lowercased())")
+                                    .font(ToskaFont.sans(11.5))
+                                    .foregroundColor(ToskaColor.text3)
                             }
 
                             if showFollowerCount {
-                                HStack(spacing: 24) {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("\(followerCount)").font(ToskaFont.sans(16, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("followers").font(ToskaFont.sans(12)).foregroundColor(Color.toskaTimestamp)
-                                    }
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("\(followingCount)").font(ToskaFont.sans(16, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("following").font(ToskaFont.sans(12)).foregroundColor(Color.toskaTimestamp)
-                                    }
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(formatCount(totalLikes)).font(ToskaFont.sans(16, weight: .bold)).foregroundColor(Color.toskaTextDark)
-                                        Text("felt").font(ToskaFont.sans(12)).foregroundColor(Color.toskaTimestamp)
-                                    }
+                                HStack(spacing: 20) {
+                                    (Text("\(followerCount) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
+                                        + Text("followers").foregroundColor(ToskaColor.text2))
+                                    (Text("\(followingCount) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
+                                        + Text("following").foregroundColor(ToskaColor.text2))
+                                    (Text("\(formatCount(totalLikes)) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
+                                        + Text("felt").foregroundColor(ToskaColor.text2))
                                 }
+                                .font(ToskaFont.sans(12))
+                                .monospacedDigit()
                             }
 
                             if !isOwnProfile {
@@ -155,22 +150,20 @@ struct OtherProfileView: View {
                                 // code stays in place for legacy data only.
                                 Button { toggleFollow() } label: {
                                     Text(isFollowing ? "following" : "follow")
-                                        .font(ToskaFont.sans(13, weight: .semibold))
-                                        .foregroundColor(isFollowing ? Color(hex: "888888") : .white)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
-                                        .background(isFollowing ? Color.toskaBorderLight : Color.toskaBlue)
-                                        .cornerRadius(22)
+                                        .font(ToskaFont.sans(12.5, weight: .semibold))
+                                        .foregroundColor(isFollowing ? ToskaColor.text2 : ToskaColor.onAccent)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                        .background(isFollowing ? ToskaColor.input : ToskaColor.accent, in: Capsule())
                                 }
                             } else {
                                 Text("this is you")
-                                    .font(ToskaFont.sans(11))
-                                    .foregroundColor(Color.toskaTimestamp)
+                                    .font(ToskaFont.sans(12))
+                                    .foregroundColor(ToskaColor.text3)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 16)
                         .padding(.bottom, 16)
                         
                         HStack(spacing: 0) {

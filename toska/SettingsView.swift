@@ -1469,7 +1469,7 @@ struct BlockedUsersListView: View {
                     Spacer()
                     VStack(spacing: 8) {
                         Text("no blocked users.")
-                            .font(ToskaFont.serifItalic(17))
+                            .font(ToskaFont.serifItalic(16))
                             .foregroundColor(ToskaColor.text2)
                         Text("people you block will show up here. you can unblock them any time.")
                             .font(ToskaFont.sans(12.5))

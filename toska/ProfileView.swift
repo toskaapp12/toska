@@ -427,9 +427,9 @@ struct ProfileView: View {
                     )
 
                 Text(reply.replyText)
-                    .font(ToskaFont.serif(16))
+                    .font(ToskaFont.serif(15))
                     .foregroundColor(ToskaColor.body)
-                    .lineSpacing(5)
+                    .lineSpacing(4.5)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 28).padding(.vertical, 18)
@@ -494,7 +494,7 @@ struct ProfileView: View {
     func emptyState(icon: String = "tray", title: String, subtitle: String) -> some View {
             VStack(spacing: 8) {
                 Text(title)
-                    .font(ToskaFont.serifItalic(17))
+                    .font(ToskaFont.serifItalic(16))
                     .foregroundColor(ToskaColor.text2)
                 Text(subtitle)
                     .font(ToskaFont.sans(12.5))

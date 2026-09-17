@@ -248,7 +248,7 @@ struct FeedView: View {
                         }
                     } label: {
                         Text(vm.tabs[index])
-                            .font(ToskaFont.sans(13, weight: isSel ? .semibold : .regular))
+                            .font(ToskaFont.sans(12.5, weight: isSel ? .semibold : .regular))
                             .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
                             .padding(.vertical, 10)
                             .contentShape(Rectangle())
@@ -754,7 +754,7 @@ struct FeedPostRow: View, Equatable {
                                 }
                             } label: {
                                 Text("keep reading")
-                                    .font(ToskaFont.sans(12, weight: .semibold))
+                                    .font(ToskaFont.sans(12.5, weight: .semibold))
                                     .foregroundColor(ToskaColor.accentText)
                                     .padding(.top, 13)
                                     .contentShape(Rectangle())
@@ -1412,7 +1412,7 @@ struct FeedHeaderCard: View {
                             HapticManager.play(.compose)
                         } label: {
                             Text("write yours")
-                                .font(ToskaFont.sans(12, weight: .semibold))
+                                .font(ToskaFont.sans(12.5, weight: .semibold))
                                 .foregroundColor(ToskaColor.accentText)
                                 // Small visible gap; the inset extends the hit
                                 // area to the 44pt band without the dead space
@@ -1877,14 +1877,14 @@ struct FeedColumn: View {
 
                                 if tab == 1 && vm.followingPosts.isEmpty {
                                                         VStack(spacing: 12) {
-                                                            Text("\"the things we don't\nsay out loud still\nneed somewhere to go.\"")
-                                                                .font(ToskaFont.serifItalic(20))
-                                                                .foregroundColor(LateNightTheme.tertiaryText)
+                                                            Text("the things we don't say out loud\nstill need somewhere to go.")
+                                                                .font(ToskaFont.serifItalic(16))
+                                                                .foregroundColor(ToskaColor.text2)
                                                                 .multilineTextAlignment(.center)
-                                                                .lineSpacing(4)
+                                                                .lineSpacing(3)
                                                             Text("follow someone to see their words here")
-                                                                .font(ToskaFont.sans(11))
-                                                                .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                                                                .font(ToskaFont.sans(12.5))
+                                                                .foregroundColor(ToskaColor.text3)
                                                         }
                                                         .frame(maxWidth: .infinity)
                                                         .padding(.vertical, 60)
@@ -1926,9 +1926,9 @@ struct FeedColumn: View {
                                         Image(systemName: "moon.stars")
                                             .font(.system(size: 28, weight: .light))
                                             .foregroundColor(LateNightTheme.tertiaryText)
-                                        Text("\"its quiet right now.\"")
-                                            .font(ToskaFont.serifItalic(18))
-                                            .foregroundColor(LateNightTheme.secondaryText)
+                                        Text("its quiet right now.")
+                                            .font(ToskaFont.serifItalic(16))
+                                            .foregroundColor(ToskaColor.text2)
                                             .multilineTextAlignment(.center)
                                         Text("be the first one to say what you couldnt say to them.\nor go find someone who already did.")
                                             .font(ToskaFont.sans(12))

@@ -186,7 +186,7 @@ struct NotificationsView: View {
                             VStack(spacing: 8) {
                                 Spacer()
                                 Text("nothing here yet.")
-                                    .font(ToskaFont.serifItalic(17))
+                                    .font(ToskaFont.serifItalic(16))
                                     .foregroundColor(ToskaColor.text2)
                                     .multilineTextAlignment(.center)
                                 Text(timeAwareNotifEmpty())

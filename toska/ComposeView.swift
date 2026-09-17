@@ -447,16 +447,16 @@ struct ComposeView: View {
                             // Literata 19/1.66, soft placeholder, accent caret.
                             if text.isEmpty {
                                 Text(composePlaceholder)
-                                    .font(ToskaFont.serif(19))
+                                    .font(ToskaFont.serif(17))
                                     .foregroundColor(ToskaColor.text2)
                                     .padding(.horizontal, 28)
                                     .padding(.top, 12)
                             }
 
                             TextEditor(text: $text)
-                                                            .font(ToskaFont.serif(19))
+                                                            .font(ToskaFont.serif(17))
                                                             .foregroundColor(LateNightTheme.primaryText)
-                                                            .lineSpacing(7)
+                                                            .lineSpacing(6)
                                                             .tint(ToskaColor.accent)
                                                             .scrollContentBackground(.hidden)
                                                             .padding(.horizontal, 24)

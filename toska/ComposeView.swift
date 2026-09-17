@@ -172,7 +172,9 @@ struct ComposeView: View {
             .frame(minHeight: 30)
             .background(active ? ToskaColor.promptBg : Color.clear, in: Capsule())
             .overlay(Capsule().stroke(active ? ToskaColor.promptHair : ToskaColor.divider2, lineWidth: 1))
-            .contentShape(Capsule())
+            // 30pt visual, 44pt HIG hit band — the inset extends the tappable
+            // area past the chip without growing the row.
+            .contentShape(Rectangle().inset(by: -7))
     }
     /// Disabled when offline so the user gets visible feedback instead of
     /// the silent Firestore-offline-queue behavior. The offline banner

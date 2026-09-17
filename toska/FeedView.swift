@@ -1414,13 +1414,12 @@ struct FeedHeaderCard: View {
                             Text("write yours")
                                 .font(ToskaFont.sans(12, weight: .semibold))
                                 .foregroundColor(ToskaColor.accentText)
-                                // Small visible gap; modest symmetric padding
-                                // keeps a usable target without dead space
-                                // (the 40pt bottom-aligned frame here read as
-                                // a big hole above the link — owner flagged).
+                                // Small visible gap; the inset extends the hit
+                                // area to the 44pt band without the dead space
+                                // a reserved frame added (owner flagged).
                                 .padding(.top, 8)
                                 .padding(.bottom, 4)
-                                .contentShape(Rectangle())
+                                .contentShape(Rectangle().inset(by: -10))
                         }
                         .buttonStyle(.plain)
                     }

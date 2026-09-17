@@ -729,10 +729,14 @@ struct FeedPostRow: View, Equatable {
                     .padding(.bottom, 10)
                 }
 
-                // Post text — words FIRST (design order). 2026-09-17 owner
-                // feedback on build 83: the design's 18.5 read oversized on
-                // device — feed body is 17/1.6 (matches the web's 17px body
-                // and the detail view); letters 16 with looser leading.
+                // Meta line first — dot + feeling · handle · time above the
+                // words (2026-09-17 owner request; flipped from the design's
+                // words-first order).
+                metaLine
+
+                // Post text — 17/1.6 (matches the web's 17px body and the
+                // detail view; the design's 18.5 read oversized on device);
+                // letters 16 with looser leading.
                 if !text.isEmpty {
                     if isLetter && !isLetterExpanded {
                         VStack(alignment: .leading, spacing: 0) {
@@ -742,6 +746,7 @@ struct FeedPostRow: View, Equatable {
                                 .lineSpacing(6)
                                 .lineLimit(4)
                                 .multilineTextAlignment(.leading)
+                                .padding(.top, 10)
                             Button {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     onLetterExpand?()
@@ -760,6 +765,7 @@ struct FeedPostRow: View, Equatable {
                             .foregroundColor(ToskaColor.text)
                             .lineSpacing(isLetter ? 6 : 5.5)
                             .multilineTextAlignment(.leading)
+                            .padding(.top, 10)
                     }
                 }
 
@@ -774,9 +780,6 @@ struct FeedPostRow: View, Equatable {
                         .padding(.top, 12)
                 }
 
-                // Meta line — 5pt dot + coloured feeling word · handle · time
-                // (11.5pt Instrument Sans). Letters show "letter · N min · 2d".
-                metaLine
                   }
                   .frame(maxWidth: .infinity, alignment: .leading)
                   .contentShape(Rectangle())
@@ -1149,7 +1152,6 @@ struct FeedPostRow: View, Equatable {
         }
         .font(ToskaFont.sans(11.5))
         .foregroundColor(ToskaColor.handle)
-        .padding(.top, 14)
     }
 
     /// "letter · 3 min · 2d" for letters (reading time at ~200 wpm), plain

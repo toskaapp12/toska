@@ -823,25 +823,9 @@ struct PostDetailView: View {
 
     var postHeaderSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Words FIRST (design 2026-09-16) — Literata 17/1.68, ink. The
-            // avatar/pill header is gone; the handle lives in the meta line.
-            Text(postText)
-                .font(ToskaFont.serif(17))
-                .lineSpacing(6.5)
-                .foregroundColor(ToskaColor.text)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // Attached GIF, if the post has one. Read from Firestore by the
-            // live listener (data["gifUrl"]). StableGifPreview (shared from
-            // ComposeView) sidesteps SwiftUI's AsyncImage cancellation issue
-            // inside views that recompute frequently.
-            if let gifUrl = postGifUrl, !gifUrl.isEmpty {
-                StableGifPreview(urlString: gifUrl)
-                    .padding(.top, 12)
-            }
-
-            // Meta line — dot + coloured feeling · handle (opens the author's
-            // profile) · time; letters read "letter · N min · 2d".
+            // Meta line first — dot + coloured feeling · handle (opens the
+            // author's profile) · time; letters read "letter · N min · 2d".
+            // (2026-09-17 owner request: meta sits ABOVE the words.)
             HStack(spacing: 8) {
                 if let tag = tag {
                     Circle()
@@ -866,7 +850,22 @@ struct PostDetailView: View {
             }
             .font(ToskaFont.sans(11.5))
             .foregroundColor(ToskaColor.handle)
-            .padding(.top, 14)
+
+            Text(postText)
+                .font(ToskaFont.serif(17))
+                .lineSpacing(6.5)
+                .foregroundColor(ToskaColor.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 12)
+
+            // Attached GIF, if the post has one. Read from Firestore by the
+            // live listener (data["gifUrl"]). StableGifPreview (shared from
+            // ComposeView) sidesteps SwiftUI's AsyncImage cancellation issue
+            // inside views that recompute frequently.
+            if let gifUrl = postGifUrl, !gifUrl.isEmpty {
+                StableGifPreview(urlString: gifUrl)
+                    .padding(.top, 12)
+            }
 
             // Stats line — same shape as the feed but 12.5pt here (design):
             // "318 felt this | 27 replies | 3 reposts" + bookmark/share
@@ -2388,23 +2387,10 @@ struct SwipeToReplyRow: View {
                 .navigationBarHidden(true)
         } label: {
             VStack(alignment: .leading, spacing: 0) {
-                // Words first (design 2026-09-16): reply text at Literata
-                // 16/1.7 in ink2, then the meta line, then the stats line.
-                Text(item.reply.text)
-                    .font(ToskaFont.serif(16))
-                    .lineSpacing(6)
-                    .foregroundColor(ToskaColor.body)
-                // M-1: the author's own held reply shows an "under review"
-                // banner (it's hidden from everyone else). The interaction row
-                // is suppressed below since a hidden reply can't be engaged with.
-                if item.reply.isPending {
-                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel)
-                        .padding(.top, 8)
-                }
-
-                // Meta line — handle · time (replies carry no feeling tag);
-                // nested replies keep a small accent tick, and the report/
-                // block ⋯ menu sits at the trailing edge.
+                // Meta line first — handle · time (replies carry no feeling
+                // tag); nested replies keep a small accent tick, and the
+                // report/block ⋯ menu sits at the trailing edge. (2026-09-17
+                // owner request: meta above the words.)
                 HStack(spacing: 8) {
                     if item.depth > 0 {
                         Rectangle().fill(ToskaColor.divider2)
@@ -2443,7 +2429,19 @@ struct SwipeToReplyRow: View {
                 }
                 .font(ToskaFont.sans(11.5))
                 .foregroundColor(ToskaColor.handle)
-                .padding(.top, 14)
+
+                Text(item.reply.text)
+                    .font(ToskaFont.serif(16))
+                    .lineSpacing(6)
+                    .foregroundColor(ToskaColor.body)
+                    .padding(.top, 8)
+                // M-1: the author's own held reply shows an "under review"
+                // banner (it's hidden from everyone else). The interaction row
+                // is suppressed below since a hidden reply can't be engaged with.
+                if item.reply.isPending {
+                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel)
+                        .padding(.top, 8)
+                }
 
                 // Stats line — "62 felt this | reply" (design), with the kept
                 // repost/bookmark/share affordances in the same quiet style.

@@ -299,11 +299,12 @@ struct ComposeView: View {
                 // within easy reach without scrolling past the text editor).
                 Rectangle().fill(LateNightTheme.divider).frame(height: 1)
 
-                // Mode toggles as outlined chips (design 2026-09-16), the
-                // current-mode summary pinned trailing. The chip row scrolls
-                // if the selected feeling name makes it long.
-                HStack(spacing: 8) {
-                    ScrollView(.horizontal, showsIndicators: false) {
+                // Mode toggles as outlined chips (design 2026-09-16). The
+                // active chips ARE the mode readout — the old trailing
+                // "midnight · letter" summary duplicated them and squeezed
+                // the row into clipping (owner 2026-09-17). Row scrolls; a
+                // peeking chip signals the overflow.
+                ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             Button {
                                 withAnimation(.easeInOut(duration: 0.2)) { showTagPicker.toggle() }
@@ -348,16 +349,8 @@ struct ComposeView: View {
                             .accessibilityLabel("Add GIF")
                         }
                         .padding(.vertical, 7)
-                    }
-
-                    // Mode summary: "public · letter", "whisper", etc.
-                    Text(composeStatusText)
-                        .font(ToskaFont.sans(12, weight: .semibold))
-                        .foregroundColor(ToskaColor.text)
-                        .lineLimit(1)
-                        .layoutPriority(1)
+                        .padding(.horizontal, 22)
                 }
-                .padding(.horizontal, 22)
 
                 // Tag picker expansion now drops DOWN from the toolbar above
                 // (was originally pinned to the bottom toolbar with a

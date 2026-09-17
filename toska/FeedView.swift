@@ -729,16 +729,17 @@ struct FeedPostRow: View, Equatable {
                     .padding(.bottom, 10)
                 }
 
-                // Post text — words FIRST (design order). Feed posts read at
-                // Literata 18.5/1.62; letters at 17/1.68 (they run longer, the
-                // slightly smaller size + looser leading reads like a letter).
+                // Post text — words FIRST (design order). 2026-09-17 owner
+                // feedback on build 83: the design's 18.5 read oversized on
+                // device — feed body is 17/1.6 (matches the web's 17px body
+                // and the detail view); letters 16 with looser leading.
                 if !text.isEmpty {
                     if isLetter && !isLetterExpanded {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(text)
-                                .font(ToskaFont.serif(17))
+                                .font(ToskaFont.serif(16))
                                 .foregroundColor(ToskaColor.text)
-                                .lineSpacing(6.5)
+                                .lineSpacing(6)
                                 .lineLimit(4)
                                 .multilineTextAlignment(.leading)
                             Button {
@@ -755,9 +756,9 @@ struct FeedPostRow: View, Equatable {
                         }
                     } else {
                         Text(text)
-                            .font(isLetter ? ToskaFont.serif(17) : ToskaFont.serif(18.5))
+                            .font(isLetter ? ToskaFont.serif(16) : ToskaFont.serif(17))
                             .foregroundColor(ToskaColor.text)
-                            .lineSpacing(isLetter ? 6.5 : 6)
+                            .lineSpacing(isLetter ? 6 : 5.5)
                             .multilineTextAlignment(.leading)
                     }
                 }
@@ -798,7 +799,7 @@ struct FeedPostRow: View, Equatable {
                                     // ARE the actions: felt this = like, replies opens
                                     // the post, reposts toggles the repost.
                                     if !postId.isEmpty {
-                                        HStack(spacing: 12) {
+                                        HStack(spacing: 10) {
                                             // felt this (like) — with the burst overlay;
                                             // read-only on your own post (M4).
                                             if isOwnPost {
@@ -865,7 +866,7 @@ struct FeedPostRow: View, Equatable {
                                                 .opacity((isRepostPost || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
                                             }
 
-                                            Spacer(minLength: 16)
+                                            Spacer(minLength: 6)
 
                                             // bookmark + share trailing, 14pt, dot colour
                                             Button { toggleSave() } label: {
@@ -874,7 +875,7 @@ struct FeedPostRow: View, Equatable {
                                                     .foregroundColor(isSaved ? ToskaColor.accentText : ToskaColor.dot)
                                                     // 44pt-band hit area — the bare 14pt glyph
                                                     // was a ~10pt-wide target (2026-09-17 gate).
-                                                    .frame(minWidth: 36, minHeight: 44)
+                                                    .frame(minWidth: 30, minHeight: 44)
                                                     .contentShape(Rectangle())
                                             }
                                             .accessibilityLabel(isSaved ? "Unsave post" : "Save post")
@@ -888,7 +889,7 @@ struct FeedPostRow: View, Equatable {
                                                     Image(systemName: "square.and.arrow.up")
                                                         .font(.system(size: 14, weight: .regular))
                                                         .foregroundColor(ToskaColor.dot)
-                                                        .frame(minWidth: 36, minHeight: 44, alignment: .trailing)
+                                                        .frame(minWidth: 30, minHeight: 44, alignment: .trailing)
                                                         .contentShape(Rectangle())
                                                 }
                                                 .accessibilityLabel("Share post")
@@ -1186,8 +1187,11 @@ struct FeedPostRow: View, Equatable {
     }
 
     private func statText(_ count: Int, _ one: String, _ many: String) -> Text {
-        Text("\(formatCount(count)) ").fontWeight(.semibold)
-            + Text(count == 1 ? one : many)
+        // Clamp at zero (mirrors the web's statsRow) — drifted counters on a
+        // not-yet-reconciled doc must never render "-1 replies".
+        let n = max(0, count)
+        return Text("\(formatCount(n)) ").fontWeight(.semibold)
+            + Text(n == 1 ? one : many)
     }
 
     private var statSeparator: some View {

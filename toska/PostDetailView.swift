@@ -921,14 +921,14 @@ struct PostDetailView: View {
                     .opacity(isWhisper ? 0.3 : 1.0)
                 }
 
-                Spacer(minLength: 16)
+                Spacer(minLength: 6)
 
                 Button { toggleSave() } label: {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
                         .font(.system(size: 15, weight: .regular))
                         .foregroundColor(isSaved ? ToskaColor.accentText : ToskaColor.dot)
                         // 44pt-band hit area (2026-09-17 gate finding).
-                        .frame(minWidth: 36, minHeight: 44)
+                        .frame(minWidth: 30, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -942,7 +942,7 @@ struct PostDetailView: View {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 15, weight: .regular))
                             .foregroundColor(ToskaColor.dot)
-                            .frame(minWidth: 36, minHeight: 44, alignment: .trailing)
+                            .frame(minWidth: 30, minHeight: 44, alignment: .trailing)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -984,8 +984,11 @@ struct PostDetailView: View {
     }
 
     private func detailStatText(_ count: Int, _ one: String, _ many: String) -> Text {
-        Text("\(formatFull(count)) ").fontWeight(.semibold)
-            + Text(count == 1 ? one : many)
+        // Clamp at zero (mirrors the web's statsRow) — drifted counters must
+        // never render "-1 replies".
+        let n = max(0, count)
+        return Text("\(formatFull(n)) ").fontWeight(.semibold)
+            + Text(n == 1 ? one : many)
     }
 
     private var detailStatSeparator: some View {
@@ -2455,7 +2458,7 @@ struct SwipeToReplyRow: View {
                                 HStack(spacing: 7) {
                                     Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
                                         .font(.system(size: 13.5, weight: .regular))
-                                    (Text("\(item.reply.likes) ").fontWeight(.semibold)
+                                    (Text("\(max(0, item.reply.likes)) ").fontWeight(.semibold)
                                         + Text("felt this"))
                                 }
                                 .foregroundColor(item.reply.isLiked ? ToskaColor.accentText : ToskaColor.handle)
@@ -2483,7 +2486,7 @@ struct SwipeToReplyRow: View {
                             Button {
                                 onRepost()
                             } label: {
-                                (Text("\(item.reply.repostCount) ").fontWeight(.semibold)
+                                (Text("\(max(0, item.reply.repostCount)) ").fontWeight(.semibold)
                                     + Text(item.reply.repostCount == 1 ? "repost" : "reposts"))
                                     .foregroundColor(item.reply.isReposted ? ToskaColor.accentText : ToskaColor.handle)
                                     .padding(.vertical, 11)
@@ -2500,7 +2503,7 @@ struct SwipeToReplyRow: View {
                                 Image(systemName: item.reply.isSaved ? "bookmark.fill" : "bookmark")
                                     .font(.system(size: 13.5, weight: .regular))
                                     .foregroundColor(item.reply.isSaved ? ToskaColor.accentText : ToskaColor.dot)
-                                    .frame(minWidth: 36, minHeight: 44)
+                                    .frame(minWidth: 30, minHeight: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
@@ -2513,7 +2516,7 @@ struct SwipeToReplyRow: View {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 13.5, weight: .regular))
                                     .foregroundColor(ToskaColor.dot)
-                                    .frame(minWidth: 36, minHeight: 44, alignment: .trailing)
+                                    .frame(minWidth: 30, minHeight: 44, alignment: .trailing)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)

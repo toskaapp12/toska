@@ -1379,15 +1379,15 @@ struct FeedHeaderCard: View {
                         .tracking(0.74)
                         .foregroundColor(ToskaColor.promptEyebrow)
 
-                    // Compact prompt (2026-09-17 owner cleanup): 18/1.4 with a
-                    // tight rhythm — the band was reading bulky at 20/1.5.
+                    // Compact prompt (2026-09-17 owner cleanup): 18pt, snug
+                    // leading, tight rhythm — the band was reading bulky.
                     Text(vm.todaysPrompt.0)
                         .font(ToskaFont.serif(18))
                         .foregroundColor(ToskaColor.promptInk)
-                        .lineSpacing(3)
+                        .lineSpacing(2)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 8)
+                        .padding(.top, 6)
 
                     // Show "write yours" unless there's a response FOR TODAY. A
                     // plain nil-check kept the button hidden after a midnight
@@ -1403,17 +1403,19 @@ struct FeedHeaderCard: View {
                             Text("write yours")
                                 .font(ToskaFont.sans(12, weight: .semibold))
                                 .foregroundColor(ToskaColor.accentText)
-                                // Visual gap stays tight; the 44pt target comes
-                                // from the frame, not stacked padding.
-                                .frame(minHeight: 40, alignment: .bottomLeading)
+                                // Small visible gap; modest symmetric padding
+                                // keeps a usable target without dead space
+                                // (the 40pt bottom-aligned frame here read as
+                                // a big hole above the link — owner flagged).
+                                .padding(.top, 8)
+                                .padding(.bottom, 4)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .padding(.top, 2)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(EdgeInsets(top: 16, leading: 28, bottom: 10, trailing: 28))
+                .padding(EdgeInsets(top: 14, leading: 28, bottom: 10, trailing: 28))
                 .background(ToskaColor.promptBg)
                 .overlay(alignment: .bottom) {
                     Rectangle()

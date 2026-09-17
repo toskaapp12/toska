@@ -596,17 +596,17 @@ struct PostDetailView: View {
                             }
                         } else if replyList.isEmpty {
                                                     VStack(spacing: 8) {
-                                                        Text("\"some words just need\na witness.\"")
-                                                            .font(ToskaFont.serifItalic(18))
+                                                        Text("some words just need a witness.")
+                                                            .font(ToskaFont.serifItalic(16))
                                                             .foregroundColor(ToskaColor.text2)
                                                             .multilineTextAlignment(.center)
-                                                            .lineSpacing(4)
+                                                            .lineSpacing(3)
                                                         Text("be the first to reply")
-                                                            .font(ToskaFont.sans(11.5))
+                                                            .font(ToskaFont.sans(12))
                                                             .foregroundColor(ToskaColor.text3)
                                                     }
                                                     .frame(maxWidth: .infinity)
-                                                    .padding(.vertical, 40)
+                                                    .padding(.vertical, 32)
                         } else {
                             LazyVStack(spacing: 0) {
                                 let flat = flattenReplies(replyList)
@@ -843,7 +843,8 @@ struct PostDetailView: View {
                 }
                 .buttonStyle(.plain)
                 if isOwnPost {
-                    Text("· you").foregroundColor(ToskaColor.time)
+                    Text("·").foregroundColor(ToskaColor.dot)
+                    Text("you").foregroundColor(ToskaColor.text3)
                 }
                 Text("·").foregroundColor(ToskaColor.dot)
                 Text(detailTimeText)
@@ -852,11 +853,11 @@ struct PostDetailView: View {
             .foregroundColor(ToskaColor.handle)
 
             Text(postText)
-                .font(ToskaFont.serif(17))
-                .lineSpacing(6.5)
+                .font(ToskaFont.serif(16))
+                .lineSpacing(5)
                 .foregroundColor(ToskaColor.text)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 12)
+                .padding(.top, 10)
 
             // Attached GIF, if the post has one. Read from Firestore by the
             // live listener (data["gifUrl"]). StableGifPreview (shared from

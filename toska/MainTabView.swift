@@ -254,6 +254,11 @@ struct MainTabView: View {
                         Button {
                             Task {
                                 _ = await BlockedUsersCache.shared.unblock(toast.userId)
+                                // The block strips the author's posts from the
+                                // in-memory feed; without a refetch, UNDO looks
+                                // like it did nothing until the next refresh
+                                // (caught by test18d, 2026-09-17).
+                                feedVM.handleNewPostCreated()
                             }
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 pendingUndoBlock = nil

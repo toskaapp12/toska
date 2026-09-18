@@ -1020,19 +1020,16 @@ final class WalkthroughUITests: XCTestCase {
         }
         // long-press → block from the context menu (re-find + nudge right
         // before pressing: feed churn between find and press goes stale)
+        // Coordinate press — SwiftUI buttons report isHittable unreliably
+        // here (same quirk as the detail handle button), and a plain press()
+        // hard-fails on it. forceTap's coordinate approach works for taps;
+        // this is its long-press sibling.
         nudgeRowIntoSafeBand(row)
-        var pressed = false
-        for _ in 0..<3 {
-            if let fresh = findRow(matching: NSPredicate(
-                format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"), swipes: 1),
-               fresh.isHittable {
-                fresh.press(forDuration: 1.2)
-                pressed = true
-                break
-            }
-            sleep(1)
+        guard let fresh = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"), swipes: 1) else {
+            throw XCTSkip("fixture row not found for long-press")
         }
-        guard pressed else { throw XCTSkip("fixture row never hittable for long-press") }
+        fresh.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2)
         sleep(1)
         snap("18d1-context-menu")
         let blockItem = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'block '")).firstMatch
@@ -1049,7 +1046,8 @@ final class WalkthroughUITests: XCTestCase {
         let undoBtn = app.buttons["undo"].firstMatch
         XCTAssertTrue(undoBtn.waitForExistence(timeout: 4), "undo-block toast missing")
         forceTap(undoBtn)
-        sleep(2)
+        sleep(4)   // unblock write + feed refetch
+        scrollToTop(1)
         // author's posts should be back (or still present)
         XCTAssertNotNil(findRow(matching: NSPredicate(
             format: "label CONTAINS 'first light, honestly'")), "Posts didn't return after undo")
@@ -1057,7 +1055,7 @@ final class WalkthroughUITests: XCTestCase {
         // block again, let it stand, verify blocked list, unblock there
         if let row2 = findRow(matching: NSPredicate(
             format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')")) {
-            row2.press(forDuration: 1.2); sleep(1)
+            row2.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2); sleep(1)
             let b2 = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'block '")).firstMatch
             if b2.waitForExistence(timeout: 4) {
                 forceTap(b2); sleep(1)

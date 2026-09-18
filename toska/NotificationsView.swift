@@ -359,17 +359,17 @@ struct NotificationsView: View {
         .alert("post deleted", isPresented: $showDeletedPostAlert) {
             Button("ok") {}
         } message: {
-            Text("this post is gone. some things dont last.")
+            Text("this post is gone. some things don't last.")
         }
         .alert("theyre gone", isPresented: $showDeletedUserAlert) {
             Button("ok") {}
         } message: {
-            Text("this person isnt here anymore.")
+            Text("this person isn't here anymore.")
         }
-        .alert("cant open this", isPresented: $showCantOpenAlert) {
+        .alert("can't open this", isPresented: $showCantOpenAlert) {
             Button("ok") {}
         } message: {
-            Text("this post isnt available right now.")
+            Text("this post isn't available right now.")
         }
     }
 

@@ -1239,7 +1239,7 @@ struct ProfileView: View {
                                                                                         if post.pendingReview {
                                                                                             PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
                                                                                         }
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost, promptText: FeedView.promptText(for: post.promptDate))
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost, promptText: FeedView.promptText(for: post.promptDate), hideMetaHandle: !post.isRepost)
                                                                                     }
                                                                                 }
                                                                                 .buttonStyle(.plain)

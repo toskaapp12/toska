@@ -216,15 +216,15 @@ struct ComposeView: View {
             let stage = UserHandleCache.shared.breakupStage
             if tod == "this afternoon" {
                 switch stage {
-                case "still in it":      return "say the thing you cant say to them yet..."
+                case "still in it":      return "say the thing you can't say to them yet..."
                 case "a year or more":   return "what would you tell them now..."
-                case "they left":        return "say what they didnt let you say..."
+                case "they left":        return "say what they didn't let you say..."
                 case "i left":           return "say the thing you held back when you left..."
-                case "it just happened": return "say the thing you cant text them..."
-                default:                 return "say the thing you cant say to them..."
+                case "it just happened": return "say the thing you can't text them..."
+                default:                 return "say the thing you can't say to them..."
                 }
             }
-            if tod == "tonight" { return "whats keeping you up..." }
+            if tod == "tonight" { return "what's keeping you up..." }
             else if tod == "this morning" { return "how did you sleep..." }
             else { return "how are you. honestly..." }
         }
@@ -424,7 +424,7 @@ struct ComposeView: View {
                 // @Observable singleton inside body creates a tracked
                 // dependency so this updates the moment connectivity flips.
                 if showOfflineWarning || !NetworkMonitor.shared.isConnected {
-                    warningBanner(icon: "wifi.slash", text: "youre offline. the words will keep.", color: "c45c5c")
+                    warningBanner(icon: "wifi.slash", text: "you're offline. the words will keep.", color: "c45c5c")
                 }
                 if !postError.isEmpty {
                     warningBanner(icon: "exclamationmark.circle", text: postError, color: "c45c5c")
@@ -441,7 +441,7 @@ struct ComposeView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.shield")
                             .font(.system(size: 10))
-                        Text("dont have to share it. tap save and it stays just for you.")
+                        Text("don't have to share it. tap save and it stays just for you.")
                             .font(ToskaFont.sans(11))
                     }
                     .foregroundColor(ToskaColor.accentText)
@@ -714,7 +714,7 @@ struct ComposeView: View {
                         .font(ToskaFont.serifItalic(18))
                         .foregroundColor(LateNightTheme.handleText)
 
-                    Text("your post might include a name or identifying info.\n\neveryone here is anonymous. including the people in your story. thats what makes it safe.")
+                    Text("your post might include a name or identifying info.\n\neveryone here is anonymous. including the people in your story. that's what makes it safe.")
                         .font(ToskaFont.sans(12))
                         .foregroundColor(LateNightTheme.secondaryText)
                         .multilineTextAlignment(.center)
@@ -1278,7 +1278,7 @@ struct ComposeView: View {
             } catch {
                 print("⚠️ ComposeView.saveAsDraft failed: \(error)")
                 Telemetry.recordError(error, context: "ComposeView.saveAsDraft")
-                postError = "couldnt save. try again."
+                postError = "couldn't save. try again."
             }
         }
     }
@@ -1397,7 +1397,7 @@ struct ComposeView: View {
                             }
                             self.postError = "still setting up your account — try again in a moment"
                         } else {
-                            self.postError = "couldnt post. try again. the feeling isnt going anywhere."
+                            self.postError = "couldn't post. try again. the feeling isn't going anywhere."
                         }
                         // Confirmed failure → shorten the rate-limit window
                         // so retry waits ~5s instead of the full 30s. The

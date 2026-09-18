@@ -18,6 +18,11 @@ final class WalkthroughUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // Forward the night-theme preview hook so any test can run in the
+        // dark palette: TEST_RUNNER_TOSKA_FORCE_NIGHT=1 xcodebuild test ...
+        if let night = ProcessInfo.processInfo.environment["TOSKA_FORCE_NIGHT"] {
+            app.launchEnvironment["TOSKA_FORCE_NIGHT"] = night
+        }
         app.launch()
         acceptPolicyGateIfPresent()
     }
@@ -188,7 +193,7 @@ final class WalkthroughUITests: XCTestCase {
         add(tree)
         // also probe the specific anchors the suite relies on
         let anchors = "feedView=\(app.otherElements["feedView"].exists) " +
-            "newHere=\(app.buttons["im new here"].exists) " +
+            "newHere=\(app.buttons["i'm new here"].exists) " +
             "signIn=\(app.buttons["sign in"].exists) " +
             "toskaHeader=\(app.staticTexts["toska"].exists) " +
             "state=\(app.state.rawValue)"
@@ -202,7 +207,7 @@ final class WalkthroughUITests: XCTestCase {
 
     func test01_signOutFromOldSession() throws {
         // If we're already at the splash, nothing to do.
-        if app.buttons["im new here"].waitForExistence(timeout: 5) {
+        if app.buttons["i'm new here"].waitForExistence(timeout: 5) {
             snap("01-already-signed-out")
             return
         }
@@ -233,7 +238,7 @@ final class WalkthroughUITests: XCTestCase {
             ? app.alerts.buttons["sign out"]
             : app.buttons.matching(NSPredicate(format: "label == 'sign out'")).element(boundBy: 1)
         if waitFor(alertConfirm, 5) { forceTap(alertConfirm) }
-        XCTAssertTrue(waitFor(app.buttons["im new here"], 10), "Splash didn't appear after sign out")
+        XCTAssertTrue(waitFor(app.buttons["i'm new here"], 10), "Splash didn't appear after sign out")
         snap("01c-signed-out-splash")
     }
 

@@ -216,7 +216,7 @@ struct TopView: View {
 
     private var loadFailedState: some View {
         VStack(spacing: 8) {
-            Text("couldnt load.")
+            Text("couldn't load.")
                 .font(ToskaFont.serifItalic(16))
                 .foregroundColor(ToskaColor.text2)
             Text("pull down to try again.")

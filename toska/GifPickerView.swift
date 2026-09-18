@@ -34,13 +34,13 @@ struct GifPickerView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .light))
-                        .foregroundColor(Color.toskaTextLight)
+                        .foregroundColor(ToskaColor.dot)
                 }
                 .accessibilityLabel("close GIF picker")
                 Spacer()
                 Text("GIFs")
-                    .font(ToskaFont.sans(13, weight: .semibold))
-                    .foregroundColor(Color.toskaInkOnLight)
+                    .font(ToskaFont.serif(16))
+                    .foregroundColor(ToskaColor.text)
                 Spacer()
                 // Spacer placeholder to keep "GIFs" centered. Hidden from
                 // VoiceOver so it doesn't get announced as a phantom button.
@@ -56,7 +56,7 @@ struct GifPickerView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13))
-                    .foregroundColor(Color.toskaTextLight)
+                    .foregroundColor(ToskaColor.text2)
                 
                 TextField("search GIFs...", text: $searchText)
                     .font(.system(size: 14))
@@ -88,7 +88,7 @@ struct GifPickerView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color(hex: "e8eaed"))
+            .background(ToskaColor.input)
             .cornerRadius(10)
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
@@ -108,7 +108,7 @@ struct GifPickerView: View {
                         .foregroundColor(Color.toskaDivider)
                     Text(fetchError ?? "no GIFs found")
                         .font(ToskaFont.sans(13))
-                        .foregroundColor(Color.toskaTextLight)
+                        .foregroundColor(ToskaColor.text2)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                     if fetchError != nil {
@@ -153,7 +153,7 @@ struct GifPickerView: View {
                                                     .foregroundColor(Color.toskaTimestamp)
                                             )
                                     default:
-                                        Color(hex: "e8eaed")
+                                        ToskaColor.input
                                             .frame(height: 120)
                                             .overlay(ProgressView().scaleEffect(0.6))
                                     }
@@ -183,7 +183,7 @@ struct GifPickerView: View {
             }
             .padding(.bottom, 8)
         }
-        .background(Color(hex: "f0f1f3"))
+        .background(LateNightTheme.background)
         .onAppear {
             // Serve the prefetched trending set instantly when it's fresh
             // (ComposeView warms it on open); fall back to a live fetch.

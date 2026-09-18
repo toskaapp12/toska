@@ -43,7 +43,7 @@ final class ToskaUITests: XCTestCase {
     /// Assert the splash screen is visible (user is signed out). Throws XCTSkip
     /// otherwise — used by tests that exercise the auth flows.
     func requireSignedOut() throws {
-        let newHereButton = app.buttons["im new here"]
+        let newHereButton = app.buttons["i'm new here"]
         try XCTSkipUnless(waitFor(newHereButton, timeout: 5),
                           "Splash not shown — UI test is likely running against a signed-in session")
     }
@@ -51,7 +51,7 @@ final class ToskaUITests: XCTestCase {
     // MARK: - 1. Splash Screen
     
     func testSplashScreenAppears() {
-            let newHereButton = app.buttons["im new here"]
+            let newHereButton = app.buttons["i'm new here"]
             let toskaHeader = app.staticTexts["toska"]
             
             let splashAppeared = waitFor(newHereButton, timeout: 5)
@@ -64,7 +64,7 @@ final class ToskaUITests: XCTestCase {
     
     func testCreateAccountFlowExists() throws {
         try requireSignedOut()
-        let newHereButton = app.buttons["im new here"]
+        let newHereButton = app.buttons["i'm new here"]
         newHereButton.tap()
         
         // Verify create account view elements
@@ -85,7 +85,7 @@ final class ToskaUITests: XCTestCase {
     
     func testCreateAccountValidation() throws {
         try requireSignedOut()
-        app.buttons["im new here"].tap()
+        app.buttons["i'm new here"].tap()
 
         let emailField = app.textFields["createEmailField"]
         try XCTSkipUnless(waitFor(emailField), "Create-account email field not found after tapping into the flow")

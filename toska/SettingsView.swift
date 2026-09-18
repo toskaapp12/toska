@@ -165,7 +165,7 @@ struct SettingsView: View {
                                 toggleRow("gentle check-in", subtitle: "we'll check in on softer signals. crisis language always shows resources.", icon: "heart.text.square.fill", iconColor: Color.toskaWhisperPink, isOn: $settings.gentleCheckIn)
                                 Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: DraftsView()) {
-                                    navRowLabel("drafts", subtitle: "things you wrote but didnt share")
+                                    navRowLabel("drafts", subtitle: "things you wrote but didn't share")
                                 }
                                 Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 NavigationLink(destination: WeeklyRecapView().navigationBarHidden(true)) {

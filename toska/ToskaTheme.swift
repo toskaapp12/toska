@@ -1731,7 +1731,7 @@ struct ReportSheet: View {
             Text("block this user?")
                 .font(ToskaFont.serifItalic(18))
                 .foregroundColor(.white)
-            Text("you wont see their posts or replies. they wont be notified.")
+            Text("you won't see their posts or replies. they won't be notified.")
                 .font(ToskaFont.sans(11))
                 .foregroundColor(.white.opacity(0.4))
                 .multilineTextAlignment(.center)

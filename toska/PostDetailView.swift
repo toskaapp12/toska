@@ -2643,7 +2643,7 @@ struct SwipeToReplyRow: View {
             }
             Button("cancel", role: .cancel) {}
         } message: {
-            Text("you wont see their posts or replies. they wont be notified.")
+            Text("you won't see their posts or replies. they won't be notified.")
         }
     }
 }

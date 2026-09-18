@@ -619,6 +619,10 @@ struct FeedPostRow: View, Equatable {
         // the prompt in plum above the reply, so prompt answers read as
         // "prompt → reply" across the feed.
         var promptText: String? = nil
+        // Profile pages render the author's rows under their own header —
+        // repeating the handle on every meta line there is noise (owner
+        // 2026-09-17 detail pass). Feed/search leave it false.
+        var hideMetaHandle: Bool = false
         // Optional leaderboard rank (felt-most page). When set, a subtle
         // serif-italic "01" badge renders at the trailing edge of the handle
         // row. nil everywhere else, so the feed is unaffected.
@@ -1072,7 +1076,7 @@ struct FeedPostRow: View, Equatable {
                                     }
                                     Button("cancel", role: .cancel) {}
                                 } message: {
-                                    Text("you wont see their posts or replies. they wont be notified.")
+                                    Text("you won't see their posts or replies. they won't be notified.")
                                 }
                                 .confirmationDialog(
                                     "delete this post for everyone?",
@@ -1131,8 +1135,10 @@ struct FeedPostRow: View, Equatable {
                     .foregroundColor(tagColor(for: tag))
                 Text("·").foregroundColor(ToskaColor.dot)
             }
-            Text(handle)
-            Text("·").foregroundColor(ToskaColor.dot)
+            if !hideMetaHandle {
+                Text(handle)
+                Text("·").foregroundColor(ToskaColor.dot)
+            }
             Text(metaTimeText)
             if isMidnightPost {
                 Image(systemName: "moon.fill")
@@ -1910,11 +1916,11 @@ struct FeedColumn: View {
                                         Image(systemName: "moon.stars")
                                             .font(.system(size: 28, weight: .light))
                                             .foregroundColor(LateNightTheme.tertiaryText)
-                                        Text("its quiet right now.")
+                                        Text("it's quiet right now.")
                                             .font(ToskaFont.serifItalic(16))
                                             .foregroundColor(ToskaColor.text2)
                                             .multilineTextAlignment(.center)
-                                        Text("be the first one to say what you couldnt say to them.\nor go find someone who already did.")
+                                        Text("be the first one to say what you couldn't say to them.\nor go find someone who already did.")
                                             .font(ToskaFont.sans(12))
                                             .foregroundColor(LateNightTheme.tertiaryText)
                                             .multilineTextAlignment(.center)

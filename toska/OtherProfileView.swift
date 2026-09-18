@@ -230,7 +230,7 @@ struct OtherProfileView: View {
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(posts) { post in
-                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil)
+                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil, hideMetaHandle: post.originalHandle == nil)
                                     }
                                 }
                             }

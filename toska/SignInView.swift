@@ -48,7 +48,7 @@ struct SignInView: View {
                     .foregroundColor(ToskaColor.text)
                     .padding(.bottom, 8)
 
-                Text("its still here when youre ready.")
+                Text("it's still here when you're ready.")
                     .font(ToskaFont.serifItalic(15))
                     .foregroundColor(ToskaColor.text2)
                     .padding(.bottom, 32)
@@ -158,7 +158,7 @@ struct SignInView: View {
                     Button {
                         // Push the create-account flow directly. Previously this
                         // just dismissed back to Splash, leaving the user to find
-                        // and tap "im new here" — an extra dead-end step.
+                        // and tap "i'm new here" — an extra dead-end step.
                         showCreate = true
                     } label: {
                         Text("no account? create one")

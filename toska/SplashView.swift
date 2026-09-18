@@ -52,7 +52,7 @@ struct SplashView: View {
                     Button {
                         showCreateAccount = true
                     } label: {
-                        Text("im new here")
+                        Text("i'm new here")
                             .font(ToskaFont.sans(14, weight: .semibold))
                             .foregroundColor(ToskaColor.onAccent)
                             .frame(maxWidth: .infinity, minHeight: 54)

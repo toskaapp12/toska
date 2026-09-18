@@ -370,10 +370,10 @@ struct OnboardingView: View {
             )
             }
         }
-        .alert("couldnt save that", isPresented: $moodSaveError) {
+        .alert("couldn't save that", isPresented: $moodSaveError) {
             Button("try again") {}
         } message: {
-            Text("we couldnt save your mood. check your connection and try again.")
+            Text("we couldn't save your mood. check your connection and try again.")
         }
         .alert("couldnt finish that", isPresented: $onboardingSaveError) {
             Button("try again") {}

@@ -725,6 +725,9 @@ class FeedViewModel: ObservableObject {
             savedListener = nil
             repostedListener?.remove()
             repostedListener = nil
+            for (_, l) in echoListeners { l.remove() }
+            echoListeners = [:]
+            optimisticEcho = []
             hasFetchedInitial = false
         hasLoadedOnce = false
         posts = []
@@ -770,6 +773,15 @@ class FeedViewModel: ObservableObject {
     // server held it after all (the compose flow already told the author).
     // Held/ephemeral posts are excluded (they have their own UX).
     private var optimisticEcho: [(post: FeedPost, at: Date)] = []
+    // Per-echo doc listeners (2026-09-18 seamlessness pass): the timed
+    // refetches after compose only catch a promotion that lands within ~7s —
+    // a validatePost cold start can outlast all of them, and the echo's blind
+    // 120s expiry then made the post VANISH until some later refresh. The
+    // listener makes the transition deterministic: pending_validation→live
+    // refetches the moment it happens (however long the server took), and a
+    // demotion to pending_review retires the echo quietly instead of leaving
+    // a ghost row the reader can't open.
+    private var echoListeners: [String: ListenerRegistration] = [:]
 
     func insertOptimisticPost(from userInfo: [AnyHashable: Any]?) {
         guard let id = userInfo?["postId"] as? String, !id.isEmpty,
@@ -788,6 +800,41 @@ class FeedViewModel: ObservableObject {
                             isShareable: false)
         optimisticEcho.append((echo, Date()))
         posts.insert(echo, at: 0)
+        watchEchoResolution(id)
+    }
+
+    private func watchEchoResolution(_ id: String) {
+        echoListeners[id]?.remove()
+        echoListeners[id] = Firestore.firestore().collection("posts").document(id)
+            .addSnapshotListener { [weak self] snap, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, let snap else { return }
+                    // Only act on server-confirmed states — the first cache
+                    // event can report exists=false before the write syncs.
+                    guard !snap.metadata.isFromCache else { return }
+                    switch snap.data()?["moderationStatus"] as? String {
+                    case "live":
+                        self.stopWatchingEcho(id)
+                        // The feed query can see it now — this fetch swaps the
+                        // echo for the server copy via mergeOptimisticEcho.
+                        self.fetchPosts()
+                    case "pending_validation":
+                        break // still churning — keep the echo pinned
+                    default:
+                        // Demoted to review, or the doc is gone. The compose
+                        // flow already messaged the author where that matters;
+                        // retire the echo so no dead row lingers.
+                        self.stopWatchingEcho(id)
+                        self.optimisticEcho.removeAll { $0.post.id == id }
+                        self.posts.removeAll { $0.id == id }
+                    }
+                }
+            }
+    }
+
+    private func stopWatchingEcho(_ id: String) {
+        echoListeners[id]?.remove()
+        echoListeners[id] = nil
     }
 
     // Re-apply unresolved echoes after each wholesale posts refresh.
@@ -795,7 +842,10 @@ class FeedViewModel: ObservableObject {
         optimisticEcho.removeAll { Date().timeIntervalSince($0.at) > 120 }
         var kept: [(post: FeedPost, at: Date)] = []
         for pair in optimisticEcho {
-            if posts.contains(where: { $0.id == pair.post.id }) { continue } // server copy landed
+            if posts.contains(where: { $0.id == pair.post.id }) {
+                stopWatchingEcho(pair.post.id) // server copy landed
+                continue
+            }
             posts.insert(pair.post, at: 0)
             kept.append(pair)
         }
@@ -1296,6 +1346,7 @@ class FeedViewModel: ObservableObject {
                                                                                                                             // Re-apply the author's own not-yet-promoted post
                                                                                                                             // (local echo) after the wholesale replace above.
                                                                                                                             self.mergeOptimisticEcho()
+                                                                                                                            self.prefetchVisibleGifs()
                                                                                                                             self.hasLoadedOnce = true
                                                                                                                             // Cursor must track Firestore's query order (createdAt DESC),
                                                                                                                             // not our client-side score rank. Using topDocs.last previously
@@ -1384,6 +1435,7 @@ class FeedViewModel: ObservableObject {
                     self.lastDocument = documents.last
                     self.hasMorePosts = documents.count >= 20
                     self.endedDueToBlocking = false
+                    self.prefetchVisibleGifs()
                     if filtered.isEmpty && documents.count >= 20 {
                         self.isLoadingMore = false
                         self.loadMorePosts(depth: depth + 1)
@@ -1486,8 +1538,18 @@ class FeedViewModel: ObservableObject {
                 }
                 let wasTruncated = followSnap.documents.count >= followingLimit
                 followingFetchIncomplete = anyChunkFailed || wasTruncated
+                prefetchVisibleGifs()
             }
         }
+
+    // Warm the media cache for the pages on screen — newest first, both
+    // tabs, capped inside the prefetcher. postGifUrls is filled by
+    // extractPostMetadata as each page parses, so this runs after fetches.
+    private func prefetchVisibleGifs() {
+        let feedUrls = posts.prefix(30).compactMap { postGifUrls[$0.id] }
+        let followingUrls = followingPosts.prefix(15).compactMap { postGifUrls[$0.id] }
+        GifPrefetcher.prefetch(feedUrls + followingUrls)
+    }
 
     // MARK: - Anniversary Post
 

@@ -89,7 +89,16 @@ struct ProfileView: View {
     var body: some View {
         ZStack {
             LateNightTheme.feedBackground.ignoresSafeArea()
-            
+
+            // 2026-09-18 seamlessness pass: the profile tab stays mounted
+            // (keep-alive tabs), so onAppear/loadProfile never re-fires after
+            // the first visit — a new post or a follow performed elsewhere
+            // left the header counts and Posts tab stale until pull-to-refresh.
+            // A separate zero-size view, NOT more chain modifiers: ProfileView's
+            // body is at the type-checker's complexity limit (same as FeedView).
+            ProfileSyncListeners(onPostCreated: handlePostCreated,
+                                 onFollowingChanged: handleFollowingChanged)
+
             VStack(spacing: 0) {
                 // Profile root tab — large bold handle as the title via
                 // ToskaHeader, with messages + settings icons in the
@@ -264,6 +273,10 @@ struct ProfileView: View {
             myPosts.removeAll { $0.id == deletedId }
             savedPosts.removeAll { $0.id == deletedId }
             likedPosts.removeAll { $0.id == deletedId }
+            // The header count comes from a one-shot aggregate in loadProfile,
+            // and keep-alive tabs mean onAppear won't re-fire — decrement in
+            // place so the count matches the list the user is looking at.
+            if myPosts.count < postCount { postCount = max(0, postCount - 1) }
         }
         // 2026-07-29 sync sweep: reply deleted anywhere (thread or nested
         // detail) vanishes from the profile's reply lists immediately.
@@ -318,6 +331,42 @@ struct ProfileView: View {
         }
     }
     
+    fileprivate struct ProfileSyncListeners: View {
+        let onPostCreated: (Notification) -> Void
+        let onFollowingChanged: () -> Void
+        var body: some View {
+            Color.clear.frame(width: 0, height: 0)
+                .onReceive(NotificationCenter.default.publisher(for: .newPostCreated), perform: onPostCreated)
+                .onReceive(NotificationCenter.default.publisher(for: .userFollowingChanged)) { _ in onFollowingChanged() }
+        }
+    }
+
+    // Mirror a new post optimistically, then reconcile with one cheap
+    // loadProfile after the server settle (same 700ms pattern as the other
+    // sync handlers). Ephemeral whispers skip the optimistic bump (their
+    // counting is the server's call) but still reconcile.
+    func handlePostCreated(_ notif: Notification) {
+        if (notif.userInfo?["ephemeral"] as? Bool) != true { postCount += 1 }
+        let uid = Auth.auth().currentUser?.uid
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard Auth.auth().currentUser?.uid == uid else { return }
+            if loadedTabs.contains(0) { loadMyPosts() }
+            loadProfile()
+        }
+    }
+
+    // The follower/following counters are stamped by a server trigger —
+    // give it a beat before re-reading the user doc.
+    func handleFollowingChanged() {
+        let uid = Auth.auth().currentUser?.uid
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard Auth.auth().currentUser?.uid == uid else { return }
+            loadProfile()
+        }
+    }
+
     func ensurePresenceThenLoadStreak() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let db = Firestore.firestore()

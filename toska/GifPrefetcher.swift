@@ -17,6 +17,9 @@ enum GifPrefetcher {
             guard !inFlight.contains(raw), let url = URL(string: raw) else { continue }
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
+            // Bound the inFlight entry's lifetime — without this a hung
+            // request parks its URL in the dedupe set for the 60s default.
+            request.timeoutInterval = 15
             guard URLCache.shared.cachedResponse(for: request) == nil else { continue }
             inFlight.insert(raw)
             URLSession.shared.dataTask(with: request) { _, _, _ in

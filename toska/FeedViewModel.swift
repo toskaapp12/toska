@@ -662,18 +662,26 @@ class FeedViewModel: ObservableObject {
                         return
                     }
                     let tokenSet = Set(queryTokens)
+                    func hits(_ p: FeedPost) -> Int {
+                        let words = Set(p.text.lowercased()
+                            .components(separatedBy: CharacterSet.alphanumerics.inverted))
+                        return words.intersection(tokenSet).count
+                    }
+                    // Tie-break on the ORIGINAL index: the server already
+                    // returns createdAt desc, and `time` is a display string
+                    // ("2h" vs "3m") whose lexicographic order is meaningless
+                    // — comparing it scrambled recency within equal-hit
+                    // groups (2026-09-18 tech review). Index order also makes
+                    // the sort deterministic (Swift's sort isn't stable).
                     self.serverSearchResults = docs
                         .map { FeedView.feedPost(from: $0) }
                         .filter { !BlockedUsersCache.shared.isBlocked($0.authorId) }
+                        .enumerated()
                         .sorted { a, b in
-                            func hits(_ p: FeedPost) -> Int {
-                                let words = Set(p.text.lowercased()
-                                    .components(separatedBy: CharacterSet.alphanumerics.inverted))
-                                return words.intersection(tokenSet).count
-                            }
-                            let (ha, hb) = (hits(a), hits(b))
-                            return ha != hb ? ha > hb : a.time < b.time
+                            let (ha, hb) = (hits(a.element), hits(b.element))
+                            return ha != hb ? ha > hb : a.offset < b.offset
                         }
+                        .map(\.element)
                 }
             }
     }

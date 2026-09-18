@@ -3080,6 +3080,18 @@ exports.onPostUpdated = onDocumentUpdated(
     await cascadeModerationToCopies("post", postId, before, after);
   }
 
+  // Admin-release token stamp (2026-09-18 tech review): setPostLive only
+  // stamps searchTokens on the pending_validation→live promotion — a post
+  // HELD for review and later released to live by an admin arrives here
+  // with text unchanged and would return at the guard below, permanently
+  // unsearchable. Stamp on any transition-to-live that lacks tokens. The
+  // hasTokens check makes this update's own redelivery a no-op.
+  if (before.moderationStatus !== "live" && after.moderationStatus === "live" &&
+      !Array.isArray(after.searchTokens)) {
+    db.collection("posts").doc(postId).update({ searchTokens: searchTokensFor(after) })
+      .catch((e) => console.warn(`searchTokens release-stamp ${postId}:`, e.message));
+  }
+
   // Skip when text didn't change. This covers two cases:
   //   - The trigger's own writes (flagged, flaggedAt, flagReason,
   //     concerningContent) keep `text` constant — without this guard the

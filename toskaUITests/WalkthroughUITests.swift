@@ -1106,12 +1106,27 @@ final class WalkthroughUITests: XCTestCase {
         }
         _ = row
         // normalize: if already liked (leftover), unlike first — offline
-        // queuing coalesces so the final state below is still deterministic
-        // (existence + forceTap — SwiftUI isHittable is unreliable here)
-        let unlike = app.buttons.matching(NSPredicate(format: "label == 'Unlike post'")).firstMatch
-        if unlike.exists { forceTap(unlike); sleep(1) }
-        let like = app.buttons.matching(NSPredicate(format: "label == 'Like post'")).firstMatch
-        XCTAssertTrue(like.waitForExistence(timeout: 6), "No likeable post row on screen")
+        // queuing coalesces so the final state below is still deterministic.
+        // ON-SCREEN match by FRAME, not firstMatch and not isHittable:
+        // firstMatch can resolve to an off-screen row (the account's own
+        // posts at the feed head render NO like button, pushing likeable
+        // rows down), and SwiftUI reports isHittable unreliably here — the
+        // frame band is the one trustworthy signal. The fixture row was just
+        // nudged into the safe band, so its like button's frame is in-band.
+        func onScreenButton(_ label: String) -> XCUIElement? {
+            app.buttons.matching(NSPredicate(format: "label == %@", label))
+                .allElementsBoundByIndex.first(where: { el in
+                    let f = el.frame
+                    return f.height > 0
+                        && f.minY > app.frame.minY + 120
+                        && f.maxY < app.frame.maxY - 140
+                })
+        }
+        if let unlike = onScreenButton("Unlike post") { forceTap(unlike); sleep(1) }
+        sleep(1)
+        guard let like = onScreenButton("Like post") else {
+            XCTFail("No on-screen likeable post row"); return
+        }
         forceTap(like)
         sleep(1)
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Unlike post'"))

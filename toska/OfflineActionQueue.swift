@@ -1,4 +1,5 @@
 import Foundation
+import FirebaseAuth
 
 // MARK: - Offline Action Queue
 //
@@ -24,6 +25,12 @@ enum OfflineActionQueue {
         let authorId: String
         var desired: Bool          // the end-state the user wants
         var queuedAt: Date
+        // Who queued it (2026-09-18 tech review): the flush replays through
+        // the CURRENT session's uid, so without this an entry queued by
+        // account A would execute under account B after a sign-out/sign-in.
+        // Optional so v1 entries (pre-field) decode — they're dropped on
+        // load rather than replayed against an unknowable account.
+        var uid: String?
     }
 
     private static let storeKey = "toska_offline_action_queue_v1"
@@ -35,29 +42,39 @@ enum OfflineActionQueue {
     /// Record the user's desired end-state for a post while offline —
     /// coalesces with any prior queued toggle for the same (kind, post).
     static func setDesired(_ kind: Kind, postId: String, authorId: String, desired: Bool) {
-        if let idx = entries.firstIndex(where: { $0.kind == kind && $0.postId == postId }) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        if let idx = entries.firstIndex(where: {
+            $0.kind == kind && $0.postId == postId && $0.uid == uid
+        }) {
             entries[idx].desired = desired
             entries[idx].queuedAt = Date()
         } else {
             entries.append(Entry(kind: kind, postId: postId, authorId: authorId,
-                                 desired: desired, queuedAt: Date()))
+                                 desired: desired, queuedAt: Date(), uid: uid))
         }
     }
 
     /// The queued end-state for a post, if any — lets rows render the
     /// offline-optimistic state consistently after scrolling away and back.
     static func desired(_ kind: Kind, postId: String) -> Bool? {
-        entries.first(where: { $0.kind == kind && $0.postId == postId })?.desired
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+        return entries.first(where: {
+            $0.kind == kind && $0.postId == postId && $0.uid == uid
+        })?.desired
     }
 
-    /// Replay every queued entry through the normal interaction paths.
-    /// Runs only when connected; each replay removes its entry up-front so a
-    /// failure can't loop forever (the server transaction dedup makes a
-    /// re-tap by the user safe).
+    /// Replay the CURRENT account's queued entries through the normal
+    /// interaction paths. Runs only when connected; each replay removes its
+    /// entry up-front so a failure can't loop forever (the server transaction
+    /// dedup makes a re-tap by the user safe). Another account's entries stay
+    /// queued for whenever that account signs back in; entries with no uid
+    /// (v1 format) are discarded at load.
     static func flush() {
-        guard NetworkMonitor.shared.isConnected, !entries.isEmpty else { return }
-        let batch = entries
-        entries = []
+        guard NetworkMonitor.shared.isConnected, !entries.isEmpty,
+              let uid = Auth.auth().currentUser?.uid else { return }
+        let batch = entries.filter { $0.uid == uid }
+        guard !batch.isEmpty else { return }
+        entries.removeAll { $0.uid == uid }
         for e in batch {
             switch e.kind {
             case .like:
@@ -80,7 +97,9 @@ enum OfflineActionQueue {
     private static func load() -> [Entry] {
         guard let data = UserDefaults.standard.data(forKey: storeKey),
               let decoded = try? JSONDecoder().decode([Entry].self, from: data) else { return [] }
-        return decoded
+        // Drop pre-uid (v1) entries — replaying them against whichever
+        // account happens to be signed in now would be wrong.
+        return decoded.filter { $0.uid != nil }
     }
 
     private static func persist() {

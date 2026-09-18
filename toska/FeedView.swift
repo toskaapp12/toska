@@ -135,6 +135,13 @@ struct FeedView: View {
                             // 🔍 toggle then finds this field by identifier.
                             .accessibilityIdentifier("feedSearchField")
                             .accessibilityLabel("Search")
+                            // Server-wide search fires on SUBMIT (the local
+                            // filter stays instant as-you-type); results
+                            // clear whenever the query empties.
+                            .onSubmit { vm.runServerSearch(searchText) }
+                            .onChange(of: searchText) { _, newValue in
+                                if newValue.isEmpty { vm.clearServerSearch() }
+                            }
                         if !searchText.isEmpty {
                             Button { searchText = "" } label: {
                                 Image(systemName: "xmark.circle.fill")
@@ -1973,7 +1980,8 @@ struct FeedColumn: View {
                                                                                                                                     // on cold launch (a fully-lazy feed here reports ~0 height and never
                                                                                                                                     // materialises — the blank-feed bug). The tail is a LazyVStack so we
                                                                                                                                     // don't build all ~60 scored rows up front.
-                                                                                                                                    if !searchText.isEmpty && visible.isEmpty {
+                                                                                                                                    if !searchText.isEmpty && visible.isEmpty
+                                                                                                                                        && vm.serverSearchResults.isEmpty && !vm.serverSearchInFlight {
                                                                                                                                         // Searching with zero matches: explicit empty state instead of a
                                                                                                                                         // blank column (which also used to drive runaway pagination).
                                                                                                                                         VStack(spacing: 8) {
@@ -1994,6 +2002,38 @@ struct FeedColumn: View {
                                                                                                                                         LazyVStack(spacing: 0) {
                                                                                                                                             ForEach(Array(visible.dropFirst(14))) { post in
                                                                                                                                                 feedRow(for: post, prefetchTriggerId: prefetchTriggerId)
+                                                                                                                                            }
+                                                                                                                                        }
+                                                                                                                                    }
+                                                                                                                                    // Server-wide results — everything the local window
+                                                                                                                                    // can't see, fetched on search submit. Locally-shown
+                                                                                                                                    // ids are excluded so nothing doubles.
+                                                                                                                                    if !searchText.isEmpty {
+                                                                                                                                        let localIds = Set(visible.map(\.id))
+                                                                                                                                        let fromEverywhere = vm.serverSearchResults.filter { !localIds.contains($0.id) }
+                                                                                                                                        if vm.serverSearchInFlight {
+                                                                                                                                            HStack(spacing: 8) {
+                                                                                                                                                ProgressView().controlSize(.small).tint(ToskaColor.accent)
+                                                                                                                                                Text("searching everywhere…")
+                                                                                                                                                    .font(ToskaFont.sans(12.5))
+                                                                                                                                                    .foregroundColor(ToskaColor.text2)
+                                                                                                                                            }
+                                                                                                                                            .frame(maxWidth: .infinity)
+                                                                                                                                            .padding(.vertical, 18)
+                                                                                                                                        } else if !fromEverywhere.isEmpty {
+                                                                                                                                            Text("from everywhere")
+                                                                                                                                                .font(ToskaFont.sans(10.5, weight: .semibold))
+                                                                                                                                                .textCase(.uppercase)
+                                                                                                                                                .tracking(0.74)
+                                                                                                                                                .foregroundColor(ToskaColor.text2)
+                                                                                                                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                                                                                                                .padding(.horizontal, 28)
+                                                                                                                                                .padding(.top, 18)
+                                                                                                                                                .padding(.bottom, 4)
+                                                                                                                                            LazyVStack(spacing: 0) {
+                                                                                                                                                ForEach(fromEverywhere) { post in
+                                                                                                                                                    feedRow(for: post, prefetchTriggerId: nil)
+                                                                                                                                                }
                                                                                                                                             }
                                                                                                                                         }
                                                                                                                                     }

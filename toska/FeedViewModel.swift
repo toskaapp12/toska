@@ -48,6 +48,12 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Post Data
     @Published var posts: [FeedPost] = []
+    // Server-wide search (owner 2026-09-18): keyword-token query over ALL
+    // live posts, run on search submit — the instant local filter only
+    // covers the loaded window.
+    @Published var serverSearchResults: [FeedPost] = []
+    @Published var serverSearchInFlight = false
+    private var serverSearchGeneration = 0
         @Published var followingPosts: [FeedPost] = []
         @Published var followingFetchIncomplete = false
 
@@ -625,7 +631,60 @@ class FeedViewModel: ObservableObject {
     
     var supplementaryTask: Task<Void, Never>? = nil
 
-        func loadInitialData() {
+        // MARK: - Server-wide search
+
+    /// Tokenizes the query the same way the server stamps `searchTokens`
+    /// (lowercased words, len >= 2) and fetches live posts matching ANY
+    /// token (array-contains-any caps at 10). Ranked by match count, then
+    /// recency. Generation-guarded against stale responses.
+    func runServerSearch(_ query: String) {
+        let tokens = query.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 2 }
+        guard !tokens.isEmpty else { clearServerSearch(); return }
+        let queryTokens = Array(Set(tokens)).prefix(10).map { String($0) }
+
+        serverSearchGeneration += 1
+        let gen = serverSearchGeneration
+        serverSearchInFlight = true
+
+        Firestore.firestore().collection("posts")
+            .whereField("moderationStatus", isEqualTo: "live")
+            .whereField("searchTokens", arrayContainsAny: queryTokens)
+            .order(by: "createdAt", descending: true)
+            .limit(to: 25)
+            .getDocuments { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self, gen == self.serverSearchGeneration else { return }
+                    self.serverSearchInFlight = false
+                    guard error == nil, let docs = snapshot?.documents else {
+                        self.serverSearchResults = []
+                        return
+                    }
+                    let tokenSet = Set(queryTokens)
+                    self.serverSearchResults = docs
+                        .map { FeedView.feedPost(from: $0) }
+                        .filter { !BlockedUsersCache.shared.isBlocked($0.authorId) }
+                        .sorted { a, b in
+                            func hits(_ p: FeedPost) -> Int {
+                                let words = Set(p.text.lowercased()
+                                    .components(separatedBy: CharacterSet.alphanumerics.inverted))
+                                return words.intersection(tokenSet).count
+                            }
+                            let (ha, hb) = (hits(a), hits(b))
+                            return ha != hb ? ha > hb : a.time < b.time
+                        }
+                }
+            }
+    }
+
+    func clearServerSearch() {
+        serverSearchGeneration += 1
+        serverSearchResults = []
+        serverSearchInFlight = false
+    }
+
+    func loadInitialData() {
             print("⚡️ loadInitialData called — hasFetchedInitial: \(hasFetchedInitial), hasAuth: \(Auth.auth().currentUser != nil)")
             guard !hasFetchedInitial else {
                 print("⚡️ loadInitialData — already fetched, posts.count: \(posts.count)")

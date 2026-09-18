@@ -521,6 +521,22 @@ describe("#2 trigger orchestration — validatePost", () => {
 
   // GIF-only posts (owner 2026-09-17): blank text + gifUrl is a valid post;
   // blank text with NO gif keeps the hard-delete guard.
+  it("promotion stamps searchTokens (lowercased words + tag + handle)", async () => {
+    await db.doc("posts/ptok").set({ authorId: "u", authorHandle: "quiet_oak_12", text: "The Rain kept falling, rain again", tag: "longing", likeCount: 0, repostCount: 0, replyCount: 0, createdAt: new Date() });
+    await fns.validatePost.run({ id: "e8", data: await snapOf("posts/ptok"), params: { postId: "ptok" } });
+    const tokens = (await db.doc("posts/ptok").get()).get("searchTokens");
+    assert.ok(Array.isArray(tokens), "searchTokens missing");
+    for (const t of ["the", "rain", "kept", "falling", "again", "longing", "quiet_oak_12"]) {
+      // handle tokenizes on non-alphanumerics — accept the parts
+      if (t === "quiet_oak_12") {
+        assert.ok(tokens.includes("quiet") && tokens.includes("oak") && tokens.includes("12"), "handle parts missing");
+      } else {
+        assert.ok(tokens.includes(t), `token '${t}' missing`);
+      }
+    }
+    assert.strictEqual(tokens.filter((x) => x === "rain").length, 1, "tokens not deduped");
+  }).timeout(8000);
+
   it("GIF-only post (blank text + gifUrl) → promoted to live", async () => {
     await db.doc("posts/pgif").set({ authorId: "u", text: "", gifUrl: "https://media.giphy.com/media/abc/giphy.gif", likeCount: 0, repostCount: 0, replyCount: 0, createdAt: new Date() });
     await fns.validatePost.run({ id: "e6", data: await snapOf("posts/pgif"), params: { postId: "pgif" } });

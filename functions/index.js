@@ -625,6 +625,20 @@ async function setPendingReview(postRef, reason, extraFields = {}) {
 // Guarded so we never override a hold: if onPostCreated / onReportCreatedAutoHide
 // concurrently set "pending_review", that wins and the post stays hidden,
 // regardless of trigger ordering. Idempotent on an already-live post.
+// Keyword tokens for server-wide search (owner 2026-09-18): lowercase
+// words from the text + tag + handle, deduped, len>=2, capped at 60.
+// Stamped ONLY server-side (admin writes bypass rules; the client schema
+// hasOnly never allows the field), read by the feed's search query via
+// array-contains-any.
+function searchTokensFor(data) {
+  const src = [data.text || "", data.tag || "", data.authorHandle || ""].join(" ");
+  const tokens = src.toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .split(" ")
+    .filter((w) => w.length >= 2);
+  return [...new Set(tokens)].slice(0, 60);
+}
+
 async function setPostLive(postRef) {
   try {
     await db.runTransaction(async (tx) => {
@@ -632,7 +646,10 @@ async function setPostLive(postRef) {
       if (!snap.exists) return;
       const status = snap.data().moderationStatus;
       if (status === "pending_review" || status === "live") return;
-      tx.update(postRef, { moderationStatus: "live" });
+      tx.update(postRef, {
+        moderationStatus: "live",
+        searchTokens: searchTokensFor(snap.data()),
+      });
     });
   } catch (err) {
     console.warn(`setPostLive ${postRef.id} failed:`, err.message);
@@ -3070,6 +3087,12 @@ exports.onPostUpdated = onDocumentUpdated(
   //   - Any other unrelated field update (editedAt without text, future
   //     metadata fields, etc.) doesn't need a moderation pass.
   if (before.text === after.text) return;
+
+  // Search tokens track the words on every edit (server-only field). The
+  // text-unchanged guard above makes this update's own redelivery a no-op,
+  // so no recursion.
+  db.collection("posts").doc(postId).update({ searchTokens: searchTokensFor(after) })
+    .catch((e) => console.warn(`searchTokens restamp ${postId}:`, e.message));
 
   // Text-change side effects that must run even when the moderation branches
   // below early-return (crisis path returns, PII path returns, …):

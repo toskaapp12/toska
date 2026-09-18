@@ -752,6 +752,80 @@ final class WalkthroughUITests: XCTestCase {
         }
     }
 
+    // MARK: 17 — a day in the life: one continuous user sitting
+    //
+    // Not an assertion suite — a narrated session. Open, read, respond to
+    // the prompt, post a GIF, wander every tab. Snaps at every beat so the
+    // session can be reviewed for FEEL, not just function.
+    func test17_dayInTheLife() throws {
+        try requireFeed()
+        snap("17a-open-first-glance")
+
+        // read the feed like a person: two slow pages
+        app.swipeUp(); sleep(1)
+        snap("17b-scrolled-once")
+        app.swipeUp(); sleep(1)
+        snap("17c-scrolled-twice")
+        scrollToTop(3)
+
+        // respond to today's prompt if it's still open
+        let writeYours = app.buttons.matching(NSPredicate(format: "label == 'write yours'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable })
+        if let writeYours {
+            forceTap(writeYours)
+            XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Prompt compose didn't open")
+            snap("17d-prompt-compose")
+            clearComposeEditor()
+            focusAndType(app.textViews.firstMatch,
+                         "if you asked, i'd say i stopped being angry in march. (walkthrough)")
+            snap("17e-prompt-typed")
+            forceTap(app.buttons["post"])
+            sleep(5)
+            snap("17f-after-prompt-post")
+        } else {
+            snap("17d-already-responded")
+        }
+
+        // post a GIF with a few words — and FEEL the gif land
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        focusAndType(app.textViews.firstMatch, "no words tonight, just this. (walkthrough)")
+        forceTap(app.buttons["Add GIF"])
+        sleep(3)
+        snap("17g-gif-picker-open")   // did trending load instantly?
+        // tap the first gif cell if the grid rendered
+        let firstGif = app.images.allElementsBoundByIndex.first(where: { $0.isHittable && $0.frame.width > 60 })
+        if let firstGif {
+            forceTap(firstGif)
+            sleep(2)
+            snap("17h-gif-attached")   // compose preview
+        } else if app.buttons["close GIF picker"].exists {
+            forceTap(app.buttons["close GIF picker"])
+        }
+        if app.buttons["post"].exists && app.buttons["post"].isEnabled {
+            forceTap(app.buttons["post"])
+            sleep(2)
+            snap("17i-right-after-post")   // is the gif already rendered in feed?
+            sleep(4)
+            snap("17j-post-settled")
+        } else if app.buttons["cancel"].exists {
+            app.buttons["cancel"].tap()
+        }
+
+        // wander: most felt → notifications → profile → back home
+        app.buttons["Trending"].tap(); sleep(2)
+        snap("17k-most-felt")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Notifications'")).firstMatch.tap()
+        sleep(2)
+        snap("17l-notifications")
+        app.buttons["Profile"].tap(); sleep(2)
+        snap("17m-my-profile")
+        app.buttons["Home"].tap(); sleep(2)
+        scrollToTop(2)
+        snap("17n-home-again")
+    }
+
     func test10_composeAndPost() throws {
         try requireFeed()
         app.buttons["New post"].tap()

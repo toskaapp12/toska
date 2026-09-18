@@ -14,7 +14,24 @@ class NetworkMonitor {
         private let queue = DispatchQueue(label: "NetworkMonitor")
         private var bannerDismissTask: Task<Void, Never>? = nil
 
+        /// DEBUG-only offline preview hook (mirrors TOSKA_FORCE_NIGHT):
+        /// `SIMCTL_CHILD_TOSKA_FORCE_OFFLINE=1 simctl launch …` pins the
+        /// monitor offline so offline UX + the action queue are testable
+        /// deterministically. Compiled out of Release.
+        static var forcedOffline: Bool {
+            #if DEBUG
+            return ProcessInfo.processInfo.environment["TOSKA_FORCE_OFFLINE"] == "1"
+            #else
+            return false
+            #endif
+        }
+
         private init() {
+            if Self.forcedOffline {
+                isConnected = false
+                showOfflineBanner = true
+                return   // ignore real path updates — stay offline all launch
+            }
             // pathUpdateHandler is a @Sendable closure invoked off the main
             // queue. The inner Task re-captures self weakly so Swift 6 strict
             // concurrency doesn't flag the cross-closure self capture as a
@@ -24,6 +41,12 @@ class NetworkMonitor {
                     guard let self else { return }
                     let wasConnected = self.isConnected
                     self.isConnected = path.status == .satisfied
+
+                    if self.isConnected {
+                        // Fresh connectivity (first sample or a reconnect) —
+                        // sync anything the user did while offline.
+                        OfflineActionQueue.flush()
+                    }
 
                     if path.status != .satisfied {
                         self.bannerDismissTask?.cancel()

@@ -49,7 +49,12 @@ class PostInteractionManager {
                // completion handler closes the window cleanly.
                guard !RateLimiter.shared.isLikeInFlight(postId) else { return }
                guard NetworkMonitor.shared.isConnected else {
-                   print("⚠️ toggleLike — offline, skipping")
+                   // Offline: queue the desired end-state (coalesced) and
+                   // reflect it optimistically — it syncs on reconnect.
+                   let desired = !currentlyLiked
+                   OfflineActionQueue.setDesired(.like, postId: postId, authorId: authorId, desired: desired)
+                   onUpdate(LikeResult(isLiked: desired,
+                                       newCount: max(0, currentCount + (desired ? 1 : -1))))
                    return
                }
                // Record the rate-limit timestamp on attempt rather than on
@@ -162,7 +167,11 @@ class PostInteractionManager {
                 }
         if let last = RateLimiter.shared.lastSaveTime(for: postId), Date().timeIntervalSince(last) < 1 { return }
                 guard NetworkMonitor.shared.isConnected else {
-                    print("⚠️ toggleSave — offline, skipping")
+                    // Offline: queue the desired end-state and reflect it
+                    // optimistically — it syncs on reconnect.
+                    let desired = !currentlySaved
+                    OfflineActionQueue.setDesired(.save, postId: postId, authorId: authorId, desired: desired)
+                    onUpdate(desired)
                     return
                 }
                 // In-flight guard (parity with toggleLike): the 1s rate window

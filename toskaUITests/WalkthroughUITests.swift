@@ -23,6 +23,9 @@ final class WalkthroughUITests: XCTestCase {
         if let night = ProcessInfo.processInfo.environment["TOSKA_FORCE_NIGHT"] {
             app.launchEnvironment["TOSKA_FORCE_NIGHT"] = night
         }
+        if let off = ProcessInfo.processInfo.environment["TOSKA_FORCE_OFFLINE"] {
+            app.launchEnvironment["TOSKA_FORCE_OFFLINE"] = off
+        }
         app.launch()
         acceptPolicyGateIfPresent()
     }
@@ -1081,6 +1084,56 @@ final class WalkthroughUITests: XCTestCase {
                 snap("18d6-after-unblock")
             }
         }
+    }
+
+    // MARK: 19 — offline → online transition: queued like survives the trip
+    //
+    // Launches pinned OFFLINE (debug hook), likes the fixture post — heart
+    // must fill optimistically with the offline banner up — then relaunches
+    // ONLINE and verifies the queued like flushed to the server (the row
+    // still reads liked after real data replaces the optimistic state).
+    func test19_offlineLikeQueue() throws {
+        // Phase 1: offline
+        app.terminate()
+        app.launchEnvironment["TOSKA_FORCE_OFFLINE"] = "1"
+        app.launch()
+        acceptPolicyGateIfPresent()
+        try requireFeed()
+        snap("19a-offline-feed")   // offline banner should be visible
+        guard let row = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')")) else {
+            throw XCTSkip("fixture post missing")
+        }
+        _ = row
+        // normalize: if already liked (leftover), unlike first — offline
+        // queuing coalesces so the final state below is still deterministic
+        // (existence + forceTap — SwiftUI isHittable is unreliable here)
+        let unlike = app.buttons.matching(NSPredicate(format: "label == 'Unlike post'")).firstMatch
+        if unlike.exists { forceTap(unlike); sleep(1) }
+        let like = app.buttons.matching(NSPredicate(format: "label == 'Like post'")).firstMatch
+        XCTAssertTrue(like.waitForExistence(timeout: 6), "No likeable post row on screen")
+        forceTap(like)
+        sleep(1)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == 'Unlike post'"))
+            .firstMatch.exists, "Offline like didn't render optimistically")
+        snap("19b-offline-liked")
+
+        // Phase 2: back online — queue flushes on launch connectivity
+        app.terminate()
+        app.launchEnvironment.removeValue(forKey: "TOSKA_FORCE_OFFLINE")
+        app.launch()
+        acceptPolicyGateIfPresent()
+        try requireFeed()
+        sleep(5)   // flush + likedPostIds listener delivery
+        scrollToTop(1)
+        let likedRow = app.buttons.matching(NSPredicate(format: "label == 'Unlike post'")).firstMatch
+        XCTAssertTrue(likedRow.waitForExistence(timeout: 10),
+                      "Queued like didn't sync to the server after reconnect")
+        snap("19c-online-synced")
+
+        // Cleanup: unlike so reruns start clean
+        let cleanup = app.buttons.matching(NSPredicate(format: "label == 'Unlike post'")).firstMatch
+        if cleanup.exists { forceTap(cleanup); sleep(2) }
     }
 
     func test10_composeAndPost() throws {

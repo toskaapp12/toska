@@ -1213,12 +1213,8 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Like
         
         func toggleLike() {
-            // M4 (2026-07-22): the manager drops the toggle silently when
-            // offline — surface it as a warning buzz instead of a dead tap.
-            guard NetworkMonitor.shared.isConnected else {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                return
-            }
+            // Offline likes now QUEUE (OfflineActionQueue) with an optimistic
+            // heart — no warning buzz, the tap is real and syncs on reconnect.
             // N-7: arm the suppression window at tap time, re-arm on completion
             // (mirrors PostDetailView.toggleLike) so a feed refresh can't snap
             // the optimistic count back mid-round-trip.
@@ -1310,13 +1306,8 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Save
             
             func toggleSave() {
-                // Don't fire the confirm haptic when offline — the manager
-                // silently no-ops there, so the haptic was a false "saved"
-                // signal. M4: buzz a warning instead of dropping the tap dead.
-                guard NetworkMonitor.shared.isConnected else {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    return
-                }
+                // Offline saves queue with an optimistic bookmark (see
+                // OfflineActionQueue) — the confirm haptic is honest now.
                 HapticManager.play(.feltThis)
                 PostInteractionManager.toggleSave(
                     postId: postId,

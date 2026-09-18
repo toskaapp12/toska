@@ -1344,6 +1344,265 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertEqual((after.value as? String) ?? "?", original, "Couldn't restore setting")
     }
 
+    // MARK: 22 — unicode, emoji, special characters, and the length wall
+    //
+    // typeText can't synthesize emoji/CJK — the runner's UIPasteboard is
+    // shared with the simulator, so paste instead (the human path for
+    // exotic input anyway).
+    func test22_unicodeAndLimits() throws {
+        try requireFeed()
+        let digits = Array("abcdefghij")
+        let marker = "unicdrill" + String(Int(Date().timeIntervalSince1970)).map { c in
+            digits[Int(String(c))!]
+        }
+        let fancy = "café 気持ち 💜 «quotes» & <tags> — \(marker)"
+
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        UIPasteboard.general.string = fancy
+        sleep(1) // pasteboard sync to the sim
+        let editor = app.textViews.firstMatch
+        editor.tap()
+        editor.press(forDuration: 1.2)
+        let paste = app.menuItems["Paste"]
+        XCTAssertTrue(paste.waitForExistence(timeout: 4), "Paste menu didn't appear")
+        paste.tap()
+        sleep(1)
+        let typed = (editor.value as? String) ?? ""
+        XCTAssertTrue(typed.contains("💜") && typed.contains(marker),
+                      "Paste dropped content (got: '\(typed.prefix(60))')")
+        snap("22a-unicode-composed")
+        forceTap(app.buttons["post"])
+        sleep(2)
+        let postAnyway = app.buttons["post anyway"].firstMatch
+        if postAnyway.waitForExistence(timeout: 2) { forceTap(postAnyway) }
+        var row: XCUIElement?
+        for _ in 0..<7 {
+            sleep(4)
+            scrollToTop(1)
+            row = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 1)
+            if row != nil { break }
+        }
+        XCTAssertNotNil(row, "Unicode post never reached the feed")
+        if let row {
+            XCTAssertTrue((row.label.contains("💜")), "Emoji stripped from feed row")
+            forceTap(row)
+            XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Detail didn't open")
+            snap("22b-unicode-detail")
+            // delete it (own post) so staging stays clean
+            let menu = app.buttons["Edit or delete post"].firstMatch
+            if menu.waitForExistence(timeout: 6) {
+                forceTap(menu); sleep(1)
+                let del = app.buttons["delete post"].firstMatch
+                if del.waitForExistence(timeout: 3) {
+                    forceTap(del); sleep(1)
+                    let confirm = app.buttons["delete"].firstMatch
+                    if confirm.waitForExistence(timeout: 3) { forceTap(confirm); sleep(2) }
+                }
+            }
+        }
+
+        // Length wall, part 1: a 600-char paste into a NORMAL post must clamp
+        // to exactly the 500 cap (UTF-16-aware truncation onChange) with post
+        // still enabled — the app never lets pasted text create an invalid
+        // state. (First rerun proved this: editor held exactly 500.)
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't reopen")
+        clearComposeEditor()
+        UIPasteboard.general.string = String(repeating: "toska ", count: 100)
+        sleep(2) // runner→sim pasteboard sync is async; 1s raced and pasted stale content
+        editor.tap()
+        editor.press(forDuration: 1.2)
+        let paste2 = app.menuItems["Paste"]
+        XCTAssertTrue(paste2.waitForExistence(timeout: 4), "Second paste menu missing")
+        paste2.tap()
+        sleep(1)
+        let clamped = ((editor.value as? String) ?? "").count
+        XCTAssertEqual(clamped, 500, "Long paste should clamp to the 500 cap (got \(clamped))")
+        XCTAssertTrue(app.buttons["post"].isEnabled, "Exactly-at-cap post should be enabled")
+        snap("22c-clamped-at-cap")
+
+        // Part 2: the ONLY reachable over-limit state — letter mode (2000 cap)
+        // holds >500 chars, then toggling letter OFF strands the long body.
+        // Post must disable instead of letting the tap fail at the server.
+        forceTap(app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH[c] 'Letter mode'")).firstMatch)
+        sleep(1)
+        editor.tap()
+        editor.press(forDuration: 1.2)
+        let paste3 = app.menuItems["Paste"]
+        if paste3.waitForExistence(timeout: 4) { paste3.tap() }
+        sleep(1)
+        let letterLen = ((editor.value as? String) ?? "").count
+        XCTAssertGreaterThan(letterLen, 500, "Letter mode should hold >500 (got \(letterLen))")
+        forceTap(app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH[c] 'Letter mode'")).firstMatch) // toggle OFF
+        sleep(1)
+        XCTAssertFalse(app.buttons["post"].isEnabled,
+                       "Over-limit body after letter→normal toggle must disable post")
+        snap("22d-over-limit-disabled")
+        clearComposeEditor()
+        forceTap(app.buttons["cancel"])
+    }
+
+    // MARK: 23 — cross-account sync: A posts → B felts/replies/follows →
+    // A sees the notifications, the deep-link lands, and counts agree.
+    func test23_crossAccountSync() throws {
+        guard let pwB = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW_B"] else {
+            throw XCTSkip("TOSKA_STAGING_TEST_PW_B not set — see .local-credentials.md")
+        }
+        guard let pwA = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
+            throw XCTSkip("TOSKA_STAGING_TEST_PW not set")
+        }
+        try requireFeed()
+
+        // A posts the marker.
+        let digits = Array("abcdefghij")
+        let marker = "crossdrill" + String(Int(Date().timeIntervalSince1970)).map { c in
+            digits[Int(String(c))!]
+        }
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        focusAndType(app.textViews.firstMatch, "someone will hear this. \(marker)")
+        forceTap(app.buttons["post"])
+        sleep(2)
+        let postAnyway = app.buttons["post anyway"].firstMatch
+        if postAnyway.waitForExistence(timeout: 2) { forceTap(postAnyway) }
+        var mine: XCUIElement?
+        for _ in 0..<7 {
+            sleep(4); scrollToTop(1)
+            mine = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 1)
+            if mine != nil { break }
+        }
+        XCTAssertNotNil(mine, "A's marker post never went live")
+
+        // A → out, B → in.
+        signOutInline()
+        signInInline(email: "salinarotess+webv1rb70g8@gmail.com", password: pwB)
+        snap("23a-signed-in-as-B")
+
+        // B finds A's post: felt + reply + follow.
+        scrollToTop(2)
+        guard let aPost = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 3) else {
+            XCTFail("B can't see A's post"); return
+        }
+        forceTap(aPost)
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Detail didn't open for B")
+        let like = app.buttons.matching(NSPredicate(format: "label == 'Like post'")).firstMatch
+        if like.waitForExistence(timeout: 5) { forceTap(like); sleep(1) }
+        let replyField = app.textFields["replyField"]
+        XCTAssertTrue(replyField.waitForExistence(timeout: 6), "Reply field missing")
+        replyField.tap(); sleep(1)
+        app.typeText("you are not alone in this. \(marker)")
+        forceTap(app.buttons["Send reply"])
+        sleep(3)
+        snap("23b-B-replied")
+        // follow A from the post header handle
+        let handle = app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH 'anonymous_'")).firstMatch
+        if handle.waitForExistence(timeout: 4) {
+            forceTap(handle)
+            let follow = app.buttons["followButton"]
+            if follow.waitForExistence(timeout: 6) {
+                if follow.label.lowercased().contains("follow") && !follow.label.lowercased().contains("following") {
+                    forceTap(follow); sleep(2)
+                }
+                snap("23c-B-followed-A")
+            }
+        }
+
+        // Pop back to the feed root — pushed profile/detail screens hide the
+        // tab bar, and signOutInline needs the Profile tab reachable.
+        for _ in 0..<3 where app.buttons["Back"].exists {
+            forceTap(app.buttons["Back"]); sleep(1)
+        }
+
+        // B → out, A → in: verify the other side.
+        signOutInline()
+        signInInline(email: "salinarotess+nice@gmail.com", password: pwA)
+        let bell = app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH 'Notifications'")).firstMatch
+        forceTap(bell)
+        sleep(3)
+        snap("23d-A-notifications")
+        let feltNotif = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS 'felt'")).firstMatch.exists
+        let replyNotif = app.buttons.matching(NSPredicate(
+            format: "label CONTAINS 'replied'")).firstMatch
+        XCTAssertTrue(feltNotif || replyNotif.exists,
+                      "A received neither felt nor reply notification")
+        // Deep-link: the reply notification must land on the post WITH B's reply.
+        if replyNotif.exists {
+            forceTap(replyNotif)
+            XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Notification didn't open the post")
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS 'not alone in this'")).firstMatch
+                .waitForExistence(timeout: 8), "Deep-link opened but B's reply not visible")
+            snap("23e-deeplink-shows-reply")
+            forceTap(app.buttons["Back"])
+        }
+        // Cleanup: A deletes EVERY crossdrill post still in the feed — its own
+        // marker (which takes B's reply with it) plus any stranded from an
+        // earlier aborted run.
+        forceTap(app.buttons["Home"])
+        sleep(1)
+        for _ in 0..<3 {
+            scrollToTop(2)
+            guard let leftover = findRow(matching: NSPredicate(
+                format: "label CONTAINS 'crossdrill'"), swipes: 2) else { break }
+            forceTap(leftover)
+            guard app.buttons["Back"].waitForExistence(timeout: 6) else { break }
+            let menu = app.buttons["Edit or delete post"].firstMatch
+            if menu.waitForExistence(timeout: 4) {
+                forceTap(menu); sleep(1)
+                let del = app.buttons["delete post"].firstMatch
+                if del.waitForExistence(timeout: 3) {
+                    forceTap(del); sleep(1)
+                    let confirm = app.buttons["delete"].firstMatch
+                    if confirm.waitForExistence(timeout: 3) { forceTap(confirm); sleep(2) }
+                }
+            } else {
+                forceTap(app.buttons["Back"]); sleep(1)
+                break
+            }
+        }
+    }
+
+    // Compact inline versions of test01/test02 so cross-account flows can
+    // switch users mid-test.
+    func signOutInline() {
+        app.buttons["Profile"].tap(); sleep(2)
+        forceTap(app.buttons["settings"])
+        _ = waitFor(app.staticTexts["settings"], 8)
+        for _ in 0..<8 {
+            let row = app.buttons["sign out"]
+            if row.exists && row.frame.maxY < app.frame.maxY - 100 && row.frame.minY > 100 { break }
+            app.swipeUp(); usleep(400_000)
+        }
+        forceTap(app.buttons["sign out"])
+        let alertConfirm = app.alerts.buttons["sign out"].exists
+            ? app.alerts.buttons["sign out"]
+            : app.buttons.matching(NSPredicate(format: "label == 'sign out'")).element(boundBy: 1)
+        if waitFor(alertConfirm, 5) { forceTap(alertConfirm) }
+        _ = waitFor(app.buttons["i'm new here"], 10)
+    }
+
+    func signInInline(email: String, password: String) {
+        let signIn = app.buttons["sign in"]
+        guard waitFor(signIn, 10) else { XCTFail("Not at splash for sign-in"); return }
+        signIn.tap()
+        let emailField = app.textFields["emailField"]
+        _ = waitFor(emailField, 8)
+        emailField.tap(); emailField.typeText(email)
+        let pw = app.secureTextFields["passwordField"]
+        pw.tap(); pw.typeText(password)
+        app.buttons["signInButton"].tap()
+        _ = waitFor(feedView, 30)
+        acceptPolicyGateIfPresent()
+    }
+
     func test10_composeAndPost() throws {
         try requireFeed()
         app.buttons["New post"].tap()

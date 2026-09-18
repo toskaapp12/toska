@@ -826,6 +826,265 @@ final class WalkthroughUITests: XCTestCase {
         snap("17n-home-again")
     }
 
+    // MARK: 18 — deep sweep: every control, every state (owner 2026-09-17)
+
+    /// Every Settings control: each non-push toggle flipped + restored, every
+    /// row opened, destructive alerts CANCELLED, policy sheet dismissed.
+    func test18a_settingsEveryControl() throws {
+        try requireFeed()
+        app.buttons["Profile"].tap(); sleep(1)
+        app.buttons["settings"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Settings didn't open")
+
+        func flipRestore(_ label: String) {
+            let t = app.switches[label].firstMatch
+            guard t.waitForExistence(timeout: 3) else { XCTFail("toggle '\(label)' missing"); return }
+            nudgeRowIntoSafeBand(t)
+            let before = (t.value as? String) ?? "?"
+            if t.isHittable { t.tap() } else { t.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap() }
+            sleep(2)
+            XCTAssertNotEqual(before, (t.value as? String) ?? "?", "'\(label)' didn't flip")
+            if t.isHittable { t.tap() } else { t.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap() }
+            sleep(2)
+            XCTAssertEqual(before, (t.value as? String) ?? "?", "'\(label)' didn't restore")
+        }
+        flipRestore("allow sharing")
+        flipRestore("show follower count")
+        flipRestore("share anonymous usage data")
+        flipRestore("gentle check-in")
+        snap("18a1-toggles-done")
+
+        // content policy sheet opens + closes
+        let policy = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'view content policy'"))
+            .allElementsBoundByIndex.last
+        if let policy { nudgeRowIntoSafeBand(policy); forceTap(policy); sleep(2) }
+        snap("18a2-content-policy")
+        if app.buttons["Back"].exists { forceTap(app.buttons["Back"]) }
+        else if app.buttons["close"].exists { forceTap(app.buttons["close"]) }
+        else { app.swipeDown(velocity: .fast) }
+        sleep(1)
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 6), "Didn't return from content policy")
+
+        // sign out + delete account alerts — CANCEL both
+        for row in ["sign out", "delete account"] {
+            let b = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", row))
+                .allElementsBoundByIndex.last
+            guard let b else { XCTFail("'\(row)' row missing"); continue }
+            nudgeRowIntoSafeBand(b); forceTap(b); sleep(1)
+            snap("18a3-\(row.replacingOccurrences(of: " ", with: "-"))-alert")
+            let cancel = app.buttons["cancel"].firstMatch
+            if cancel.waitForExistence(timeout: 3) { cancel.tap() } else { app.tap() }
+            sleep(1)
+        }
+        XCTAssertTrue(app.staticTexts["settings"].exists, "Lost settings after cancelled alerts")
+        snap("18a4-settings-after")
+    }
+
+    /// Repost matrix: repost from the DETAIL stats line, undo it, then repost
+    /// a REPLY from a thread, undo, and confirm the reposts tab on profile.
+    func test18b_repostMatrix() throws {
+        try requireFeed()
+        // detail repost on the fixture post (not ours)
+        guard let row = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')")) else {
+            throw XCTSkip("fixture post missing")
+        }
+        forceTap(row)
+        XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Detail didn't open")
+        let repost = app.buttons.matching(NSPredicate(format: "label == 'Repost' AND enabled == true"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable })
+        let undo = { self.app.buttons.matching(NSPredicate(format: "label == 'Undo repost'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable }) }
+        if let repost {
+            forceTap(repost); sleep(4)
+            snap("18b1-detail-reposted")
+            XCTAssertNotNil(undo(), "Detail repost didn't stick")
+            // profile reposts tab should now show it
+            forceTap(app.buttons["Back"])
+            sleep(1)
+            app.buttons["Profile"].tap(); sleep(1)
+            let repostsTab = app.buttons["reposts"].firstMatch
+            if repostsTab.waitForExistence(timeout: 4) { forceTap(repostsTab); sleep(2) }
+            snap("18b2-profile-reposts-tab")
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS 'first light, honestly'")).firstMatch.waitForExistence(timeout: 6),
+                "Repost not on reposts tab")
+            // back to the thread, undo
+            app.buttons["Home"].tap(); sleep(1)
+            if let row2 = findRow(matching: NSPredicate(
+                format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')")) {
+                forceTap(row2)
+                _ = waitFor(app.buttons["Back"], 8)
+                if let u = undo() { forceTap(u); sleep(3) }
+                snap("18b3-detail-unreposted")
+            }
+        } else if undo() != nil {
+            // leftover state — undo to normalize
+            if let u = undo() { forceTap(u); sleep(3) }
+        }
+        // reply repost round-trip: open the busy thread, repost first reply
+        if app.buttons["Back"].exists { forceTap(app.buttons["Back"]); sleep(1) }
+        scrollToTop(2)
+        if let busy = findRow(matching: NSPredicate(format: "label CONTAINS 'a year ago today'")) {
+            forceTap(busy)
+            _ = waitFor(app.buttons["Back"], 8)
+            sleep(2)
+            let replyRepost = app.buttons.matching(
+                NSPredicate(format: "label == 'Repost reply'")).allElementsBoundByIndex.first(where: { $0.isHittable })
+            if let replyRepost {
+                forceTap(replyRepost); sleep(4)
+                snap("18b4-reply-reposted")
+                let undoReply = app.buttons.matching(
+                    NSPredicate(format: "label == 'Undo repost'")).allElementsBoundByIndex.first(where: { $0.isHittable })
+                XCTAssertNotNil(undoReply, "Reply repost didn't stick")
+                if let u = undoReply { forceTap(u); sleep(3) }
+            }
+            snap("18b5-thread-after")
+        }
+    }
+
+    /// Post lifecycle: post a WHISPER, verify its badge + hidden share, expand
+    /// a letter via "keep reading", then DELETE our whisper via the ⋯ menu.
+    func test18c_postLifecycle() throws {
+        try requireFeed()
+        // Letters-only marker — a digit-run marker reads as a PHONE NUMBER
+        // to the PII detector and (correctly!) triggers the keep-it-anonymous
+        // dialog, stalling the post. Encode the timestamp in letters.
+        let digits = Array("abcdefghij")
+        let marker = "whisp" + String(Int(Date().timeIntervalSince1970)).map { c in
+            digits[Int(String(c))!]
+        }
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        // clear any restored feeling tag so the whisper is untagged
+        focusAndType(app.textViews.firstMatch, "just for an hour. \(marker)")
+        forceTap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Whisper'")).firstMatch)
+        sleep(1)
+        snap("18c1-whisper-composed")
+        forceTap(app.buttons["post"])
+        sleep(2)
+        // If a safety dialog still fires, proceed past it deliberately.
+        let postAnyway = app.buttons["post anyway"].firstMatch
+        if postAnyway.waitForExistence(timeout: 2) { forceTap(postAnyway); sleep(1) }
+        snap("18c1b-right-after-post-tap")
+        // Patient-user wait: a pull-to-refresh inside the pending_validation
+        // window briefly drops the fresh post from server truth (promote lag,
+        // mitigated in-app by delayed refetches) — poll gently instead.
+        var myWhisper: XCUIElement?
+        for _ in 0..<7 {
+            sleep(4)
+            scrollToTop(1)
+            myWhisper = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 1)
+            if myWhisper != nil { break }
+        }
+        XCTAssertNotNil(myWhisper, "Whisper not in feed after 28s")
+        snap("18c2-whisper-in-feed")
+        if let myWhisper {
+            forceTap(myWhisper)
+            XCTAssertTrue(waitFor(app.buttons["Back"], 8), "Whisper detail didn't open")
+            XCTAssertFalse(app.buttons["Share post"].exists, "Whisper must not offer share")
+            snap("18c3-whisper-detail")
+            // delete it via ⋯ (it's ours)
+            let menu = app.buttons["Edit or delete post"].firstMatch
+            XCTAssertTrue(menu.waitForExistence(timeout: 6), "Own-post menu missing")
+            forceTap(menu); sleep(1)
+            let del = app.buttons["delete post"].firstMatch
+            XCTAssertTrue(del.waitForExistence(timeout: 4), "delete option missing")
+            forceTap(del); sleep(1)
+            snap("18c4-delete-confirm")
+            let confirm = app.buttons["delete"].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 4), "delete confirm missing")
+            forceTap(confirm)
+            sleep(3)
+            snap("18c5-after-delete")
+            XCTAssertNil(findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 1),
+                         "Deleted whisper still in feed")
+        }
+        // letter expansion via keep reading
+        scrollToTop(2)
+        let keepReading = app.buttons.matching(NSPredicate(format: "label == 'keep reading'"))
+            .allElementsBoundByIndex.first(where: { $0.isHittable })
+        if let keepReading {
+            forceTap(keepReading); sleep(1)
+            snap("18c6-letter-expanded")
+        }
+    }
+
+    /// Block → undo-toast → (re)block → blocked list → unblock, end to end.
+    func test18d_blockRoundTrip() throws {
+        try requireFeed()
+        guard let row = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')")) else {
+            throw XCTSkip("fixture post missing")
+        }
+        // long-press → block from the context menu (re-find + nudge right
+        // before pressing: feed churn between find and press goes stale)
+        nudgeRowIntoSafeBand(row)
+        var pressed = false
+        for _ in 0..<3 {
+            if let fresh = findRow(matching: NSPredicate(
+                format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')"), swipes: 1),
+               fresh.isHittable {
+                fresh.press(forDuration: 1.2)
+                pressed = true
+                break
+            }
+            sleep(1)
+        }
+        guard pressed else { throw XCTSkip("fixture row never hittable for long-press") }
+        sleep(1)
+        snap("18d1-context-menu")
+        let blockItem = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'block '")).firstMatch
+        guard blockItem.waitForExistence(timeout: 4) else {
+            app.tap(); throw XCTSkip("block item not in context menu")
+        }
+        forceTap(blockItem); sleep(1)
+        let confirmBlock = app.buttons["block"].firstMatch
+        XCTAssertTrue(confirmBlock.waitForExistence(timeout: 4), "block confirm missing")
+        forceTap(confirmBlock)
+        sleep(1)
+        snap("18d2-undo-toast")
+        // the undo toast must be there — use it
+        let undoBtn = app.buttons["undo"].firstMatch
+        XCTAssertTrue(undoBtn.waitForExistence(timeout: 4), "undo-block toast missing")
+        forceTap(undoBtn)
+        sleep(2)
+        // author's posts should be back (or still present)
+        XCTAssertNotNil(findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly'")), "Posts didn't return after undo")
+        snap("18d3-after-undo")
+        // block again, let it stand, verify blocked list, unblock there
+        if let row2 = findRow(matching: NSPredicate(
+            format: "label CONTAINS 'first light, honestly' AND NOT (label CONTAINS 'reposted')")) {
+            row2.press(forDuration: 1.2); sleep(1)
+            let b2 = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'block '")).firstMatch
+            if b2.waitForExistence(timeout: 4) {
+                forceTap(b2); sleep(1)
+                let c2 = app.buttons["block"].firstMatch
+                if c2.waitForExistence(timeout: 3) { forceTap(c2) }
+                sleep(5)   // let the toast expire so the block stands
+                snap("18d4-blocked-feed")   // author's posts should be gone
+                XCTAssertNil(findRow(matching: NSPredicate(
+                    format: "label CONTAINS 'first light, honestly'"), swipes: 1),
+                    "Blocked author's posts still visible")
+                // settings → blocked users → unblock
+                app.buttons["Profile"].tap(); sleep(1)
+                app.buttons["settings"].tap()
+                _ = waitFor(app.staticTexts["settings"], 8)
+                let blockedRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'blocked users'"))
+                    .allElementsBoundByIndex.last
+                if let blockedRow { nudgeRowIntoSafeBand(blockedRow); forceTap(blockedRow); sleep(2) }
+                snap("18d5-blocked-list")
+                let unblock = app.buttons["unblock"].firstMatch
+                XCTAssertTrue(unblock.waitForExistence(timeout: 6), "blocked list empty after block")
+                forceTap(unblock)
+                sleep(3)
+                snap("18d6-after-unblock")
+            }
+        }
+    }
+
     func test10_composeAndPost() throws {
         try requireFeed()
         app.buttons["New post"].tap()

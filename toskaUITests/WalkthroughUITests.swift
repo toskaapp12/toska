@@ -1136,6 +1136,214 @@ final class WalkthroughUITests: XCTestCase {
         if cleanup.exists { forceTap(cleanup); sleep(2) }
     }
 
+    // MARK: 20 — human chaos (2026-09-18 full-QA spec)
+    //
+    // The behaviors a real impatient human does that the happy-path tests
+    // never do: hammering tabs, double-tapping post, bailing out of screens
+    // mid-load, backgrounding mid-compose. Each drill asserts the app landed
+    // in a coherent state — and the double-tap drill asserts NO duplicate
+    // post was created.
+    func test20_humanChaos() throws {
+        try requireFeed()
+
+        // -- Drill 1: rapid tab cycling, two full rounds, no settling waits.
+        for _ in 0..<2 {
+            for tab in ["Trending", "Profile", "Home"] {
+                let b = app.buttons.matching(NSPredicate(
+                    format: "label BEGINSWITH %@", tab)).firstMatch
+                if b.exists { forceTap(b) }
+            }
+            let bell = app.buttons.matching(NSPredicate(
+                format: "label BEGINSWITH 'Notifications'")).firstMatch
+            if bell.exists { forceTap(bell) }
+            forceTap(app.buttons["Home"])
+        }
+        XCTAssertTrue(waitFor(feedView, 8), "Feed lost after rapid tab cycling")
+        snap("20a-after-tab-storm")
+
+        // -- Drill 2: rapid For You / Following flapping.
+        for _ in 0..<3 {
+            forceTap(app.buttons["following"])
+            forceTap(app.buttons["for you"])
+        }
+        sleep(2)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(
+            format: "label CONTAINS 'felt this'")).firstMatch
+            .waitForExistence(timeout: 8), "Feed rows gone after tab flapping")
+        snap("20b-after-feed-flap")
+
+        // -- Drill 3: open a post and bail immediately, three times.
+        for _ in 0..<3 {
+            guard let row = findRow(matching: NSPredicate(
+                format: "label CONTAINS 'felt this'"), swipes: 0) else { break }
+            forceTap(row)
+            let back = app.buttons["Back"]
+            if back.waitForExistence(timeout: 4) { forceTap(back) }
+            usleep(300_000)
+        }
+        XCTAssertTrue(waitFor(feedView, 8), "Feed not restored after bail-outs")
+        snap("20c-after-bailouts")
+
+        // -- Drill 4: double-tap post — exactly ONE copy may appear.
+        let digits = Array("abcdefghij")
+        let marker = "chaos" + String(Int(Date().timeIntervalSince1970)).map { c in
+            digits[Int(String(c))!]
+        }
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        clearComposeEditor()
+        focusAndType(app.textViews.firstMatch, "counting to one. \(marker)")
+        let post = app.buttons["post"]
+        XCTAssertTrue(post.isEnabled, "post button disabled")
+        // Two taps as fast as XCUITest can deliver them — at a FIXED screen
+        // point captured up front. Tapping via the element twice hard-fails:
+        // the app (correctly) dismisses compose on the first tap, and the
+        // second element query then finds no "post" button. A real double-tap
+        // is two touches at the same coordinates regardless of what's under
+        // the second one, so simulate exactly that.
+        let f = post.frame
+        let tapPoint = app.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: f.midX, dy: f.midY))
+        tapPoint.tap()
+        tapPoint.tap()
+        sleep(2)
+        let postAnyway = app.buttons["post anyway"].firstMatch
+        if postAnyway.waitForExistence(timeout: 2) { forceTap(postAnyway) }
+        // Patient poll for the promoted post (same rhythm as test18c).
+        var found = false
+        for _ in 0..<7 {
+            sleep(4)
+            scrollToTop(1)
+            if app.staticTexts.matching(NSPredicate(
+                format: "label CONTAINS %@", marker)).firstMatch.exists { found = true; break }
+        }
+        XCTAssertTrue(found, "Double-tapped post never appeared")
+        // Kept-alive tabs put EVERY mounted tab's rows in one AX tree, and
+        // the profile now mirrors a new post instantly — so the single post
+        // legitimately matches twice (feed row + profile row). A real
+        // duplicate doubles BOTH: ≥3 matches means the double-tap actually
+        // created a second post. (Server truth for the 2026-09-18 QA round:
+        // one doc per marker — rate limiter + isPosting guard both held.)
+        let copies = app.buttons.matching(NSPredicate(
+            format: "label CONTAINS %@", marker)).count
+        XCTAssertLessThanOrEqual(copies, 2,
+            "Double-tap produced \(copies) row matches — a real duplicate post")
+        snap("20d-double-tap-single-post")
+
+        // -- Drill 5: background mid-compose, return — editor text intact.
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't reopen")
+        clearComposeEditor()
+        focusAndType(app.textViews.firstMatch, "left this halfway")
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+        sleep(2)
+        let editorValue = (app.textViews.firstMatch.value as? String) ?? ""
+        XCTAssertTrue(editorValue.contains("left this halfway"),
+                      "Compose text lost across backgrounding (got: '\(editorValue)')")
+        snap("20e-compose-survived-background")
+
+        // -- Drill 6: cancel (draft persists by design) → relaunch → draft
+        // restored in a fresh compose.
+        forceTap(app.buttons["cancel"])
+        sleep(1)
+        app.terminate()
+        app.launch()
+        acceptPolicyGateIfPresent()
+        try requireFeed()
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open post-relaunch")
+        sleep(1)
+        let restored = (app.textViews.firstMatch.value as? String) ?? ""
+        XCTAssertTrue(restored.contains("left this halfway"),
+                      "Draft not restored after relaunch (got: '\(restored)')")
+        snap("20f-draft-survived-relaunch")
+        clearComposeEditor()
+        forceTap(app.buttons["cancel"])
+
+        // -- Drill 7: Most Felt period flapping.
+        forceTap(app.buttons["Trending"])
+        sleep(1)
+        for _ in 0..<2 {
+            for period in ["this week", "all time", "today"] {
+                let b = app.buttons[period].firstMatch
+                if b.exists { forceTap(b); usleep(250_000) }
+            }
+        }
+        sleep(2)
+        snap("20g-most-felt-after-flap")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS 'felt this'")).firstMatch
+            .waitForExistence(timeout: 10), "Most Felt list empty after period flapping")
+
+        // -- Drill 8: fast scroll down + back; feed remains responsive.
+        forceTap(app.buttons["Home"])
+        sleep(1)
+        for _ in 0..<6 { app.swipeUp(velocity: .fast) }
+        for _ in 0..<8 { app.swipeDown(velocity: .fast) }
+        XCTAssertTrue(waitFor(feedView, 8), "Feed unresponsive after fast scrolling")
+        snap("20h-after-scroll-sprint")
+
+        // Cleanup: delete the chaos post so reruns and the feed stay clean.
+        scrollToTop(2)
+        if let mine = findRow(matching: NSPredicate(format: "label CONTAINS %@", marker), swipes: 2) {
+            forceTap(mine)
+            if app.buttons["Back"].waitForExistence(timeout: 6) {
+                let menu = app.buttons["Edit or delete post"].firstMatch
+                if menu.waitForExistence(timeout: 4) {
+                    forceTap(menu); sleep(1)
+                    let del = app.buttons["delete post"].firstMatch
+                    if del.waitForExistence(timeout: 3) {
+                        forceTap(del); sleep(1)
+                        let confirm = app.buttons["delete"].firstMatch
+                        if confirm.waitForExistence(timeout: 3) { forceTap(confirm); sleep(2) }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: 21 — a setting must survive relaunch (visual flip ≠ persisted)
+    func test21_settingPersistsAcrossRelaunch() throws {
+        try requireFeed()
+        app.buttons["Profile"].tap(); sleep(1)
+        app.buttons["settings"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Settings didn't open")
+
+        let toggle = app.switches["gentle check-in"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "gentle check-in toggle missing")
+        nudgeRowIntoSafeBand(toggle)
+        let original = (toggle.value as? String) ?? "?"
+        if toggle.isHittable { toggle.tap() }
+        else { toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap() }
+        sleep(3) // debounced save (500ms) + server write
+        let flipped = (toggle.value as? String) ?? "?"
+        XCTAssertNotEqual(original, flipped, "Toggle didn't flip")
+
+        app.terminate()
+        app.launch()
+        acceptPolicyGateIfPresent()
+        try requireFeed()
+        app.buttons["Profile"].tap(); sleep(1)
+        app.buttons["settings"].tap()
+        XCTAssertTrue(waitFor(app.staticTexts["settings"], 8), "Settings didn't reopen")
+        let after = app.switches["gentle check-in"].firstMatch
+        XCTAssertTrue(after.waitForExistence(timeout: 5), "Toggle missing post-relaunch")
+        nudgeRowIntoSafeBand(after)
+        // loadSettings fetches async — give the stored value a beat to land.
+        sleep(3)
+        XCTAssertEqual((after.value as? String) ?? "?", flipped,
+                       "Setting flipped visually but did not persist across relaunch")
+        snap("21a-setting-persisted")
+
+        // Restore the original value.
+        if after.isHittable { after.tap() }
+        else { after.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)).tap() }
+        sleep(3)
+        XCTAssertEqual((after.value as? String) ?? "?", original, "Couldn't restore setting")
+    }
+
     func test10_composeAndPost() throws {
         try requireFeed()
         app.buttons["New post"].tap()

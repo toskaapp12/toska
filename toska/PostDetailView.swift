@@ -192,6 +192,11 @@ struct PostDetailView: View {
     // Surfaced when a reply can't be sent (e.g. offline) so the user gets
     // feedback instead of a silent no-op + a duplicate on reconnect.
     @State private var replyPostError: String? = nil
+    // In-flight send state (2026-09-20 friction review): without it a slow
+    // network showed no change after the tap — field still full, button
+    // still lit — and a second tap was SILENTLY swallowed by the 5s rate
+    // limiter. "sending…" + disable answers "did my tap work?" honestly.
+    @State private var isReplySending = false
     @State private var isLetter = false
     @State private var isWhisper = false
     // Sharing consent, mirrored from the live listener. Starts FALSE (share
@@ -802,8 +807,9 @@ struct PostDetailView: View {
                 // lit the button for GIF-only / 1-char replies whose tap then
                 // silently returned.
                 let replyIsSendable = replyText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+                    && !isReplySending
                 Button { sendReply() } label: {
-                    Text("send")
+                    Text(isReplySending ? "sending…" : "send")
                         .font(ToskaFont.sans(12.5, weight: .semibold))
                         .foregroundColor(replyIsSendable ? ToskaColor.onAccent : ToskaColor.text3)
                         .frame(minHeight: 44)
@@ -2039,6 +2045,7 @@ struct PostDetailView: View {
         }
         RateLimiter.shared.lastReplyTime = Date()
         HapticManager.play(.send)
+        isReplySending = true
         let db = Firestore.firestore()
         let currentReplyText = trimmed
         Task { @MainActor in
@@ -2112,7 +2119,9 @@ struct PostDetailView: View {
                 self.replyFocused = false
                 self.replyingToId = nil
                 self.replyingToHandle = nil
+                self.isReplySending = false
             } catch {
+                self.isReplySending = false
                 Telemetry.recordError(error, context: "PostDetailView.postReply")
                 self.replyText = currentReplyText
                 // The send failed — nothing was posted, so release the 5s

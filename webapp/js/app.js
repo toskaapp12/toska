@@ -892,7 +892,7 @@ async function viewFeed() {
                     el("a", { href: "https://www.toskaapp.com/terms", target: "_blank", rel: "noopener" }, "terms"),
                     el("a", { href: "https://www.toskaapp.com/privacy", target: "_blank", rel: "noopener" }, "privacy"),
                     el("span", {}, "© 2026 toska"))),
-            el("div", { class: "feed-main" }, tabs, list)),
+            el("div", { class: "feed-main" }, tabs, list, serverBox)),
         spinner());
     const applyFilter = () => {
         const q = search.value.trim().toLowerCase();
@@ -904,9 +904,45 @@ async function viewFeed() {
         }
         list.querySelector(".search-empty")?.remove();
         if (!any && q) list.append(el("div", { class: "empty search-empty" },
-            el("span", { class: "glyph" }, "☾"), `nothing here matches "${q}" — it only searches what's loaded.`));
+            el("span", { class: "glyph" }, "☾"), `nothing here matches "${q}" — press enter to search everywhere.`));
+        if (!q) serverBox.replaceChildren(); // cleared search clears server results
     };
     search.addEventListener("input", debounce(applyFilter, 250));
+    // Server-wide search on ENTER (parity with iOS "from everywhere"): the
+    // live filter above only covers loaded rows; submit queries ALL live
+    // posts via the server-stamped searchTokens keywords.
+    const serverBox = el("div");
+    let searchGen = 0;
+    search.addEventListener("keydown", async (ev) => {
+        if (ev.key !== "Enter") return;
+        const q = search.value.trim().toLowerCase();
+        serverBox.replaceChildren();
+        if (!q) return;
+        const tokens = [...new Set(q.split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 2))].slice(0, 10);
+        if (!tokens.length) return;
+        const gen = ++searchGen;
+        serverBox.replaceChildren(el("div", { class: "eyebrow", style: "margin:18px 0 6px;" }, "from everywhere"), spinner());
+        try {
+            const snap = await getDocs(query(collection(db, "posts"),
+                where("moderationStatus", "==", "live"),
+                where("searchTokens", "array-contains-any", tokens),
+                orderBy("createdAt", "desc"), limit(25)));
+            if (gen !== searchGen || !serverBox.isConnected) return;
+            const shown = new Set([...list.querySelectorAll(".post-row")]
+                .filter(r => !r.hidden).map(r => r.getAttribute("href")));
+            const rows = snap.docs
+                .map(d => [d.id, d.data()])
+                .filter(([id, d]) => postVisible(d) && !blocked.has(d.authorId)
+                    && !shown.has(`#/post/${id}`));
+            serverBox.replaceChildren(
+                el("div", { class: "eyebrow", style: "margin:18px 0 6px;" }, "from everywhere"),
+                rows.length ? el("div", {}, rows.map(([id, d]) => postRow(id, d)))
+                            : el("p", { class: "note" }, "nothing more anywhere else."));
+        } catch (e) {
+            console.error("server search failed", e);
+            if (gen === searchGen) serverBox.replaceChildren();
+        }
+    });
     const tab = feedTab;
     const finish = (cache) => {
         // A slow fetch can land after the user moved on — never touch the
@@ -938,6 +974,18 @@ async function viewFeed() {
                 more.disabled = false;
             };
             list.append(more);
+            // Load-ahead (parity with iOS's 5-from-end prefetch): when the
+            // "more" button scrolls near the viewport, click it for the
+            // user. The button stays as the visible affordance + fallback.
+            if ("IntersectionObserver" in window) {
+                const io = new IntersectionObserver((entries) => {
+                    if (entries.some(x => x.isIntersecting) && !more.disabled && more.isConnected) {
+                        more.click();
+                    }
+                    if (!more.isConnected) io.disconnect();
+                }, { rootMargin: "600px" });
+                io.observe(more);
+            }
         }
         activeFeedTab = tab;
         requestAnimationFrame(() => window.scrollTo(0, cache.scrollY ?? 0));
@@ -1097,15 +1145,20 @@ function viewCompose() {
     share.onclick = async () => {
         err.replaceChildren();
         const text = ta.value.trim();
-        if (!text) return;
+        // GIF-only posts (parity with iOS + rules, 2026-09): a gif can carry
+        // the feeling by itself — text is required only when there's no gif.
+        if (!text && !gifUrl) return;
         if (text.length > limit()) { err.replaceChildren(errorBox(`keep it under ${limit()} characters${isLetter ? "" : " — or make it a letter"}.`)); return; }
         if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline. your words deserve to actually land — try again when you're back.")); return; }
         if (postRateLimited()) { err.replaceChildren(errorBox("one moment between posts — breathe, then share.")); return; }
         if (await isRestricted()) { err.replaceChildren(errorBox("your account is under review. you cannot post right now.")); return; }
         share.disabled = true;
+        share.textContent = "posting…"; // honest in-flight state (parity w/ iOS)
+        const restoreShare = () => { share.disabled = false; share.textContent = "post"; };
         try {
-            const gate = await runGates(text);
-            if (!gate.ok) { share.disabled = false; return; }
+            // The safety gates read words; a gif-only post has none to read.
+            const gate = text ? await runGates(text) : { ok: true, willBeHeld: false };
+            if (!gate.ok) { restoreShare(); return; }
             await createPost({
                 text, tag: selectedTag, isLetter, isWhisper, isMidnight, gifUrl,
                 promptDate: prompt?.promptDate,
@@ -1117,7 +1170,7 @@ function viewCompose() {
         } catch (e) {
             console.error(e);
             err.replaceChildren(errorBox(GENERIC_ERR));
-            share.disabled = false;
+            restoreShare();
         }
     };
     // NB: replaceChildren stringifies a raw null (unlike el()'s child filter)
@@ -1462,9 +1515,10 @@ async function viewPost(postId) {
             if (text.length > 500) { toast("replies stay under 500 characters."); return; }
             if (!navigator.onLine) { toast("you're offline — try again when you're back."); return; }
             send.disabled = true;
+            send.textContent = "…"; // in-flight state (parity w/ iOS "sending…")
             try {
                 const gate = await runGates(text, { isReply: true });
-                if (!gate.ok) { send.disabled = false; return; }
+                if (!gate.ok) { send.disabled = false; send.textContent = "↑"; return; }
                 await createReply(targetPostId, {
                     text, parentReplyId: replyingTo?.id,
                     parentPostText: d.text,
@@ -1484,6 +1538,7 @@ async function viewPost(postId) {
                 renderThread(repliesBox, rows, null, 0, onReplyTo);
             } catch (e) { console.error(e); toast(GENERIC_ERR); }
             send.disabled = false;
+            send.textContent = "↑";
         };
         const composer = el("div", {},
             replyingStrip,

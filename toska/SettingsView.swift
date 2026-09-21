@@ -1413,6 +1413,10 @@ struct BlockedUsersListView: View {
             LateNightTheme.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Header normalization (2026-09-21 owner): this was the one
+                // screen still on the system navigationTitle — every other
+                // screen draws ToskaHeader. Same chrome everywhere now.
+                ToskaHeader(title: "blocked users", onBack: { dismiss() }) { EmptyView() }
                 if isLoading {
                     Spacer()
                     ProgressView().tint(ToskaColor.accent)
@@ -1468,8 +1472,7 @@ struct BlockedUsersListView: View {
                 }
             }
         }
-        .navigationTitle("blocked users")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .onAppear { load() }
     }
 

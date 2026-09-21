@@ -849,18 +849,29 @@ service cloud.firestore {
       // reverse indices carry only { createdAt } (PostInteractionManager).
       // hasOnly + the request.time pin stop a tampered client from scribbling
       // arbitrary fields or backdating its own engagement history.
+      // postId field (2026-09-21 consistency audit): these reverse indices
+      // are keyed by doc id only, which made them UNREACHABLE from the
+      // post-deletion cascade (no collection-group query without a field).
+      // New writes carry postId — pinned equal to the doc id so it can't
+      // point anywhere else — letting the cascade sweep them. Optional for
+      // back-compat with shipped clients; docs without it are tolerated by
+      // readers and detected by the consistency probe.
       match /saved/{postId} {
         allow read, delete: if isOwner(userId);
         allow create: if isOwner(userId)
-          && request.resource.data.keys().hasOnly(['createdAt'])
-          && request.resource.data.createdAt == request.time;
+          && request.resource.data.keys().hasOnly(['createdAt', 'postId'])
+          && request.resource.data.createdAt == request.time
+          && (!('postId' in request.resource.data.keys())
+              || request.resource.data.postId == postId);
       }
 
       match /liked/{postId} {
         allow read, delete: if isOwner(userId);
         allow create: if isOwner(userId)
-          && request.resource.data.keys().hasOnly(['createdAt'])
-          && request.resource.data.createdAt == request.time;
+          && request.resource.data.keys().hasOnly(['createdAt', 'postId'])
+          && request.resource.data.createdAt == request.time
+          && (!('postId' in request.resource.data.keys())
+              || request.resource.data.postId == postId);
       }
 
       // Reply-interaction reverse indices — mirror /liked and /saved but

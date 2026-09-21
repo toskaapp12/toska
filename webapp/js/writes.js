@@ -163,7 +163,8 @@ export async function toggleLike(postId, liked, postAuthorId) {
                 if (curLiked.exists()) txn.delete(likedRef);
             } else {
                 if (!cur.exists()) txn.set(likeRef, { createdAt: serverTimestamp() });
-                if (!curLiked.exists()) txn.set(likedRef, { createdAt: serverTimestamp() });
+                // postId field (2026-09-21): cascade-sweepable reverse ref.
+                if (!curLiked.exists()) txn.set(likedRef, { createdAt: serverTimestamp(), postId });
             }
         });
         if (!liked) notify(postAuthorId, "like", postId);
@@ -181,7 +182,8 @@ export async function toggleSave(postId, saved, postAuthorId) {
             // no update rule on saved/ — skip the set if it already exists
             const cur = await getDoc(ref);
             if (!cur.exists()) {
-                await setDoc(ref, { createdAt: serverTimestamp() });
+                // postId field (2026-09-21): cascade-sweepable reverse ref.
+                await setDoc(ref, { createdAt: serverTimestamp(), postId });
                 notify(postAuthorId, "save", postId);
             }
         }

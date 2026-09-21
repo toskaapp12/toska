@@ -1979,6 +1979,25 @@ async function clearPostSubtree(postId, maxReplyPages = 20) {
   const lk = await deleteCollection(postRef.collection("likes"));
   const rf = await deleteCollection(postRef.collection("reflections"));
   if (lk.capHit || rf.capHit) capHit = true;
+  // Reverse-ref sweep (2026-09-21 consistency audit): users/*/liked and
+  // users/*/saved entries for this post. Only docs written since the postId
+  // field shipped are reachable (older ones have no queryable field — the
+  // consistency probe detects those; clients tolerate them). Bounded by the
+  // post's actual engagement, batched at 400.
+  for (const sub of ["liked", "saved"]) {
+    try {
+      const refs = await db.collectionGroup(sub)
+        .where("postId", "==", postId).limit(400).get();
+      if (refs.empty) continue;
+      const batch = db.batch();
+      refs.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+      if (refs.size >= 400) capHit = true; // extremely-viral post — resume path re-runs
+    } catch (err) {
+      console.warn(`clearPostSubtree ${sub} reverse-ref sweep failed for ${postId}:`, err.message);
+      capHit = true;
+    }
+  }
   return capHit;
 }
 
@@ -4713,6 +4732,65 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
       userLastCleanRunAt: FieldValue.serverTimestamp(),
       userLastCleanSampled: userSnap.size,
     }, { merge: true });
+  }
+
+  // Phase 3 (2026-09-21 consistency audit): follower/following counts had
+  // NO reconciler — the audit probe found a real followerCount drift on
+  // prod (stored 1, actual 2). Same guarded compare-and-set pattern:
+  // count() the subcollection, correct only if the stored value hasn't
+  // moved mid-scan. Reuses the user sample from the totalLikes phase.
+  const FOLLOW_SAMPLE = 200;
+  const followDrifts = [];
+  let followCorrected = 0;
+  for (const userDoc of userSnap.docs.slice(0, FOLLOW_SAMPLE)) {
+    try {
+      const [followers, following, cur] = await Promise.all([
+        userDoc.ref.collection("followers").count().get(),
+        userDoc.ref.collection("following").count().get(),
+        userDoc.ref.get(),
+      ]);
+      if (!cur.exists) continue;
+      const want = {
+        followerCount: followers.data().count,
+        followingCount: following.data().count,
+      };
+      const fix = {};
+      for (const [k, actual] of Object.entries(want)) {
+        const stored = typeof cur.get(k) === "number" ? cur.get(k) : 0;
+        if (stored !== actual) fix[k] = { stored, actual };
+      }
+      if (!Object.keys(fix).length) continue;
+      followDrifts.push({ uid: userDoc.id, ...fix });
+      const didCorrect = await db.runTransaction(async (tx) => {
+        const live = await tx.get(userDoc.ref);
+        if (!live.exists) return false;
+        const updates = {};
+        for (const [k, { stored, actual }] of Object.entries(fix)) {
+          const liveVal = typeof live.get(k) === "number" ? live.get(k) : 0;
+          if (liveVal !== stored) return false; // moved mid-scan — next run
+          updates[k] = actual;
+        }
+        tx.update(userDoc.ref, updates);
+        return true;
+      });
+      if (didCorrect) followCorrected++;
+    } catch (err) {
+      console.warn(`detectCounterDrift: follow recount failed for ${userDoc.id}:`, err.message);
+    }
+    if (followDrifts.length >= MAX_REPORTED) break;
+  }
+  if (followDrifts.length > 0) {
+    console.error(
+      `detectCounterDrift: ${followDrifts.length} user(s) with drifted follow ` +
+      `counts (of ${Math.min(userSnap.size, FOLLOW_SAMPLE)} sampled); auto-corrected ${followCorrected}.`);
+    await db.collection("system").doc("counterDriftReport").set({
+      followGeneratedAt: FieldValue.serverTimestamp(),
+      followDriftCount: followDrifts.length,
+      followCorrectedCount: followCorrected,
+      followDrifts: followDrifts.slice(0, MAX_REPORTED),
+    }, { merge: true });
+  } else {
+    console.log(`detectCounterDrift: no follow-count drift in ${Math.min(userSnap.size, FOLLOW_SAMPLE)} sampled users.`);
   }
 });
 

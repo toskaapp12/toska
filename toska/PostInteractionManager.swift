@@ -103,7 +103,10 @@ class PostInteractionManager {
                 if existingLike.exists { return true }
 
                 transaction.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: likeRef)
-                transaction.setData(["createdAt": FieldValue.serverTimestamp()], forDocument: userLikedRef)
+                // postId field (2026-09-21): lets the post-deletion cascade
+                // collection-group-sweep this reverse ref — the doc id alone
+                // is unqueryable across users.
+                transaction.setData(["createdAt": FieldValue.serverTimestamp(), "postId": postId], forDocument: userLikedRef)
                 // Counter update handled by Cloud Function on like doc create.
             } else {
                 // Always clean up the user-facing liked record.
@@ -219,8 +222,9 @@ class PostInteractionManager {
             }
             if newSaved {
                 if !existing.exists {
+                    // postId field (2026-09-21): cascade-sweepable, see toggleLike.
                     transaction.setData(
-                        ["createdAt": FieldValue.serverTimestamp()],
+                        ["createdAt": FieldValue.serverTimestamp(), "postId": postId],
                         forDocument: saveRef
                     )
                 }

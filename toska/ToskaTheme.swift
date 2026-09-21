@@ -297,6 +297,9 @@ struct ToskaHeader<Trailing: View>: View {
             if !title.isEmpty {
                 Text(title)
                     .font(ToskaFont.serif(20))
+                    // Header normalization (2026-09-21 owner): same tracking as
+                    // the feed wordmark + most-felt title — one title voice.
+                    .tracking(-0.24)
                     .foregroundColor(ToskaColor.text)
                     // Screen titles are single words ("post", "settings"); at
                     // accessibility type sizes the scaled serif wraps mid-word.
@@ -308,8 +311,12 @@ struct ToskaHeader<Trailing: View>: View {
             Spacer()
             trailing()
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 4)
+        // Header normalization (2026-09-21 owner): 28pt horizontal — the
+        // app-wide content grid (feed rows, settings rows, profile all sit
+        // at 28) — and the same 6pt top offset as the feed/most-felt
+        // headers. 24/4 made these screens' titles sit subtly off-grid.
+        .padding(.horizontal, 28)
+        .padding(.top, 6)
         .padding(.bottom, 8)
         .overlay(alignment: .bottom) {
             Rectangle().fill(ToskaColor.divider).frame(height: 1)

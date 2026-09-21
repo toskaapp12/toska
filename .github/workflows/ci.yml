@@ -16,6 +16,11 @@ on:
   push:
     branches: [main]
 
+# Least-privilege token (2026-09-21 security audit): every job only reads
+# the repo — no workflow writes back, so don't carry the default grants.
+permissions:
+  contents: read
+
 # Cancel an in-flight run if a new commit lands on the same branch — saves
 # minutes when iterating on a PR.
 concurrency:

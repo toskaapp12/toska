@@ -2012,6 +2012,11 @@ struct PostDetailView: View {
     func sendReply() {
         let trimmed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count >= 2 else { return }
+        // Kill switch: replies paused server-side (config/clientPolicy).
+        guard ClientPolicyManager.shared.enabled("replies") else {
+            replyPostError = "replies are paused for a moment — try again soon."
+            return
+        }
         guard Auth.auth().currentUser?.uid != nil, !postId.isEmpty else { return }
         if UserHandleCache.shared.isRestricted { return }
         if BlockedUsersCache.shared.isBlocked(authorUserId) { return }

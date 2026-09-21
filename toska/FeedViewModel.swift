@@ -638,6 +638,8 @@ class FeedViewModel: ObservableObject {
     /// token (array-contains-any caps at 10). Ranked by match count, then
     /// recency. Generation-guarded against stale responses.
     func runServerSearch(_ query: String) {
+        // Kill switch: server-wide search disabled (local filter unaffected).
+        guard ClientPolicyManager.shared.enabled("search") else { return }
         let tokens = query.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { $0.count >= 2 }

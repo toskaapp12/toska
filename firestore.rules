@@ -1892,6 +1892,17 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Client policy / kill switch (2026-09-21): config/clientPolicy carries
+    // minBuild + per-feature kill flags + a maintenance notice. World-
+    // readable INCLUDING unauthenticated — the update-required gate must
+    // work before sign-in — and it holds nothing sensitive. Writes are
+    // Admin-SDK only (owner via console/script); clients can never flip
+    // their own switches.
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Server-only audit log of admin actions. Cloud Functions write here
     // via Admin SDK (which bypasses these rules); admins can read for
     // accountability; nobody else has any access. See

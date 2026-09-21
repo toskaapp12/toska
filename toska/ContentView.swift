@@ -16,11 +16,18 @@ struct ContentView: View {
     // currentPolicyVersion. Shown as a blocking fullScreenCover — the user
     // must accept the new version before they can continue using the app.
     @State private var showPolicyUpdate = false
+    // Kill switch / min-build policy — listener starts in toskaApp.init.
+    @ObservedObject private var policy = ClientPolicyManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
-            if isLoading || showVerifyError {
+            // Kill switch (2026-09-21): a build below config/clientPolicy's
+            // minBuild is blocked outright — before auth, before everything.
+            // Fail-open: no doc / no listener data → minBuild 0 → never shows.
+            if policy.updateRequired {
+                UpdateRequiredView()
+            } else if isLoading || showVerifyError {
                 ZStack {
                     Color.white.ignoresSafeArea()
                     if showVerifyError {

@@ -263,6 +263,9 @@ struct toskaApp: App {
         // the owner flagged (2026-09-17). 64MB memory / 256MB disk lets the
         // compose preview seed the cache and the feed render instantly.
         URLCache.shared = URLCache(memoryCapacity: 64 << 20, diskCapacity: 256 << 20)
+        // Kill switch: start mirroring config/clientPolicy immediately —
+        // the update gate + feature flags apply before sign-in.
+        Task { @MainActor in ClientPolicyManager.shared.start() }
         #if DEBUG
         // No-op unless SHARECARD_MATRIX_OUT is set in the environment.
         Task { @MainActor in ShareCardMatrixHarness.runIfRequested() }

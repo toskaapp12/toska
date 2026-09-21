@@ -3636,3 +3636,38 @@ describe("drafts: tag / isLetter / gifUrl (2026-08-05)", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// config/clientPolicy — kill switch (2026-09-21)
+// World-readable including unauthenticated (the update-required gate runs
+// before sign-in); writes are Admin-SDK only, so every client write denies.
+describe("config: clientPolicy kill switch (2026-09-21)", () => {
+  function seedPolicy() {
+    return env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("config").doc("clientPolicy")
+        .set({ minBuild: 1, kill: {}, notice: "" });
+    });
+  }
+
+  it("allows unauthenticated read (pre-sign-in update gate)", async () => {
+    await seedPolicy();
+    const anon = env.unauthenticatedContext().firestore();
+    await assertSucceeds(anon.collection("config").doc("clientPolicy").get());
+  });
+
+  it("allows signed-in read", async () => {
+    await seedPolicy();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("config").doc("clientPolicy").get());
+  });
+
+  it("denies client write — even flipping kill flags on themselves", async () => {
+    await seedPolicy();
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(a.collection("config").doc("clientPolicy")
+      .set({ minBuild: 999, kill: { compose: true }, notice: "pwned" }));
+    await assertFails(a.collection("config").doc("clientPolicy")
+      .update({ notice: "pwned" }));
+    await assertFails(a.collection("config").doc("clientPolicy").delete());
+  });
+});

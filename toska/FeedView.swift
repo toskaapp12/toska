@@ -57,6 +57,7 @@ struct FeedView: View {
     // first snapshot (cold-load) doesn't false-trigger the banner against
     // an empty initial state.
     @State private var newPostsBadgeCount = 0
+    @ObservedObject private var policy = ClientPolicyManager.shared
     @State private var previousPostCount = -1
     // Head post id at the last count change. A pagination call APPENDS to the
     // tail (count grows, head unchanged), which must not trigger the "new posts"
@@ -170,6 +171,23 @@ struct FeedView: View {
     // 10s; tap dismisses. Specific to the mental-health-adjacent
     // brand: the nudge is for spiraling, not for merely being here.
     // The banner doesn't gate anything — just a gentle ask.
+    // Kill switch companion: an app-wide maintenance notice set on
+    // config/clientPolicy renders as a quiet banner at the feed head.
+    @ViewBuilder private var policyNoticeBanner: some View {
+        if !policy.notice.isEmpty {
+            Text(policy.notice)
+                .font(ToskaFont.sans(12, weight: .medium))
+                .foregroundColor(ToskaColor.text2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(ToskaColor.promptBg)
+                .cornerRadius(10)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+        }
+    }
+
     @ViewBuilder private var takeBreakBanner: some View {
             if vm.showTakeBreakBanner {
                 Button {
@@ -296,6 +314,8 @@ struct FeedView: View {
                     headerSection
 
                     headerSearchBar
+
+                    policyNoticeBanner
 
                     takeBreakBanner
 

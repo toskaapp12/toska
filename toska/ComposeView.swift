@@ -345,10 +345,14 @@ struct ComposeView: View {
                             }
                             .accessibilityLabel(expiresAtMidnight ? "Midnight post on, disappears at midnight" : "Midnight post")
 
-                            Button { showGifPicker = true } label: {
-                                composeChip("GIF", active: selectedGifUrl != nil)
+                            // Kill switch: GIF chip vanishes when gifs are
+                            // paused server-side (giphy outage / abuse).
+                            if ClientPolicyManager.shared.enabled("gifs") {
+                                Button { showGifPicker = true } label: {
+                                    composeChip("GIF", active: selectedGifUrl != nil)
+                                }
+                                .accessibilityLabel("Add GIF")
                             }
-                            .accessibilityLabel("Add GIF")
                         }
                         .padding(.vertical, 7)
                         .padding(.leading, 22)
@@ -1101,6 +1105,11 @@ struct ComposeView: View {
 
     func attemptPost() {
         guard !isPosting else { return }
+        // Kill switch: posting paused server-side (config/clientPolicy).
+        guard ClientPolicyManager.shared.enabled("compose") else {
+            postError = "posting is paused for a moment — your words are safe here, try again soon."
+            return
+        }
         // Don't re-enter while a confirmation/warning dialog from a prior tap is
         // still on screen — `isPosting` isn't set until postNow(), so a fast
         // double-tap otherwise stacked duplicate dialogs through this gap.

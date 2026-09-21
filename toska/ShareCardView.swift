@@ -254,6 +254,7 @@ struct ShareCardView: View {
             Color(hex: "FAF7F3")
                 .ignoresSafeArea()
 
+
             VStack(spacing: 0) {
                 HStack {
                     Button { dismiss() } label: {
@@ -491,6 +492,32 @@ struct ShareCardView: View {
                 .cornerRadius(4)
                 .padding(.horizontal, 40)
                 .transition(.opacity)
+            }
+        }
+        // Kill switch: sharing paused server-side — one opaque overlay here
+        // stops every new card (feed + detail entry points funnel through
+        // this view) without touching the many share-button call sites.
+        .overlay {
+            if !ClientPolicyManager.shared.enabled("share") {
+                ZStack {
+                    Color(hex: "FAF7F3").ignoresSafeArea()
+                    VStack(spacing: 12) {
+                        Text("sharing is paused for a moment")
+                            .font(ToskaFont.serif(18))
+                            .foregroundColor(Color(hex: "3A3438"))
+                        Text("back soon.")
+                            .font(ToskaFont.sans(13))
+                            .foregroundColor(Color(hex: "8A8288"))
+                        Button { dismiss() } label: {
+                            Text("okay")
+                                .font(ToskaFont.sans(13.5, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(height: 44)
+                                .padding(.horizontal, 28)
+                                .background(Color(hex: "3A2D5C"), in: Capsule())
+                        }
+                    }
+                }
             }
         }
         .preferredColorScheme(.light)

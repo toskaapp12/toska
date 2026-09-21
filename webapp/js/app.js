@@ -40,6 +40,17 @@ if (IS_PROD) {
 
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// ---- client policy / kill switch (2026-09-21) — mirrors iOS -------------
+// config/clientPolicy: per-feature kill flags + maintenance notice. FAIL-
+// OPEN: missing doc / read error / absent field = everything enabled. Web
+// skips minBuild (a reload always serves the newest deploy). Listener
+// starts immediately — the doc is world-readable pre-auth.
+let policy = { kill: {}, notice: "" };
+const policyEnabled = (f) => policy.kill?.[f] !== true;
+onSnapshot(doc(db, "config", "clientPolicy"),
+    (snap) => { const d = snap.data() ?? {}; policy = { kill: d.kill ?? {}, notice: d.notice ?? "" }; },
+    () => { /* fail-open */ });
 const functions = getFunctions(app);
 
 // Late night: mirror LateNightTheme — device hour < 5 flips the whole app.
@@ -892,7 +903,9 @@ async function viewFeed() {
                     el("a", { href: "https://www.toskaapp.com/terms", target: "_blank", rel: "noopener" }, "terms"),
                     el("a", { href: "https://www.toskaapp.com/privacy", target: "_blank", rel: "noopener" }, "privacy"),
                     el("span", {}, "© 2026 toska"))),
-            el("div", { class: "feed-main" }, tabs, list, serverBox)),
+            el("div", { class: "feed-main" },
+                policy.notice ? el("p", { class: "note", style: "padding:6px;" }, policy.notice) : null,
+                tabs, list, serverBox)),
         spinner());
     const applyFilter = () => {
         const q = search.value.trim().toLowerCase();
@@ -915,6 +928,7 @@ async function viewFeed() {
     let searchGen = 0;
     search.addEventListener("keydown", async (ev) => {
         if (ev.key !== "Enter") return;
+        if (!policyEnabled("search")) return; // kill switch — local filter unaffected
         const q = search.value.trim().toLowerCase();
         serverBox.replaceChildren();
         if (!q) return;
@@ -1148,6 +1162,7 @@ function viewCompose() {
         // GIF-only posts (parity with iOS + rules, 2026-09): a gif can carry
         // the feeling by itself — text is required only when there's no gif.
         if (!text && !gifUrl) return;
+        if (!policyEnabled("compose")) { err.replaceChildren(errorBox("posting is paused for a moment — your words are safe here, try again soon.")); return; }
         if (text.length > limit()) { err.replaceChildren(errorBox(`keep it under ${limit()} characters${isLetter ? "" : " — or make it a letter"}.`)); return; }
         if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline. your words deserve to actually land — try again when you're back.")); return; }
         if (postRateLimited()) { err.replaceChildren(errorBox("one moment between posts — breathe, then share.")); return; }
@@ -1453,7 +1468,8 @@ async function viewPost(postId) {
             // this check that page offered "copy link" and handed out a URL
             // that 404s for everyone. Strict === mirrors the server's gate
             // (every prod post has the field since the 2026-05-31 backfill).
-            if (d.isShareable === true && d.moderationStatus === "live"
+            if (policyEnabled("share")
+                && d.isShareable === true && d.moderationStatus === "live"
                 && d.isLetter !== true && d.isWhisper !== true
                 && d.isMidnightPost !== true && !d.originalReplyId) {
                 items.push({
@@ -1512,6 +1528,7 @@ async function viewPost(postId) {
         send.onclick = async () => {
             const text = rta.value.trim();
             if (text.length < 2) return;
+            if (!policyEnabled("replies")) { toast("replies are paused for a moment — try again soon."); return; }
             if (text.length > 500) { toast("replies stay under 500 characters."); return; }
             if (!navigator.onLine) { toast("you're offline — try again when you're back."); return; }
             send.disabled = true;

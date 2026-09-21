@@ -152,6 +152,14 @@ jobs:
       working-directory: firestore-tests
       run: node detector-parity.mjs
 
+    # 2026-09-21 fresh-eyes review: prompts + tags are hand-duplicated across
+    # iOS and web with day-of-year indexing — a one-entry drift silently shows
+    # different "today's prompt" per platform. Same gate class as detector
+    # parity above.
+    - name: Run prompt/tag parity pin
+      working-directory: firestore-tests
+      run: node prompt-tag-parity.mjs
+
   # 2026-07-28 (system-review A.5 #8): the GDPR deletion-cascade probe against
   # LIVE STAGING, promoted from manual-only — the launch-critical "no residue
   # after account deletion" guarantee gets re-proven on every push to main.

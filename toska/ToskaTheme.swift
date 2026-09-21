@@ -379,7 +379,7 @@ func presentShareSheet(with items: [Any], onComplete: ((Bool) -> Void)? = nil) {
 //     keyed format string) over Text(handBuiltLocalizedString).
 //
 //   - Strings stored in @State properties or returned from helper functions
-//     bypass auto-extraction. Wrap these in String(localized: "...") so
+//     bypass auto-extraction. Wrap these in String(localized: "…") so
 //     the catalog can find them. See `friendlyAuthErrorMessage` below.
 //
 //   - The voice (lowercase, intentional misspellings like "youre",
@@ -806,7 +806,7 @@ func friendlyAuthErrorMessage(_ error: Error) -> String {
 
 // MARK: - Cached Brand Colors
 //
-// `Color(hex: "...")` does string trimming, Scanner-based hex parsing, and a
+// `Color(hex: "…")` does string trimming, Scanner-based hex parsing, and a
 // switch every call. The top brand colors are referenced hundreds of times
 // across the feed and per-row UI (e.g., "9198a8" appears 164× in this codebase).
 // Caching them as static `let` constants moves the parse cost to first-access

@@ -1184,9 +1184,11 @@ struct ProfileView: View {
 
     /// One stat element — count semibold ink, word soft, 12pt tabular
     /// (design 2026-09-16).
-    private func profileStat(_ count: Int, _ word: String) -> some View {
+    // Pluralization (2026-09-21 polish audit): "1 followers" read as a bug.
+    // `one` defaults to `many` for invariant words (following, felt).
+    private func profileStat(_ count: Int, _ many: String, one: String? = nil) -> some View {
         (Text("\(count) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
-            + Text(word).foregroundColor(ToskaColor.text2))
+            + Text(count == 1 ? (one ?? many) : many).foregroundColor(ToskaColor.text2))
             .font(ToskaFont.sans(12))
             .monospacedDigit()
     }
@@ -1220,12 +1222,12 @@ struct ProfileView: View {
                                             // Stats line — posts · following · followers · felt
                                             // (following/followers tappable to their lists).
                                             HStack(spacing: 20) {
-                                                profileStat(postCount, "posts")
+                                                profileStat(postCount, "posts", one: "post")
                                                 NavigationLink(destination: FollowListView(title: "following").navigationBarHidden(true)) {
                                                     profileStat(followingCount, "following")
                                                 }
                                                 NavigationLink(destination: FollowListView(title: "followers").navigationBarHidden(true)) {
-                                                    profileStat(followerCount, "followers")
+                                                    profileStat(followerCount, "followers", one: "follower")
                                                 }
                                                 profileStat(totalLikes, "felt")
                                             }
@@ -1828,7 +1830,7 @@ struct EditReplyView: View {
 
                 ZStack(alignment: .topLeading) {
                     if replyText.isEmpty {
-                        Text("say what you feel...")
+                        Text("say what you feel…")
                             .font(ToskaFont.serif(16)).foregroundColor(Color(hex: "c0c3ca"))
                             .padding(.horizontal, 16).padding(.top, 16)
                     }

@@ -105,7 +105,7 @@ struct OnboardingView: View {
     
     func promptForMood(_ mood: String?) -> String {
             guard let mood = mood, let prompts = moodPrompts[mood] else {
-                return "say the thing you cant say out loud..."
+                return "say the thing you cant say out loud…"
             }
             let dayOfYear = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
             return prompts[dayOfYear % prompts.count]
@@ -740,7 +740,7 @@ struct OnboardingView: View {
     }
 
     /// Renders the social-proof line under the stage list. Singular vs.
-    /// plural copy tunes for n=1 ("one other person...") so the line
+    /// plural copy tunes for n=1 ("one other person…") so the line
     /// doesn't read as off-by-one. The displayed count is read at
     /// stage-button tap time, BEFORE saveStageAndAdvance fires the
     /// onBreakupStageChanged trigger — so for first-time onboarders

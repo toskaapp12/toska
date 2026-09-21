@@ -198,7 +198,7 @@ struct SettingsView: View {
                                                             actionRow("change password", icon: "key.fill", iconColor: Color.toskaMidGray) { showChangePassword = true }
                                                         }
                                                         Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
-                                                        actionRow(isExporting ? "preparing export..." : "export my data", icon: "square.and.arrow.down.fill", iconColor: Color.toskaBlue) {
+                                                        actionRow(isExporting ? "preparing export…" : "export my data", icon: "square.and.arrow.down.fill", iconColor: Color.toskaBlue) {
                                                             exportData()
                                                         }
                                                     }
@@ -279,7 +279,7 @@ struct SettingsView: View {
                                     showDeleteAlert = true
                                 } label: {
                                     HStack(spacing: 18) {
-                                        Text(isDeleting ? "deleting..." : "delete account")
+                                        Text(isDeleting ? "deleting…" : "delete account")
                                             .font(ToskaFont.sans(13.5, weight: .medium))
                                             .foregroundColor(Color.toskaErrorRed)
                                         Spacer()
@@ -769,7 +769,7 @@ struct SettingsView: View {
     func deleteAccount() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         // Offline guard: the pendingDeletions writes below hang forever
-        // offline (no error, no timeout) — the row froze at "deleting..."
+        // offline (no error, no timeout) — the row froze at "deleting…"
         // permanently and the queued intent doc landed on reconnect. Same
         // fail-fast as exportData; deletion is a flow that must never lie.
         guard NetworkMonitor.shared.isConnected else {

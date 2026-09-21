@@ -58,7 +58,7 @@ struct GifPickerView: View {
                     .font(.system(size: 13))
                     .foregroundColor(ToskaColor.text2)
                 
-                TextField("search GIFs...", text: $searchText)
+                TextField("search GIFs…", text: $searchText)
                     .font(.system(size: 14))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)

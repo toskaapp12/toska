@@ -133,7 +133,7 @@ struct OtherProfileView: View {
                             if showFollowerCount {
                                 HStack(spacing: 20) {
                                     (Text("\(followerCount) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
-                                        + Text("followers").foregroundColor(ToskaColor.text2))
+                                        + Text(followerCount == 1 ? "follower" : "followers").foregroundColor(ToskaColor.text2))
                                     (Text("\(followingCount) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)
                                         + Text("following").foregroundColor(ToskaColor.text2))
                                     (Text("\(formatCount(totalLikes)) ").fontWeight(.semibold).foregroundColor(ToskaColor.text)

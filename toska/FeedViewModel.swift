@@ -75,7 +75,7 @@ class FeedViewModel: ObservableObject {
     var letterPostIds: Set<String> = []
     var whisperPostIds: Set<String> = []
     var repostPostIds: Set<String> = []
-    // @Published: tapping "read this letter..." inserts here, and the feed must
+    // @Published: tapping "read this letter…" inserts here, and the feed must
     // re-render so the row expands. (As a plain var the insert changed no observed
     // state, so nothing happened on tap.) FeedPostRow is .equatable(), so only the
     // tapped letter re-renders, not the whole feed.

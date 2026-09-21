@@ -88,7 +88,7 @@ struct AnniversaryCardView: View {
                         .foregroundColor(Color.toskaAccentGold.opacity(0.7))
                         .padding(.top, 4)
 
-                    TextField("reflect on this moment...", text: $reflectionText, axis: .vertical)
+                    TextField("reflect on this moment…", text: $reflectionText, axis: .vertical)
                         .font(ToskaFont.serif(13))
                         .foregroundColor(Color.toskaInkOnLight)
                         .lineLimit(4)

@@ -2216,7 +2216,7 @@ struct EditPostView: View {
 
                 ZStack(alignment: .topLeading) {
                     if editText.isEmpty {
-                        Text("say what you never said...")
+                        Text("say what you never said…")
                             .font(ToskaFont.serif(16)).foregroundColor(ToskaColor.text3)
                             .padding(.horizontal, 16).padding(.top, 16)
                     }

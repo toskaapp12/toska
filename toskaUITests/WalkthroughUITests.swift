@@ -1873,4 +1873,43 @@ final class WalkthroughUITests: XCTestCase {
         sleep(4) // clean content: pending_validation → validatePost (staging) → live
         snap("16b-grief-posted")
     }
+
+    // MARK: 98 — polish walk (2026-09-21 micro-UX review)
+    //
+    // Not a test: a chauffeur. Parks on each screen ~5s while an external
+    // simctl screenshot loop captures frames for visual review (xcresult
+    // attachment export is gone in Xcode 26). Assertions minimal on purpose.
+    func test98_polishWalk() throws {
+        try requireFeed()
+        sleep(5)                                   // 1 feed top
+        app.swipeUp(); sleep(4)                    // 2 feed mid-scroll
+        scrollToTop(2)
+        if let row = findRow(matching: NSPredicate(format: "label CONTAINS 'felt this'"), swipes: 0) {
+            forceTap(row); sleep(5)                // 3 post detail
+            let rf = app.textFields["replyField"]
+            if rf.waitForExistence(timeout: 4) { rf.tap(); sleep(4) } // 4 keyboard up
+            app.swipeDown()                        // dismiss keyboard
+            if app.buttons["Back"].exists { forceTap(app.buttons["Back"]) }
+            sleep(1)
+        }
+        app.buttons["New post"].tap()
+        _ = waitFor(app.buttons["cancel"], 6); sleep(4)   // 5 compose
+        forceTap(app.buttons["Tag"]); sleep(4)             // 6 feeling picker
+        if app.staticTexts["how does this feel"].exists {
+            forceTap(app.buttons.matching(NSPredicate(format: "label CONTAINS 'longing'")).firstMatch)
+            sleep(1)
+        }
+        clearComposeEditor()
+        forceTap(app.buttons["cancel"]); sleep(1)
+        forceTap(app.buttons["Trending"]); sleep(5)        // 7 most felt
+        forceTap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Notifications'")).firstMatch)
+        sleep(5)                                           // 8 notifications
+        forceTap(app.buttons["Profile"]); sleep(5)         // 9 profile
+        forceTap(app.buttons["settings"]); sleep(5)        // 10 settings top
+        app.swipeUp(); sleep(4)                            // 11 settings mid
+        app.swipeUp(); sleep(4)                            // 12 settings bottom
+        let blockedRow = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'blocked users'")).firstMatch
+        if blockedRow.exists { nudgeRowIntoSafeBand(blockedRow); forceTap(blockedRow); sleep(4) } // 13 blocked
+        XCTAssertTrue(true)
+    }
 }

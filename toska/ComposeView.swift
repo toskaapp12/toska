@@ -204,8 +204,8 @@ struct ComposeView: View {
     }
 
     var composePlaceholder: String {
-            if isLetter { return "dear you..." }
-            if isWhisper { return "say it quietly..." }
+            if isLetter { return "dear you…" }
+            if isWhisper { return "say it quietly…" }
             let tod = timeOfDayLabel()
             // Stage-aware overrides: the user's breakup-stage answer from
             // onboarding (UserHandleCache.shared.breakupStage) tunes the
@@ -216,17 +216,17 @@ struct ComposeView: View {
             let stage = UserHandleCache.shared.breakupStage
             if tod == "this afternoon" {
                 switch stage {
-                case "still in it":      return "say the thing you can't say to them yet..."
-                case "a year or more":   return "what would you tell them now..."
-                case "they left":        return "say what they didn't let you say..."
-                case "i left":           return "say the thing you held back when you left..."
-                case "it just happened": return "say the thing you can't text them..."
-                default:                 return "say the thing you can't say to them..."
+                case "still in it":      return "say the thing you can't say to them yet…"
+                case "a year or more":   return "what would you tell them now…"
+                case "they left":        return "say what they didn't let you say…"
+                case "i left":           return "say the thing you held back when you left…"
+                case "it just happened": return "say the thing you can't text them…"
+                default:                 return "say the thing you can't say to them…"
                 }
             }
-            if tod == "tonight" { return "what's keeping you up..." }
-            else if tod == "this morning" { return "how did you sleep..." }
-            else { return "how are you. honestly..." }
+            if tod == "tonight" { return "what's keeping you up…" }
+            else if tod == "this morning" { return "how did you sleep…" }
+            else { return "how are you. honestly…" }
         }
 
     var body: some View {
@@ -279,7 +279,7 @@ struct ComposeView: View {
                     .accessibilityLabel(editingDraftId == nil ? "Save as draft" : "Update draft")
 
                     Button { attemptPost() } label: {
-                        Text(isPosting ? "posting..." : "post")
+                        Text(isPosting ? "posting…" : "post")
                             .font(ToskaFont.sans(12.5, weight: .semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)

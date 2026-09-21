@@ -69,10 +69,10 @@ struct CreateAccountView: View {
                                         
                                         Button {
                                             withAnimation(.easeInOut(duration: 0.15)) {
-                                                assignedHandle = "..."
+                                                assignedHandle = "…"
                                             }
                                             // Same timeout shape as loadUniqueHandle so a flaky
-                                            // network never strands the shuffle on "..." with no
+                                            // network never strands the shuffle on "…" with no
                                             // recovery. Caps the user-visible spinner at 5s.
                                             Task { @MainActor in
                                                 let handle: String
@@ -315,7 +315,7 @@ struct CreateAccountView: View {
     func loadUniqueHandle() {
         // 5s timeout matches Apple/Google sign-up paths. Without this,
         // a hung Firestore call leaves the handle field showing "" or
-        // "..." indefinitely on the create-account screen and the user
+        // "…" indefinitely on the create-account screen and the user
         // sees no way forward. Falls back to a UUID handle on timeout.
         Task { @MainActor in
             let handle: String
@@ -368,14 +368,14 @@ struct CreateAccountView: View {
                 }
 
                 // If the assigned handle never resolved (loadUniqueHandle ran
-                // but Firestore was unreachable, leaving "..." or empty), fall
+                // but Firestore was unreachable, leaving "…" or empty), fall
                 // back to a UUID handle here so we never write a malformed
                 // handle to the user doc. The shuffle button uses the callback
-                // version which can also leave "..." on screen if the user
+                // version which can also leave "…" on screen if the user
                 // taps create-account immediately after shuffling. This guard
                 // catches both cases without making the user wait.
                 let resolvedHandle: String
-                if assignedHandle.isEmpty || assignedHandle == "..." {
+                if assignedHandle.isEmpty || assignedHandle == "…" {
                     resolvedHandle = "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
                 } else {
                     resolvedHandle = assignedHandle

@@ -111,7 +111,7 @@ struct ExploreView: View {
                         .font(.system(size: 12))
                         .foregroundColor(Color.toskaTimestamp)
                     
-                    TextField("search for a feeling...", text: $searchText)
+                    TextField("search for a feeling…", text: $searchText)
                         .font(.system(size: 12))
                         .onSubmit { performSearch() }
                     

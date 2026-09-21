@@ -1277,7 +1277,7 @@ async function viewTop() {
 // users/{uid}/notifications, createdAt DESC limit 50 (owner-only read).
 // Visiting marks everything read in one batch, like the iOS sweep.
 const NOTIF_ACTION = {
-    like: "felt this", reply: "replied to your moment",
+    like: "felt this", reply: "replied to your words",
     follow: "followed you", repost: "shared your words",
     save: "kept your words close",
 };

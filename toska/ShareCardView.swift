@@ -182,7 +182,7 @@ struct ShareCardView: View {
     @State private var showFragmentPicker = false
 
     /// The post split into sentence-ish fragments (terminator-greedy, so
-    /// "i miss you..." stays one piece). Newlines end a fragment too.
+    /// "i miss you…" stays one piece). Newlines end a fragment too.
     /// Terminator set covers Arabic (؟) and CJK (。！？) punctuation so
     /// non-Latin posts get the line picker too.
     var sentences: [String] {

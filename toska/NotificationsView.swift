@@ -696,7 +696,9 @@ struct NotificationsView: View {
                         switch type {
                         case "like":   action = "felt this"
                         case "reply":
-                            action = "replied to your moment"
+                            // "moment" was daily-moment-era language (feature
+                            // removed) — "your words" matches repost's copy.
+                            action = "replied to your words"
                             let preview = message.trimmingCharacters(in: .whitespacesAndNewlines)
                             replyBody = preview.isEmpty ? nil : preview
                         case "follow":   action = "followed you"
@@ -789,7 +791,7 @@ struct NotificationsView: View {
                     .font(ToskaFont.serifItalic(18))
                     .foregroundColor(LateNightTheme.handleText)
 
-                Text("we'll let you know when someone feels what you wrote, replies to you, or follows you.\n\nthats it. no marketing. no daily nudges.")
+                Text("we'll let you know when someone feels what you wrote, replies to you, or follows you.\n\nthat's it. no marketing. no daily nudges.")
                     .font(ToskaFont.sans(12))
                     .foregroundColor(LateNightTheme.secondaryText)
                     .multilineTextAlignment(.center)
@@ -831,7 +833,7 @@ struct NotificationsView: View {
                 }
                 .padding(.top, 4)
 
-                Text("you can change this any time in Settings → Notifications")
+                Text("you can change this any time in settings → notifications")
                     .font(ToskaFont.sans(11))
                     .foregroundColor(LateNightTheme.tertiaryText)
                     .multilineTextAlignment(.center)

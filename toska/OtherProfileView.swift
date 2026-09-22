@@ -261,56 +261,57 @@ struct OtherProfileView: View {
                                 .padding(.vertical, 60)
                             } else {
                                 LazyVStack(spacing: 0) {
+                                    // Owner (2026-09-22): reply rows tap through to the
+                                    // parent post (own profile already did; this surface
+                                    // was static). Also retinted — these rows still wore
+                                    // pre-redesign tokens every restyle round missed.
                                     ForEach(userReplies) { reply in
-                                        VStack(alignment: .leading, spacing: 7) {
-                                            // Metadata row: who they replied to + when,
-                                            // on one tidy line (the time used to dangle
-                                            // under the reply, which read as clutter).
-                                            HStack(spacing: 5) {
-                                                Image(systemName: "arrowshape.turn.up.left.fill")
-                                                    .font(.system(size: 8))
-                                                    .foregroundColor(Color.toskaBlue.opacity(0.55))
-                                                Text("replying to \(reply.parentHandle)")
-                                                    .font(ToskaFont.sans(11, weight: .medium))
-                                                    .foregroundColor(Color.toskaTextLight)
-                                                Spacer(minLength: 8)
-                                                Text(reply.replyTime)
-                                                    .font(ToskaFont.sans(11, weight: .light))
-                                                    .foregroundColor(Color.toskaInactiveGray)
-                                            }
+                                        NavigationLink {
+                                            PostDetailView(postId: reply.parentPostId, handle: reply.parentHandle, text: reply.parentText, tag: nil, likes: 0, reposts: 0, replies: 0, time: "", authorId: "")
+                                                .navigationBarHidden(true)
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 8) {
+                                                HStack(spacing: 6) {
+                                                    Text("replying to \(reply.parentHandle)")
+                                                        .font(ToskaFont.sans(11.5, weight: .medium))
+                                                    Text("·").font(ToskaFont.sans(11.5)).foregroundColor(ToskaColor.dot)
+                                                    Text(reply.replyTime)
+                                                        .font(ToskaFont.sans(11.5)).foregroundColor(ToskaColor.text3)
+                                                    Spacer(minLength: 8)
+                                                }
+                                                .foregroundColor(ToskaColor.handle)
 
-                                            // The moment they replied to — subdued
-                                            // context, clearly secondary to the reply.
-                                            Text(reply.parentText)
-                                                .font(ToskaFont.serifItalic(12))
-                                                .foregroundColor(Color.toskaTimestamp)
-                                                .lineLimit(2)
-                                                .lineSpacing(2)
+                                                Text(reply.parentText)
+                                                    .font(ToskaFont.serifItalic(13))
+                                                    .foregroundColor(ToskaColor.text2)
+                                                    .lineLimit(2)
+                                                    .lineSpacing(2)
 
-                                            // The reply itself — the primary voice,
-                                            // set off with a clean accent rule.
-                                            HStack(alignment: .top, spacing: 10) {
-                                                RoundedRectangle(cornerRadius: 1)
-                                                    .fill(Color.toskaBlue.opacity(0.35))
-                                                    .frame(width: 2)
-                                                Text(reply.replyText)
-                                                    .font(ToskaFont.serif(14))
-                                                    .foregroundColor(Color.toskaTextDark)
-                                                    .lineSpacing(3)
-                                                    .fixedSize(horizontal: false, vertical: true)
-                                                Spacer(minLength: 0)
+                                                HStack(alignment: .top, spacing: 10) {
+                                                    RoundedRectangle(cornerRadius: 1)
+                                                        .fill(ToskaColor.divider2)
+                                                        .frame(width: 2)
+                                                    Text(reply.replyText)
+                                                        .font(ToskaFont.serif(15))
+                                                        .foregroundColor(ToskaColor.body)
+                                                        .lineSpacing(4)
+                                                        .fixedSize(horizontal: false, vertical: true)
+                                                    Spacer(minLength: 0)
+                                                }
+                                                .padding(.top, 1)
                                             }
-                                            .padding(.top, 1)
+                                            .padding(.horizontal, 28)
+                                            .padding(.vertical, 14)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .contentShape(Rectangle())
+                                            .overlay(
+                                                Rectangle()
+                                                    .fill(ToskaColor.divider)
+                                                    .frame(height: 1),
+                                                alignment: .bottom
+                                            )
                                         }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 14)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .overlay(
-                                            Rectangle()
-                                                .fill(Color.toskaBorderLight.opacity(0.5))
-                                                .frame(height: 0.5),
-                                            alignment: .bottom
-                                        )
+                                        .buttonStyle(.plain)
                                     }
                                 }
                             }

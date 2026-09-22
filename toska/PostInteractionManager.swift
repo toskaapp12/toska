@@ -33,7 +33,9 @@ class PostInteractionManager {
                     return
                 }
         // X-parity (owner 2026-09-22): self-like allowed — rules flipped too.
-        if let last = RateLimiter.shared.lastLikeTime(for: postId), Date().timeIntervalSince(last) < 0.8 { return }
+        // No time gate (owner: "tap twice to unlike"): a quick like→unlike
+        // toggle-back is legitimate; the in-flight guard below + the
+        // transaction's own dedup are the real double-fire protection.
                // In-flight guard: rejects re-entry while a previous toggle's
                // transaction is still running. The 0.8s rate limit catches
                // fast double-taps, but a slow transaction (network latency,
@@ -165,7 +167,7 @@ class PostInteractionManager {
                     }
                     return
                 }
-        if let last = RateLimiter.shared.lastSaveTime(for: postId), Date().timeIntervalSince(last) < 1 { return }
+        // No time gate — see toggleLike (quick save→unsave is legitimate).
                 guard NetworkMonitor.shared.isConnected else {
                     // Offline: queue the desired end-state and reflect it
                     // optimistically — it syncs on reconnect.
@@ -783,7 +785,7 @@ class PostInteractionManager {
         // thrash the optimistic count. Keyed per-reply with a "reply_" prefix so
         // it can't collide with the post-like keyspace.
         let rlKey = "reply_\(replyId)"
-        if let last = RateLimiter.shared.lastLikeTime(for: rlKey), Date().timeIntervalSince(last) < 0.8 { return }
+        // No time gate — see toggleLike (quick toggle-back is legitimate).
         guard !RateLimiter.shared.isLikeInFlight(rlKey) else { return }
         RateLimiter.shared.recordLike(for: rlKey)
         RateLimiter.shared.markLikeInFlight(rlKey)

@@ -800,6 +800,7 @@ class FeedViewModel: ObservableObject {
               (userInfo?["ephemeral"] as? Bool) != true,
               !posts.contains(where: { $0.id == id }) else { return }
         let tagRaw = userInfo?["tag"] as? String
+        let promptDateRaw = userInfo?["promptDate"] as? String
         let echo = FeedPost(id: id,
                             handle: UserHandleCache.shared.handle,
                             text: text,
@@ -807,7 +808,9 @@ class FeedViewModel: ObservableObject {
                             likes: 0, reposts: 0, replies: 0,
                             time: "now",
                             authorId: Auth.auth().currentUser?.uid ?? "",
-                            isShareable: false)
+                            isShareable: false,
+                            // Prompt line on frame one (owner 2026-09-22).
+                            promptDate: (promptDateRaw?.isEmpty ?? true) ? nil : promptDateRaw)
         optimisticEcho.append((echo, Date()))
         posts.insert(echo, at: 0)
         watchEchoResolution(id)

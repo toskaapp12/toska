@@ -1479,6 +1479,10 @@ struct ComposeView: View {
                             "tag": self.selectedTag ?? "",
                             "held": self.postWillBeHeld,
                             "ephemeral": self.isWhisper || self.expiresAtMidnight,
+                            // Owner (2026-09-22): the purple prompt line must
+                            // render on the echo's FIRST frame — without this
+                            // it popped in when the server copy landed.
+                            "promptDate": self.promptDate ?? "",
                         ])
                         if self.postWillBeHeld {
                             // Held for review — tell the user before leaving the

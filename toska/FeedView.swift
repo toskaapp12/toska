@@ -712,6 +712,11 @@ struct FeedPostRow: View, Equatable {
         // re-delivery mid-round-trip was overwriting the optimistic repost count
         // and flickering it (the like path already had this; reposts didn't).
         @State private var suppressRepostListenerUntil: Date = .distantPast
+        // Owner report (2026-09-22, "click twice to unsave"): saves had NO
+        // echo-suppression window (likes/reposts did) — the save's delayed
+        // listener echo re-filled the bookmark right after an unsave tap,
+        // forcing a second tap. Same pattern as the other two.
+        @State private var suppressSaveListenerUntil: Date = .distantPast
         @State private var likePulse = false
             @State private var repostPulse = false
             @State private var likePulseTask: Task<Void, Never>? = nil
@@ -1092,7 +1097,7 @@ struct FeedPostRow: View, Equatable {
                     if !postId.isEmpty && Date() > suppressLikeListenerUntil { isLiked = newValue }
                 }
                 .onChange(of: isAlreadySaved) { _, newValue in
-                    if !postId.isEmpty { isSaved = newValue }
+                    if !postId.isEmpty && Date() > suppressSaveListenerUntil { isSaved = newValue }
                 }
                 .onChange(of: isAlreadyReposted) { _, newValue in
                     if !postId.isEmpty && Date() > suppressRepostListenerUntil { isReposted = newValue }
@@ -1400,12 +1405,14 @@ struct FeedPostRow: View, Equatable {
                 // Offline saves queue with an optimistic bookmark (see
                 // OfflineActionQueue) — the confirm haptic is honest now.
                 HapticManager.play(.feltThis)
+                suppressSaveListenerUntil = Date().addingTimeInterval(2.0)
                 PostInteractionManager.toggleSave(
                     postId: interactionPostId,
                     authorId: interactionAuthorId,
                     currentlySaved: isSaved
                 ) { newSaved in
                     isSaved = newSaved
+                    suppressSaveListenerUntil = Date().addingTimeInterval(1.5)
                 }
             }
 

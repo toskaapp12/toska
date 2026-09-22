@@ -437,3 +437,6 @@ a.plain:hover { text-decoration: underline; }
     .feed-main .tabs { padding-top: 16px; }
     .rail-foot { display: flex; }
 }
+
+/* own-handle accent (owner 2026-09-22): ink-violet = you */
+.handle.own { color: var(--accent-text); font-weight: 500; }

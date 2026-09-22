@@ -639,6 +639,12 @@ struct FeedPostRow: View, Equatable {
     // way PostDetailView does, instead of rendering dead taps. Rows built
     // without authorId (empty string) keep the buttons: better a guarded no-op
     // than hiding real actions on someone else's post.
+    // The DISPLAYED handle's owner is you (original author on repost rows).
+    var displayedHandleIsOwn: Bool {
+        let owner = isRepostPost ? (originalAuthorId ?? "") : authorId
+        return !owner.isEmpty && owner == Auth.auth().currentUser?.uid
+    }
+
     var isOwnPost: Bool {
         // Keys on the INTERACTION target: your own repost of someone else's
         // words is not "your post" for felt/save purposes — the original
@@ -788,13 +794,18 @@ struct FeedPostRow: View, Equatable {
                 // is set (FeedView passes it for reposts; other call sites
                 // pass nil so this row is hidden there).
                 if let reposter = reposterHandle, !reposter.isEmpty {
+                    // "you reposted" for your own reposts (owner 2026-09-22) —
+                    // parroting your random handle back at you hid that the
+                    // repost was yours. Accent tint, same "accent = you" rule
+                    // as the meta-line handle.
+                    let reposterIsMe = !authorId.isEmpty && authorId == Auth.auth().currentUser?.uid && isRepostPost
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.2.squarepath")
                             .font(.system(size: 10, weight: .regular))
-                        Text("\(reposter) reposted")
+                        Text(reposterIsMe ? "you reposted" : "\(reposter) reposted")
                             .font(ToskaFont.sans(11.5, weight: .medium))
                     }
-                    .foregroundColor(ToskaColor.handle)
+                    .foregroundColor(reposterIsMe ? ToskaColor.accentText : ToskaColor.handle)
                     .padding(.bottom, 10)
                 }
 
@@ -1206,7 +1217,13 @@ struct FeedPostRow: View, Equatable {
                 Text("·").foregroundColor(ToskaColor.dot)
             }
             if !hideMetaHandle {
+                // Your handle renders in ACCENT everywhere your words appear
+                // (owner 2026-09-22): anonymous handles aren't self-
+                // recognizable, and ink-violet already means "you" app-wide
+                // (felt hearts, write pill, your-response check).
                 Text(handle)
+                    .foregroundColor(displayedHandleIsOwn ? ToskaColor.accentText : nil)
+                    .fontWeight(displayedHandleIsOwn ? .medium : nil)
                 Text("·").foregroundColor(ToskaColor.dot)
             }
             Text(metaTimeText)

@@ -655,13 +655,16 @@ function ephemeralChip(d) {
 function postRow(id, d) {
     const meta = el("div", { class: "post-meta" },
         tagChip(d.tag),
-        el("span", { class: "handle" }, d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
+        // Own handle in accent (owner 2026-09-22): accent = "you" app-wide.
+        el("span", {
+            class: "handle" + ((d.isRepost ? d.originalAuthorId : d.authorId) === me?.uid ? " own" : ""),
+        }, d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
         el("span", {}, relTime(d.createdAt)),
         ephemeralChip(d),
     );
     // Words first, then the feeling line, then the stats line (design order).
     return el("a", { class: "post-row", href: `#/post/${id}` },
-        d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle ?? "anonymous"} reposted`) : null,
+        d.isRepost ? el("div", { class: "repost-strip" }, d.authorId === me?.uid ? "you reposted" : `${d.authorHandle ?? "anonymous"} reposted`) : null,
         el("div", { class: "post-text" }, d.text ?? ""),
         gifImg(d.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
         meta,

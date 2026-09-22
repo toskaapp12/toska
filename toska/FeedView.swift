@@ -1030,7 +1030,11 @@ struct FeedPostRow: View, Equatable {
                         Button {
                             repostPost()
                         } label: {
-                            Label(isReposted ? "undo repost" : "repost", systemImage: isReposted ? "arrow.2.squarepath.circle" : "arrow.2.squarepath")
+                            // Owner report (2026-09-22): "arrow.2.squarepath.circle"
+                            // isn't a real SF Symbol — the undo row rendered
+                            // iconless. Same repost glyph both ways; the label
+                            // text carries the difference (X does the same).
+                            Label(isReposted ? "undo repost" : "repost", systemImage: "arrow.2.squarepath")
                         }
                     }
 

@@ -885,20 +885,15 @@ struct PostDetailView: View {
 
             // Stats line — same shape as the feed but 12.5pt here (design):
             // "318 felt this | 27 replies | 3 reposts" + bookmark/share
-            // trailing. The words are the actions; like/repost stay read-only
-            // on your OWN post (guards + rules deny them).
+            // trailing. X-parity (2026-09-22): felt/repost live on your OWN
+            // post too — X lets you like/retweet yourself.
             HStack(spacing: 12) {
-                if isOwnPost {
-                    feltStat
-                        .accessibilityLabel("\(formatFull(likeCount)) people felt this")
-                } else {
-                    Button { toggleLike() } label: { feltStat }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                    .accessibilityValue("\(formatFull(likeCount)) people felt this")
-                    .scaleEffect(likePulse ? 1.1 : 1.0)
-                    .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
-                }
+                Button { toggleLike() } label: { feltStat }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                .accessibilityValue("\(formatFull(likeCount)) people felt this")
+                .scaleEffect(likePulse ? 1.1 : 1.0)
+                .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
 
                 detailStatSeparator
 
@@ -921,20 +916,15 @@ struct PostDetailView: View {
                 // value. (2026-08-05) Whispers can't be reposted (ephemeral —
                 // the copy would outlive the original); midnight posts are
                 // caught by the tap-time fetch in PostInteractionManager.
-                if isOwnPost {
+                Button { repostPost() } label: {
                     detailStatText(localRepostCount, "repost", "reposts")
-                        .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                } else {
-                    Button { repostPost() } label: {
-                        detailStatText(localRepostCount, "repost", "reposts")
-                            .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
-                            .padding(.vertical, 11)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
-                    .disabled(isWhisper)
-                    .opacity(isWhisper ? 0.3 : 1.0)
+                        .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
+                        .padding(.vertical, 11)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+                .disabled(isWhisper)
+                .opacity(isWhisper ? 0.3 : 1.0)
 
                 Spacer(minLength: 6)
 

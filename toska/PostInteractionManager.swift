@@ -32,10 +32,7 @@ class PostInteractionManager {
                     onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
                     return
                 }
-        // F-P2-1: no self-like — rules deny the create (mirrors the repost
-        // own_post guard). Unlike direction stays allowed so a legacy
-        // self-like can still be removed.
-        if !currentlyLiked, !authorId.isEmpty, authorId == uid { return }
+        // X-parity (owner 2026-09-22): self-like allowed — rules flipped too.
         if let last = RateLimiter.shared.lastLikeTime(for: postId), Date().timeIntervalSince(last) < 0.8 { return }
                // In-flight guard: rejects re-entry while a previous toggle's
                // transaction is still running. The 0.8s rate limit catches
@@ -279,7 +276,8 @@ class PostInteractionManager {
                     return
                 }
         if let last = RateLimiter.shared.lastRepostTime(for: postId), Date().timeIntervalSince(last) < 2 { return }
-        guard uid != authorId else { return }
+        // X-parity (owner 2026-09-22): self-repost allowed (X lets you
+        // retweet yourself); rules guard removed in the same change.
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ repost — offline, skipping")
                    return

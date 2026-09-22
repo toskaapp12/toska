@@ -144,9 +144,7 @@ export async function createReply(postId, { text, parentReplyId, parentPostText,
 // ------------------------------------------------------------ like / save
 // Returns true/false (new liked state) | "own_post" | null.
 export async function toggleLike(postId, liked, postAuthorId) {
-    // F-P2-1: no self-like — rules deny the create; unlike (liked=true) is
-    // delete-only and stays allowed for legacy self-likes.
-    if (!liked && postAuthorId === uid) return "own_post";
+    // X-parity (owner 2026-09-22): self-like allowed — rules flipped too.
     const key = `like_${postId}`;
     if (!guard(key, 800)) return null;
     try {
@@ -214,7 +212,7 @@ export async function toggleRepost(postId) {
         const orig = await getDoc(doc(db, "posts", postId));
         if (!orig.exists()) return null;
         const o = orig.data();
-        if (o.authorId === uid) return "own_post";
+        // X-parity (owner 2026-09-22): self-repost allowed (X model).
         if (o.isWhisper === true || o.isMidnightPost === true) return "blocked_ephemeral";
         const handle = await myHandle();
         const data = {

@@ -61,11 +61,11 @@ after(async () => { if (env) await env.cleanup(); });
 beforeEach(async () => { await env.clearFirestore(); });
 
 describe("PROBE: self-interaction counter inflation (rules half)", () => {
-  it("SELF-LIKE: alice CANNOT like her OWN post (rules now deny — F-P2-1 closed 2026-07-13)", async () => {
+  it("SELF-LIKE: alice CAN like her OWN post (X-parity, owner 2026-09-22)", async () => {
     await setUserDoc("alice");
     await setPost("p1", "alice");
     const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
+    await assertSucceeds(
       a.collection("posts").doc("p1").collection("likes").doc("alice")
         .set({ createdAt: serverTimestamp() })
     );
@@ -95,7 +95,7 @@ describe("PROBE: self-interaction counter inflation (rules half)", () => {
     );
   });
 
-  it("SELF-REPLY-LIKE: alice CANNOT like her OWN reply; bob CAN (reply-author guard)", async () => {
+  it("SELF-REPLY-LIKE: alice CAN like her OWN reply (X-parity); bob too", async () => {
     await setUserDoc("alice");
     await setUserDoc("bob");
     await setPost("p1", "alice");
@@ -107,7 +107,7 @@ describe("PROBE: self-interaction counter inflation (rules half)", () => {
         });
     });
     const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
+    await assertSucceeds(
       a.collection("posts").doc("p1").collection("replies").doc("r1")
         .collection("likes").doc("alice").set({ createdAt: serverTimestamp() })
     );
@@ -118,16 +118,17 @@ describe("PROBE: self-interaction counter inflation (rules half)", () => {
     );
   });
 
-  it("SELF-REPOST: alice CANNOT repost her OWN post (rules now deny — F-P2-1 fix)", async () => {
+  it("SELF-REPOST: alice CAN repost her OWN post (X-parity, owner 2026-09-22)", async () => {
     await setUserDoc("alice");
     await setPost("p1", "alice");
     const a = env.authenticatedContext("alice").firestore();
-    await assertFails(
+    await assertSucceeds(
       a.collection("posts").doc("alice_repost_p1").set({
         authorId: "alice", authorHandle: "handle_alice",
         text: "my own words", createdAt: serverTimestamp(),
         likeCount: 0, repostCount: 0, replyCount: 0,
         isRepost: true, originalPostId: "p1", originalAuthorId: "alice",
+        isShareable: true, moderationStatus: "pending_validation",
       })
     );
   });

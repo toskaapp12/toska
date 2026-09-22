@@ -130,25 +130,22 @@ try {
   // F-P2-1 (2026-07-13): the author cannot like their OWN post. owner==users[0]
   // authored the target, so only the 5 peers may like it; the owner's like is
   // correctly rejected and likeCount settles at 5. (This assertion set used to
-  // like with all 6 and expect 6 — stale once the self-like guard shipped, since
-  // the owner's self-like is denied.) Verify the denial explicitly, then race
+  // like with all 6 and expect 6 — restored 2026-09-22 with X-parity.) Race
   // the 5 legitimate peer likes.
-  let ownerSelfLikeDenied = false;
-  try {
-    await setDoc(doc(owner.db, `posts/${postId}/likes`, owner.uid), { createdAt: serverTimestamp() });
-  } catch (e) { ownerSelfLikeDenied = e.code === "permission-denied"; }
-  await settle("owner self-like rejected by the self-like guard",
-    async () => ownerSelfLikeDenied === true ? true : ownerSelfLikeDenied);
+  // X-parity (2026-09-22): the owner's self-like is ALLOWED and counts.
+  await setDoc(doc(owner.db, `posts/${postId}/likes`, owner.uid), { createdAt: serverTimestamp() });
   await allUsers("all 5 peers like simultaneously (no rejections)", peers,
     (u) => setDoc(doc(u.db, `posts/${postId}/likes`, u.uid), { createdAt: serverTimestamp() }));
-  await settle("likeCount settles at exactly 5",
-    async () => { const v = (await adminDb.doc(`posts/${postId}`).get()).get("likeCount"); return v === 5 ? true : v; });
-  await settle("author totalLikes settles at exactly 5",
-    async () => { const v = (await adminDb.doc(`users/${owner.uid}`).get()).get("totalLikes"); return v === 5 ? true : v; });
+  await settle("likeCount settles at exactly 6 (5 peers + self)",
+    async () => { const v = (await adminDb.doc(`posts/${postId}`).get()).get("likeCount"); return v === 6 ? true : v; });
+  await settle("author totalLikes settles at exactly 6",
+    async () => { const v = (await adminDb.doc(`users/${owner.uid}`).get()).get("totalLikes"); return v === 6 ? true : v; });
 
   console.log("\n=== PHASE 2: 5 concurrent unlikes ===");
   await allUsers("all 5 peers unlike simultaneously (no rejections)", peers,
     (u) => deleteDoc(doc(u.db, `posts/${postId}/likes`, u.uid)));
+  // Owner unlikes too so the zero-settle expectations still hold.
+  await deleteDoc(doc(owner.db, `posts/${postId}/likes`, owner.uid));
   await settle("likeCount settles back to exactly 0",
     async () => { const v = (await adminDb.doc(`posts/${postId}`).get()).get("likeCount"); return v === 0 ? true : v; });
   await settle("author totalLikes settles back to exactly 0",

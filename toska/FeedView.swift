@@ -872,19 +872,15 @@ struct FeedPostRow: View, Equatable {
                                     // the post, reposts toggles the repost.
                                     if !postId.isEmpty {
                                         HStack(spacing: 10) {
-                                            // felt this (like) — with the burst overlay;
-                                            // read-only on your own post (M4).
-                                            if isOwnPost {
-                                                feltLabel
-                                                    .accessibilityLabel(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                            } else {
-                                                Button { toggleLike() } label: { feltLabel }
-                                                .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
-                                                .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
-                                                .buttonStyle(ToskaTapStyle())
-                                                .scaleEffect(likePulse ? 1.1 : 1.0)
-                                                .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
-                                            }
+                                            // felt this (like) — with the burst overlay.
+                                            // X-parity (owner 2026-09-22): live on your OWN
+                                            // posts too (X lets you like yourself).
+                                            Button { toggleLike() } label: { feltLabel }
+                                            .accessibilityLabel(isLiked ? "Unlike post" : "Like post")
+                                            .accessibilityValue(localLikeCount == 1 ? "1 person felt this" : "\(localLikeCount) people felt this")
+                                            .buttonStyle(ToskaTapStyle())
+                                            .scaleEffect(likePulse ? 1.1 : 1.0)
+                                            .animation(reduceMotion ? .linear(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: likePulse)
 
                                             statSeparator
 
@@ -919,30 +915,21 @@ struct FeedPostRow: View, Equatable {
 
                                             statSeparator
 
-                                            // reposts — toggles; read-only on own post,
-                                            // disabled for ephemeral posts (the copy would
-                                            // outlive the original — see
-                                            // PostInteractionManager.repost).
-                                            if isOwnPost {
+                                            // reposts — live toggle for EVERY viewer
+                                            // (X-parity 2026-09-22: self-repost allowed);
+                                            // dimmed only for ephemerals (the copy would
+                                            // outlive the original) and legacy id-less
+                                            // repost docs.
+                                            Button { repostPost() } label: {
                                                 statText(localRepostCount, "repost", "reposts")
-                                                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                            } else {
-                                                Button { repostPost() } label: {
-                                                    statText(localRepostCount, "repost", "reposts")
-                                                        .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
-                                                        .padding(.vertical, 11)
-                                                }
-                                                .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
-                                                .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
-                                                .buttonStyle(ToskaTapStyle())
-                                                // Owner report (2026-09-22, "blurry after repost"):
-                                                // repost rows with an originalPostId keep a LIVE
-                                                // toggle — it retargets to the original, so tapping
-                                                // your own fresh repost row un-reposts it. Only
-                                                // legacy id-less repost docs and ephemerals dim.
-                                                .disabled((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost)
-                                                .opacity(((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
+                                                    .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
+                                                    .padding(.vertical, 11)
                                             }
+                                            .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+                                            .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                            .buttonStyle(ToskaTapStyle())
+                                            .disabled((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost)
+                                            .opacity(((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
 
                                             Spacer(minLength: 6)
 
@@ -1009,12 +996,11 @@ struct FeedPostRow: View, Equatable {
                 .contextMenu {
                     // M4: like/repost are no-ops on your own post — omit them here
                     // the same way the action bar renders them read-only.
-                    if !isOwnPost {
-                        Button {
-                            toggleLike()
-                        } label: {
-                            Label(isLiked ? "unlike" : "felt this", systemImage: isLiked ? "heart.slash" : "heart")
-                        }
+                    // X-parity (2026-09-22): felt available on your own posts too.
+                    Button {
+                        toggleLike()
+                    } label: {
+                        Label(isLiked ? "unlike" : "felt this", systemImage: isLiked ? "heart.slash" : "heart")
                     }
 
                     Button {
@@ -1026,7 +1012,8 @@ struct FeedPostRow: View, Equatable {
                     // Repost rows WITH an originalPostId now offer repost too
                     // (it targets the original — web parity); only legacy
                     // repost docs without the id stay repost-less.
-                    if (!isRepostPost || originalPostId != nil) && !isOwnPost {
+                    // X-parity (2026-09-22): self-repost allowed — own-post gate dropped.
+                    if !isRepostPost || originalPostId != nil {
                         Button {
                             repostPost()
                         } label: {

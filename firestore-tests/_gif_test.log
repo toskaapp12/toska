@@ -1,0 +1,638 @@
+(node:88749) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+i  emulators: Starting emulators: auth, firestore
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator UI websocket is running on 9150.
+i  Running script: npx mocha --timeout 15000 firestore.test.js hostile-user.test.js
+
+
+  baseline sanity
+    ✔ authenticated user can create their own user doc with valid handle (batched with registry row) (194ms)
+[2026-07-19T18:01:17.343Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dd7 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L246:24 for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, Null value error. for 'create' @ L246, false for 'create' @ L1609
+    ✔ rejects user doc create WITHOUT the registry row (pre-registry client shape)
+[2026-07-19T18:01:17.365Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dd8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'create' @ L246, false for 'create' @ L1609
+    ✔ rejects user doc with handle containing markup characters
+[2026-07-19T18:01:17.388Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dd9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'create' @ L246, false for 'create' @ L1609
+    ✔ rejects user doc create with a forged non-zero followerCount
+[2026-07-19T18:01:17.408Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dda error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'create' @ L246, false for 'create' @ L1609
+    ✔ rejects user doc create that pre-seeds a restriction field
+[2026-07-19T18:01:17.442Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ddc error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects post create with text size > 2000
+    ✔ allows post create with valid shape
+    handle uniqueness registry
+[2026-07-19T18:01:17.509Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L246:24 for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, evaluation error at L753:24 for 'create' @ L753, false for 'create' @ L1609, false for 'update' @ L1609, false for 'update' @ L1609
+      ✔ DENIED: signing up with a handle already registered to another user (impersonation)
+[2026-07-19T18:01:17.534Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L246:24 for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, evaluation error at L753:24 for 'create' @ L753, false for 'create' @ L1609, false for 'update' @ L1609, false for 'update' @ L1609
+      ✔ DENIED: case-variant of a taken handle maps to the same registry row
+[2026-07-19T18:01:17.553Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L246:24 for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, evaluation error at L753:24 for 'create' @ L753, false for 'create' @ L1609, false for 'update' @ L1609, Null value error. for 'create' @ L246, false for 'create' @ L1609
+      ✔ DENIED: registry row claiming an id that doesn't match the user doc's handle (squat)
+[2026-07-19T18:01:17.569Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L246:24 for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'create' @ L753, false for 'create' @ L1609, false for 'update' @ L1609
+      ✔ DENIED: registry row with uid pointing at another user
+[2026-07-19T18:01:17.596Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+      ✔ DENIED: owner update changing handle (immutable post-create; bypasses the registry)
+[2026-07-19T18:01:17.615Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L769, false for 'delete' @ L1609
+[2026-07-19T18:01:17.623Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8de9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L769, false for 'delete' @ L1609
+      ✔ NO client may delete a registry row — not even the owner
+      ✔ registry rows are readable by any authenticated user (availability pre-check)
+
+  post create: gifUrl host-lock (audit 2026-07-19)
+    ✔ allows a real giphy gifUrl
+    ✔ allows a giphy subdomain variant (i.giphy.com)
+[2026-07-19T18:01:17.725Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8df1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ DENIES a non-giphy gifUrl (viewer-IP beacon)
+[2026-07-19T18:01:17.748Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8df3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ DENIES a look-alike host (evilgiphy.com)
+[2026-07-19T18:01:17.772Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8df5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ DENIES a data: URI gifUrl
+
+  post create: expiresAt bounded to the near future (audit 2026-07-17)
+    ✔ allows a whisper expiring in 1h
+    ✔ allows a midnight-style expiry ~24h out
+[2026-07-19T18:01:17.841Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dfb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects expiresAt in the far future (never-expiring 'ephemeral' post)
+[2026-07-19T18:01:17.868Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dfd error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects expiresAt just past the 26h bound
+[2026-07-19T18:01:17.891Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8dff error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a non-timestamp expiresAt
+[2026-07-19T18:01:17.913Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e01 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a whisper with NO expiresAt at all
+[2026-07-19T18:01:17.935Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e03 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a midnight post with NO expiresAt at all
+
+  post create: client moderationStatus is start-hidden only (audit 2026-06-01)
+    ✔ allows omitting moderationStatus (old clients)
+    ✔ allows moderationStatus = pending_validation (new clients, start hidden)
+[2026-07-19T18:01:17.997Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e09 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a client self-publishing as live
+[2026-07-19T18:01:18.016Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e0b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a client self-assigning the moderation hold
+
+  Finding 3: blocked user cannot create save notification
+[2026-07-19T18:01:18.068Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e11 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609
+    ✔ rejects save notification when post author has blocked the actor (48ms)
+    ✔ allows save notification when actor is not blocked
+[2026-07-19T18:01:18.142Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e1b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609
+    ✔ rejects message notification when recipient has blocked the actor
+
+  fromHandle is pinned to caller's actual handle on notification create
+    ✔ allows notification create when fromHandle matches caller's handle (39ms)
+[2026-07-19T18:01:18.223Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e25 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609
+    ✔ rejects notification create when fromHandle is spoofed to another user's handle
+[2026-07-19T18:01:18.260Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e2a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609
+    ✔ rejects notification create with a fully fabricated fromHandle string
+    ✔ allows notification create when fromHandle is omitted entirely
+
+  Finding 4: reports text capped at 4000 chars
+    ✔ allows report with normal-sized text
+[2026-07-19T18:01:18.320Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e31 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1449:24 for 'create' @ L1449, false for 'create' @ L1609, false for 'create' @ L1449, false for 'create' @ L1609
+    ✔ rejects report with text > 4000 chars
+[2026-07-19T18:01:18.330Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e32 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1449:24 for 'create' @ L1449, false for 'create' @ L1609, false for 'create' @ L1449, false for 'create' @ L1609
+    ✔ rejects report with reportedBy spoofed to a different uid
+
+  Finding 7: server-side confirmedAdult gate on publishing surfaces
+[2026-07-19T18:01:18.350Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e34 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects post create when confirmedAdult is missing
+[2026-07-19T18:01:18.377Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e38 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ rejects reply create when confirmedAdult is missing
+[2026-07-19T18:01:18.408Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e3c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1393, false for 'create' @ L1609, false for 'update' @ L1393, false for 'update' @ L1609
+    ✔ rejects DM message create when confirmedAdult is missing
+[2026-07-19T18:01:18.430Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e3f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1403, false for 'create' @ L1609
+    ✔ rejects circle message create when confirmedAdult is missing
+    ✔ allows post create when confirmedAdult is true
+    ✔ allows likes/saves/follows even when confirmedAdult is false
+
+  regression: prior audit fixes (2026-04-26)
+[2026-07-19T18:01:18.502Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e48 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Null value error. for 'update' @ L1044, false for 'update' @ L1609
+    ✔ rejects post update that touches `flagged`
+[2026-07-19T18:01:18.520Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e4a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects writing fcmToken to main user doc
+[2026-07-19T18:01:18.532Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e4b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'create' @ L246, false for 'create' @ L1609
+    ✔ rejects user doc create that includes confirmedAdult
+[2026-07-19T18:01:18.544Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e4c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L246, false for 'create' @ L1609, evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'create' @ L246, false for 'create' @ L1609
+    ✔ rejects user doc create that includes confirmedAdultAt
+[2026-07-19T18:01:18.561Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e4e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects user doc update that sets confirmedAdult
+[2026-07-19T18:01:18.579Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e50 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects user doc update that flips confirmedAdult false
+[2026-07-19T18:01:18.597Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e52 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects post create from a server-restricted user
+
+  reflections subcollection is reflection-author-or-post-author scoped
+    ✔ allows the reflection author to read their own reflection
+    ✔ allows the post author to read reflections under their post
+    ✔ rejects an unrelated user from reading someone else's reflection
+    ✔ allows a legitimate reflection create by the post author
+[2026-07-19T18:01:18.791Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e6e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1353:26 for 'create' @ L1353, false for 'create' @ L1609, evaluation error at L1368:26 for 'update' @ L1368, false for 'update' @ L1609, false for 'create' @ L1353, false for 'create' @ L1609
+    ✔ rejects reflection create when caller is not the post author
+[2026-07-19T18:01:18.827Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e73 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1353:26 for 'create' @ L1353, false for 'create' @ L1609, evaluation error at L1368:26 for 'update' @ L1368, false for 'update' @ L1609, false for 'create' @ L1353, false for 'create' @ L1609
+    ✔ rejects reflection create with text > 500 chars
+[2026-07-19T18:01:18.861Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e78 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1353:26 for 'create' @ L1353, false for 'create' @ L1609, evaluation error at L1368:26 for 'update' @ L1368, false for 'update' @ L1609, false for 'create' @ L1353, false for 'create' @ L1609
+    ✔ rejects reflection create with extra unlisted field
+    ✔ allows the post author to delete a reflection under their post
+
+  drafts subcollection — owner-only rehearsal space
+    ✔ allows owner to create a draft with valid shape
+    ✔ rejects another user reading someone else's drafts
+[2026-07-19T18:01:18.937Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e82 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L721:26 for 'create' @ L721, false for 'create' @ L1609, evaluation error at L728:26 for 'update' @ L728, false for 'update' @ L1609, false for 'create' @ L721, false for 'create' @ L1609
+    ✔ rejects draft create with text > 2000 chars
+[2026-07-19T18:01:18.947Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e83 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L721:26 for 'create' @ L721, false for 'create' @ L1609, evaluation error at L728:26 for 'update' @ L728, false for 'update' @ L1609, false for 'create' @ L721, false for 'create' @ L1609
+    ✔ rejects draft create with extra unlisted field
+    ✔ allows owner to update text + updatedAt
+    ✔ allows owner to delete their own draft
+
+  user doc read: block-aware + legacy-PII guard (audit P0/P1)
+    ✔ allows a non-owner to read a clean post-migration profile
+    ✔ rejects a blocked user from reading the blocker's profile
+    ✔ still allows the owner to read their own profile when blocked-by-flag is set
+    ✔ rejects a non-owner read when legacy PII (email) is still on the main doc
+    ✔ rejects a non-owner read when legacy notify* prefs are still on the main doc
+    ✔ still allows the owner to read their own profile even when legacy PII is present
+
+  notification create: schema lockdown (audit P1)
+[2026-07-19T18:01:19.157Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8e9f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L513:26 for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609, false for 'create' @ L513, false for 'create' @ L1609
+    ✔ rejects notification create with extra unlisted field
+[2026-07-19T18:01:19.191Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ea4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L513:26 for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609, false for 'create' @ L513, false for 'create' @ L1609
+    ✔ rejects notification create with isRead == true (no pre-read decoy)
+[2026-07-19T18:01:19.223Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ea9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609
+    ✔ rejects notification create with backdated createdAt
+[2026-07-19T18:01:19.255Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8eae error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L513:26 for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609, false for 'create' @ L513, false for 'create' @ L1609
+    ✔ rejects notification create missing isRead
+
+  post create: createdAt pinned to request.time (audit P2)
+[2026-07-19T18:01:19.272Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8eb0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects post create with backdated createdAt
+
+  reply create: schema lockdown + createdAt pin (audit P2)
+    ✔ allows a legitimate reply create with valid shape
+[2026-07-19T18:01:19.327Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8eb8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1165:26 for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ rejects reply create with extra unlisted field
+[2026-07-19T18:01:19.357Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ebc error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ rejects reply create with backdated createdAt
+[2026-07-19T18:01:19.386Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ec0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1165:26 for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ rejects reply create with pre-inflated likeCount
+
+  conversation message create: createdAt pinned (audit P2)
+[2026-07-19T18:01:19.415Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ec4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1393, false for 'create' @ L1609, false for 'update' @ L1393, false for 'update' @ L1609
+    ✔ rejects message create with backdated createdAt
+
+  private subcollection: owner-only
+    ✔ allows the owner to write their private/data doc
+    ✔ rejects another user from reading someone else's private data
+[2026-07-19T18:01:19.481Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ece error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L701, false for 'create' @ L1609, false for 'update' @ L701, false for 'update' @ L1609
+    ✔ rejects another user from writing into someone else's private subcollection
+
+  post delete: author or admin only
+    ✔ allows the post author to delete their own post
+[2026-07-19T18:01:19.526Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ed5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1127:24 for 'delete' @ L1127, false for 'delete' @ L1609, Null value error. for 'delete' @ L1127, false for 'delete' @ L1609
+    ✔ rejects an unrelated user from deleting someone else's post
+
+  reply update + delete
+    ✔ allows reply author to update their own text
+[2026-07-19T18:01:19.599Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ee0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, Null value error. for 'update' @ L1227, false for 'update' @ L1609
+    ✔ rejects another user from updating someone else's reply
+[2026-07-19T18:01:19.632Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ee5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, Null value error. for 'update' @ L1227, false for 'update' @ L1609
+    ✔ rejects reply update that exceeds the 500-char cap
+    ✔ allows reply author to delete their own reply
+    ✔ allows post author to delete a reply on their post (moderation cleanup)
+[2026-07-19T18:01:19.744Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8ef5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1257:26 for 'delete' @ L1257, false for 'delete' @ L1609, Null value error. for 'delete' @ L1257, false for 'delete' @ L1609
+    ✔ rejects an unrelated user from deleting someone else's reply
+
+  follow mirrors: create + delete
+    ✔ allows alice to add herself to bob's followers (and to her own following)
+[2026-07-19T18:01:19.787Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8efb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L392, false for 'create' @ L1609, false for 'update' @ L1609
+    ✔ rejects self-follow on /following/
+[2026-07-19T18:01:19.808Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8efe error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L436, false for 'create' @ L1609, evaluation error at L448:26 for 'update' @ L448, false for 'update' @ L1609, false for 'create' @ L436, false for 'create' @ L1609
+    ✔ rejects self-follow on /followers/
+[2026-07-19T18:01:19.837Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f02 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L436:26 for 'create' @ L436, false for 'create' @ L1609, evaluation error at L448:26 for 'update' @ L448, false for 'update' @ L1609, false for 'create' @ L436, false for 'create' @ L1609
+    ✔ rejects a blocked user from creating a follower mirror doc
+    ✔ allows alice to remove her own follower entry under bob
+    ✔ allows a follower create carrying the legit { handle, createdAt }
+[2026-07-19T18:01:19.908Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f0c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L436:26 for 'create' @ L436, false for 'create' @ L1609, evaluation error at L448:26 for 'update' @ L448, false for 'update' @ L1609, false for 'create' @ L436, false for 'create' @ L1609
+    ✔ rejects a follower create with an extra side-channel field
+[2026-07-19T18:01:19.935Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f10 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L448:26 for 'update' @ L448, false for 'update' @ L1609, false for 'update' @ L448, false for 'update' @ L1609
+    ✔ rejects a follower UPDATE that injects a side-channel field
+[2026-07-19T18:01:19.956Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f13 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L392:26 for 'create' @ L392, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L392, false for 'create' @ L1609
+    ✔ rejects a following create with an extra side-channel field
+
+  notRestricted(): time-expiry leg
+    ✔ allows a post create when restrictedUntil is in the past
+[2026-07-19T18:01:19.990Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f17 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a post create when restrictedUntil is still in the future
+
+  like create: blocked by post author
+[2026-07-19T18:01:20.022Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f1c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1312:26 for 'create' @ L1312, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L1312, false for 'create' @ L1609
+    ✔ rejects a like from a user the post author has blocked
+    ✔ allows a like from a non-blocked user
+
+  legacy PII immutability: reject re-introduction on update
+[2026-07-19T18:01:20.062Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f22 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects re-introducing email via update
+[2026-07-19T18:01:20.078Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f24 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects re-introducing selectedMood via update
+[2026-07-19T18:01:20.093Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f26 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects re-introducing notifyLikes via update
+[2026-07-19T18:01:20.107Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f28 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects re-introducing pushEnabled via update
+
+  repost create: rule-layer forgery check (audit P2)
+    ✔ allows a faithful repost
+[2026-07-19T18:01:20.171Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f32 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Property originalReplyId is undefined on object. for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a repost with a forged originalAuthorId
+[2026-07-19T18:01:20.204Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f37 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Property originalReplyId is undefined on object. for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a repost with text that doesn't match the original
+[2026-07-19T18:01:20.236Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f3c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Property originalReplyId is undefined on object. for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a repost pointing at a non-existent original
+[2026-07-19T18:01:20.273Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f42 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Property originalReplyId is undefined on object. for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects reposting a repost
+[2026-07-19T18:01:20.315Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f48 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects repost when original author has blocked the reposter
+[2026-07-19T18:01:20.348Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f4d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a repost with a forged originalHandle (real text + author, spoofed byline)
+    ✔ allows a repost with originalHandle omitted entirely
+    ✔ allows a faithful reply-repost
+[2026-07-19T18:01:20.455Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f5e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a reply-repost with a forged originalAuthorId
+[2026-07-19T18:01:20.491Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f64 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a reply-repost with text that doesn't match the original reply
+[2026-07-19T18:01:20.525Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f69 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects a reply-repost pointing at a non-existent reply
+
+  notification create: message field is server-only (audit P1 2026-05-08)
+[2026-07-19T18:01:20.551Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f6d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L513:26 for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609, false for 'create' @ L513, false for 'create' @ L1609
+    ✔ rejects notification create with a client-supplied message field
+    ✔ allows reply notification create when message field is omitted
+[2026-07-19T18:01:20.612Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f76 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L513:26 for 'create' @ L513, false for 'create' @ L1609, false for 'update' @ L611, false for 'update' @ L1609, false for 'create' @ L513, false for 'create' @ L1609
+    ✔ rejects message-type notification create with a client-supplied message field
+
+  authorHandle pin (post + reply): byline must match user-doc handle
+[2026-07-19T18:01:20.634Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f79 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects post create with authorHandle spoofed to another user's handle
+[2026-07-19T18:01:20.654Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f7c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ rejects post create with a fully fabricated authorHandle
+    ✔ allows post create when authorHandle matches caller's user-doc handle
+    ✔ allows post create when authorHandle is omitted entirely
+[2026-07-19T18:01:20.719Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f86 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1165:26 for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ rejects reply create with authorHandle spoofed to another user's handle
+    ✔ allows reply create when authorHandle matches caller's user-doc handle
+
+  C-1 (2026-07-17): admin go-live must scrub moderation markers
+[2026-07-19T18:01:20.772Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8f8e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ DENIED: admin sets live while concerningContent stays true
+    ✔ allows admin go-live when the full marker set is cleared
+    ✔ allows a marker-neutral admin update on a live+flagged doc (delete stamp)
+
+  C-1 (2026-07-17): crisisReplyQueue is admin-only
+    ✔ DENIED: non-admin cannot read a queue entry
+    ✔ DENIED: non-admin cannot list the queue
+    ✔ allows admin read
+    ✔ allows admin to mark reviewed
+[2026-07-19T18:01:20.973Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fab error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1509:24 for 'update' @ L1509, false for 'update' @ L1609, false for 'update' @ L1509, false for 'update' @ L1609
+    ✔ DENIED: admin update cannot repoint the entry at another reply
+[2026-07-19T18:01:21.001Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8faf error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1508, false for 'create' @ L1609, evaluation error at L1509:24 for 'update' @ L1509, false for 'update' @ L1609, false for 'create' @ L1508, false for 'create' @ L1609
+[2026-07-19T18:01:21.007Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fb0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1509:24 for 'update' @ L1509, false for 'update' @ L1609, Null value error. for 'update' @ L1509, false for 'update' @ L1609
+    ✔ DENIED: non-admin cannot create or update queue entries
+[2026-07-19T18:01:21.039Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fb5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1509:24 for 'update' @ L1509, false for 'update' @ L1609, false for 'update' @ L1509, false for 'update' @ L1609
+    ✔ DENIED: admin cannot stamp reviewedBy as ANOTHER admin
+[2026-07-19T18:01:21.065Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fb9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1509:24 for 'update' @ L1509, false for 'update' @ L1609, false for 'update' @ L1509, false for 'update' @ L1609
+    ✔ DENIED: reviewed cannot be a truthy non-bool (audit-trigger dodge)
+[2026-07-19T18:01:21.098Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fbe error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1509:24 for 'update' @ L1509, false for 'update' @ L1609, false for 'update' @ L1509, false for 'update' @ L1609
+    ✔ DENIED: un-review (true→false) — server-only resurfacing, no unaudited flips
+
+  2026-07-17 re-audit: admin attribution pins + widened go-live gate
+    ✔ allows admin go-live with the FULL scrub (incl. autoHiddenReportCount) + self stamp
+[2026-07-19T18:01:21.165Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fc8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ DENIED: go-live leaving autoHiddenReportCount on the doc
+[2026-07-19T18:01:21.200Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fcd error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ DENIED: go-live leaving flaggedAt on the doc
+[2026-07-19T18:01:21.232Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fd2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ DENIED: admin approves a post stamping pendingApprovedBy as ANOTHER admin
+[2026-07-19T18:01:21.263Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fd7 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ DENIED: admin stamps deletedBy as ANOTHER admin (pre-delete stamp)
+    ✔ allows the self-stamped pre-delete stamp (control)
+    ✔ allows admin reply-approve with a SELF pendingApprovedBy stamp
+[2026-07-19T18:01:21.361Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fe6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'update' @ L1227, false for 'update' @ L1609
+    ✔ DENIED: admin reply-approve stamping pendingApprovedBy as ANOTHER admin
+
+  2026-07-17 re-audit: pendingDeletions create is schema-locked
+    ✔ allows the exact client shape (uid + server-time requestedAt)
+[2026-07-19T18:01:21.390Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fea error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1549, false for 'create' @ L1609, evaluation error at L1554:24 for 'update' @ L1554, false for 'update' @ L1609, false for 'create' @ L1549, false for 'create' @ L1609
+    ✔ DENIED: future-dated requestedAt (cascade-dodge)
+[2026-07-19T18:01:21.405Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fec error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1549, false for 'create' @ L1609, evaluation error at L1554:24 for 'update' @ L1554, false for 'update' @ L1609, false for 'create' @ L1549, false for 'create' @ L1609
+    ✔ DENIED: missing requestedAt
+[2026-07-19T18:01:21.420Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b8fee error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1549:24 for 'create' @ L1549, false for 'create' @ L1609, evaluation error at L1554:24 for 'update' @ L1554, false for 'update' @ L1609, false for 'create' @ L1549, false for 'create' @ L1609
+    ✔ DENIED: extra scratch fields
+
+  pending-review: post subcollections inherit parent visibility
+    ✔ blocks a non-author from reading replies on a held post
+    ✔ lets the post author read replies on their own held post
+    ✔ lets an admin read replies on a held post
+    ✔ still lets any authed user read replies on a live post
+    ✔ defaults a post with no moderationStatus field to live (legacy)
+    ✔ blocks a non-author from enumerating likers on a held post
+    ✔ still lets any authed user read likes on a live post
+    ✔ collectionGroup: a user can read their OWN replies (powers ProfileView)
+    ✔ collectionGroup: a user CANNOT read another user's replies
+    ✔ collectionGroup: an unfiltered replies dump is denied
+
+  cut features: conversations + feelingCircles fully denied
+[2026-07-19T18:01:22.009Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b904f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1391, false for 'create' @ L1609, false for 'update' @ L1391, false for 'update' @ L1609
+    ✔ rejects conversation create
+    ✔ rejects conversation read
+[2026-07-19T18:01:22.043Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9054 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1393, false for 'create' @ L1609, false for 'update' @ L1393, false for 'update' @ L1609
+    ✔ rejects conversation message create
+[2026-07-19T18:01:22.056Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9056 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1401, false for 'create' @ L1609, false for 'update' @ L1401, false for 'update' @ L1609
+    ✔ rejects feelingCircle create
+    ✔ rejects feelingCircle read
+[2026-07-19T18:01:22.089Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b905b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1403, false for 'create' @ L1609
+    ✔ rejects feelingCircle message create
+
+  user doc: aggregate counters are server-owned (SEC-1)
+[2026-07-19T18:01:22.104Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b905d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects owner forging followerCount on own user doc
+[2026-07-19T18:01:22.118Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b905f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+[2026-07-19T18:01:22.122Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9060 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ rejects owner forging followingCount / totalLikes
+    ✔ still allows owner to update a normal field (allowSharing)
+
+  blocked subcollection: unblock works, S-2 create pin holds
+    ✔ allows the owner to delete their own block entry (unblock)
+[2026-07-19T18:01:22.175Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9068 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L681, false for 'delete' @ L1609
+    ✔ rejects a non-owner deleting someone else's block entry
+    ✔ still allows create with blockedUid == doc id
+[2026-07-19T18:01:22.204Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b906c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L672, false for 'create' @ L1609, false for 'update' @ L1609
+    ✔ still rejects create with a tampered blockedUid (S-2)
+
+  R-1 FIXED: post author cannot inject audit-attribution / arbitrary fields on own post
+[2026-07-19T18:01:22.224Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b906f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ author CANNOT write unflaggedBy onto own post (hasOnly lock blocks audit forgery)
+[2026-07-19T18:01:22.246Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9072 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'update' @ L1044, false for 'update' @ L1609
+    ✔ author CANNOT write deletedBy onto own post
+[2026-07-19T18:01:22.266Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9075 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Null value error. for 'update' @ L1044, false for 'update' @ L1609
+    ✔ author CANNOT inject an arbitrary scratch field
+    ✔ author CAN still edit text + editedAt (legit edit path preserved)
+[2026-07-19T18:01:22.308Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b907b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Null value error. for 'update' @ L1044, false for 'update' @ L1609
+    ✔ CONTROL: author still CANNOT flip moderationStatus to live (denylist holds)
+
+  §3-F privileged reads + self-escalation are denied
+    ✔ (g) non-admin cannot read reports
+    ✔ (g) non-admin cannot read another user's admins doc
+    ✔ (g) non-admin cannot read adminAuditLog
+    ✔ (g) nobody can read processedTriggerEvents
+[2026-07-19T18:01:22.380Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9084 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1487, false for 'create' @ L1609, false for 'update' @ L1487, false for 'update' @ L1609
+    ✔ (h) cannot self-grant admin
+[2026-07-19T18:01:22.400Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9086 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, Null value error. for 'update' @ L300, false for 'update' @ L1609
+    ✔ (h) cannot self-unrestrict via own user doc
+[2026-07-19T18:01:22.415Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9088 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ (d) cannot inflate own followerCount
+[2026-07-19T18:01:22.431Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b908a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'update' @ L300, false for 'update' @ L1609, false for 'update' @ L300, false for 'update' @ L1609
+    ✔ (h) cannot self-confirm-adult on own user doc update
+[2026-07-19T18:01:22.445Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b908c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L366:24 for 'delete' @ L366, false for 'delete' @ L1609, false for 'delete' @ L366, false for 'delete' @ L1609
+    ✔ G-2: an ACTIVELY-restricted user cannot delete their own user doc to escape restriction
+    ✔ G-2 control: an UNrestricted user can still delete their own user doc
+    ✔ G-2 control: a user whose restriction has EXPIRED can delete their own doc
+[2026-07-19T18:01:22.484Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9092 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L366:24 for 'delete' @ L366, false for 'delete' @ L1609, false for 'delete' @ L366, false for 'delete' @ L1609
+    ✔ G-2: an ADMIN-restricted user (persistent, no restrictedUntil) cannot delete their own doc
+
+  §3-F byline forgery + social-graph enumeration
+[2026-07-19T18:01:22.505Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9095 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ (i) post create with spoofed authorHandle is denied
+    ✔ (i) post create with correct authorHandle succeeds
+    ✔ (b) cannot read another user's following list
+    ✔ (b) cannot read another user's followers list
+    ✔ (a) cannot read another user's private subcollection (PII)
+
+  §3-F cut + server-only collections deny client writes
+[2026-07-19T18:01:22.571Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b909e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1391, false for 'create' @ L1609, false for 'update' @ L1391, false for 'update' @ L1609
+    ✔ (j) cannot write to cut conversations
+[2026-07-19T18:01:22.579Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b909f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1401, false for 'create' @ L1609, false for 'update' @ L1401, false for 'update' @ L1609
+    ✔ (j) cannot write to cut feelingCircles
+[2026-07-19T18:01:22.586Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90a0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1418, false for 'create' @ L1609, false for 'update' @ L1418, false for 'update' @ L1609
+    ✔ (j) cannot write to cut finalPosts
+[2026-07-19T18:01:22.594Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90a1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1605, false for 'create' @ L1609, false for 'update' @ L1605, false for 'update' @ L1609
+    ✔ cannot write meta/tagCounts
+[2026-07-19T18:01:22.601Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90a2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L1409, false for 'create' @ L1609, false for 'update' @ L1409, false for 'update' @ L1609
+    ✔ cannot write dailyMoment
+
+  §3-F collection-group replies are own-author-only
+    ✔ cannot read another user's reply via collectionGroup gate (own-author only)
+
+  M-1: held reply (moderationStatus pending_review) visibility
+    ✔ a live reply is readable by a third party
+    ✔ a legacy reply (no moderationStatus) is readable by a third party
+    ✔ a held reply is NOT readable by a third party
+    ✔ a held reply IS readable by its own author
+    ✔ the author's own-held query (authorId==me, pending_review) is allowed
+    ✔ admin can read held replies via collectionGroup
+
+  M-1: reply hold anti-self-approve + admin approve
+[2026-07-19T18:01:22.776Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90bb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, Null value error. for 'update' @ L1227, false for 'update' @ L1609
+    ✔ reply author CANNOT self-approve (set moderationStatus live)
+    ✔ reply author CAN still edit their own text
+    ✔ admin CAN approve a held reply (set moderationStatus live)
+
+  M-1 edge: reply create cannot self-set moderationStatus
+    ✔ CONTROL: a valid reply (no moderationStatus) is accepted
+    ✔ T-2: reply create with moderationStatus='pending_validation' is ACCEPTED (start-hidden)
+[2026-07-19T18:01:22.887Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90cb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1165:26 for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ reply create with moderationStatus='live' is DENIED (hasOnly blocks the PII-bypass)
+[2026-07-19T18:01:22.907Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90ce error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1165:26 for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ reply create with moderationStatus='pending_review' is DENIED too
+[2026-07-19T18:01:22.928Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90d1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1165:26 for 'create' @ L1165, false for 'create' @ L1609, evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, false for 'create' @ L1165, false for 'create' @ L1609
+    ✔ reply create with pendingReason/flagged injected is DENIED
+
+  M-1 edge: non-author cannot enumerate others' replies via collectionGroup
+    ✔ collectionGroup('replies') filtered to a VICTIM's authorId is denied for a non-admin
+
+  T-10: post-like create is schema-locked
+    ✔ CONTROL: a clean like (only server createdAt) is accepted
+[2026-07-19T18:01:22.987Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90da error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1312:26 for 'create' @ L1312, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L1312, false for 'create' @ L1609
+    ✔ a like with an injected scratch field is DENIED (hasOnly)
+
+  Schema locks: owner-tree reverse indices reject scratch fields
+    ✔ CONTROL: saved create with only createdAt is accepted
+[2026-07-19T18:01:23.014Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90de error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L620:26 for 'create' @ L620, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L620, false for 'create' @ L1609
+    ✔ saved create with an injected field is DENIED
+[2026-07-19T18:01:23.029Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90e0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L627:26 for 'create' @ L627, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L627, false for 'create' @ L1609
+    ✔ liked create with an injected field is DENIED
+    ✔ CONTROL: likedReplies create with the real shape is accepted
+[2026-07-19T18:01:23.056Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90e4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L645:26 for 'create' @ L645, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L645, false for 'create' @ L1609
+    ✔ likedReplies create with an injected field is DENIED
+[2026-07-19T18:01:23.071Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90e6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L656:26 for 'create' @ L656, false for 'create' @ L1609, false for 'update' @ L1609, false for 'create' @ L656, false for 'create' @ L1609
+    ✔ savedReplies create with an oversized replyText is DENIED
+    ✔ CONTROL: presence create with { date, createdAt } is accepted
+[2026-07-19T18:01:23.096Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90ea error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L691:34 for 'create' @ L691, false for 'create' @ L1609, evaluation error at L691:34 for 'update' @ L691, false for 'update' @ L1609, false for 'create' @ L691, false for 'create' @ L1609
+    ✔ presence create with an injected field is DENIED
+    ✔ CONTROL: reflection author can edit text on their own post's reflection
+[2026-07-19T18:01:23.147Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90f2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1353:26 for 'create' @ L1353, false for 'create' @ L1609, evaluation error at L1368:26 for 'update' @ L1368, false for 'update' @ L1609, false for 'update' @ L1368, false for 'update' @ L1609
+    ✔ reflection update injecting a scratch field is DENIED (hasOnly)
+
+  #3a reply-repost is denied for a held reply
+    ✔ CONTROL: reposting a LIVE reply is allowed
+[2026-07-19T18:01:23.197Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b90fa error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, false for 'create' @ L794, false for 'create' @ L1609
+    ✔ reposting a HELD (pending_review) reply is DENIED
+
+  F-1 post-repost is denied for a held post
+    ✔ CONTROL: reposting a LIVE post is allowed
+[2026-07-19T18:01:23.240Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9100 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L794:24 for 'create' @ L794, false for 'create' @ L1609, evaluation error at L1044:24 for 'update' @ L1044, false for 'update' @ L1609, Property originalReplyId is undefined on object. for 'create' @ L794, false for 'create' @ L1609
+    ✔ reposting a HELD (pending_review) post is DENIED
+
+  #3b held reply's liker list is gated on the reply's moderationStatus
+    ✔ CONTROL: a third party CAN read likers of a LIVE reply
+    ✔ a third party CANNOT read likers of a HELD reply
+    ✔ the reply author CAN read likers of their own held reply
+
+  N-1 FIXED: reply author cannot spoof authorHandle / inject fields via update
+    ✔ CONTROL: the reply author CAN make a text-only edit
+[2026-07-19T18:01:23.393Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b9118 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, Null value error. for 'update' @ L1227, false for 'update' @ L1609
+    ✔ DENIED: reply author cannot re-write authorHandle to a victim's handle (byline spoof)
+[2026-07-19T18:01:23.428Z]  @firebase/firestore: Firestore (11.10.0): GrpcConnection RPC 'Write' stream 0x643b911e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L1227:26 for 'update' @ L1227, false for 'update' @ L1609, Null value error. for 'update' @ L1227, false for 'update' @ L1609
+    ✔ DENIED: reply author cannot inject an arbitrary scratch field via update (R-1 class)
+
+
+  244 passing (7s)
+
+✔  Script exited successfully (code 0)
+i  emulators: Shutting down emulators.
+i  firestore: Stopping Firestore Emulator
+i  auth: Stopping Authentication Emulator
+i  hub: Stopping emulator hub
+i  logging: Stopping Logging Emulator

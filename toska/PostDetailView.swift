@@ -637,8 +637,8 @@ struct PostDetailView: View {
                                                 Image(systemName: "arrow.turn.down.right")
                                                     .font(.system(size: 10, weight: .light))
                                                 Text(item.hiddenChildren == 1
-                                                     ? "show 1 more reply"
-                                                     : "show \(item.hiddenChildren) more replies")
+                                                     ? "view 1 reply"
+                                                     : "view \(item.hiddenChildren) replies")
                                                     .font(ToskaFont.sans(11, weight: .medium))
                                             }
                                             .foregroundColor(ToskaColor.accentText)
@@ -1060,7 +1060,11 @@ struct PostDetailView: View {
                     // count and skip recursion. Tapping the stub adds
                     // this reply's id to expandedDeepThreads, which
                     // re-runs flatten and includes the full subtree.
-                    if d == maxDepth && !reply.children.isEmpty {
+                    // Owner (2026-09-22): root replies' children collapse
+                    // behind a "view N replies" button (IG pattern) — each
+                    // root reply reads as its own quiet exchange. Deep-depth
+                    // collapse (== maxDepth) unchanged inside expansions.
+                    if (d == 0 || d == maxDepth) && !reply.children.isEmpty {
                         if !expandedDeepThreads.contains(reply.id) {
                             let n = countDescendants(reply.children)
                             result.append(FlatReply(
@@ -2104,6 +2108,9 @@ struct PostDetailView: View {
                 )
                 withAnimation(.easeInOut(duration: 0.22)) {
                     if let parentId = self.replyingToId {
+                        // Expand the thread you just replied into — the new
+                        // reply must never hide behind its own view-button.
+                        self.expandedDeepThreads.insert(parentId)
                         func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
                             guard depth < 64 else { return false }
                             for i in nodes.indices {

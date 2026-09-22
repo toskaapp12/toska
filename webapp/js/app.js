@@ -1333,6 +1333,7 @@ async function viewNotifications() {
 
 // ---------------------------------------------------------------- post detail
 async function viewPost(postId) {
+    expandedThreads.clear(); // per-post collapse state
     setChrome(false);
     mount.replaceChildren(el("a", { class: "back", href: "#/" }, "← feed"), spinner());
     try {
@@ -1538,6 +1539,7 @@ async function viewPost(postId) {
             try {
                 const gate = await runGates(text, { isReply: true });
                 if (!gate.ok) { send.disabled = false; send.textContent = "↑"; return; }
+                if (replyingTo?.id) expandedThreads.add(replyingTo.id); // your reply stays visible
                 await createReply(targetPostId, {
                     text, parentReplyId: replyingTo?.id,
                     parentPostText: d.text,
@@ -1696,6 +1698,15 @@ async function fetchReplies(postId) {
     return rows;
 }
 
+// Root replies' children collapse behind "view N replies" (owner 2026-09-22,
+// IG pattern, parity with iOS). Cleared each viewPost; replying into a thread
+// auto-expands it so the new reply is never hidden.
+const expandedThreads = new Set();
+function countDescendants(all, id) {
+    let n = 0;
+    for (const c of all.filter(r => (r.parentReplyId ?? null) === id)) n += 1 + countDescendants(all, c.id);
+    return n;
+}
 function renderThread(container, all, parentId, depth, onReplyTo) {
     for (const r of all.filter(r => (r.parentReplyId ?? null) === parentId)) {
         const isPending = (r.moderationStatus ?? "live") !== "live";
@@ -1735,6 +1746,21 @@ function renderThread(container, all, parentId, depth, onReplyTo) {
             gifImg(r.gifUrl, "max-width:100%; border-radius:10px; margin-top:8px;"),
             stats,
         ));
+        const kids = countDescendants(all, r.id);
+        if (depth === 0 && kids > 0 && !expandedThreads.has(r.id)) {
+            const btn = el("a", { class: "plain", href: "#",
+                style: "display:block; font-size:12px; margin:2px 0 10px 46px; color:var(--accent-text);" },
+                kids === 1 ? "view 1 reply" : `view ${kids} replies`);
+            btn.onclick = (ev) => {
+                ev.preventDefault();
+                expandedThreads.add(r.id);
+                const box = container;
+                box.replaceChildren();
+                renderThread(box, all, parentId, depth, onReplyTo);
+            };
+            container.append(btn);
+            continue;
+        }
         renderThread(container, all, r.id, depth + 1, onReplyTo);
     }
 }

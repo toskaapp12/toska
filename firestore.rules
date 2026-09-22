@@ -1312,6 +1312,9 @@ service cloud.firestore {
                 && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId))
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.authorId == request.resource.data.originalAuthorId
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.text == request.resource.data.text
+                // 2026-09-22: reply-repost may carry the reply's gifUrl (exact copy only).
+                && (!('gifUrl' in request.resource.data.keys())
+                    || request.resource.data.gifUrl == get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.get('gifUrl', ''))
                 // #3a (2026-06-09 audit): can't repost a HELD reply
                 // (moderationStatus == "pending_review") — that would
                 // republish hidden, possibly-PII content. Legacy/clean replies
@@ -1349,6 +1352,11 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId))
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.authorId == request.resource.data.originalAuthorId
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.text == request.resource.data.text
+            // 2026-09-22 (owner spec: reposts show the FULL original incl.
+            // media): a copy may carry gifUrl ONLY as an exact copy of the
+            // original's — same anti-forgery shape as the text pin above.
+            && (!('gifUrl' in request.resource.data.keys())
+                || request.resource.data.gifUrl == get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('gifUrl', ''))
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isRepost', false) != true
             // F-1 (2026-06-30 re-review): can't repost a HELD post
             // (moderationStatus == 'pending_review') — mirrors the reply-repost

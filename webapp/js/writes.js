@@ -228,6 +228,9 @@ export async function toggleRepost(postId) {
             moderationStatus: "pending_validation",
         };
         if (o.tag) data.tag = o.tag;
+        // Owner spec (2026-09-22): reposts show the full original, media
+        // included — rules pin the copy's gifUrl to the original's exactly.
+        if (o.gifUrl) data.gifUrl = o.gifUrl;
         try { // originalHandle only if it matches the live user doc; omit otherwise
             const ou = await getDoc(doc(db, "users", o.authorId));
             if (ou.exists() && ou.data().handle) data.originalHandle = ou.data().handle;

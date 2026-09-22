@@ -448,6 +448,11 @@ class PostInteractionManager {
                             ]
                             if let h = resolvedOriginalHandle { repostData["originalHandle"] = h }
                             if let tag = postTag { repostData["tag"] = tag }
+                            // Owner spec (2026-09-22): a repost shows the FULL
+                            // original, media included — carry the gif (rules
+                            // pin it to an exact copy of the original's).
+                            let originalGifUrl = data["gifUrl"] as? String
+                            if let g = originalGifUrl, !g.isEmpty { repostData["gifUrl"] = g }
 
                             // FIX #7 + #8: The original code used addDocument() followed
                             // by a separate runTransaction() for repostCount. A crash or
@@ -542,6 +547,7 @@ class PostInteractionManager {
                                     ]
                                     if let h = resolvedOriginalHandle { info["originalHandle"] = h }
                                     if let tag = postTag { info["tag"] = tag }
+                                    if let g = originalGifUrl, !g.isEmpty { info["gifUrl"] = g }
                                     NotificationCenter.default.post(
                                         name: .newPostCreated,
                                         object: nil,
@@ -996,6 +1002,8 @@ class PostInteractionManager {
             let replySnap = try? await replyRef.getDocumentAsync()
             let freshReplyText = replySnap?.data()?["text"] as? String ?? replyText
             let freshReplyAuthorId = replySnap?.data()?["authorId"] as? String ?? replyAuthorId
+            // Owner spec (2026-09-22): copies carry the reply's gif too.
+            let freshReplyGifUrl = replySnap?.data()?["gifUrl"] as? String
             var resolvedReplyHandle: String? = nil
             // Share-consent stamp (2026-07-30 share-card review): reply-reposts
             // used to hardcode isShareable:true, so reposting a reply LAUNDERED
@@ -1041,6 +1049,7 @@ class PostInteractionManager {
                 "createdAt": FieldValue.serverTimestamp()
             ]
             if let h = resolvedReplyHandle { repostData["originalHandle"] = h }
+            if let g = freshReplyGifUrl, !g.isEmpty { repostData["gifUrl"] = g }
 
             // Optimistic update
             onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
@@ -1086,6 +1095,7 @@ class PostInteractionManager {
                         "isShareable": replyAuthorAllowsSharing,
                     ]
                     if let h = resolvedReplyHandle { info["originalHandle"] = h }
+                    if let g = freshReplyGifUrl, !g.isEmpty { info["gifUrl"] = g }
                     NotificationCenter.default.post(
                         name: .newPostCreated,
                         object: nil,

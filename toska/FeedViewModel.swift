@@ -878,6 +878,7 @@ class FeedViewModel: ObservableObject {
             isRepost: true
         )
         repostPostIds.insert(id) // renders with the "reposted" strip
+        if let g = userInfo?["gifUrl"] as? String, !g.isEmpty { postGifUrls[id] = g }
         posts.insert(row, at: 0)
         optimisticEcho.append((row, Date()))
         watchEchoResolution(id, refetchOnLive: false)

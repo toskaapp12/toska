@@ -3671,3 +3671,63 @@ describe("config: clientPolicy kill switch (2026-09-21)", () => {
     await assertFails(a.collection("config").doc("clientPolicy").delete());
   });
 });
+
+// ---------------------------------------------------------------------------
+// Repost gifUrl carry (2026-09-22 owner spec: reposts show the FULL original,
+// media included). The copy may carry gifUrl ONLY as an exact copy — same
+// anti-forgery shape as the text pin.
+describe("reposts: gifUrl exact-copy pin (2026-09-22)", () => {
+  const GIF = "https://media1.giphy.com/media/orig123/giphy.gif";
+  const OTHER = "https://media1.giphy.com/media/forged9/giphy.gif";
+
+  async function seedGifPost() {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore();
+      await db.collection("users").doc("alice").set({
+        handle: "handle_alice", createdAt: new Date(), allowSharing: true,
+      });
+      await db.collection("users").doc("bob").set({
+        handle: "handle_bob", createdAt: new Date(), allowSharing: true,
+        confirmedAdult: true,
+      });
+      await db.collection("posts").doc("gp1").set({
+        authorId: "alice", authorHandle: "handle_alice", text: "gif feelings",
+        gifUrl: GIF, createdAt: new Date(),
+        likeCount: 0, repostCount: 0, replyCount: 0, moderationStatus: "live",
+      });
+    });
+  }
+  function repostDoc(extra = {}) {
+    return {
+      authorId: "bob", authorHandle: "handle_bob", text: "gif feelings",
+      createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
+      isRepost: true, originalPostId: "gp1", originalAuthorId: "alice",
+      originalHandle: "handle_alice", isShareable: true,
+      moderationStatus: "pending_validation", ...extra,
+    };
+  }
+
+  it("allows a repost carrying the ORIGINAL's exact gifUrl", async () => {
+    await seedGifPost();
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("bob_repost_gp1").set(repostDoc({ gifUrl: GIF }))
+    );
+  });
+
+  it("denies a repost with a DIFFERENT gifUrl (forgery)", async () => {
+    await seedGifPost();
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("bob_repost_gp1").set(repostDoc({ gifUrl: OTHER }))
+    );
+  });
+
+  it("still allows a gif-less repost of a gif post (legacy client shape)", async () => {
+    await seedGifPost();
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").doc("bob_repost_gp1").set(repostDoc())
+    );
+  });
+});

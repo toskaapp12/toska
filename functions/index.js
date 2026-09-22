@@ -1471,6 +1471,8 @@ exports.onLikeCreatedUpdateCounts = onDocumentCreated(
       if (!userSnap.exists) return; // author deleted between like create and trigger
       tx.update(userRef, { totalLikes: FieldValue.increment(1) });
     });
+    // Keep repost copies' displayed felt count in step (see mirrorCountsToCopies).
+    await mirrorCountsToCopies(postId);
   }
 );
 
@@ -1503,6 +1505,7 @@ exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
       if (!userSnap.exists) return;
       tx.update(userRef, { totalLikes: FieldValue.increment(-1) });
     });
+    await mirrorCountsToCopies(postId);
   }
 );
 
@@ -1561,6 +1564,8 @@ exports.onReplyCreatedUpdateCount = onDocumentCreated(
       if (!snap.exists) return; // parent post deleted before this trigger
       tx.update(postRef, { replyCount: FieldValue.increment(1) });
     });
+    // Keep repost copies' displayed reply count in step.
+    await mirrorCountsToCopies(postId);
   }
 );
 
@@ -1600,6 +1605,7 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
       if (!snap.exists) return;
       tx.update(postRef, { replyCount: FieldValue.increment(-1) });
     });
+    await mirrorCountsToCopies(postId);
   }
 );
 
@@ -1766,29 +1772,42 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
   }
 );
 
-// Stamp the original's current repostCount onto all of its repost copies.
-// Bounded: copies of one post are few; limit(300) is a generous ceiling.
-async function mirrorRepostCountToCopies(originalPostId) {
+// Stamp the original's current DISPLAY counters (felt/replies/reposts)
+// onto all of its repost copies. Since the clients retarget interactions
+// at the original (2026-09 repost model), a copy's own counters freeze at
+// 0 — rows must show the original's truth (owner frame-review 2026-09-22:
+// "0 felt this" copy beside its "23 felt this" original). Bounded: copies
+// of one post are few; limit(300) is a generous ceiling. Best-effort —
+// the next counter event on the same original re-mirrors.
+async function mirrorCountsToCopies(originalPostId) {
   try {
     const orig = await db.collection("posts").doc(originalPostId).get();
     if (!orig.exists) return;
-    const count = orig.get("repostCount") ?? 0;
+    const want = {
+      likeCount: orig.get("likeCount") ?? 0,
+      replyCount: orig.get("replyCount") ?? 0,
+      repostCount: orig.get("repostCount") ?? 0,
+    };
     const copies = await db.collection("posts")
       .where("isRepost", "==", true)
       .where("originalPostId", "==", originalPostId)
       .limit(300).get();
     if (copies.empty) return;
     const batch = db.batch();
+    let dirty = 0;
     for (const c of copies.docs) {
-      if ((c.get("repostCount") ?? 0) !== count) {
-        batch.update(c.ref, { repostCount: count });
+      const fix = {};
+      for (const [k, v] of Object.entries(want)) {
+        if ((c.get(k) ?? 0) !== v) fix[k] = v;
       }
+      if (Object.keys(fix).length) { batch.update(c.ref, fix); dirty++; }
     }
-    await batch.commit();
+    if (dirty) await batch.commit();
   } catch (e) {
-    console.warn(`mirrorRepostCountToCopies ${originalPostId}:`, e.message);
+    console.warn(`mirrorCountsToCopies ${originalPostId}:`, e.message);
   }
 }
+const mirrorRepostCountToCopies = mirrorCountsToCopies; // call-site alias
 
 // Mirror of onRepostCreatedUpdateCount. Without this, deleting a repost
 // (by its author, by validatePost for blank/too-long text, by moderation,

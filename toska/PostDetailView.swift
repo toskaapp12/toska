@@ -573,6 +573,11 @@ struct PostDetailView: View {
                                 .padding(.horizontal, 28)
                                 .padding(.top, 20)
                                 .padding(.bottom, 4)
+                                // Owner report (2026-09-22, "1 reply glitches"):
+                                // the first reply POPPED this block into the
+                                // layout unanimated, right as the keyboard
+                                // dropped — read as a glitch. Ease it in.
+                                .transition(.opacity.combined(with: .move(edge: .top)))
                         }
 
                         if replyLoadFailed {
@@ -1181,7 +1186,9 @@ struct PostDetailView: View {
                     // reply gating; the init param is 0 on the push path.
                     // (2026-08-05)
                     if let snapReplies = data["replyCount"] as? Int, snapReplies != localReplyCount {
-                        localReplyCount = max(0, snapReplies)
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            localReplyCount = max(0, snapReplies)
+                        }
                     }
                     // Pull the attached GIF URL so postHeaderSection can render
                     // it. nil/empty string both clear the preview cleanly.
@@ -2095,18 +2102,20 @@ struct PostDetailView: View {
                     likes: 0, time: "now", createdAt: Date(), authorId: uid,
                     parentReplyId: self.replyingToId, children: []
                 )
-                if let parentId = self.replyingToId {
-                    func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
-                        guard depth < 64 else { return false }
-                        for i in nodes.indices {
-                            if nodes[i].id == parentId { nodes[i].children.append(newReply); return true }
-                            if appendToParent(&nodes[i].children, depth: depth + 1) { return true }
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    if let parentId = self.replyingToId {
+                        func appendToParent(_ nodes: inout [ThreadedReply], depth: Int = 0) -> Bool {
+                            guard depth < 64 else { return false }
+                            for i in nodes.indices {
+                                if nodes[i].id == parentId { nodes[i].children.append(newReply); return true }
+                                if appendToParent(&nodes[i].children, depth: depth + 1) { return true }
+                            }
+                            return false
                         }
-                        return false
+                        if !appendToParent(&self.replyList) { self.replyList.append(newReply) }
+                    } else {
+                        self.replyList.append(newReply)
                     }
-                    if !appendToParent(&self.replyList) { self.replyList.append(newReply) }
-                } else {
-                    self.replyList.append(newReply)
                 }
                 self.replyText = ""
                 if !self.postId.isEmpty {

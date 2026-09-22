@@ -27,9 +27,9 @@ struct ContentView: View {
             // Fail-open: no doc / no listener data → minBuild 0 → never shows.
             if policy.updateRequired {
                 UpdateRequiredView()
-            } else if isLoading || showVerifyError {
+            } else if showVerifyError {
                 ZStack {
-                    Color.white.ignoresSafeArea()
+                    LateNightTheme.background.ignoresSafeArea()
                     if showVerifyError {
                         VStack(spacing: 16) {
                             Text("t")
@@ -81,16 +81,12 @@ struct ContentView: View {
                             }
                             .padding(.top, 2)
                         }
-                    } else {
-                        VStack(spacing: 20) {
-                            Text("t")
-                                .font(ToskaFont.serifItalic(42))
-                                .foregroundColor(ToskaColor.accent)
-                            ProgressView()
-                                .tint(ToskaColor.accent.opacity(0.5))
-                        }
                     }
                 }
+            } else if isLoading {
+                // Identical to the system launch frame + privacy shield —
+                // the whole boot reads as ONE still image (owner 2026-09-22).
+                LaunchMarkView()
             } else if showOnboarding && !onboardingComplete {
                 OnboardingView(isComplete: $onboardingComplete)
                     .onChange(of: onboardingComplete) { _, _ in

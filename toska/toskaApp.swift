@@ -239,12 +239,33 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 // This opaque branded cover ensures the app-switcher card shows only the toska
 // wordmark, never content.
 private struct PrivacyShieldView: View {
+    var body: some View { LaunchMarkView(showsSpinner: false) }
+}
+
+// One launch frame for every boot moment (owner 2026-09-22: the launch
+// "glitched — toska, then a huge t, sometimes twice"). The system launch
+// screen (paper via LaunchBackground), this shield, and ContentView's
+// loading state all render THIS exact frame, so every handoff between
+// them is invisible. Wordmark matches the feed header (Literata 20, ink).
+struct LaunchMarkView: View {
+    var showsSpinner: Bool = true
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
-            Text("toska")
-                .font(.custom("Literata-Regular", size: 34))
-                .foregroundColor(Color(red: 0.427, green: 0.333, blue: 0.788))
+            LateNightTheme.background.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Text("toska")
+                    .font(.custom("Literata-Regular", size: 20))
+                    .tracking(-0.24)
+                    .foregroundColor(ToskaColor.text)
+                if showsSpinner {
+                    ProgressView()
+                        .tint(ToskaColor.accent.opacity(0.5))
+                } else {
+                    // Reserve the spinner's slot so shield↔loading swaps
+                    // don't shift the wordmark.
+                    Color.clear.frame(width: 20, height: 20)
+                }
+            }
         }
     }
 }

@@ -409,15 +409,21 @@ struct ProfileView: View {
     
     func openMyPost(_ post: MyPost) {
         guard !post.id.isEmpty else { return }
-        Firestore.firestore().collection("posts").document(post.id).getDocument { snapshot, error in
+        // Repost retarget (owner 2026-09-21): opening your own repost opens
+        // the ORIGINAL's detail — its likes/replies/counts are the real ones
+        // (web has always scoped repost details to the original).
+        let targetId = post.isRepost ? (post.originalPostId ?? post.id) : post.id
+        let targetAuthor = post.isRepost
+            ? (post.originalAuthorId ?? "")
+            : (Auth.auth().currentUser?.uid ?? "")
+        Firestore.firestore().collection("posts").document(targetId).getDocument { snapshot, error in
             Task { @MainActor in
                 // Transient read error → leave the row in place; only prune on a
                 // confirmed-missing doc (network blips shouldn't vanish posts).
                 if error != nil { return }
                 guard snapshot?.data() != nil else { myPosts.removeAll { $0.id == post.id }; return }
-                let uid = Auth.auth().currentUser?.uid ?? ""
-                selectedPostId = post.id
-                selectedPostData = PostDetailData(handle: userHandle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, authorId: uid)
+                selectedPostId = targetId
+                selectedPostData = PostDetailData(handle: post.isRepost ? post.handle : userHandle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, authorId: targetAuthor)
                 showPost = true
             }
         }
@@ -793,7 +799,7 @@ struct ProfileView: View {
                             ? pendingReasonLabelFor(data["pendingReason"] as? String)
                             : nil
                         let isCrisisHold = isPending && (data["pendingReason"] as? String) == "crisis"
-                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, promptDate: data["promptDate"] as? String, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
+                        return MyPost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), handle: isRepost ? (originalHandle ?? "anonymous") : (data["authorHandle"] as? String ?? "anonymous"), isRepost: isRepost, originalHandle: originalHandle, gifUrl: data["gifUrl"] as? String, originalPostId: data["originalPostId"] as? String, originalAuthorId: data["originalAuthorId"] as? String, promptDate: data["promptDate"] as? String, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
                     }
                 }
             }
@@ -1290,7 +1296,7 @@ struct ProfileView: View {
                                                                                         if post.pendingReview {
                                                                                             PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
                                                                                         }
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost, promptText: FeedView.promptText(for: post.promptDate), hideMetaHandle: !post.isRepost)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", gifUrl: post.gifUrl, isRepostPost: post.isRepost, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptText: FeedView.promptText(for: post.promptDate), hideMetaHandle: !post.isRepost)
                                                                                     }
                                                                                 }
                                                                                 .buttonStyle(.plain)
@@ -1324,7 +1330,7 @@ struct ProfileView: View {
                                                                                         .foregroundColor(Color.toskaMovingOnGreen)
                                                                                         .padding(.horizontal, 16)
                                                                                         .padding(.top, 8)
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isRepostPost: post.isRepost)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", gifUrl: post.gifUrl, isRepostPost: post.isRepost, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId)
                                                                                     }
                                                                                 }
                                                                                 .buttonStyle(.plain)
@@ -1344,7 +1350,7 @@ struct ProfileView: View {
                                                                                         // H3 (deep audit): every post on the Liked tab IS liked, so seed
                                                                                         // isAlreadyLiked=true — else the heart renders empty and a double-tap
                                                                                         // silently unlikes it while drifting the count.
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyLiked: true)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyLiked: true, gifUrl: post.gifUrl, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let liked):
@@ -1374,7 +1380,7 @@ struct ProfileView: View {
                                                                                         // H3 (deep audit): every post on the Saved tab IS saved, so seed
                                                                                         // isAlreadySaved=true — else the bookmark renders empty and a
                                                                                         // double-tap silently unsaves it.
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadySaved: true)
+                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadySaved: true, gifUrl: post.gifUrl, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId)
                                                                                     }
                                                                                     .buttonStyle(.plain)
                                                                                 case .reply(let saved):
@@ -2041,7 +2047,7 @@ fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost?
     if let originalAuthorId = data["originalAuthorId"] as? String,
        BlockedUsersCache.shared.isBlocked(originalAuthorId) { return nil }
     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-    return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt)
+    return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt, gifUrl: data["gifUrl"] as? String, originalPostId: data["originalPostId"] as? String, originalAuthorId: data["originalAuthorId"] as? String)
 }
 
 // Per-doc fallback for a permission-denied `in` chunk: a single held post

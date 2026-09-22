@@ -297,6 +297,15 @@ class PostInteractionManager {
                guard !RateLimiter.shared.isRepostInFlight(postId) else { return }
                RateLimiter.shared.markRepostInFlight(postId)
 
+               // Owner report (2026-09-22): the flip used to wait for two
+               // network round-trips (dedup query + post fetch) — a visible
+               // delay on every tap. Flip optimistically NOW, like like/save;
+               // every failure path below already calls onUpdate with the
+               // corrected state, which doubles as the rollback (FIX #6's
+               // guarantee — never a silently wrong resting state — holds).
+               onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
+               UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
                let db = Firestore.firestore()
 
                db.collection("posts")
@@ -363,9 +372,7 @@ class PostInteractionManager {
                                 return
                             }
 
-                            // Optimistic update — only issued after post existence confirmed.
-                            onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            // (Optimistic update + haptic already fired at entry.)
 
                             // Broadcast to other surfaces rendering the same post so
                             // their repost button state flips without waiting for a

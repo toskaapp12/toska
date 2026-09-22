@@ -1756,8 +1756,39 @@ exports.onRepostCreatedUpdateCount = onDocumentCreated(
       if (!snap.exists) return;
       tx.update(originalRef, { repostCount: FieldValue.increment(1) });
     });
+    // Owner report (2026-09-21, "0 reposts on my repost"): copies display
+    // their OWN counters, but a copy's repostCount is 0 by construction
+    // (repost-of-repost is server-denied) even though the original it
+    // mirrors now has N. Mirror the original's count onto every copy so
+    // repost rows read true. Best-effort — the next repost/unrepost of the
+    // same original re-mirrors, so a missed pass self-heals.
+    await mirrorRepostCountToCopies(originalPostId);
   }
 );
+
+// Stamp the original's current repostCount onto all of its repost copies.
+// Bounded: copies of one post are few; limit(300) is a generous ceiling.
+async function mirrorRepostCountToCopies(originalPostId) {
+  try {
+    const orig = await db.collection("posts").doc(originalPostId).get();
+    if (!orig.exists) return;
+    const count = orig.get("repostCount") ?? 0;
+    const copies = await db.collection("posts")
+      .where("isRepost", "==", true)
+      .where("originalPostId", "==", originalPostId)
+      .limit(300).get();
+    if (copies.empty) return;
+    const batch = db.batch();
+    for (const c of copies.docs) {
+      if ((c.get("repostCount") ?? 0) !== count) {
+        batch.update(c.ref, { repostCount: count });
+      }
+    }
+    await batch.commit();
+  } catch (e) {
+    console.warn(`mirrorRepostCountToCopies ${originalPostId}:`, e.message);
+  }
+}
 
 // Mirror of onRepostCreatedUpdateCount. Without this, deleting a repost
 // (by its author, by validatePost for blank/too-long text, by moderation,
@@ -1787,6 +1818,9 @@ exports.onRepostDeletedUpdateCount = onDocumentDeleted(
       if (!snap.exists) return;
       tx.update(originalRef, { repostCount: FieldValue.increment(-1) });
     });
+    // Keep surviving copies' displayed count honest after an un-repost —
+    // see mirrorRepostCountToCopies on the create side.
+    await mirrorRepostCountToCopies(originalPostId);
   }
 );
 

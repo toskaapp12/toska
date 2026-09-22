@@ -26,6 +26,11 @@ struct FeedPost: Identifiable, Equatable {
     // their words otherwise persist via other people's reposts until the next
     // refresh, right after the block confirmation. nil for non-reposts.
     var originalAuthorId: String? = nil
+    // Owner report (2026-09-21, "can't like my repost"): interactions on a
+    // repost row must target the ORIGINAL post — the web client has always
+    // done this (targetPostId = originalPostId ?? postId). Carrying the id
+    // lets iOS rows + navigation converge on the same model.
+    var originalPostId: String? = nil
     // Set (yyyy-MM-dd) when this post was written as a response to that day's
     // daily prompt. The feed renders such posts with the prompt shown in plum
     // above the person's reply, so prompt answers read as "prompt → reply".
@@ -63,6 +68,11 @@ struct SavedPost: Identifiable, Equatable {
     let replies: Int
     let time: String
     let createdAt: Date
+    // 2026-09-21: GIFs render on saved/liked tabs too (owner report), and
+    // repost entries carry their original for interaction retargeting.
+    var gifUrl: String? = nil
+    var originalPostId: String? = nil
+    var originalAuthorId: String? = nil
 }
 
 /// Used in ProfileView for myPosts (has handle in last position)
@@ -77,6 +87,13 @@ struct MyPost: Identifiable {
     let handle: String
     let isRepost: Bool
     let originalHandle: String?
+    // Owner report (2026-09-21): a post's GIF vanished on the profile tabs
+    // (only detail showed it) — profile loaders never carried the field.
+    var gifUrl: String? = nil
+    // Repost retarget (see FeedPost.originalPostId) — the reposts tab rows
+    // need the original's id/author so felt/save/nav act on the original.
+    var originalPostId: String? = nil
+    var originalAuthorId: String? = nil
     // Set (yyyy-MM-dd) when this post answered that day's daily prompt.
     // ProfileView passes FeedView.promptText(for:) into FeedPostRow so the
     // author's own Posts tab shows "prompt → reply", matching the feed.
@@ -117,6 +134,10 @@ struct OtherProfilePost: Identifiable {
     // Original author's handle (byline-only) when this is a repost. Its
     // presence gates the reposterHandle passed to FeedPostRow.
     var originalHandle: String? = nil
+    // 2026-09-21: GIF rendering + repost interaction retargeting (see FeedPost).
+    var gifUrl: String? = nil
+    var originalPostId: String? = nil
+    var originalAuthorId: String? = nil
 }
 
 /// Used in TopView for ranked posts

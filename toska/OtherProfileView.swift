@@ -230,7 +230,7 @@ struct OtherProfileView: View {
                             } else {
                                 LazyVStack(spacing: 0) {
                                     ForEach(posts) { post in
-                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil, hideMetaHandle: post.originalHandle == nil)
+                                                                            FeedPostRow(handle: handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: userId, isAlreadyReposted: interactions.repostedPostIds.contains(post.originalPostId ?? post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.originalPostId ?? post.id), isAlreadySaved: interactions.savedPostIds.contains(post.originalPostId ?? post.id), gifUrl: post.gifUrl, isRepostPost: post.isRepost, reposterHandle: post.originalHandle != nil ? handle : nil, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, hideMetaHandle: post.originalHandle == nil)
                                     }
                                 }
                             }
@@ -470,7 +470,7 @@ struct OtherProfileView: View {
                                                                 // someone's profile after it was hidden from the feed.
                                                                 if data["flagged"] as? Bool == true { return nil }
                                                                 let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                                                                return OtherProfilePost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), isRepost: data["isRepost"] as? Bool ?? false, originalHandle: data["originalHandle"] as? String)
+                                                                return OtherProfilePost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), isRepost: data["isRepost"] as? Bool ?? false, originalHandle: data["originalHandle"] as? String, gifUrl: data["gifUrl"] as? String, originalPostId: data["originalPostId"] as? String, originalAuthorId: data["originalAuthorId"] as? String)
                                                             }
                 }
             }

@@ -392,26 +392,36 @@ struct FeedView: View {
             // it doesn't pop "1 new post" for the user's own content either way.
             // 2026-07-30: instant local echo — all guard logic lives in the
             // view model (keeps this closure inside the type-checker limit).
-            vm.insertOptimisticPost(from: notif.userInfo)
-            vm.handleNewPostCreated()
-            // Owner report (2026-07-29): "my post doesn't show up until I
-            // refresh." The just-created post is pending_validation until
-            // validatePost promotes it (~1-3s server-side), and the feed
-            // query pins moderationStatus=="live" — so the instant refresh
-            // above can't see it yet. Two spaced follow-up fetches let it
-            // pop in on its own once the server flips it live.
-            Task {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
+            // Owner report (2026-09-22): a repost mid-scroll still "took you
+            // to the top" — not via the guarded scroll below, but because
+            // handleNewPostCreated's refetch cycle wholesale-replaces and
+            // RE-SCORES `posts`, reordering the list under the viewport.
+            // Reposts update in place (postInteractionChanged flips the
+            // button + count) and need NO refetch — the repost row itself
+            // surfaces on the next natural refresh. Composed posts keep the
+            // full cycle (echo + promote-catching refetches).
+            let isRepost = (notif.userInfo?["isRepost"] as? Bool) ?? false
+            if !isRepost {
+                vm.insertOptimisticPost(from: notif.userInfo)
                 vm.handleNewPostCreated()
-                try? await Task.sleep(nanoseconds: 4_500_000_000)
-                vm.handleNewPostCreated()
+                // Owner report (2026-07-29): "my post doesn't show up until I
+                // refresh." The just-created post is pending_validation until
+                // validatePost promotes it (~1-3s server-side), and the feed
+                // query pins moderationStatus=="live" — so the instant refresh
+                // above can't see it yet. Two spaced follow-up fetches let it
+                // pop in on its own once the server flips it live.
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    vm.handleNewPostCreated()
+                    try? await Task.sleep(nanoseconds: 4_500_000_000)
+                    vm.handleNewPostCreated()
+                }
             }
             newPostsBadgeCount = 0
             previousPostCount = -1 // re-baseline on next .onChange tick
             // Only auto-scroll to the top for a freshly COMPOSED post (so they
             // watch it land). A repost must NOT yank the feed to the top — it
             // updates in place and the user keeps their scroll position.
-            let isRepost = (notif.userInfo?["isRepost"] as? Bool) ?? false
             if !isRepost {
                 vm.registerComposeForBreakNudge()
                 NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
@@ -546,6 +556,7 @@ struct FeedView: View {
                 isShareable: data["isShareable"] as? Bool ?? true,
                 originalHandle: data["originalHandle"] as? String,
                 originalAuthorId: data["originalAuthorId"] as? String,
+                originalPostId: data["originalPostId"] as? String,
                 promptDate: data["promptDate"] as? String,
                 isRepost: data["isRepost"] as? Bool ?? false
             )
@@ -624,7 +635,11 @@ struct FeedPostRow: View, Equatable {
     // without authorId (empty string) keep the buttons: better a guarded no-op
     // than hiding real actions on someone else's post.
     var isOwnPost: Bool {
-        !authorId.isEmpty && authorId == Auth.auth().currentUser?.uid
+        // Keys on the INTERACTION target: your own repost of someone else's
+        // words is not "your post" for felt/save purposes — the original
+        // author's is (owner report 2026-09-21: couldn't like own repost).
+        let target = originalPostId != nil ? (originalAuthorId ?? "") : authorId
+        return !target.isEmpty && target == Auth.auth().currentUser?.uid
     }
     var isAlreadyReposted: Bool = false
     var isAlreadyLiked: Bool = false
@@ -641,6 +656,20 @@ struct FeedPostRow: View, Equatable {
         // FeedView when post.originalHandle is set. Drives the
         // "@handle reposted" provenance row at the top of the cell.
         var reposterHandle: String? = nil
+        // Repost retarget (owner 2026-09-21, "can't like my repost"): on a
+        // repost row, interactions act on the ORIGINAL post — the web client
+        // has always worked this way (targetPostId = originalPostId). Without
+        // it, liking your own repost hit the copy you author (self-like,
+        // correctly denied) and reposting from a repost row hit "cannot
+        // repost a repost". nil on non-repost rows.
+        var originalPostId: String? = nil
+        var originalAuthorId: String? = nil
+        // The doc interactions actually target: the original when this row
+        // is a repost, the row's own post otherwise.
+        private var interactionPostId: String { originalPostId ?? postId }
+        private var interactionAuthorId: String {
+            originalPostId != nil ? (originalAuthorId ?? "") : authorId
+        }
         // The daily prompt this post answered (FeedView passes
         // FeedView.promptText(for: post.promptDate)). When set, the card shows
         // the prompt in plum above the reply, so prompt answers read as
@@ -705,16 +734,19 @@ struct FeedPostRow: View, Equatable {
                 // collision. The action bar lives OUTSIDE this link so its
                 // buttons never fight the link's tap.
                 NavigationLink {
+                    // Repost rows open the ORIGINAL's detail (web parity):
+                    // replies, likes, and the ⋯ menu all belong to the post
+                    // whose words are on screen, not the reposter's copy.
                     PostDetailView(
-                        postId: postId,
-                        handle: handle,
+                        postId: interactionPostId,
+                        handle: handle, // call sites already pass the ORIGINAL author's handle on repost rows
                         text: text,
                         tag: tag,
                         likes: localLikeCount,
                         reposts: localRepostCount,
                         replies: replies,
                         time: time,
-                        authorId: authorId,
+                        authorId: interactionAuthorId,
                         isAlreadyLiked: isLiked,
                         isAlreadySaved: isSaved,
                         isAlreadyReposted: isReposted,
@@ -854,7 +886,7 @@ struct FeedPostRow: View, Equatable {
                                             // replies — opens the post
                                             NavigationLink {
                                                 PostDetailView(
-                                                    postId: postId,
+                                                    postId: interactionPostId,
                                                     handle: handle,
                                                     text: text,
                                                     tag: tag,
@@ -862,7 +894,7 @@ struct FeedPostRow: View, Equatable {
                                                     reposts: localRepostCount,
                                                     replies: replies,
                                                     time: time,
-                                                    authorId: authorId,
+                                                    authorId: interactionAuthorId,
                                                     isAlreadyLiked: isLiked,
                                                     isAlreadySaved: isSaved,
                                                     isAlreadyReposted: isReposted,
@@ -981,7 +1013,10 @@ struct FeedPostRow: View, Equatable {
                         Label(isSaved ? "unsave" : "save", systemImage: isSaved ? "bookmark.slash" : "bookmark")
                     }
 
-                    if !isRepostPost && !isOwnPost {
+                    // Repost rows WITH an originalPostId now offer repost too
+                    // (it targets the original — web parity); only legacy
+                    // repost docs without the id stay repost-less.
+                    if (!isRepostPost || originalPostId != nil) && !isOwnPost {
                         Button {
                             repostPost()
                         } label: {
@@ -1074,7 +1109,7 @@ struct FeedPostRow: View, Equatable {
                     EdgeSwipeDismissWrapper {
                         ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag,
                                       shareURL: ShareConsent.publicShareURL(
-                                          postId: postId, isShareable: isShareable,
+                                          postId: interactionPostId, isShareable: isShareable,
                                           isLetter: isLetter, isWhisper: isWhisperPost,
                                           isMidnight: isMidnightPost))
                             .navigationBarHidden(true)
@@ -1083,9 +1118,13 @@ struct FeedPostRow: View, Equatable {
                 .fullScreenCover(isPresented: $showReportSheet) {
                     EdgeSwipeDismissWrapper {
                         NavigationStack {
+                            // Repost rows report/block the ORIGINAL author —
+                            // the words on screen are theirs (handle already
+                            // shows them); the reposter is reachable via
+                            // their own rows.
                             ReportSheet(target: .post(
-                                postId: postId,
-                                authorId: authorId,
+                                postId: interactionPostId,
+                                authorId: interactionAuthorId,
                                 authorHandle: handle,
                                 text: text
                             ))
@@ -1099,7 +1138,7 @@ struct FeedPostRow: View, Equatable {
                                     titleVisibility: .visible
                                 ) {
                                     Button("block", role: .destructive) {
-                                        BlockedUsersCache.shared.block(authorId, handle: handle)
+                                        BlockedUsersCache.shared.block(interactionAuthorId, handle: handle)
                                     }
                                     Button("cancel", role: .cancel) {}
                                 } message: {
@@ -1247,8 +1286,8 @@ struct FeedPostRow: View, Equatable {
             // the optimistic count back mid-round-trip.
             suppressLikeListenerUntil = Date().addingTimeInterval(2.0)
             PostInteractionManager.toggleLike(
-                postId: postId,
-                authorId: authorId,
+                postId: interactionPostId,
+                authorId: interactionAuthorId,
                 currentlyLiked: isLiked,
                 currentCount: localLikeCount
             ) { result in
@@ -1283,8 +1322,12 @@ struct FeedPostRow: View, Equatable {
     // MARK: - Repost
         
         func repostPost() {
-            // Can't repost a repost itself.
-            guard !isRepostPost else { return }
+            // Repost rows retarget to the ORIGINAL (interactionPostId), so
+            // tapping repost on someone's repost row reposts the original —
+            // web behavior. The only dead end is a repost row that somehow
+            // lacks originalPostId (legacy doc): the manager's cannot-repost-
+            // a-repost guard still catches that server-side.
+            guard !isRepostPost || originalPostId != nil else { return }
             // M4: same offline feedback as toggleLike — the manager no-ops.
             guard NetworkMonitor.shared.isConnected else {
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
@@ -1297,7 +1340,7 @@ struct FeedPostRow: View, Equatable {
             // Toggle: if already reposted, UNDO it (delete the repost doc).
             if isReposted {
                 PostInteractionManager.unrepost(
-                    postId: postId,
+                    postId: interactionPostId,
                     currentCount: localRepostCount
                 ) { result in
                     isReposted = result.isReposted
@@ -1308,10 +1351,10 @@ struct FeedPostRow: View, Equatable {
             }
 
             PostInteractionManager.repost(
-                postId: postId,
+                postId: interactionPostId,
                 postText: text,
                 postTag: tag,
-                authorId: authorId,
+                authorId: interactionAuthorId,
                 originalHandle: handle,
                 currentCount: localRepostCount
             ) { result in
@@ -1337,8 +1380,8 @@ struct FeedPostRow: View, Equatable {
                 // OfflineActionQueue) — the confirm haptic is honest now.
                 HapticManager.play(.feltThis)
                 PostInteractionManager.toggleSave(
-                    postId: postId,
-                    authorId: authorId,
+                    postId: interactionPostId,
+                    authorId: interactionAuthorId,
                     currentlySaved: isSaved
                 ) { newSaved in
                     isSaved = newSaved
@@ -1776,9 +1819,11 @@ struct FeedColumn: View {
                                                                                                                                                         time: post.time,
                                                                                                                                                         postId: post.id,
                                                                                                                                                         authorId: post.authorId,
-                                                                                                                                                        isAlreadyReposted: vm.repostedPostIds.contains(post.id),
-                                                                                                                                                        isAlreadyLiked: vm.likedPostIds.contains(post.id),
-                                                                                                                                                        isAlreadySaved: vm.savedPostIds.contains(post.id),
+                                                                                                                                                        // Seed state from the INTERACTION target (the
+                                                                                                                                                        // original on repost rows) — likes/saves live there.
+                                                                                                                                                        isAlreadyReposted: vm.repostedPostIds.contains(post.originalPostId ?? post.id),
+                                                                                                                                                        isAlreadyLiked: vm.likedPostIds.contains(post.originalPostId ?? post.id),
+                                                                                                                                                        isAlreadySaved: vm.savedPostIds.contains(post.originalPostId ?? post.id),
                                                                                                                                                         isShareable: post.isShareable,
                                                                                                                                                         gifUrl: vm.postGifUrls[post.id],
                                                                                                                                                         isMidnightPost: vm.midnightPostIds.contains(post.id),
@@ -1788,6 +1833,8 @@ struct FeedColumn: View {
                                                                                                                                                         isLetterExpanded: vm.expandedLetterIds.contains(post.id),
                                                                                                                                                         onLetterExpand: { vm.expandedLetterIds.insert(post.id) },
                                                                                                                                                         reposterHandle: (post.isRepost && post.originalHandle != nil) ? post.handle : nil,
+                                                                                                                                                        originalPostId: post.isRepost ? post.originalPostId : nil,
+                                                                                                                                                        originalAuthorId: post.isRepost ? post.originalAuthorId : nil,
                                                                                                                                                         // The prompt renders in purple above every response
                                                                                                                                                         // row — author included (owner 2026-09-17: with the
                                                                                                                                                         // pinned card gone, the row is the response's one

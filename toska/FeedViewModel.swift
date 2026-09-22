@@ -813,7 +813,7 @@ class FeedViewModel: ObservableObject {
         watchEchoResolution(id)
     }
 
-    private func watchEchoResolution(_ id: String) {
+    private func watchEchoResolution(_ id: String, refetchOnLive: Bool = true) {
         echoListeners[id]?.remove()
         echoListeners[id] = Firestore.firestore().collection("posts").document(id)
             .addSnapshotListener { [weak self] snap, _ in
@@ -825,8 +825,14 @@ class FeedViewModel: ObservableObject {
                     switch snap.data()?["moderationStatus"] as? String {
                     case "live":
                         self.stopWatchingEcho(id)
-                        // The feed query can see it now — this fetch swaps the
-                        // echo for the server copy via mergeOptimisticEcho.
+                        // Promoted — drop the expiry (the next natural fetch
+                        // returns the real doc under this same id).
+                        self.optimisticEcho.removeAll { $0.post.id == id }
+                        // Composed posts refetch so the echo swaps for the
+                        // server copy; repost rows skip it (they already show
+                        // the true display data, and the refetch's re-score
+                        // reorder was the owner's original scroll-jump).
+                        guard refetchOnLive else { return }
                         self.fetchPosts()
                     case "pending_validation":
                         break // still churning — keep the echo pinned
@@ -845,6 +851,36 @@ class FeedViewModel: ObservableObject {
     private func stopWatchingEcho(_ id: String) {
         echoListeners[id]?.remove()
         echoListeners[id] = nil
+    }
+
+    /// Owner (2026-09-22): a fresh repost (post OR reply) surfaces at the
+    /// feed head IMMEDIATELY — inserted in place, no scroll, no refetch
+    /// (the refetch reorder was the original scroll-jump complaint). The
+    /// row carries the server doc's exact display data under its
+    /// deterministic doc id, so the next natural fetch dedups by id; the
+    /// promote watcher just retires the expiry.
+    func insertOptimisticRepost(from userInfo: [AnyHashable: Any]?) {
+        guard let id = userInfo?["postId"] as? String, !id.isEmpty,
+              let text = userInfo?["text"] as? String,
+              !posts.contains(where: { $0.id == id }) else { return }
+        let row = FeedPost(
+            id: id,
+            handle: (userInfo?["originalHandle"] as? String) ?? "anonymous",
+            text: text,
+            tag: userInfo?["tag"] as? String,
+            likes: 0, reposts: 0, replies: 0,
+            time: "now",
+            authorId: Auth.auth().currentUser?.uid ?? "",
+            isShareable: (userInfo?["isShareable"] as? Bool) ?? false,
+            originalHandle: userInfo?["originalHandle"] as? String,
+            originalAuthorId: userInfo?["originalAuthorId"] as? String,
+            originalPostId: userInfo?["originalPostId"] as? String,
+            isRepost: true
+        )
+        repostPostIds.insert(id) // renders with the "reposted" strip
+        posts.insert(row, at: 0)
+        optimisticEcho.append((row, Date()))
+        watchEchoResolution(id, refetchOnLive: false)
     }
 
     // Re-apply unresolved echoes after each wholesale posts refresh.

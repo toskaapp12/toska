@@ -529,14 +529,25 @@ class PostInteractionManager {
                                             message: ""
                                         )
                                     }
-                                    // Refresh the feed so the repost shows up in real time —
-                                    // but flagged isRepost:true so FeedView updates IN PLACE and
-                                    // does NOT scroll to the top (that scroll is only for a
-                                    // freshly composed post).
+                                    // Owner (2026-09-22): the repost ROW surfaces at the feed
+                                    // head immediately — inserted in place, no scroll, no
+                                    // refetch (the refetch reorder was the old scroll-jump).
+                                    // Carry the doc's display data for the optimistic insert.
+                                    var info: [String: Any] = [
+                                        "isRepost": true,
+                                        "postId": newRepostRef.documentID,
+                                        "text": freshText,
+                                        "reposterHandle": repostHandle,
+                                        "originalPostId": postId,
+                                        "originalAuthorId": freshAuthorId,
+                                        "isShareable": originalIsShareable,
+                                    ]
+                                    if let h = resolvedOriginalHandle { info["originalHandle"] = h }
+                                    if let tag = postTag { info["tag"] = tag }
                                     NotificationCenter.default.post(
                                         name: .newPostCreated,
                                         object: nil,
-                                        userInfo: ["isRepost": true]
+                                        userInfo: info
                                     )
                                 }
                             })
@@ -619,6 +630,16 @@ class PostInteractionManager {
                 group.notify(queue: .main) {
                     RateLimiter.shared.markRepostComplete(postId)
                     if let e = firstErr { rollback(e); return }
+                    // Owner (2026-09-22): strip the (now-deleted) repost rows
+                    // from any in-memory feed immediately — the .postDeleted
+                    // handlers already remove by id, so an un-repost makes the
+                    // freshly-inserted row vanish in place, no refresh.
+                    for ref in refs {
+                        NotificationCenter.default.post(
+                            name: .postDeleted, object: nil,
+                            userInfo: ["postId": ref.documentID]
+                        )
+                    }
                     // Success. Server repostCount decrement handled by
                     // onRepostDeletedUpdateCount — but it fires once PER deleted
                     // doc. We optimistically decremented by exactly 1, so if more
@@ -1055,12 +1076,22 @@ class PostInteractionManager {
                     // notification surface for "your reply was reposted" is
                     // out-of-scope for v1.0 — falls through to the in-app
                     // count update on the parent post detail view next visit.
-                    // Refresh the feed in real time, flagged isRepost so it updates
-                    // in place without scrolling to the top (see repost()).
+                    // Owner (2026-09-22): surface the reply-repost row at the
+                    // feed head immediately, in place, no scroll (see repost()).
+                    var info: [String: Any] = [
+                        "isRepost": true,
+                        "postId": newRepostRef.documentID,
+                        "text": freshReplyText,
+                        "reposterHandle": repostHandle,
+                        "originalPostId": postId,
+                        "originalAuthorId": freshReplyAuthorId,
+                        "isShareable": replyAuthorAllowsSharing,
+                    ]
+                    if let h = resolvedReplyHandle { info["originalHandle"] = h }
                     NotificationCenter.default.post(
                         name: .newPostCreated,
                         object: nil,
-                        userInfo: ["isRepost": true]
+                        userInfo: info
                     )
                 }
             })

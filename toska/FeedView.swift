@@ -401,6 +401,11 @@ struct FeedView: View {
             // surfaces on the next natural refresh. Composed posts keep the
             // full cycle (echo + promote-catching refetches).
             let isRepost = (notif.userInfo?["isRepost"] as? Bool) ?? false
+            if isRepost {
+                // Owner (2026-09-22): the repost row appears at the feed head
+                // right away — inserted in place, still no scroll/refetch.
+                vm.insertOptimisticRepost(from: notif.userInfo)
+            }
             if !isRepost {
                 vm.insertOptimisticPost(from: notif.userInfo)
                 vm.handleNewPostCreated()
@@ -930,8 +935,13 @@ struct FeedPostRow: View, Equatable {
                                                 .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
                                                 .accessibilityValue(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
                                                 .buttonStyle(ToskaTapStyle())
-                                                .disabled(isRepostPost || isWhisperPost || isMidnightPost)
-                                                .opacity((isRepostPost || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
+                                                // Owner report (2026-09-22, "blurry after repost"):
+                                                // repost rows with an originalPostId keep a LIVE
+                                                // toggle — it retargets to the original, so tapping
+                                                // your own fresh repost row un-reposts it. Only
+                                                // legacy id-less repost docs and ephemerals dim.
+                                                .disabled((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost)
+                                                .opacity(((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
                                             }
 
                                             Spacer(minLength: 6)

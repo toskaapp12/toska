@@ -1507,6 +1507,7 @@ struct FeedHeaderCard: View {
                     // it). The promptDate == today check also survives the
                     // midnight rollover (yesterday's cached answer must not
                     // lock the new day's prompt).
+                    HStack(spacing: 0) {
                     if vm.todaysPromptResponse?.promptDate != vm.todaysPromptDateString {
                         Button {
                             vm.showPromptCompose = true
@@ -1551,6 +1552,24 @@ struct FeedHeaderCard: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("View your response")
+                    }
+                    Spacer(minLength: 12)
+                    // Owner (2026-09-22): the prompt is a shared moment —
+                    // "what others said…" opens everyone's responses.
+                    NavigationLink {
+                        PromptResponsesView(promptText: displayPrompt,
+                                            promptDate: vm.todaysPromptDateString)
+                            .navigationBarHidden(true)
+                    } label: {
+                        Text("what others said…")
+                            .font(ToskaFont.sans(12.5, weight: .semibold))
+                            .foregroundColor(ToskaColor.accentText)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                            .contentShape(Rectangle().inset(by: -10))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("What others said")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

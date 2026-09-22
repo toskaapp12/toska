@@ -888,10 +888,13 @@ async function viewFeed() {
         promptContext = { text: pText, tag: pTag, promptDate: todaysPromptDate() };
         location.hash = "#/compose";
     };
+    const others = el("a", { class: "plain", href: "#/prompt",
+        style: "font-size:12.5px; font-weight:600; color:var(--accent-text);" },
+        "what others said…");
     const promptCard = el("div", { class: "prompt-card" },
         el("div", { class: "eyebrow" }, "today's prompt"),
         el("div", { class: "post-text" }, pText),
-        el("div", { class: "prompt-actions" }, respond));
+        el("div", { class: "prompt-actions", style: "display:flex; justify-content:space-between; align-items:center; gap:12px;" }, respond, others));
     // Search — honest scope, same as FeedView: filters only what's already
     // fetched (text + handle), no extra Firestore round-trip.
     const search = el("input", {
@@ -1097,6 +1100,40 @@ function gifPicker(onPick) {
 }
 
 // ---------------------------------------------------------------- compose
+// "what others said…" (owner 2026-09-22): everyone's responses to today's
+// prompt, newest first — the prompt as a shared moment. Mirrors iOS
+// PromptResponsesView; served by the (moderationStatus, promptDate,
+// createdAt) composite index.
+async function viewPromptResponses() {
+    setChrome(false);
+    const [pText] = todaysPrompt();
+    const list = el("div");
+    mount.replaceChildren(
+        el("a", { class: "back", href: "#/" }, "← feed"),
+        el("div", { class: "prompt-card" },
+            el("div", { class: "eyebrow" }, "today's prompt"),
+            el("div", { class: "post-text" }, pText)),
+        list, spinner());
+    try {
+        const snap = await getDocs(query(collection(db, "posts"),
+            where("promptDate", "==", todaysPromptDate()),
+            where("moderationStatus", "==", "live"),
+            orderBy("createdAt", "desc"), limit(100)));
+        mount.querySelector(".spinner")?.remove();
+        const rows = snap.docs.map(d => [d.id, d.data()])
+            .filter(([, d]) => postVisible(d) && !blocked.has(d.authorId));
+        if (!rows.length) {
+            list.append(emptyState("no one has answered yet. your words could be the first."));
+            return;
+        }
+        for (const [id, d] of rows) list.append(postRow(id, d));
+    } catch (e) {
+        console.error(e);
+        mount.querySelector(".spinner")?.remove();
+        list.append(emptyState(GENERIC_ERR));
+    }
+}
+
 function viewCompose() {
     setChrome(false);
     writeFab.hidden = true;
@@ -1946,6 +1983,7 @@ function route() {
     }
     if (h === "#/" || h === "" || h === "#/signin" || h === "#/signup") { setActiveNav("feed"); viewFeed(); }
     else if (h === "#/compose") { setActiveNav(""); viewCompose(); }
+    else if (h === "#/prompt") { setActiveNav("feed"); viewPromptResponses(); }
     else if (h === "#/top") { setActiveNav("top"); viewTop(); }
     else if (h === "#/notifications") { setActiveNav("notifications"); viewNotifications(); }
     else if (h.startsWith("#/post/")) { setActiveNav(""); viewPost(h.slice(7)); }

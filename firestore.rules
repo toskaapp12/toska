@@ -1322,9 +1322,10 @@ service cloud.firestore {
                 // held reply's text to satisfy the text-match above anyway, but
                 // this closes it explicitly.
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.get('moderationStatus', 'live') == 'live'
-                // X-parity (owner 2026-09-22): self-repost of your own reply is
-                // ALLOWED — X lets you retweet yourself; the count reflects it.
-                // (F-P2-1's no-self-repost guard removed on owner decision.)
+                // No self-repost (owner re-ruling 2026-09-22 eve): reposting
+                // your own reply is blocked again — bumping your own words
+                // isn't toska. (Self-LIKE stays allowed.)
+                && request.resource.data.originalAuthorId != request.auth.uid
                 && notBlockedBy(request.resource.data.originalAuthorId)
                 && (
                      !('originalHandle' in request.resource.data.keys())
@@ -1372,7 +1373,8 @@ service cloud.firestore {
             // backstops this server-side.
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isWhisper', false) != true
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.get('isMidnightPost', false) != true
-            // X-parity (owner 2026-09-22): self-repost ALLOWED (X model).
+            // No self-repost (owner re-ruling 2026-09-22 eve — self-LIKE stays).
+            && request.resource.data.originalAuthorId != request.auth.uid
             && notBlockedBy(request.resource.data.originalAuthorId)
             && (
                  !('originalHandle' in request.resource.data.keys())

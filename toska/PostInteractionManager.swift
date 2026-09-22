@@ -276,8 +276,8 @@ class PostInteractionManager {
                     return
                 }
         if let last = RateLimiter.shared.lastRepostTime(for: postId), Date().timeIntervalSince(last) < 2 { return }
-        // X-parity (owner 2026-09-22): self-repost allowed (X lets you
-        // retweet yourself); rules guard removed in the same change.
+        // No self-repost (owner re-ruling 2026-09-22 eve; rules enforce too).
+        guard uid != authorId else { return }
                guard NetworkMonitor.shared.isConnected else {
                    print("⚠️ repost — offline, skipping")
                    return

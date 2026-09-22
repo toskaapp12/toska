@@ -1429,7 +1429,7 @@ async function viewPost(postId) {
             setOn(repostBtn, !on, "reposted", "repost");
             const r = await toggleRepost(targetPostId).catch((e) => { console.error("repost failed", e); return null; });
             if (r === "blocked_ephemeral") { setOn(repostBtn, false, "reposted", "repost"); toast("whispers stay ephemeral — they can't be reposted."); }
-            else if (r === null) setOn(repostBtn, on, "reposted", "repost");
+            else if (r === "own_post" || r === null) setOn(repostBtn, on, "reposted", "repost");
             else invalidateFeedCache(); // a repost row appeared or vanished from the feed
         };
         moreBtn.onclick = () => {

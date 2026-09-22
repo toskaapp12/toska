@@ -401,11 +401,11 @@ struct FeedView: View {
             // surfaces on the next natural refresh. Composed posts keep the
             // full cycle (echo + promote-catching refetches).
             let isRepost = (notif.userInfo?["isRepost"] as? Bool) ?? false
-            if isRepost {
-                // Owner (2026-09-22): the repost row appears at the feed head
-                // right away — inserted in place, still no scroll/refetch.
-                vm.insertOptimisticRepost(from: notif.userInfo)
-            }
+            // Owner re-ruling (2026-09-22 eve): NO feed insert on repost —
+            // the head-insert pushed the feed down under the tap. The row
+            // updates in place; the copy reaches profile→reposts via its
+            // own handler and the feed on the next natural refresh (X does
+            // the same: your RT doesn't shove your own timeline).
             if !isRepost {
                 vm.insertOptimisticPost(from: notif.userInfo)
                 vm.handleNewPostCreated()
@@ -915,11 +915,14 @@ struct FeedPostRow: View, Equatable {
 
                                             statSeparator
 
-                                            // reposts — live toggle for EVERY viewer
-                                            // (X-parity 2026-09-22: self-repost allowed);
-                                            // dimmed only for ephemerals (the copy would
-                                            // outlive the original) and legacy id-less
-                                            // repost docs.
+                                            // reposts — read-only on your OWN posts
+                                            // (owner re-ruling 2026-09-22 eve: no
+                                            // self-repost; felt stays live); dimmed for
+                                            // ephemerals + legacy id-less repost docs.
+                                            if isOwnPost {
+                                                statText(localRepostCount, "repost", "reposts")
+                                                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                            } else {
                                             Button { repostPost() } label: {
                                                 statText(localRepostCount, "repost", "reposts")
                                                     .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
@@ -930,6 +933,7 @@ struct FeedPostRow: View, Equatable {
                                             .buttonStyle(ToskaTapStyle())
                                             .disabled((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost)
                                             .opacity(((isRepostPost && originalPostId == nil) || isWhisperPost || isMidnightPost) ? 0.3 : 1.0)
+                                            }
 
                                             Spacer(minLength: 6)
 
@@ -1012,8 +1016,7 @@ struct FeedPostRow: View, Equatable {
                     // Repost rows WITH an originalPostId now offer repost too
                     // (it targets the original — web parity); only legacy
                     // repost docs without the id stay repost-less.
-                    // X-parity (2026-09-22): self-repost allowed — own-post gate dropped.
-                    if !isRepostPost || originalPostId != nil {
+                    if (!isRepostPost || originalPostId != nil) && !isOwnPost {
                         Button {
                             repostPost()
                         } label: {

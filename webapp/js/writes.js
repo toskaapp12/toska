@@ -212,7 +212,8 @@ export async function toggleRepost(postId) {
         const orig = await getDoc(doc(db, "posts", postId));
         if (!orig.exists()) return null;
         const o = orig.data();
-        // X-parity (owner 2026-09-22): self-repost allowed (X model).
+        // No self-repost (owner re-ruling 2026-09-22 eve; self-like stays).
+        if (o.authorId === uid) return "own_post";
         if (o.isWhisper === true || o.isMidnightPost === true) return "blocked_ephemeral";
         const handle = await myHandle();
         const data = {

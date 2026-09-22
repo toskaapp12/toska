@@ -118,11 +118,11 @@ describe("PROBE: self-interaction counter inflation (rules half)", () => {
     );
   });
 
-  it("SELF-REPOST: alice CAN repost her OWN post (X-parity, owner 2026-09-22)", async () => {
+  it("SELF-REPOST: alice CANNOT repost her OWN post (owner re-ruling 2026-09-22)", async () => {
     await setUserDoc("alice");
     await setPost("p1", "alice");
     const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
+    await assertFails(
       a.collection("posts").doc("alice_repost_p1").set({
         authorId: "alice", authorHandle: "handle_alice",
         text: "my own words", createdAt: serverTimestamp(),

@@ -916,15 +916,20 @@ struct PostDetailView: View {
                 // value. (2026-08-05) Whispers can't be reposted (ephemeral —
                 // the copy would outlive the original); midnight posts are
                 // caught by the tap-time fetch in PostInteractionManager.
-                Button { repostPost() } label: {
+                if isOwnPost {
                     detailStatText(localRepostCount, "repost", "reposts")
-                        .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
-                        .padding(.vertical, 11)
+                        .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                } else {
+                    Button { repostPost() } label: {
+                        detailStatText(localRepostCount, "repost", "reposts")
+                            .foregroundColor(isReposted ? ToskaColor.accentText : ToskaColor.handle)
+                            .padding(.vertical, 11)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
+                    .disabled(isWhisper)
+                    .opacity(isWhisper ? 0.3 : 1.0)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isReposted ? "Undo repost" : "Repost")
-                .disabled(isWhisper)
-                .opacity(isWhisper ? 0.3 : 1.0)
 
                 Spacer(minLength: 6)
 

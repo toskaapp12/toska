@@ -780,8 +780,13 @@ struct FeedPostRow: View, Equatable {
                 // prompt, show the prompt itself in plum above the reply so the
                 // card reads "prompt → reply" (the answer in context).
                 if let prompt = promptText, !prompt.isEmpty {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "sparkle")
+                    // Owner (2026-09-22): icon and prompt sit EVEN on the
+                    // line — .top floated the sparkle above the italic's
+                    // centre. firstTextBaseline + the icon rendered AS Text
+                    // (inherits baseline metrics) keeps them level whether
+                    // the prompt wraps or not.
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(Image(systemName: "sparkle"))
                             .font(.system(size: 10, weight: .semibold))
                         Text(prompt)
                             .font(ToskaFont.serifItalic(13))

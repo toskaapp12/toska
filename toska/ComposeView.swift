@@ -483,6 +483,13 @@ struct ComposeView: View {
                                                             .padding(.horizontal, 24)
                                                             .padding(.top, 4)
                                                             .frame(minHeight: 200)
+                                                            // Owner (2026-09-22): hug the text instead of
+                                                            // greedily filling the screen — the flexible
+                                                            // editor was shoving the GIF preview + tag chip
+                                                            // to mid-screen ("looks weird"). The outer
+                                                            // ScrollView owns scrolling; attachments now sit
+                                                            // directly under the words.
+                                                            .fixedSize(horizontal: false, vertical: true)
                                                             .autocorrectionDisabled(false)  // autocorrect ON for content (2026-07-21)
                                                             .focused($textFocused)
                                                             // Drag down inside the editor to dismiss the
@@ -1114,9 +1121,11 @@ struct ComposeView: View {
         // still on screen — `isPosting` isn't set until postNow(), so a fast
         // double-tap otherwise stacked duplicate dialogs through this gap.
         guard !showContentWarning, !showNameWarning, !showGentleCheck else { return }
-        // Text is required (see canPost): a GIF-only post fails the server's
-        // text.size() > 0 rule. Guard here too so the path can't be reached.
-        guard !trimmedText.isEmpty else { return }
+        // GIF-only posts are valid (2026-09 rules: empty text allowed with a
+        // host-locked gifUrl). Owner report 2026-09-22: this guard predated
+        // the feature and silently ate the tap — canPost lit the button,
+        // attemptPost returned. Words OR a gif.
+        guard !trimmedText.isEmpty || selectedGifUrl != nil else { return }
         guard NetworkMonitor.shared.isConnected else {
                     showOfflineWarning = true
                     offlineMonitorTask?.cancel()

@@ -160,6 +160,13 @@ jobs:
       working-directory: firestore-tests
       run: node prompt-tag-parity.mjs
 
+    # 2026-09-27 (owner-requested web audit): the webapp has no E2E harness —
+    # this static+config audit is its standing guard (XSS sinks, import
+    # hygiene, secrets, bug-class behavior pins, CSP/headers). LIVE checks
+    # are run manually after hosting deploys.
+    - name: Web security audit (static + config)
+      run: node scripts/audit_web_security.mjs
+
   # 2026-07-28 (system-review A.5 #8): the GDPR deletion-cascade probe against
   # LIVE STAGING, promoted from manual-only — the launch-critical "no residue
   # after account deletion" guarantee gets re-proven on every push to main.

@@ -1,0 +1,68 @@
+name: Security Watch
+
+# The always-on half of toska's safety system (owner 2026-09-27: "constantly
+# checking the security of the app"). CI (ci.yml) guards every CHANGE; this
+# watches the LIVE product on a schedule — deployed site posture, dependency
+# vulnerabilities, endpoint health — so drift or a newly-disclosed vuln
+# surfaces within hours, not at the next deploy.
+#
+# On failure GitHub emails the repo owner (default notification settings).
+
+on:
+  schedule:
+    # Every 6 hours — frequent enough to catch a bad deploy or fresh CVE
+    # same-day, light enough to stay far inside free-tier minutes.
+    - cron: "17 */6 * * *"
+  workflow_dispatch: {}   # manual "run it now" button in the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  live-web-audit:
+    name: Live site audit (headers, bundle, endpoints)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    # LIVE=1 adds the deployed-site checks: security headers actually served,
+    # the deployed bundle carrying the current feature pins (catches
+    # fixed-locally-never-deployed drift), share-page 404 behavior.
+    - name: Web security audit against app.toskaapp.com
+      run: LIVE=1 node scripts/audit_web_security.mjs
+
+  dependency-vulnerabilities:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    # Production dependency trees only; fails on HIGH or CRITICAL advisories.
+    # (Moderates are reviewed manually — the current 9 need a breaking
+    # firebase-admin major and are accepted; see 2026-09-21 security audit.)
+    - name: Cloud Functions prod deps
+      working-directory: functions
+      run: |
+        npm install --no-audit --no-fund --omit=dev
+        npm audit --omit=dev --audit-level=high
+
+  endpoint-health:
+    name: Public endpoint health
+    runs-on: ubuntu-latest
+    steps:
+    - name: Web app + share page + sitemap respond
+      run: |
+        set -e
+        check () {
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$1")
+          echo "$1 -> $code"
+          [ "$code" = "$2" ] || { echo "EXPECTED $2"; exit 1; }
+        }
+        check "https://app.toskaapp.com/" 200
+        check "https://app.toskaapp.com/js/app.js" 200
+        check "https://app.toskaapp.com/p/definitely-not-a-real-post" 404
+        check "https://app.toskaapp.com/sitemap.xml" 200

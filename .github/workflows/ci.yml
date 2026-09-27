@@ -167,6 +167,33 @@ jobs:
     - name: Web security audit (static + config)
       run: node scripts/audit_web_security.mjs
 
+  # 2026-09-27 (owner: "every change reviewed so nothing breaks"): compile the
+  # iOS app on every push. INERT until the owner adds ONE repo secret —
+  # the Firebase config the build needs:
+  #   base64 -i toska/GoogleService-Info.plist | pbcopy
+  #   → GitHub repo → Settings → Secrets → Actions → new secret
+  #     IOS_GOOGLE_SERVICE_INFO_B64 → paste
+  # Until then the job green-skips. Compile-only (no signing, no simulator
+  # run) — catches every Swift error/regression the moment it's pushed.
+  ios-build:
+    name: iOS build (compile smoke)
+    runs-on: macos-latest
+    env:
+      HAS_PLIST: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_B64 != '' }}
+    steps:
+    - uses: actions/checkout@v4
+      if: env.HAS_PLIST == 'true'
+    - name: Restore GoogleService-Info.plist
+      if: env.HAS_PLIST == 'true'
+      run: echo "${{ secrets.IOS_GOOGLE_SERVICE_INFO_B64 }}" | base64 -d > toska/GoogleService-Info.plist
+    - name: Build for simulator
+      if: env.HAS_PLIST == 'true'
+      run: |
+        xcodebuild -project toska.xcodeproj -scheme toska           -destination 'generic/platform=iOS Simulator'           CODE_SIGNING_ALLOWED=NO build | tail -5
+    - name: Skipped (secret not configured)
+      if: env.HAS_PLIST != 'true'
+      run: echo "IOS_GOOGLE_SERVICE_INFO_B64 not set — see job comment to activate."
+
   # 2026-07-28 (system-review A.5 #8): the GDPR deletion-cascade probe against
   # LIVE STAGING, promoted from manual-only — the launch-critical "no residue
   # after account deletion" guarantee gets re-proven on every push to main.

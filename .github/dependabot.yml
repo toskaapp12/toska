@@ -1,0 +1,28 @@
+# Dependabot (owner security-practices review, 2026-09-27): GitHub's own
+# vulnerability monitoring — opens PRs when a dependency has a security
+# advisory, complementing the 6-hour npm-audit gate in security-watch.yml
+# (that FAILS loudly on high/critical; this one delivers the FIX as a PR).
+# Security updates only — no routine version-bump noise on an app this
+# deliberately pinned.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 5
+    # security advisories only
+    allow: []
+
+  - package-ecosystem: npm
+    directory: /firestore-tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    allow: []
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

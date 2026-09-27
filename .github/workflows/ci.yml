@@ -175,6 +175,23 @@ jobs:
   #     IOS_GOOGLE_SERVICE_INFO_B64 → paste
   # Until then the job green-skips. Compile-only (no signing, no simulator
   # run) — catches every Swift error/regression the moment it's pushed.
+  # 2026-09-27 (owner security-practices review): industry SAST alongside the
+  # bespoke web audit. Semgrep community rulesets over the server + web JS,
+  # gating on ERROR-severity findings (first local run: clean).
+  sast-semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install Semgrep
+      run: pip install --quiet semgrep
+    - name: Scan server + web JS
+      run: |
+        semgrep scan --config p/javascript --config p/security-audit           --severity ERROR --error --quiet           functions/index.js functions/sharePage.js functions/shareCard.js webapp/js/
+
   ios-build:
     name: iOS build (compile smoke)
     runs-on: macos-latest

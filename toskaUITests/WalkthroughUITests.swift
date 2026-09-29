@@ -63,14 +63,18 @@ final class WalkthroughUITests: XCTestCase {
     /// Open compose resiliently (2026-09-29): under suite load a single
     /// "New post" tap can land mid-transition and get eaten — the exact
     /// test09d flake. Tap-and-verify up to 3 times.
+    // Minimal, proven form (2026-09-29): the native .tap() auto-waits for the
+    // "New post" button to exist AND be hittable before tapping — which is
+    // exactly what the original bare call did and what worked. One light
+    // retry for the rare eaten-tap-under-load case; nothing clever.
     @discardableResult
     func openCompose() -> Bool {
-        for attempt in 0..<3 {
-            if app.buttons["cancel"].exists { return true }
-            forceTap(app.buttons["New post"])
-            if app.buttons["cancel"].waitForExistence(timeout: attempt == 0 ? 6 : 4) { return true }
-        }
-        return app.buttons["cancel"].exists
+        if app.buttons["cancel"].exists { return true }
+        app.buttons["New post"].tap()
+        if app.buttons["cancel"].waitForExistence(timeout: 8) { return true }
+        // one retry
+        app.buttons["New post"].tap()
+        return app.buttons["cancel"].waitForExistence(timeout: 8)
     }
 
     /// Ensure the feed is actually on screen (2026-09-29): after ~40 tests
@@ -1226,7 +1230,8 @@ final class WalkthroughUITests: XCTestCase {
         let marker = "chaos" + String(Int(Date().timeIntervalSince1970)).map { c in
             digits[Int(String(c))!]
         }
-        XCTAssertTrue(openCompose(), "Compose didn't open")
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "counting to one. \(marker)")
         let post = app.buttons["post"]
@@ -1267,7 +1272,8 @@ final class WalkthroughUITests: XCTestCase {
         snap("20d-double-tap-single-post")
 
         // -- Drill 5: background mid-compose, return — editor text intact.
-        XCTAssertTrue(openCompose(), "Compose didn't reopen")
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't reopen")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "left this halfway")
         XCUIDevice.shared.press(.home)
@@ -1287,7 +1293,8 @@ final class WalkthroughUITests: XCTestCase {
         app.launch()
         acceptPolicyGateIfPresent()
         try requireFeed()
-        XCTAssertTrue(openCompose(), "Compose didn't open post-relaunch")
+        app.buttons["New post"].tap()
+        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open post-relaunch")
         sleep(1)
         let restored = (app.textViews.firstMatch.value as? String) ?? ""
         XCTAssertTrue(restored.contains("left this halfway"),

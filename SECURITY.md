@@ -112,6 +112,38 @@ We publish `/.well-known/security.txt`. Researchers: email
 `salte@saltedevelopments.com` before public disclosure; we respond in good faith
 and credit you if you wish. A de-anonymization finding is our top severity.
 
-## 8. Incident log
+## 8. Penetration test log
+
+### 2026-09-29 — internal pentest (AI-assisted red team)
+
+Scope: Firestore authorization, anonymity surfaces, Cloud Functions
+callables, public HTTP endpoints, business-logic abuse. Out of scope
+(deferred to external paid pass): mobile-binary reverse engineering,
+on-device network interception, independent third-party attestation.
+
+**Findings:**
+- **HIGH — post/reply like lists enumerable (de-anonymization).** On live
+  content, `list posts/{id}/likes` returned every liker's uid. FIXED
+  (own-doc-or-admin read rule) + deployed staging/prod + regression test
+  (deanon-redteam) + 3 stale tests that had asserted the vulnerable
+  behavior flipped. _Closed same day._
+- No other findings.
+
+**Attacked and verified clean:**
+- Callables: `giphyProxy` (auth + App Check + rate limit), `reconcileMyCounts`
+  (operates on token-derived uid only — no IDOR), `adminDeleteAccount`
+  (server-side admin-role gate), `confirmAdult` (App Check). No
+  `exportMyData` callable exists; data export is client-side and reads only
+  the caller's own rules-permitted data.
+- Public HTTP: `sharePage` (HTML-escaped, no reflected XSS; refuses
+  non-live / non-shareable / letter / whisper / midnight → 404),
+  `publicFeed` (anonymized projection `{text, tag, felt, ageHours}` — no
+  authorId/handle), `postsSitemap`, `shareCardImage` (image only).
+- Business logic: notification forging blocked (`fromUserId` pinned to
+  caller, deterministic notifId, `isRead` must be false); counts are
+  server-only; Most-Felt ranking derives from server counters.
+- Anonymity invariants (§4) all hold.
+
+## 9. Incident log
 
 _(none to date — append dated entries here)_

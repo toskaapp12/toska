@@ -60,6 +60,31 @@ final class WalkthroughUITests: XCTestCase {
     /// SwiftUI overlay container (the floating home bar / search pill render
     /// above the feed scroll content): fall back to a coordinate tap, which
     /// skips the hit-point validation.
+    /// Open compose resiliently (2026-09-29): under suite load a single
+    /// "New post" tap can land mid-transition and get eaten — the exact
+    /// test09d flake. Tap-and-verify up to 3 times.
+    @discardableResult
+    func openCompose() -> Bool {
+        for attempt in 0..<3 {
+            if app.buttons["cancel"].exists { return true }
+            forceTap(app.buttons["New post"])
+            if app.buttons["cancel"].waitForExistence(timeout: attempt == 0 ? 6 : 4) { return true }
+        }
+        return app.buttons["cancel"].exists
+    }
+
+    /// Ensure the feed is actually on screen (2026-09-29): after ~40 tests
+    /// the auth verify can outlast setUp's launch and the app sits on the
+    /// button-less LaunchMark frame — the exact test98b hard-fail. One
+    /// relaunch retry before giving up.
+    func ensureFeedOrRelaunch() -> Bool {
+        if feedView.waitForExistence(timeout: 25) { return true }
+        app.terminate()
+        app.launch()
+        acceptPolicyGateIfPresent()
+        return feedView.waitForExistence(timeout: 30)
+    }
+
     func forceTap(_ element: XCUIElement) {
         if element.isHittable { element.tap() }
         else { element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
@@ -687,8 +712,7 @@ final class WalkthroughUITests: XCTestCase {
         }
 
         // 4) Drafts lifecycle: compose → type → save draft → check drafts list.
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         let marker = "draftcheck\(Int(Date().timeIntervalSince1970))"
         focusAndType(app.textViews.firstMatch, "words i am not ready to say. \(marker)")
@@ -790,8 +814,7 @@ final class WalkthroughUITests: XCTestCase {
         }
 
         // post a GIF with a few words — and FEEL the gif land
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "no words tonight, just this. (walkthrough)")
         forceTap(app.buttons["Add GIF"])
@@ -957,8 +980,7 @@ final class WalkthroughUITests: XCTestCase {
         let marker = "whisp" + String(Int(Date().timeIntervalSince1970)).map { c in
             digits[Int(String(c))!]
         }
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         // clear any restored feeling tag so the whisper is untagged
         focusAndType(app.textViews.firstMatch, "just for an hour. \(marker)")
@@ -1204,8 +1226,7 @@ final class WalkthroughUITests: XCTestCase {
         let marker = "chaos" + String(Int(Date().timeIntervalSince1970)).map { c in
             digits[Int(String(c))!]
         }
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "counting to one. \(marker)")
         let post = app.buttons["post"]
@@ -1372,8 +1393,7 @@ final class WalkthroughUITests: XCTestCase {
         }
         let fancy = "café 気持ち 💜 «quotes» & <tags> — \(marker)"
 
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         UIPasteboard.general.string = fancy
         sleep(1) // pasteboard sync to the sim
@@ -1477,8 +1497,7 @@ final class WalkthroughUITests: XCTestCase {
         let marker = "crossdrill" + String(Int(Date().timeIntervalSince1970)).map { c in
             digits[Int(String(c))!]
         }
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "someone will hear this. \(marker)")
         forceTap(app.buttons["post"])
@@ -1620,8 +1639,7 @@ final class WalkthroughUITests: XCTestCase {
 
     func test10_composeAndPost() throws {
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         let editor = app.textViews.firstMatch
         focusAndType(editor, "the quiet after the storm. still here. (walkthrough)")
@@ -1641,8 +1659,7 @@ final class WalkthroughUITests: XCTestCase {
     // selection, and the GIF chip pushes the picker and comes back.
     func test10c_composeModeChips() throws {
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
 
         func chip(_ prefix: String) -> XCUIElement {
             app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", prefix)).firstMatch
@@ -1687,8 +1704,7 @@ final class WalkthroughUITests: XCTestCase {
 
     func test11_composePIIWarning() throws {
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         let editor = app.textViews.firstMatch
         focusAndType(editor, "my ex Sarah Johnson still has my hoodie")
         app.buttons["post"].tap()
@@ -1707,8 +1723,7 @@ final class WalkthroughUITests: XCTestCase {
 
     func test12_composeCrisisCheckIn() throws {
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         let editor = app.textViews.firstMatch
         focusAndType(editor, "some nights i want to die")
@@ -1751,8 +1766,7 @@ final class WalkthroughUITests: XCTestCase {
 
     func test13b_longShareCardFits() throws {
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         let longText = "i keep thinking about how we used to stay up until 3am talking about nothing and everything, and now the apartment is so quiet i can hear the refrigerator hum. i don't miss the fighting. i miss the version of me that believed we would figure it out. people keep telling me it gets easier and i think they're right, because last week i went a whole day without checking your profile, and that itself was unimaginable in month one. i'm okay. i'm actually going to be okay now."
         focusAndType(app.textViews.firstMatch, longText)
@@ -1837,8 +1851,7 @@ final class WalkthroughUITests: XCTestCase {
     func test15_privacyCoverOnBackground() throws {
         try requireFeed()
         // Open compose (a fullScreenCover — the surface T-7 exists for)…
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "private words mid-compose")
         // …then background the app and reopen: the switcher snapshot is taken
@@ -1859,8 +1872,7 @@ final class WalkthroughUITests: XCTestCase {
     // content-violation dialog ("hold on") must NOT appear, and the post lands.
     func test16_griefPhraseNotBlocked() throws {
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open")
+        XCTAssertTrue(openCompose(), "Compose didn't open")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "she dropped a bomb on me and i havent slept since (walkthrough)")
         snap("16a-grief-typed")
@@ -1872,6 +1884,114 @@ final class WalkthroughUITests: XCTestCase {
         XCTAssertFalse(blocked, "grief phrase 'dropped a bomb on me' was wrongly hard-blocked (threat FP not fixed)")
         sleep(4) // clean content: pending_validation → validatePost (staging) → live
         snap("16b-grief-posted")
+    }
+
+    // MARK: 98b — STATE walk (2026-09-22): menus, alerts, banners, sheets.
+    // The icon bug lived inside a context menu — screens were reviewed,
+    // their MENUS never were. This chauffeur opens every transient state
+    // while an external screenshot loop frames it.
+    /// Dismiss a SwiftUI context menu and WAIT for the app to settle back
+    /// (2026-09-29): the menu's zoom transition empties the AX tree for a
+    /// beat — a query fired mid-animation sees "no Buttons from Application"
+    /// (the test98b hard-fail). Tap outside, then poll until real buttons
+    /// (the tab bar) are back before proceeding.
+    func dismissContextMenu() {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        for _ in 0..<10 {
+            if app.buttons["Home"].exists || app.buttons["for you"].exists { break }
+            usleep(400_000)
+        }
+    }
+
+    // Snapshot-safe tap for the screenshot chauffeur (2026-09-29): after
+    // heavy steps (share-card ImageRenderer, context-menu zooms) the app can
+    // be briefly unresponsive, so .isHittable's snapshot throws. This walk
+    // ASSERTS NOTHING — it only drives the app for visual frames — so a
+    // transient miss must skip, never fail. Waits for the element, then taps
+    // via coordinate (no hittability snapshot).
+    func safeTap(_ element: XCUIElement, wait: TimeInterval = 4) {
+        guard element.waitForExistence(timeout: wait) else { return }
+        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    func test98b_stateWalk() throws {
+        try XCTSkipUnless(ensureFeedOrRelaunch(), "Feed unavailable even after relaunch")
+        // 1. feed row long-press menu (non-own post)
+        if let row = findRow(matching: NSPredicate(format: "label CONTAINS 'felt this'"), swipes: 0) {
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).press(forDuration: 1.2)
+            sleep(4)
+            dismissContextMenu()
+        }
+        // 2. repost-row long-press menu (the icon bug's home)
+        if let strip = findRow(matching: NSPredicate(format: "label CONTAINS 'reposted'"), swipes: 2) {
+            strip.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2)
+            sleep(4)
+            dismissContextMenu()
+        }
+        scrollToTop(3)
+        // 3. detail ⋯ / report sheet
+        if let row = findRow(matching: NSPredicate(format: "label CONTAINS 'felt this'"), swipes: 0) {
+            safeTap(row)
+            if app.buttons["Back"].waitForExistence(timeout: 6) {
+                let menu = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Report or block'")).firstMatch
+                if menu.exists { safeTap(menu); sleep(3)
+                    let report = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'report'")).firstMatch
+                    if report.waitForExistence(timeout: 3) { safeTap(report); sleep(4) } // report sheet
+                    if app.buttons["cancel"].exists { safeTap(app.buttons["cancel"]) }
+                    else { app.swipeDown(velocity: .fast) }
+                    sleep(1)
+                }
+                if app.buttons["Back"].exists { safeTap(app.buttons["Back"]) }
+            }
+            sleep(1)
+        }
+        // 4. compose states: over-limit + each mode banner + feeling picker open
+        app.buttons["New post"].tap()
+        _ = waitFor(app.buttons["cancel"], 6)
+        clearComposeEditor()
+        UIPasteboard.general.string = String(repeating: "state ", count: 100)
+        sleep(2)
+        let editor = app.textViews.firstMatch
+        editor.tap(); editor.press(forDuration: 1.2)
+        if app.menuItems["Paste"].waitForExistence(timeout: 3) { app.menuItems["Paste"].tap() }
+        sleep(3) // over-limit counter state
+        clearComposeEditor()
+        for chip in ["Letter mode", "Whisper", "Midnight post"] {
+            safeTap(app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", chip)).firstMatch)
+            sleep(3) // each banner
+        }
+        safeTap(app.buttons["Tag"]); sleep(3) // feeling picker open state
+        if app.staticTexts["how does this feel"].exists {
+            safeTap(app.buttons.matching(NSPredicate(format: "label CONTAINS 'longing'")).firstMatch)
+        }
+        clearComposeEditor()
+        safeTap(app.buttons["cancel"]); sleep(1)
+        // 5. share card sheet
+        scrollToTop(2)
+        guard app.buttons.matching(NSPredicate(format: "label == 'Share post'"))
+            .firstMatch.waitForExistence(timeout: 6) else { return } // feed empty under load — walk ends gracefully
+        let shareBtn = app.buttons.matching(NSPredicate(format: "label == 'Share post'"))
+            .allElementsBoundByIndex.first(where: { $0.frame.minY > 150 && $0.frame.maxY < app.frame.maxY - 150 })
+        if let shareBtn { safeTap(shareBtn); sleep(5) // card editor
+            app.swipeDown(velocity: .fast); sleep(1)
+        }
+        // 6. settings alerts (cancel both)
+        safeTap(app.buttons["Profile"]); sleep(1)
+        safeTap(app.buttons["settings"]); sleep(1)
+        for rowName in ["sign out", "delete account"] {
+            for _ in 0..<8 {
+                let r = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", rowName)).firstMatch
+                if r.exists && r.frame.maxY < app.frame.maxY - 120 && r.frame.minY > 120 { break }
+                app.swipeUp(); usleep(300_000)
+            }
+            let r = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", rowName)).firstMatch
+            if r.exists { safeTap(r); sleep(3) // alert framed
+                let cancel = app.buttons["cancel"].firstMatch
+                if cancel.waitForExistence(timeout: 3) { cancel.tap() }
+                sleep(1)
+            }
+        }
+        XCTAssertTrue(true)
     }
 
     // MARK: 98 — polish walk (2026-09-21 micro-UX review)

@@ -1267,8 +1267,7 @@ final class WalkthroughUITests: XCTestCase {
         snap("20d-double-tap-single-post")
 
         // -- Drill 5: background mid-compose, return — editor text intact.
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't reopen")
+        XCTAssertTrue(openCompose(), "Compose didn't reopen")
         clearComposeEditor()
         focusAndType(app.textViews.firstMatch, "left this halfway")
         XCUIDevice.shared.press(.home)
@@ -1288,8 +1287,7 @@ final class WalkthroughUITests: XCTestCase {
         app.launch()
         acceptPolicyGateIfPresent()
         try requireFeed()
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't open post-relaunch")
+        XCTAssertTrue(openCompose(), "Compose didn't open post-relaunch")
         sleep(1)
         let restored = (app.textViews.firstMatch.value as? String) ?? ""
         XCTAssertTrue(restored.contains("left this halfway"),
@@ -1442,8 +1440,7 @@ final class WalkthroughUITests: XCTestCase {
         // to exactly the 500 cap (UTF-16-aware truncation onChange) with post
         // still enabled — the app never lets pasted text create an invalid
         // state. (First rerun proved this: editor held exactly 500.)
-        app.buttons["New post"].tap()
-        XCTAssertTrue(waitFor(app.buttons["cancel"], 8), "Compose didn't reopen")
+        XCTAssertTrue(openCompose(), "Compose didn't reopen")
         clearComposeEditor()
         UIPasteboard.general.string = String(repeating: "toska ", count: 100)
         sleep(2) // runner→sim pasteboard sync is async; 1s raced and pasted stale content
@@ -1946,8 +1943,7 @@ final class WalkthroughUITests: XCTestCase {
             sleep(1)
         }
         // 4. compose states: over-limit + each mode banner + feeling picker open
-        app.buttons["New post"].tap()
-        _ = waitFor(app.buttons["cancel"], 6)
+        _ = openCompose()
         clearComposeEditor()
         UIPasteboard.general.string = String(repeating: "state ", count: 100)
         sleep(2)
@@ -2012,8 +2008,7 @@ final class WalkthroughUITests: XCTestCase {
             if app.buttons["Back"].exists { forceTap(app.buttons["Back"]) }
             sleep(1)
         }
-        app.buttons["New post"].tap()
-        _ = waitFor(app.buttons["cancel"], 6); sleep(4)   // 5 compose
+        _ = openCompose(); sleep(4)   // 5 compose
         forceTap(app.buttons["Tag"]); sleep(4)             // 6 feeling picker
         if app.staticTexts["how does this feel"].exists {
             forceTap(app.buttons.matching(NSPredicate(format: "label CONTAINS 'longing'")).firstMatch)

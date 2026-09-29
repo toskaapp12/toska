@@ -613,19 +613,28 @@ describe("#3b held reply's liker list is gated on the reply's moderationStatus",
     await seedReplyDoc("p", "r", "replyauthor", { moderationStatus: modStatus });
     await seedRaw(["posts", "p", "replies", "r", "likes", "liker1"], { createdAt: new Date() });
   }
-  it("CONTROL: a third party CAN read likers of a LIVE reply", async () => {
+  // DE-ANON FIX (2026-09-29 pentest): reply-likes are now own-doc-or-admin,
+  // regardless of the reply's visibility — a third party (and even the reply
+  // author) can never enumerate/read who liked a reply. Only the liker reads
+  // their own like doc (dedup/unlike).
+  it("a third party CANNOT read another's like doc on a LIVE reply", async () => {
     await setupLike("live");
     const db = env.authenticatedContext("third").firestore();
-    await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r").collection("likes").doc("liker1").get());
+    await assertFails(db.collection("posts").doc("p").collection("replies").doc("r").collection("likes").doc("liker1").get());
   });
   it("a third party CANNOT read likers of a HELD reply", async () => {
     await setupLike("pending_review");
     const db = env.authenticatedContext("third").firestore();
     await assertFails(db.collection("posts").doc("p").collection("replies").doc("r").collection("likes").doc("liker1").get());
   });
-  it("the reply author CAN read likers of their own held reply", async () => {
+  it("the reply author CANNOT read another user's like on their reply (de-anon)", async () => {
     await setupLike("pending_review");
     const db = env.authenticatedContext("replyauthor").firestore();
+    await assertFails(db.collection("posts").doc("p").collection("replies").doc("r").collection("likes").doc("liker1").get());
+  });
+  it("the liker CAN read their OWN like doc (dedup/unlike)", async () => {
+    await setupLike("live");
+    const db = env.authenticatedContext("liker1").firestore();
     await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r").collection("likes").doc("liker1").get());
   });
 });

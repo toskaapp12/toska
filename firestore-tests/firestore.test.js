@@ -2707,10 +2707,17 @@ describe("pending-review: post subcollections inherit parent visibility", () => 
     );
   });
 
-  it("still lets any authed user read likes on a live post", async () => {
+  it("DE-ANON FIX (2026-09-29): a user CANNOT read another user's like doc, even on a live post", async () => {
     const bob = env.authenticatedContext("bob").firestore();
-    await assertSucceeds(
+    await assertFails(
       bob.collection("posts").doc("live").collection("likes").doc("dave").get()
+    );
+  });
+
+  it("a user CAN still read their OWN like doc on a live post (dedup/unlike)", async () => {
+    const dave = env.authenticatedContext("dave").firestore();
+    await assertSucceeds(
+      dave.collection("posts").doc("live").collection("likes").doc("dave").get()
     );
   });
 

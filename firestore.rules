@@ -1687,11 +1687,10 @@ service cloud.firestore {
           //     DELETED reply's surviving like docs (cleanup pending) fall to
           //     the own-doc/admin leg — same anti-enumeration rationale as
           //     (a), and it keeps a client's own dedup/unlike read working.
-          allow read: if postVisibleToCaller(postId, request.auth.uid == likeUserId)
-            && ((!exists(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId))
-                  && (request.auth.uid == likeUserId || isAdmin()))
-              || (exists(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId))
-                  && moderationVisible(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data)));
+          // DE-ANON FIX (2026-09-29 pentest): same enumeration hole as post
+          // likes — on a LIVE reply the liker list was listable. Scope to
+          // own-doc-or-admin; nothing legitimate enumerates reply-likers.
+          allow read: if isAuth() && (request.auth.uid == likeUserId || isAdmin());
           // X-parity (owner 2026-09-22): self-like on your own reply is
           // ALLOWED — mirrors the post-like rule's flip.
           allow create: if isAuth() && request.auth.uid == likeUserId
@@ -1715,7 +1714,15 @@ service cloud.firestore {
         // posts/{deletedId}/likes and harvest the liker uid list before
         // cleanup; now only your own like doc (dedup/unlike transaction
         // reads) or an admin gets through.
-        allow read: if postVisibleToCaller(postId, request.auth.uid == likeUserId);
+        // DE-ANON FIX (2026-09-29 pentest): on a LIVE post postVisibleToCaller
+        // returned true, so the likes subcollection was fully ENUMERABLE — any
+        // authenticated user could list posts/{id}/likes and harvest the uid
+        // of everyone who felt it (a de-anonymization vector). Nothing legit
+        // lists likers: the client reads only its OWN like doc (dedup/unlike
+        // transaction) and shows the count from the post doc; delete cleanup
+        // is server-only. Scope reads to own-doc-or-admin — a list query can't
+        // satisfy this, so enumeration is denied while the own-doc get works.
+        allow read: if isAuth() && (request.auth.uid == likeUserId || isAdmin());
         // Same block enforcement as replies — a blocked user shouldn't be
         // able to bump someone's likeCount.
         // T-10 (2026-06-11): schema lock + createdAt pin, mirroring the reply-

@@ -1429,33 +1429,13 @@ struct PostDetailView: View {
                     }
                 }
 
-                // Delete likes. T-6 (2026-06-11): cap the read at 500 — the
-                // server trigger onPostDeletedCleanupSubtree deletes any remaining
-                // likes/replies/reflections once the post doc is removed below, so
-                // the client only needs a bounded best-effort first pass instead of
-                // reading the entire (possibly huge) likes set.
-                let likeSnap = try await db.collection("posts").document(postId).collection("likes").limit(to: 500).getDocumentsAsync()
-                let likeDocs = likeSnap.documents
-
-                // Delete only the likes subcollection docs (posts/{postId}/likes/{uid}),
-                // which the post author is permitted to delete per firestore.rules.
-                // Other users' /users/{uid}/liked/{postId} refs are NOT deleted here —
-                // each user owns their own /liked subcollection, and trying to batch-
-                // delete them from the post author's session fails the whole batch
-                // with permission-denied, aborting the delete entirely. Stale /liked
-                // refs self-clean on next visit via ProfileView.loadLikedPosts.
-                let likeChunks = stride(from: 0, to: likeDocs.count, by: 499).map {
-                    Array(likeDocs[$0..<min($0 + 499, likeDocs.count)])
-                }
-                for chunk in likeChunks {
-                    let batch = db.batch()
-                    for doc in chunk {
-                        batch.deleteDocument(doc.reference)
-                    }
-                    try await batch.commit()
-                }
-
-                // totalLikes decrements handled by Cloud Function on each like doc deletion above.
+                // Likes cleanup is SERVER-ONLY now (2026-09-29 pentest,
+                // de-anon fix): listing posts/{id}/likes leaked the liker-uid
+                // roster — a de-anonymization vector — so the read rule is
+                // tightened to own-doc/admin and NO client (not even the post
+                // author) may enumerate likers. onPostDeletedCleanupSubtree
+                // (Admin SDK) deletes the likes subcollection when the post
+                // doc is removed below, so the client pass is unnecessary.
             } catch {
                 isDeleting = false
                 deleteError = "couldn't delete — failed to clean up replies/likes: \(error.localizedDescription)"

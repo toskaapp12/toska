@@ -7,8 +7,7 @@
 # please report it privately here before any public disclosure — we will
 # work with you in good faith and credit you if you'd like.
 
-Contact: mailto:security@toskaapp.com
+Contact: mailto:salinarotess+security@gmail.com
 Preferred-Languages: en
 Canonical: https://app.toskaapp.com/.well-known/security.txt
-Policy: https://www.toskaapp.com/security
 Expires: 2027-09-29T00:00:00.000Z

@@ -82,7 +82,7 @@ operational security the app is built around.
 
 **Detection sources:** Crashlytics, the 6-hour Security Watch workflow,
 abuse-spike + crisis-email alerts, the de-anon/consistency probes, and
-inbound reports to `security@toskaapp.com`.
+inbound reports to `salinarotess+security@gmail.com`.
 
 **On a suspected security or privacy incident:**
 
@@ -109,7 +109,7 @@ git commit.
 ## 7. Responsible disclosure
 
 We publish `/.well-known/security.txt`. Researchers: email
-`security@toskaapp.com` before public disclosure; we respond in good faith
+`salinarotess+security@gmail.com` before public disclosure; we respond in good faith
 and credit you if you wish. A de-anonymization finding is our top severity.
 
 ## 8. Incident log

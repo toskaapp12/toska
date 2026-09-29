@@ -178,6 +178,46 @@ jobs:
   # 2026-09-27 (owner security-practices review): industry SAST alongside the
   # bespoke web audit. Semgrep community rulesets over the server + web JS,
   # gating on ERROR-severity findings (first local run: clean).
+  # 2026-09-29 (security-program gap-fill): secret scanning in CI. You've
+  # had a leak before (2026-07-22); this blocks a commit that reintroduces a
+  # key/token before it can reach GitHub. Complements GitHub's native secret
+  # scanning (enable in repo Settings → Code security).
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0   # full history so a reintroduced secret in any commit is caught
+    - name: gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+        GITLEAKS_ENABLE_SUMMARY: "true"
+
+  # 2026-09-29: software bill of materials — a manifest of every production
+  # dependency + version, generated fresh each push (increasingly expected;
+  # cheap insurance for supply-chain questions).
+  sbom:
+    name: SBOM (functions prod deps)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Generate CycloneDX SBOM
+      working-directory: functions
+      run: |
+        npm install --no-audit --no-fund --omit=dev
+        npx --yes @cyclonedx/cyclonedx-npm@latest --omit dev --output-file /tmp/sbom.json || npx --yes @cyclonedx/cyclonedx-npm@latest --output-file /tmp/sbom.json
+        echo "SBOM components: $(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/sbom.json')).components?.length ?? 0)")"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: sbom-functions
+        path: /tmp/sbom.json
+        retention-days: 90
+
   sast-semgrep:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest

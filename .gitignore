@@ -51,3 +51,5 @@ firebase-debug.*.log
 # Internal ops/audit docs + credentials must never be public (GitGuardian incident 2026-07-22)
 /*.md
 .local-credentials.md
+# ...except the public-by-design security policy (2026-09-29).
+!/SECURITY.md

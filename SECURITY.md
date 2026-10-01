@@ -68,7 +68,15 @@ operational security the app is built around.
 - **Authorization**: 375+ Firestore-rules tests incl. hostile-user +
   de-anon red team, every push.
 - **Dependency / SCA**: `npm audit` fail-on-high every 6h + Dependabot
-  advisories + CycloneDX SBOM per build.
+  advisories + CycloneDX SBOM per build. HIGH/CRITICAL are fixed promptly
+  (e.g. 2026-10-01 `@grpc/grpc-js` HIGH, patched same day the watchdog
+  flagged it). **Accepted risk:** a residual `uuid` MODERATE
+  (GHSA-w5hq-g745-h8pq — buffer-bounds only when a `buf` arg is passed)
+  sits transitively under `firebase-admin`; clearing it requires a
+  `firebase-admin` v14 major, which conflicts with `firebase-functions`
+  7.x peers (a dual core-package major bump). toska never calls `uuid`
+  with a `buf` arg, so real exploitability is nil — deferred until a
+  routine firebase-functions major, not forced pre-launch.
 - **Secret scanning**: gitleaks in CI + GitHub native secret scanning.
 - **DAST-equivalent**: live web audit (headers, deployed-bundle, /p/ 404)
   every 6h; hostile-client probes against the rules.

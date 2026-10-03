@@ -68,15 +68,18 @@ operational security the app is built around.
 - **Authorization**: 375+ Firestore-rules tests incl. hostile-user +
   de-anon red team, every push.
 - **Dependency / SCA**: `npm audit` fail-on-high every 6h + Dependabot
-  advisories + CycloneDX SBOM per build. HIGH/CRITICAL are fixed promptly
-  (e.g. 2026-10-01 `@grpc/grpc-js` HIGH, patched same day the watchdog
-  flagged it). **Accepted risk:** a residual `uuid` MODERATE
-  (GHSA-w5hq-g745-h8pq — buffer-bounds only when a `buf` arg is passed)
-  sits transitively under `firebase-admin`; clearing it requires a
-  `firebase-admin` v14 major, which conflicts with `firebase-functions`
-  7.x peers (a dual core-package major bump). toska never calls `uuid`
-  with a `buf` arg, so real exploitability is nil — deferred until a
-  routine firebase-functions major, not forced pre-launch.
+  advisories + CycloneDX SBOM per build. HIGH/CRITICAL are fixed promptly:
+  2026-10-01 `@grpc/grpc-js` HIGH patched same day the watchdog flagged it;
+  2026-10-03 the watchdog flagged two newly-disclosed HIGHs
+  (`@fastify/busboy` DoS, `node-forge` RSA-signature) — cleared by a
+  coordinated `firebase-admin` 13→14 + `firebase-functions` 7.2→7.4
+  dual-major bump (now peer-compatible; `node-forge` dropped entirely,
+  `busboy`→3.2.2), all 110 functions tests green. **Accepted risk:** a
+  residual `uuid` MODERATE (GHSA-w5hq-g745-h8pq — buffer-bounds only when a
+  `buf` arg is passed) remains transitively under `firebase-admin`;
+  the v14 line still vendors the affected `uuid`, and toska never calls
+  `uuid` with a `buf` arg, so real exploitability is nil — fixed when
+  the transitive pin advances, not force-forked.
 - **Secret scanning**: gitleaks in CI + GitHub native secret scanning.
 - **DAST-equivalent**: live web audit (headers, deployed-bundle, /p/ 404)
   every 6h; hostile-client probes against the rules.

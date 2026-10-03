@@ -5904,7 +5904,16 @@ exports.notifyAdminsOfNewReport = onDocumentCreated(
 // counter dedup, rate limiting) without the flaky trigger machinery, and
 // reusing this module's `db` avoids a second firebase-admin instance.
 // ============================================================
-module.exports.__test = {
+// Defined non-enumerable so the firebase-functions deploy-time loader
+// (7.3+) does NOT walk into it. That loader recurses through every
+// enumerable plain-object export to discover endpoints; the Admin-SDK
+// `db`/`FieldValue` handles have self-referential object graphs (esp.
+// firebase-admin 14), which blew the loader's stack ("Maximum call stack
+// size exceeded"). Non-enumerable keeps it invisible to Object.entries()
+// while tests still read it via require('./index.js').__test directly.
+Object.defineProperty(module.exports, "__test", {
+  enumerable: false,
+  value: {
   db,
   FieldValue,
   Timestamp,
@@ -5929,4 +5938,5 @@ module.exports.__test = {
   matchesCrisisPhrase,
   MOD_EXPLICIT_CRISIS,
   MOD_CONCERNING,
-};
+  },
+});

@@ -194,6 +194,17 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
     let folded = foldAmbiguousIL(aggressiveNormalizeForNameMatch(foldAmbiguousIL(text)))
     let foldedNoSpace = noSpaceOf(folded)
     let collapsed = collapseRepeats(deLeetExtra(normalized))
+    // 2026-10-07 pentest (mirror of moderationLogic.js): padding the DOUBLE
+    // letter itself ("killl myself") defeated the 3+→1 collapse — it destroys
+    // the double the phrase needs ("kil myself"). A 3+→2 form restores it,
+    // and collapsing the ambiguous-class fold catches pads that span the
+    // i/l pair ("kiilll myself").
+    func collapseRepeatsKeepDouble(_ s: String) -> String {
+        s.replacingOccurrences(of: "(.)\\1{2,}", with: "$1$1", options: .regularExpression)
+    }
+    let collapsedKeep = collapseRepeatsKeepDouble(deLeetExtra(normalized))
+    let foldedCollapsed = collapseRepeats(folded)
+    let foldedCollapsedNoSpace = noSpaceOf(foldedCollapsed)
     for phrase in list {
         let pNoSpace = String(phrase.filter { $0.isLetter || $0.isNumber }).lowercased()
         // Short tokens / initialisms (sa, sh, dv, csa, kms, kys) match ONLY as
@@ -201,7 +212,7 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
         // "salsa/visa/usa", "kys" inside "sky's"->"skys". Mirror of the server.
         if pNoSpace.count <= 3 {
             let pattern = "\\b\(pNoSpace)\\b"
-            for form in [lowered, normalized, collapsed] {
+            for form in [lowered, normalized, collapsed, collapsedKeep] {
                 if form.range(of: pattern, options: .regularExpression) != nil { return true }
             }
             continue
@@ -209,9 +220,13 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
         if lowered.contains(phrase) || normalized.contains(phrase) { return true }
         if folded.contains(foldAmbiguousIL(phrase)) { return true }
         if collapsed.contains(phrase) { return true }
+        if collapsedKeep.contains(phrase) { return true }
+        if foldedCollapsed.contains(collapseRepeats(foldAmbiguousIL(phrase))) { return true }
         if pNoSpace.count >= 6 &&
             (noSpace.contains(pNoSpace) || foldedNoSpace.contains(foldAmbiguousIL(pNoSpace))
-             || collapseRepeats(noSpace).contains(pNoSpace)) { return true }
+             || collapseRepeats(noSpace).contains(pNoSpace)
+             || collapseRepeatsKeepDouble(noSpace).contains(pNoSpace)
+             || foldedCollapsedNoSpace.contains(collapseRepeats(foldAmbiguousIL(pNoSpace)))) { return true }
     }
     return false
 }
@@ -272,6 +287,11 @@ private let nameConfusableMap: [Character: Character] = [
     "ѕ": "s", "ԁ": "d", "һ": "h",
     // Latin script g (U+0261), the standard "g" confusable outside Cyrillic
     "ɡ": "g",
+    // Dotless i family (2026-10-07 pentest): Turkish ı (U+0131) renders ≈ "i"
+    // but has no NFD decomposition and wasn't mapped — "kıll myself" slipped
+    // every lane. İ (U+0130) needs no entry: lowercasing yields i + combining
+    // dot, which the NFD strip handles. Mirror of functions/moderation.js.
+    "ı": "i", "Ɨ": "i", "ɨ": "i", "ɩ": "i", "Ɩ": "i",
     // Greek uppercase
     "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
     "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
@@ -1027,27 +1047,15 @@ func generateUniqueHandleAsync(attempt: Int = 0) async -> String {
     let adj = handleAdjectives.randomElement() ?? "quiet"
     let noun = handleNouns.randomElement() ?? "ghost"
     let num = Int.random(in: 1...999)
-    let candidate = "\(adj)_\(noun)_\(num)"
-
-    let snap: QuerySnapshot?
-    do {
-        snap = try await Firestore.firestore().collection("users")
-            .whereField("handle", isEqualTo: candidate)
-            .limit(to: 1)
-            .getDocumentsAsync()
-    } catch {
-        // Network/permission/timeout — UUID fallback is statistically
-        // unique with no further round-trip, which is what we want when
-        // the backend is misbehaving during a sign-up flow.
-        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
-    }
-    if Task.isCancelled {
-        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
-    }
-    if let docs = snap?.documents, !docs.isEmpty {
-        return await generateUniqueHandleAsync(attempt: attempt + 1)
-    }
-    return candidate
+    // 2026-10-07 review: NO availability pre-read. The old users-by-handle
+    // query was ALWAYS permission-denied (a list query can't satisfy the
+    // per-doc users read rule), so the catch branch fired on every signup
+    // and silently replaced every word-pair handle with the anonymous_ UUID
+    // fallback — the generator below this line was dead code in production.
+    // (handles/{h} point gets are now admin-only too — de-anon fix.) No read
+    // is needed: commitUserDocClaimingHandle's batched create is the arbiter;
+    // a collision just fails that commit and draws a fresh candidate.
+    return "\(adj)_\(noun)_\(num)"
 }
 
 /// Commits a new users/{uid} doc TOGETHER with its handles/{handle.lowercased()}

@@ -42,6 +42,10 @@ beforeEach(async () => {
     });
     await db.collection("users").doc(ATTACKER).set({
       handle: "attacker_h", createdAt: new Date(),
+      // Realistic attacker: fully onboarded (publishing surfaces gate on
+      // confirmedAdult, and the allow-assertions below must fail only on the
+      // contract under test, never on an unrelated missing-field denial).
+      confirmedAdult: true,
     });
     await db.collection("posts").doc("vpost").set({
       authorId: VICTIM, authorHandle: "quiet_moon_882", text: "i still check your location",
@@ -128,5 +132,93 @@ describe("DE-ANON RED TEAM: privilege + tamper", () => {
   });
   it("attacker CANNOT flip the kill switch (config write)", async () => {
     await assertFails(asAttacker().collection("config").doc("clientPolicy").set({ minBuild: 999 }));
+  });
+});
+
+// ── 2026-10-07 fix-round contracts ──
+describe("DE-ANON RED TEAM: 2026-10-07 tightenings", () => {
+  it("attacker CANNOT point-get the handles registry (keyspace enumeration)", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("handles").doc("quiet_moon_882").set({ uid: VICTIM });
+    });
+    await assertFails(asAttacker().collection("handles").doc("quiet_moon_882").get());
+  });
+
+  it("attacker CANNOT squat the victim's deterministic repost slot", async () => {
+    // Repost doc under an id embedding the VICTIM's uid — frames the victim
+    // as the reposter and permanently blocks their real repost (create would
+    // collide with a doc they can't delete).
+    await assertFails(asAttacker().collection("posts").doc(`${VICTIM}_repost_vpost`).set({
+      authorId: ATTACKER, text: "i still check your location",
+      isRepost: true, originalPostId: "vpost", originalAuthorId: VICTIM,
+      likeCount: 0, replyCount: 0, repostCount: 0,
+      moderationStatus: "pending_validation", createdAt: serverTimestamp(),
+      isShareable: true,
+    }));
+  });
+
+  it("notification create is NOT an authorship oracle for held posts", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().collection("posts").doc("heldpost").set({
+        authorId: VICTIM, authorHandle: "quiet_moon_882", text: "held",
+        likeCount: 0, replyCount: 0, repostCount: 0, isRepost: false,
+        moderationStatus: "pending_review", createdAt: new Date(),
+      });
+      // Attacker even owns a like doc on it (seeded as if pre-hold).
+      await ctx.firestore().collection("posts").doc("heldpost")
+        .collection("likes").doc(ATTACKER).set({ createdAt: new Date() });
+    });
+    // The verdict of this create was the oracle: allowed == "VICTIM authored
+    // heldpost". Must now be denied because the post is not live.
+    await assertFails(asAttacker().collection("users").doc(VICTIM)
+      .collection("notifications").doc(`like_heldpost_${ATTACKER}`).set({
+        type: "like", postId: "heldpost", fromUserId: ATTACKER,
+        createdAt: serverTimestamp(),
+      }));
+  });
+
+  it("post create REQUIRES moderationStatus=pending_validation (start-hidden is enforced)", async () => {
+    const base = {
+      authorId: ATTACKER, text: "hello world",
+      likeCount: 0, replyCount: 0, repostCount: 0,
+      createdAt: serverTimestamp(),
+    };
+    // Omitted field would default-read "live" pre-moderation — denied.
+    await assertFails(asAttacker().collection("posts").doc("np1").set(base));
+    await assertFails(asAttacker().collection("posts").doc("np2").set({
+      ...base, moderationStatus: "live",
+    }));
+    await assertSucceeds(asAttacker().collection("posts").doc("np3").set({
+      ...base, moderationStatus: "pending_validation",
+    }));
+  });
+
+  it("reply create REQUIRES moderationStatus=pending_validation", async () => {
+    const base = {
+      authorId: ATTACKER, text: "a reply",
+      createdAt: serverTimestamp(),
+    };
+    await assertFails(asAttacker().collection("posts").doc("vpost")
+      .collection("replies").doc("nr1").set(base));
+    await assertSucceeds(asAttacker().collection("posts").doc("vpost")
+      .collection("replies").doc("nr2").set({
+        ...base, moderationStatus: "pending_validation",
+      }));
+  });
+
+  it("promptDate rides the create (validatePost strips malformed values server-side)", async () => {
+    // The clause was moved OUT of rules — the posts create rule runs at
+    // Firestore's 1000-expression cap and the extra expressions tipped valid
+    // creates into "unable to evaluate" denials. validatePost now strips any
+    // promptDate that isn't exactly yyyy-MM-dd (triggers don't run in the
+    // rules emulator, so only the create verdicts are asserted here).
+    const base = {
+      authorId: ATTACKER, text: "prompt response",
+      likeCount: 0, replyCount: 0, repostCount: 0,
+      createdAt: serverTimestamp(), moderationStatus: "pending_validation",
+    };
+    await assertSucceeds(asAttacker().collection("posts").doc("pd3").set({
+      ...base, promptDate: "2026-10-07",
+    }));
   });
 });

@@ -832,10 +832,10 @@ function viewSignUp() {
 async function claimHandleAndCreateUserDoc(uid) {
     for (let attempt = 0; attempt < 4; attempt++) {
         const handle = "anonymous_" + crypto.randomUUID().replaceAll("-", "").slice(0, 8);
-        try {
-            const taken = await getDoc(doc(db, "handles", handle.toLowerCase()));
-            if (taken.exists()) continue;
-        } catch { /* availability check is best-effort; the batch is the arbiter */ }
+        // No availability pre-read: handles/{h} gets are admin-only now
+        // (2026-10-07 de-anon fix — the registry was point-get enumerable).
+        // The batched create below is the arbiter, as it always was: a
+        // collision fails the commit and we retry with a fresh candidate.
         const batch = writeBatch(db);
         batch.set(doc(db, "users", uid), {
             handle,

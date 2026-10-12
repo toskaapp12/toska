@@ -431,6 +431,19 @@ function matchesCrisisPhrase(rawText, list) {
   // de-spaced initialisms like "s . a" -> "sa", so word-boundary checks below
   // can find them).
   const collapsed = collapseRepeats(deLeetCrisisExtra(normalized));
+  // 2026-10-07 pentest: padding the DOUBLE letter itself ("killl myself",
+  // "betttter off dead") defeated the 3+→1 collapse — it destroys the double
+  // the phrase needs ("kil myself"), the exact failure mode A.5 #2 already
+  // fixed for the slur-regex lane with collapseRepeatsKeepDouble but never
+  // wired into THIS matcher. Run a 3+→2 form through the same lanes.
+  const collapsedKeep = collapseRepeatsKeepDouble(deLeetCrisisExtra(normalized));
+  // Padding mixed WITH i/l substitution ("kiilll myself") survives both
+  // collapse forms because the pad spans two letters; inside the ambiguous-
+  // class fold the i/l run becomes one character class, so collapsing the
+  // folded form catches every mix. Crisis-only; over-detection is the
+  // accepted-safe direction here.
+  const foldedCollapsed = collapseRepeats(folded);
+  const foldedCollapsedNoSpace = foldedCollapsed.replace(/[^a-z0-9]/g, "");
   return list.some((phrase) => {
     const pNoSpace = phrase.replace(/[^a-z0-9]/g, "");
     // Short tokens / initialisms (sa, sh, dv, csa, kms, kys) are matched ONLY as
@@ -441,19 +454,27 @@ function matchesCrisisPhrase(rawText, list) {
     // "sky's -> skys" harassment false positive the old substring path had.)
     if (pNoSpace.length <= 3) {
       const re = new RegExp("\\b" + pNoSpace + "\\b");
-      return re.test(lowered) || re.test(normalized) || re.test(collapsed);
+      return re.test(lowered) || re.test(normalized) || re.test(collapsed) ||
+        re.test(collapsedKeep);
     }
     if (lowered.includes(phrase) || normalized.includes(phrase)) return true;
     if (folded.includes(foldAmbiguousIL(phrase))) return true;
     // Padding/leet-collapsed form for longer coded words ("unaliiive",
-    // "sewersl1de" -> handled via folded, "9rippy sock").
+    // "sewersl1de" -> handled via folded, "9rippy sock"). BOTH collapse
+    // depths, same as matchesEvasionRegex: 3+→1 restores vowel padding,
+    // 3+→2 restores a padded double letter ("killl"→"kill").
     if (collapsed.includes(phrase)) return true;
+    if (collapsedKeep.includes(phrase)) return true;
+    // Fold-then-collapse for pads inside the ambiguous i/l class.
+    if (foldedCollapsed.includes(collapseRepeats(foldAmbiguousIL(phrase)))) return true;
     // Space/punct-insensitive fallback, length-guarded so short tokens
     // don't false-positive against arbitrary letter runs.
     if (pNoSpace.length < 6) return false;
     return noSpace.includes(pNoSpace) ||
       foldedNoSpace.includes(foldAmbiguousIL(pNoSpace)) ||
-      collapseRepeats(noSpace).includes(pNoSpace);
+      collapseRepeats(noSpace).includes(pNoSpace) ||
+      collapseRepeatsKeepDouble(noSpace).includes(pNoSpace) ||
+      foldedCollapsedNoSpace.includes(collapseRepeats(foldAmbiguousIL(pNoSpace)));
   });
 }
 

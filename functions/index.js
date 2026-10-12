@@ -2388,6 +2388,20 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   const postData = event.data.data();
   if (!postData) return;
 
+  // promptDate sanitation (2026-10-07 review): the field was allowlisted in
+  // rules with zero validation — a tampered client could attach ~900KB of
+  // unscanned free text to a world-readable post as a side channel. It can't
+  // be rules-validated (the posts create rule runs at Firestore's
+  // 1000-expression cap), so strip anything that isn't the exact yyyy-MM-dd
+  // the daily-prompt composer writes. Strip (not hold): the post itself is
+  // legitimate; only the side-channel field is forged.
+  if ("promptDate" in postData
+      && (typeof postData.promptDate !== "string"
+          || !/^\d{4}-\d{2}-\d{2}$/.test(postData.promptDate))) {
+    console.warn(`validatePost ${postId}: stripping malformed promptDate (${typeof postData.promptDate}, ${String(postData.promptDate).length} chars)`);
+    await db.collection("posts").doc(postId).update({ promptDate: FieldValue.delete() });
+  }
+
   // Reposts now run through their own validation path. Previously this
   // trigger early-returned on isRepost === true, which let a tampered
   // client write a repost doc with arbitrary text + originalAuthorId
@@ -2804,6 +2818,34 @@ exports.validateReply = onDocumentCreated(
       console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
       await replyRef.delete();
       return;
+    }
+
+    // 2026-10-07 review: parentPostText/parentPostHandle are CLIENT-supplied
+    // snapshot fields (rules only size-cap them, no pin to the real parent) —
+    // a tampered client could ship an innocuous `text` with 2000 chars of
+    // unscanned abuse/crisis text or a fabricated quote under a victim's
+    // handle in the snapshot. Overwrite both from the parent doc so only
+    // server-truth persists. One-time: the reply UPDATE allowlist is
+    // hasOnly(text, editedAt), so a client can't re-forge them later.
+    if ("parentPostText" in replyData || "parentPostHandle" in replyData) {
+      const parentSnap = await db.collection("posts").doc(postId).get();
+      if (parentSnap.exists) {
+        const parent = parentSnap.data() || {};
+        const trueText = typeof parent.text === "string" ? parent.text.slice(0, 2000) : "";
+        const trueHandle = typeof parent.authorHandle === "string" ? parent.authorHandle.slice(0, 40) : "";
+        const pins = {};
+        if ("parentPostText" in replyData && replyData.parentPostText !== trueText) {
+          pins.parentPostText = trueText;
+        }
+        if ("parentPostHandle" in replyData && replyData.parentPostHandle !== trueHandle) {
+          pins.parentPostHandle = trueHandle;
+        }
+        if (Object.keys(pins).length > 0) {
+          console.warn(`Reply ${replyId} on ${postId}: re-pinning forged parent snapshot fields (${Object.keys(pins).join(", ")})`);
+          await replyRef.update(pins);
+        }
+      }
+      // Parent already gone: the deleted-parent cleanup path owns this reply.
     }
 
     // PII → recoverable HOLD (M-1), not delete. The reply is hidden from other
@@ -4210,15 +4252,23 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
   async (event) => {
     const reportData = event.data.data();
     if (!reportData) return;
-    if (reportData.type !== "post") return;
+    // 2026-10-07 review: auto-hide existed ONLY for posts — a brigade-reported
+    // abusive REPLY stayed live until a human acted (up to the 24h SLA).
+    // Replies now share the same 3-distinct-reporters rule; user/conversation
+    // reports still have their own admin paths and hide nothing.
+    const isReplyReport = reportData.type === "reply";
+    if (reportData.type !== "post" && !isReplyReport) return;
     const postId = reportData.postId;
     if (typeof postId !== "string" || !postId) return;
+    const replyId = isReplyReport ? reportData.replyId : null;
+    if (isReplyReport && (typeof replyId !== "string" || !replyId)) return;
 
-    const postRef = db.collection("posts").doc(postId);
-    const postSnap = await postRef.get();
-    if (!postSnap.exists) return;
-    const postData = postSnap.data() || {};
-    if (postData.moderationStatus === "pending_review") return; // already hidden
+    const targetRef = isReplyReport
+      ? db.collection("posts").doc(postId).collection("replies").doc(replyId)
+      : db.collection("posts").doc(postId);
+    const targetSnap = await targetRef.get();
+    if (!targetSnap.exists) return;
+    if ((targetSnap.data() || {}).moderationStatus === "pending_review") return; // already hidden
 
     const since = Timestamp.fromDate(new Date(Date.now() - 24 * 60 * 60 * 1000));
     // Bound the read (2026-06-01 audit): we only need to know whether >= 3
@@ -4227,9 +4277,12 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
     // distinct reporter's own report re-fires this with their doc in-window.
     // 60 comfortably clears the threshold given the per-target rate limit
     // (Tier 2: 10/hr), while capping memory if that limiter is ever bypassed.
-    // Uses the existing (type, postId, createdAt DESC) composite index.
+    // Uses the existing (type, postId, createdAt DESC) composite index for
+    // BOTH kinds — reply reports query by their parent postId and filter
+    // replyId in memory, deliberately avoiding a new composite index (the
+    // checkReportSLA incident is what a missing index does to a trigger).
     const reportsSnap = await db.collection("reports")
-      .where("type", "==", "post")
+      .where("type", "==", reportData.type)
       .where("postId", "==", postId)
       .where("createdAt", ">", since)
       .orderBy("createdAt", "desc")
@@ -4241,6 +4294,7 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
     // rule enforcement, but defensive).
     const distinctReporters = new Set();
     reportsSnap.forEach((d) => {
+      if (isReplyReport && d.get("replyId") !== replyId) return;
       const r = d.get("reportedBy");
       if (typeof r === "string" && r) distinctReporters.add(r);
     });
@@ -4248,10 +4302,16 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
     const THRESHOLD = 3;
     if (distinctReporters.size < THRESHOLD) return;
 
-    console.log(`auto-hide post ${postId} — ${distinctReporters.size} distinct reports in 24h`);
-    await setPendingReview(postRef, "user_reports", {
-      autoHiddenReportCount: distinctReporters.size,
-    });
+    if (isReplyReport) {
+      console.log(`auto-hide reply ${replyId} on ${postId} — ${distinctReporters.size} distinct reports in 24h`);
+      // setReplyPendingReview also scrubs the reply's notification preview.
+      await setReplyPendingReview(targetRef, "user_reports");
+    } else {
+      console.log(`auto-hide post ${postId} — ${distinctReporters.size} distinct reports in 24h`);
+      await setPendingReview(targetRef, "user_reports", {
+        autoHiddenReportCount: distinctReporters.size,
+      });
+    }
   }
 );
 
@@ -5081,9 +5141,29 @@ exports.sharePage = onRequest(async (req, res) => {
       notFound();
       return;
     }
+    // DE-ANON (2026-10-07 review): the old flow 301'd only when the repost
+    // DOC existed — an unauthenticated, CDN-cacheable, HEAD-friendly oracle
+    // for "did uid repost postId". Redirect on the id SHAPE alone, before
+    // any Firestore read, so every well-formed repost URL answers 301
+    // identically whether or not that repost exists. The original re-runs
+    // the full gate after the hop, so a fabricated tail still 404s there.
+    // Reply-reposts have no public /p/ target (both clients suppress the
+    // link) — 404 on shape alone so existence never leaks via read.
+    if (share.isReplyRepostId(postId)) {
+      notFound();
+      return;
+    }
+    const repostTarget = share.repostShapeTarget(postId);
+    if (repostTarget) {
+      res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+      res.redirect(301, `/p/${repostTarget}`);
+      return;
+    }
     const snap = await db.collection("posts").doc(postId).get();
     const verdict = share.evaluateSharePage(snap.exists ? snap.data() : null, Date.now());
     if (verdict.outcome === "redirect") {
+      // Backstop for a repost doc whose id somehow doesn't match the
+      // deterministic shape (shouldn't exist; rules pin the id format).
       // The repost→original edge never changes; if the original is (or later
       // becomes) unshareable, the target itself 404s.
       res.set("Cache-Control", "public, max-age=300, s-maxage=600");
@@ -5128,6 +5208,13 @@ exports.shareCardImage = onRequest({ memory: "512MiB" }, async (req, res) => {
     const m = req.path.match(/^\/og\/([^/]+)\.png$/);
     const postId = m ? m[1] : null;
     if (!share.isValidDocId(postId)) {
+      notFound();
+      return;
+    }
+    // Mirror of sharePage's shape short-circuit: a repost-id card has no
+    // consumer and must not cost a Firestore read (nor leak existence —
+    // though here both branches 404 identically anyway).
+    if (share.repostShapeTarget(postId) || share.isReplyRepostId(postId)) {
       notFound();
       return;
     }
@@ -5420,6 +5507,14 @@ exports.adminDeleteAccount = onCall(
     const targetUid = request.data?.uid;
     if (typeof targetUid !== "string" || !targetUid) {
       throw new HttpsError("invalid-argument", "missing uid");
+    }
+    // 2026-10-07 review: charset-validate before any doc() path use. A uid
+    // containing "/" threw inside the identity-capture try and surfaced as a
+    // misleading `internal "identity capture failed"`; Firebase uids are
+    // 1–128 chars of [A-Za-z0-9] (ours are 28), and our synthetic ids never
+    // reach this path.
+    if (!/^[A-Za-z0-9]{1,128}$/.test(targetUid)) {
+      throw new HttpsError("invalid-argument", "malformed uid");
     }
     if (targetUid === callerUid) {
       throw new HttpsError("failed-precondition", "cannot delete your own account here");
@@ -5873,6 +5968,46 @@ exports.auditPostDeletion = onDocumentDeleted(
 // failures of sendPushNotification / onUserDocDeleted / validatePost.
 // ============================================================
 
+// ============================================================
+// Handle screening (2026-10-07 review)
+//
+// Handles were the one user-authored string NO matcher ever saw — rules only
+// charset/length/reserved-check them, so "wanna_die_tonight_88" or
+// "kys_u_all" rode every byline, notification, and the search index
+// (searchTokensFor tokenizes authorHandle) without a single scan. Screen the
+// uniqueness-registry create (the choke point both signup flows share) and
+// file a standard report doc on a hit — it lands in the admin dashboard's
+// existing queue, counts toward the SLA sweep, and notifyAdminsOfNewReport
+// (plus its crisis page for explicit-crisis text) fires on it like any other
+// report. No auto-rename: a human decides; the registry row stays.
+// ============================================================
+exports.onHandleCreatedScreen = onDocumentCreated(
+  "handles/{handleLower}",
+  async (event) => {
+    const handle = event.params.handleLower;
+    const uid = event.data?.data()?.uid;
+    // Underscores/hyphens are the generator's separators — scan the worded form.
+    const worded = handle.replace(/[_-]+/g, " ");
+    const flagReason = computePostFlagReason(worded);
+    const crisis = isPostConcerning(worded);
+    if (!flagReason && !crisis) return;
+    const reason = flagReason || "crisis_handle";
+    console.warn(`handle screen: "${handle}" tripped ${reason}`);
+    // Deterministic id: redelivery-idempotent, one report per handle.
+    await db.collection("reports").doc(`handlescreen_${handle}`).set({
+      reportedBy: "system_handle_screen",
+      reason,
+      reasonLabel: "handle screening",
+      type: "user",
+      status: "pending",
+      createdAt: FieldValue.serverTimestamp(),
+      reportedUserId: typeof uid === "string" ? uid : null,
+      reportedHandle: handle.slice(0, 40),
+      text: `automated: new handle "${handle}" matched ${reason}`,
+    }, { merge: true });
+  }
+);
+
 exports.notifyAdminsOfNewReport = onDocumentCreated(
   "reports/{reportId}",
   async (event) => {
@@ -5892,6 +6027,31 @@ exports.notifyAdminsOfNewReport = onDocumentCreated(
       reportedUserId: data.reportedUserId || null,
       severity: "WARNING",
     }));
+
+    // 2026-10-07 review: a reporter's free text was never crisis-scanned — a
+    // report whose text signals active danger ("the author says they're doing
+    // it tonight") sat in the ordinary queue for up to the 24h SLA. Run the
+    // same matcher the content pipeline uses; on explicit crisis, page the
+    // crisis recipients through the standard PAGE-then-CLAIM path (per-report
+    // claim id keeps redelivery idempotent). L-1 holds: the page carries no
+    // report content, just the pointer — the admin reads it in the dashboard.
+    const reporterText = [data.text, data.reasonLabel]
+      .filter((s) => typeof s === "string" && s.length > 0).join(" ");
+    if (reporterText && isPostExplicitCrisis(reporterText)) {
+      await pageAdminsForCrisis({
+        claimRef: db.collection("processedTriggerEvents")
+          .doc(`crisisreport_${event.params.reportId}`),
+        title: "report flags possible crisis",
+        body: "a report's text matched explicit-crisis phrasing — review now",
+        dataPayload: {
+          kind: "crisis_report",
+          reportId: event.params.reportId,
+          type: typeof data.type === "string" ? data.type : "unknown",
+          postId: typeof data.postId === "string" ? data.postId : "",
+        },
+        logLabel: `crisis-report ${event.params.reportId}`,
+      });
+    }
   }
 );
 

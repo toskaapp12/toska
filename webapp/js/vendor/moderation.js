@@ -293,6 +293,13 @@ const NAME_CONFUSABLE_MAP = {
   "ѕ": "s", "ԁ": "d", "һ": "h",
   // Latin script g (U+0261), the standard "g" confusable outside Cyrillic
   "ɡ": "g",
+  // Dotless i family (2026-10-07 pentest): Turkish ı (U+0131) is typeable on
+  // a standard Turkish layout and renders ≈ "i", but has no NFD decomposition
+  // and wasn't mapped — "kıll myself"/"suıcıde" slipped every matcher lane
+  // (the no-space fallback even DELETED it as a non-[a-z0-9] char). Fold the
+  // lowercase forms and their capitals; İ (U+0130) needs no entry — it
+  // lowercases to i + combining dot, which the NFD strip already handles.
+  "ı": "i", "Ɨ": "i", "ɨ": "i", "ɩ": "i", "Ɩ": "i",
   // Greek uppercase
   "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K",
   "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",

@@ -21,12 +21,10 @@ struct OtherProfileView: View {
     @Environment(\.dismiss) var dismiss
     @State private var isFollowing = false
     @State private var posts: [OtherProfilePost] = []
-    @State private var userReplies: [MyReply] = []
     @State private var followerCount = 0
     @State private var followingCount = 0
     @State private var totalLikes = 0
     @State private var joinedDate = ""
-    @State private var selectedTab = 0
     @State private var showReport = false
     @State private var showBlockedAlert = false
     @State private var showReportedAlert = false
@@ -51,8 +49,6 @@ struct OtherProfileView: View {
     // successful snapshot; failed drives the shared ToskaErrorBanner.
     @State private var postsLoaded = false
     @State private var postsLoadFailed = false
-    @State private var repliesLoaded = false
-    @State private var repliesLoadFailed = false
     
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
@@ -105,7 +101,6 @@ struct OtherProfileView: View {
                                 profileLoadFailed = false
                                 loadProfile()
                                 loadPosts()
-                                loadReplies()
                             }
                         }
                         // Profile info — Threads-y treatment: handle was
@@ -170,35 +165,34 @@ struct OtherProfileView: View {
                         .padding(.top, 16)
                         .padding(.bottom, 16)
                         
-                        // Text tabs — same dialect as the own-profile tabs
-                        // (the icon pair was the last legacy segment control;
-                        // owner 2026-09-17 user-mindset pass).
+                        // Posts header (2026-10-07 review): the "replies" tab is
+                        // GONE, not hidden. Its collectionGroup("replies")
+                        // .where(authorId == otherUser) query has been
+                        // intentionally DENIED by firestore.rules since the
+                        // 2026-06-01 audit (cross-user reply listing re-opens
+                        // the held-post leak; rules:2037-2040), so the tab
+                        // could never load — every visit showed the retry
+                        // banner forever. One static label keeps the layout
+                        // rhythm of the own-profile tab row.
                         HStack(spacing: 22) {
-                            ForEach(0..<2, id: \.self) { idx in
-                                let isSel = selectedTab == idx
-                                Button { selectedTab = idx } label: {
-                                    Text(idx == 0 ? "posts" : "replies")
-                                        .font(ToskaFont.sans(12.5, weight: isSel ? .semibold : .regular))
-                                        .foregroundColor(isSel ? ToskaColor.text : ToskaColor.text2)
-                                        .padding(.top, 14)
-                                        .padding(.bottom, 12)
-                                        .overlay(alignment: .bottom) {
-                                            Rectangle()
-                                                .fill(isSel ? ToskaColor.text : Color.clear)
-                                                .frame(height: 1.5)
-                                        }
-                                        .contentShape(Rectangle())
+                            Text("posts")
+                                .font(ToskaFont.sans(12.5, weight: .semibold))
+                                .foregroundColor(ToskaColor.text)
+                                .padding(.top, 14)
+                                .padding(.bottom, 12)
+                                .overlay(alignment: .bottom) {
+                                    Rectangle()
+                                        .fill(ToskaColor.text)
+                                        .frame(height: 1.5)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(idx == 0 ? "posts" : "replies")
-                            }
+                                .accessibilityLabel("posts")
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 28)
                         
                         Rectangle().fill(ToskaColor.divider).frame(height: 1)
                         
-                        if selectedTab == 0 {
+                        Group {
                             if postsLoadFailed {
                                 // Failure state (2026-08-05) — was the empty
                                 // state, which misread a network failure as
@@ -234,87 +228,6 @@ struct OtherProfileView: View {
                                     }
                                 }
                             }
-                        } else {
-                            if repliesLoadFailed {
-                                // Failure state (2026-08-05) — mirrors the
-                                // posts tab above.
-                                ToskaErrorBanner("couldn't load replies — check your connection") {
-                                    repliesLoadFailed = false
-                                    loadReplies()
-                                }
-                                .padding(.vertical, 24)
-                            } else if !repliesLoaded {
-                                ProgressView().tint(Color.toskaBlue)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 60)
-                            } else if userReplies.isEmpty {
-                                VStack(spacing: 16) {
-                                    Image(systemName: "bubble.left")
-                                        .font(.system(size: 28, weight: .ultraLight))
-                                        .foregroundColor(Color.toskaBlue.opacity(0.4))
-                                        .padding(.bottom, 4)
-                                    Text("quiet so far")
-                                        .font(ToskaFont.serifItalic(18))
-                                        .foregroundColor(Color.toskaTextLight)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 60)
-                            } else {
-                                LazyVStack(spacing: 0) {
-                                    // Owner (2026-09-22): reply rows tap through to the
-                                    // parent post (own profile already did; this surface
-                                    // was static). Also retinted — these rows still wore
-                                    // pre-redesign tokens every restyle round missed.
-                                    ForEach(userReplies) { reply in
-                                        NavigationLink {
-                                            PostDetailView(postId: reply.parentPostId, handle: reply.parentHandle, text: reply.parentText, tag: nil, likes: 0, reposts: 0, replies: 0, time: "", authorId: "")
-                                                .navigationBarHidden(true)
-                                        } label: {
-                                            VStack(alignment: .leading, spacing: 8) {
-                                                HStack(spacing: 6) {
-                                                    Text("replying to \(reply.parentHandle)")
-                                                        .font(ToskaFont.sans(11.5, weight: .medium))
-                                                    Text("·").font(ToskaFont.sans(11.5)).foregroundColor(ToskaColor.dot)
-                                                    Text(reply.replyTime)
-                                                        .font(ToskaFont.sans(11.5)).foregroundColor(ToskaColor.text3)
-                                                    Spacer(minLength: 8)
-                                                }
-                                                .foregroundColor(ToskaColor.handle)
-
-                                                Text(reply.parentText)
-                                                    .font(ToskaFont.serifItalic(13))
-                                                    .foregroundColor(ToskaColor.text2)
-                                                    .lineLimit(2)
-                                                    .lineSpacing(2)
-
-                                                HStack(alignment: .top, spacing: 10) {
-                                                    RoundedRectangle(cornerRadius: 1)
-                                                        .fill(ToskaColor.divider2)
-                                                        .frame(width: 2)
-                                                    Text(reply.replyText)
-                                                        .font(ToskaFont.serif(15))
-                                                        .foregroundColor(ToskaColor.body)
-                                                        .lineSpacing(4)
-                                                        .fixedSize(horizontal: false, vertical: true)
-                                                    Spacer(minLength: 0)
-                                                }
-                                                .padding(.top, 1)
-                                            }
-                                            .padding(.horizontal, 28)
-                                            .padding(.vertical, 14)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .contentShape(Rectangle())
-                                            .overlay(
-                                                Rectangle()
-                                                    .fill(ToskaColor.divider)
-                                                    .frame(height: 1),
-                                                alignment: .bottom
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
                         }
                         
                         Color.clear.frame(height: 40)
@@ -335,7 +248,7 @@ struct OtherProfileView: View {
                 return
             }
             hasFetchedInitial = true
-            // Block enforcement is the gate: loadProfile/loadPosts/loadReplies
+            // Block enforcement is the gate: loadProfile/loadPosts
             // run only AFTER we confirm neither side has blocked the other.
             // (Previously they fired in parallel with the async check, so a
             // blocked user's content could paint before dismiss() landed.)
@@ -384,7 +297,7 @@ struct OtherProfileView: View {
     func loadIfNotBlocked() {
             // Own profile or unauthed: no block relationship to check — load directly.
             guard let uid = Auth.auth().currentUser?.uid, uid != userId else {
-                loadProfile(); loadPosts(); loadReplies()
+                loadProfile(); loadPosts()
                 return
             }
             let db = Firestore.firestore()
@@ -397,7 +310,7 @@ struct OtherProfileView: View {
                         .collection("blocked").document(uid).getDocumentAsync()
                     if theyBlockedSnap.exists { dismiss(); return }
                     // Confirmed not blocked in either direction — safe to render.
-                    loadProfile(); loadPosts(); loadReplies()
+                    loadProfile(); loadPosts()
                 } catch {
                     // Fail CLOSED. A block is a safety guarantee in an anonymous
                     // app; if we can't determine block state (network/permission
@@ -475,71 +388,6 @@ struct OtherProfileView: View {
                                                             }
                 }
             }
-    }
-    
-    // MARK: - Load Replies
-    
-    func loadReplies() {
-        let db = Firestore.firestore()
-        
-        Task {
-            let replySnap: QuerySnapshot
-            do {
-                replySnap = try await db.collectionGroup("replies")
-                            .whereField("authorId", isEqualTo: userId)
-                            .order(by: "createdAt", descending: true)
-                            .limit(to: 30)
-                            .getDocumentsAsync()
-            } catch {
-                // (2026-08-05) was `try?` + silent return, which left the tab
-                // on "quiet so far" forever after a network failure; flag it
-                // so the retry banner renders instead.
-                repliesLoadFailed = true
-                return
-            }
-            
-            var results: [MyReply] = []
-            
-            await withTaskGroup(of: MyReply?.self) { group in
-                            for doc in replySnap.documents {
-                                let data = doc.data()
-                                let replyText = data["text"] as? String ?? ""
-                                let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
-                                let replyTime = ToskaFormatters.timeAgo(from: createdAt)
-                                
-                                // Use denormalized fields if available (new replies have these)
-                                if let parentText = data["parentPostText"] as? String {
-                                                                    let parentHandle = data["parentPostHandle"] as? String ?? "anonymous"
-                                                                    let replyDocId = doc.documentID
-                                    let parentPostId = doc.reference.parent.parent?.documentID ?? ""
-                                                                                                        group.addTask {
-                                                                                                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
-                                                                                                        }
-                                                                } else {
-                                                                    guard let parentRef = doc.reference.parent.parent else { continue }
-                                                                    let replyDocId = doc.documentID
-                                                                    let parentPostId = parentRef.documentID
-                                                                                                                                        group.addTask {
-                                                                                                                                                                                                                let parentSnap = try? await parentRef.getDocumentAsync()
-                                                                                                                                                                                                                let parentData = parentSnap?.data()
-                                                                                                                                                                                                                let parentText = parentData?["text"] as? String ?? "deleted post"
-                                                                                                                                                                                                                let parentHandle = parentData?["authorHandle"] as? String ?? "anonymous"
-                                                                                                                                                                                                                return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
-                                                                                                                                                                                                            }
-                                                                }
-                            }
-                            
-                            for await result in group {
-                                if let result = result {
-                                    results.append(result)
-                                }
-                            }
-                        }
-            
-            userReplies = results.sorted { $0.createdAt > $1.createdAt }
-            repliesLoaded = true
-            repliesLoadFailed = false
-        }
     }
     
     // MARK: - Check Following

@@ -38,6 +38,30 @@ function isValidDocId(id) {
   return typeof id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(id);
 }
 
+// DE-ANON (2026-10-07 review): repost ids are deterministic
+// ({uid}_repost_{postId}), so a /p/ 301 that depended on the repost DOC's
+// existence was an unauthenticated oracle for "did uid repost postId".
+// Parse the original-post id out of the SHAPE alone so the handler can
+// redirect every well-formed repost URL identically, with no Firestore
+// read. Greedy .+ pins the tail after the LAST "_repost_"; real original
+// ids are 20-char alnum auto-ids, so the hyphen-alnum tail charset holds
+// (an underscore-bearing tail falls through to the normal doc path).
+function repostShapeTarget(id) {
+  const m = typeof id === "string" ? id.match(/^.+_repost_([A-Za-z0-9-]+)$/) : null;
+  return m ? m[1] : null;
+}
+
+// Reply-reposts ({uid}_replyrepost_{replyId}) have NO public /p/ target —
+// both clients suppress the link entirely (ShareCardView.publicShareURL
+// returns nil; web mirrors) — so the only consumers of such URLs are
+// oracle probes. The handler 404s them on shape alone, no Firestore read.
+// ("_replyrepost_" does NOT match repostShapeTarget: the char before
+// "repost" is "y", so without this helper those ids fell through to the
+// doc-existence path.)
+function isReplyRepostId(id) {
+  return typeof id === "string" && id.includes("_replyrepost_");
+}
+
 // Decide what /p/{postId} does for a post snapshot's data (`post` is
 // undefined/null for a missing doc). Returns one of:
 //   { outcome: "not_found" }
@@ -225,6 +249,8 @@ function renderSitemapXml(entries) {
 module.exports = {
   CANONICAL_ORIGIN,
   isValidDocId,
+  repostShapeTarget,
+  isReplyRepostId,
   evaluateSharePage,
   escapeHtml,
   excerpt,

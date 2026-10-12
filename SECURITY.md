@@ -155,6 +155,70 @@ on-device network interception, independent third-party attestation.
   server-only; Most-Felt ranking derives from server counters.
 - Anonymity invariants (§4) all hold.
 
+### 2026-10-07 — tier-1 pre-TestFlight review (AI-assisted, fresh-eyes)
+
+Scope: diff review 2885dae..95a0ec3, live verification of the firebase-admin
+13→14 / firebase-functions 7.2→7.4 bump in prod (callable round-trips +
+`onPostDeletedCleanupSubtree` trigger probe), adversarial re-prove of the
+anonymity / crisis-detection / moderation-hold / auth invariants.
+
+**Findings (all fixed in this round unless marked accepted/deferred):**
+- **HIGH — crisis matcher bypasses (executed proof).** Triple-letter padding
+  ("killl myself") destroyed the double letter via the 3+→1 collapse, and
+  dotless ı (U+0131, "kıll myself"/"suıcıde") was unmapped AND deleted by the
+  no-space lane. FIXED: `collapseRepeatsKeepDouble` + fold-collapse lanes in
+  `matchesCrisisPhrase`, dotless-i family in both confusable maps (server +
+  iOS mirror), crisis-tier corpus pin added.
+- **HIGH (operational) — TestFlight build 91 post-deletion broken.** The
+  09-29 like-rules fix denies the old client's delete-time likes list; every
+  build-91 delete errors after client-side reply deletion. FIX = ship the
+  next build (its delete path no longer reads likes; the prod cleanup trigger
+  was live-proven under admin-14, ~6s full-subtree drain).
+- **MED-HIGH — handles registry point-get enumerable.** ~900k-combo keyspace
+  → full handle→uid directory incl. never-posted accounts. FIXED: gets are
+  admin-only; both signup flows already use create-as-arbiter. (Side find:
+  the iOS availability pre-check query was always rules-denied, so every iOS
+  signup silently fell back to `anonymous_*` handles — pre-check removed,
+  word-pair generator revived.)
+- **MED — unauthenticated repost oracle on /p/.** The 301 fired only when the
+  repost DOC existed → public, CDN-cacheable "did uid repost postId" probe
+  (reply-repost ids fell through to the same doc-read). FIXED: redirect/404
+  decided on id SHAPE alone, zero Firestore reads; plus rules now PIN repost
+  doc ids to `{caller}_repost_{originalPostId}` (was unenforced — a tampered
+  client could frame a victim as reposter and squat their repost slot).
+- **MED — iOS OtherProfileView replies tab permanently broken** (its
+  cross-user collectionGroup query has been rules-denied since 2026-06-01).
+  FIXED: tab removed; web unaffected (own-profile only).
+- **MED — start-hidden was client-voluntary.** Rules now REQUIRE
+  `moderationStatus: "pending_validation"` on post/reply create (all live
+  builds ≥72 send it; omitted field default-read "live" pre-moderation).
+- Also fixed: held-post authorship oracle via notification-create verdicts
+  (moderationVisible gate on all four branches); report free-text never
+  crisis-scanned (now pages crisis recipients on explicit-crisis phrasing);
+  reply reports never auto-hid (3-distinct-reporter rule extended to
+  replies); client-forgeable `parentPostText`/`parentPostHandle` (server
+  re-pins from the parent doc); handles never matcher-scanned (new
+  `onHandleCreatedScreen` → standard report queue); unvalidated `promptDate`
+  (locked to yyyy-MM-dd); `adminDeleteAccount` uid charset.
+
+**Accepted / deferred (owner-reviewed):**
+- **Follow-graph timing side channel.** Paired follower/following counter
+  ticks on world-readable user docs let a listener correlate follow edges at
+  low traffic volume. Deferred: a real fix (debounced/jittered counter
+  writes) trades UX freshness for a channel that degrades naturally with
+  scale. Revisit at launch volume.
+- **Crisis-held post is author-deletable** (destroys the posts-collection
+  queue item; the FCM page already fired, PAGE-then-CLAIM). Users keep the
+  right to delete their own words; admin follow-up works from the page +
+  audit log. A durable `crisisPostQueue` mirror is future work.
+- **reconcileMyCounts App Check token not consume-checked** (replayable for
+  its TTL; bounded by auth + 6/day fail-closed limiter). Needs limited-use
+  client tokens — client-coupled change, not worth it pre-launch.
+- **confirmAdult rate limiter fails open** on Firestore outage (by design,
+  F-5: own-doc idempotent write).
+- **Hardcoded fallback admin uid** in functions source (M-1 posture,
+  unchanged): acceptable while the repo is private.
+
 ## 9. Incident log
 
 _(none to date — append dated entries here)_

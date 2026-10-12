@@ -780,6 +780,13 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              // 2026-10-07 review: gate on the parent post's visibility. The
+              // bare authorId get() succeeded on HELD posts too, so the rule
+              // verdict was an authorship/existence ORACLE for hidden posts
+              // (attacker probes candidate uids with planted notifications).
+              // A non-live post can't legitimately receive engagement
+              // notifications anyway — you can't see it to act on it.
+              && moderationVisible(get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data)
               && notBlockedBy(userId)
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId)/likes/$(request.auth.uid))
               && notifId == 'like_' + request.resource.data.postId + '_' + request.auth.uid)
@@ -798,6 +805,13 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              // 2026-10-07 review: gate on the parent post's visibility. The
+              // bare authorId get() succeeded on HELD posts too, so the rule
+              // verdict was an authorship/existence ORACLE for hidden posts
+              // (attacker probes candidate uids with planted notifications).
+              // A non-live post can't legitimately receive engagement
+              // notifications anyway — you can't see it to act on it.
+              && moderationVisible(get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data)
               && notBlockedBy(userId)
               && exists(/databases/$(database)/documents/users/$(request.auth.uid)/saved/$(request.resource.data.postId))
               && notifId == 'save_' + request.resource.data.postId + '_' + request.auth.uid)
@@ -826,6 +840,13 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              // 2026-10-07 review: gate on the parent post's visibility. The
+              // bare authorId get() succeeded on HELD posts too, so the rule
+              // verdict was an authorship/existence ORACLE for hidden posts
+              // (attacker probes candidate uids with planted notifications).
+              // A non-live post can't legitimately receive engagement
+              // notifications anyway — you can't see it to act on it.
+              && moderationVisible(get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data)
               && notBlockedBy(userId)
               && notifId == 'reply_' + request.resource.data.postId + '_' + request.auth.uid)
             // repost: post exists, recipient is author, actor isn't blocked,
@@ -838,6 +859,13 @@ service cloud.firestore {
               && request.resource.data.postId is string
               && exists(/databases/$(database)/documents/posts/$(request.resource.data.postId))
               && get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data.authorId == userId
+              // 2026-10-07 review: gate on the parent post's visibility. The
+              // bare authorId get() succeeded on HELD posts too, so the rule
+              // verdict was an authorship/existence ORACLE for hidden posts
+              // (attacker probes candidate uids with planted notifications).
+              // A non-live post can't legitimately receive engagement
+              // notifications anyway — you can't see it to act on it.
+              && moderationVisible(get(/databases/$(database)/documents/posts/$(request.resource.data.postId)).data)
               && notBlockedBy(userId)
               && exists(/databases/$(database)/documents/posts/$(request.auth.uid + '_repost_' + request.resource.data.postId))
               && notifId == 'repost_' + request.resource.data.postId + '_' + request.auth.uid)
@@ -1042,14 +1070,19 @@ service cloud.firestore {
     // functions/backfillHandles.js. The account-deletion cascade
     // (onUserDocDeleted) releases the row server-side.
     match /handles/{handleLower} {
-      // Point reads (get) stay open so a signup flow can pre-check a specific
-      // handle's availability. LIST is denied: the registry maps EVERY handle
-      // to its uid, so a collection scan would hand any authed user a complete
-      // user directory — including accounts that have never posted. (Posts
-      // expose authorId+handle only for people who chose to post; the registry
-      // must not widen that.) The users-create rule's getAfter() binding is
-      // rules-engine evaluation, not a client read, so it is unaffected.
-      allow get: if isAuth();
+      // DE-ANON FIX (2026-10-07 review): point gets were open for signup
+      // availability pre-checks, but the list-deny below was defeated by the
+      // small handle keyspace — the iOS generator emits {adj}_{noun}_{1..999}
+      // from two fixed 30-word lists (~900k combos, ≈$0.54 of reads), so an
+      // attacker could point-get the WHOLE registry and reconstruct the full
+      // handle→uid directory, including accounts that never posted. No client
+      // actually needs the read: both signup flows already treat the batched
+      // CREATE as the arbiter (collision → commit fails → retry with a fresh
+      // candidate); web's pre-check was best-effort-wrapped and iOS pre-checked
+      // via a users query these rules already denied. Admin-only now. The
+      // users-create rule's getAfter() binding is rules-engine evaluation,
+      // not a client read, so it is unaffected.
+      allow get: if isAdmin();
       allow list: if false;
       allow create: if isAuth()
         && request.resource.data.keys().hasOnly(['uid'])
@@ -1157,12 +1190,20 @@ service cloud.firestore {
              'moderationStatus'
            ])
         // A client can never self-publish as "live" or self-assign the
-        // moderation hold ("pending_review") — only omit the field or start
-        // the post in "pending_validation". validatePost (Admin SDK, bypasses
-        // rules) is the sole writer of "live"; setPendingReview owns
-        // "pending_review".
-        && (!('moderationStatus' in request.resource.data.keys())
-            || request.resource.data.moderationStatus == 'pending_validation')
+        // moderation hold ("pending_review") — validatePost (Admin SDK,
+        // bypasses rules) is the sole writer of "live"; setPendingReview owns
+        // "pending_review". 2026-10-07 review: the field is now REQUIRED
+        // (was optional for pre-2026-06-01 clients; the oldest live build is
+        // 72, July 2026). An omitted field default-read as "live"
+        // (moderationVisible's back-compat default), so a tampered client
+        // could make a post direct-get readable BEFORE the matcher ran —
+        // the "start hidden" model was voluntary. Now it's enforced.
+        && request.resource.data.get('moderationStatus', '') == 'pending_validation'
+        // promptDate: validated SERVER-SIDE in validatePost (stripped unless
+        // exactly yyyy-MM-dd). It is deliberately NOT rules-validated — the
+        // posts create rule runs close enough to Firestore's 1000-expression
+        // evaluation cap that the extra clauses tipped valid creates into
+        // "unable to evaluate" denials (2026-10-07; see the emulator suite).
         && request.resource.data.likeCount == 0
         && request.resource.data.repostCount == 0
         && request.resource.data.replyCount == 0
@@ -1309,6 +1350,15 @@ service cloud.firestore {
                 && request.resource.data.originalReplyId.size() > 0
                 && request.resource.data.get('originalPostId', '') is string
                 && request.resource.data.originalPostId.size() > 0
+                // Doc-id pin (2026-10-07 review): both clients write reply-
+                // reposts at the deterministic id {uid}_replyrepost_{replyId},
+                // but nothing ENFORCED it — a tampered client could create a
+                // repost under an id embedding a VICTIM's uid, framing them as
+                // the reposter (share-card/id-derived surfaces) and SQUATTING
+                // the victim's real repost slot (their create collides with a
+                // doc they can't delete — author-only delete). Pin id to the
+                // caller + original.
+                && postId == request.auth.uid + '_replyrepost_' + request.resource.data.originalReplyId
                 && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId))
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.authorId == request.resource.data.originalAuthorId
                 && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)/replies/$(request.resource.data.originalReplyId)).data.text == request.resource.data.text
@@ -1350,6 +1400,12 @@ service cloud.firestore {
             || (
                request.resource.data.get('originalPostId', '') is string
             && request.resource.data.originalPostId.size() > 0
+            // Doc-id pin (2026-10-07 review): same anti-framing/anti-squatting
+            // pin as the reply-repost branch above — the deterministic id
+            // {uid}_repost_{postId} was assumed everywhere (like-notification
+            // exists() probe, share-page parse, unrepost delete) but never
+            // enforced at create.
+            && postId == request.auth.uid + '_repost_' + request.resource.data.originalPostId
             && exists(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId))
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.authorId == request.resource.data.originalAuthorId
             && get(/databases/$(database)/documents/posts/$(request.resource.data.originalPostId)).data.text == request.resource.data.text
@@ -1558,11 +1614,13 @@ service cloud.firestore {
              ])
           && request.resource.data.keys().hasAll(['authorId', 'text', 'createdAt'])
           // A client can never self-publish a reply as "live" or self-assign the
-          // hold ("pending_review") — only omit the field or start it in
-          // "pending_validation". setReplyLive (Admin SDK) is the sole writer of
-          // "live"; setReplyPendingReview owns "pending_review".
-          && (!('moderationStatus' in request.resource.data.keys())
-              || request.resource.data.moderationStatus == 'pending_validation')
+          // hold ("pending_review") — setReplyLive (Admin SDK) is the sole
+          // writer of "live"; setReplyPendingReview owns "pending_review".
+          // 2026-10-07 review: REQUIRED now (T-2 clients have written it since
+          // 2026-06-11; oldest live build is 72) — an omitted field default-
+          // read as "live" before validateReply ran, making start-hidden
+          // voluntary for a tampered client.
+          && request.resource.data.get('moderationStatus', '') == 'pending_validation'
           && request.resource.data.createdAt == request.time
           && (!('likeCount' in request.resource.data.keys())
               || request.resource.data.likeCount == 0)

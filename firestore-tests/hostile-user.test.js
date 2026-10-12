@@ -390,10 +390,10 @@ describe("M-1 edge: reply create cannot self-set moderationStatus", () => {
     text: "my ex Sarah Johnson did this", likeCount: 0, createdAt: serverTimestamp(), ...extra,
   });
 
-  it("CONTROL: a valid reply (no moderationStatus) is accepted", async () => {
+  it("a reply WITHOUT moderationStatus is REJECTED (2026-10-07: start-hidden enforced)", async () => {
     await setupPostAndUser();
     const db = env.authenticatedContext("attacker").firestore();
-    await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r0").set(validReply()));
+    await assertFails(db.collection("posts").doc("p").collection("replies").doc("r0").set(validReply()));
   });
   it("T-2: reply create with moderationStatus='pending_validation' is ACCEPTED (start-hidden)", async () => {
     // The client now writes pending_validation at create so a PII reply is never
@@ -570,16 +570,17 @@ describe("#3a reply-repost is denied for a held reply", () => {
     authorId: "reposter", authorHandle: "handle_reposter", text: REPLY_TEXT,
     createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
     isRepost: true, originalPostId: "op", originalReplyId: "orr", originalAuthorId: "ra",
+    moderationStatus: "pending_validation",
   });
   it("CONTROL: reposting a LIVE reply is allowed", async () => {
     await setup("live");
     const db = env.authenticatedContext("reposter").firestore();
-    await assertSucceeds(db.collection("posts").doc("reposter_repost_x").set(repost()));
+    await assertSucceeds(db.collection("posts").doc("reposter_replyrepost_orr").set(repost()));
   });
   it("reposting a HELD (pending_review) reply is DENIED", async () => {
     await setup("pending_review");
     const db = env.authenticatedContext("reposter").firestore();
-    await assertFails(db.collection("posts").doc("reposter_repost_y").set(repost()));
+    await assertFails(db.collection("posts").doc("reposter_replyrepost_orr").set(repost()));
   });
 });
 
@@ -592,18 +593,19 @@ describe("F-1 post-repost is denied for a held post", () => {
     authorId: "reposter", authorHandle: "handle_reposter", text: TEXT,
     createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
     isRepost: true, originalPostId: "opost", originalAuthorId: "opauthor",
+    moderationStatus: "pending_validation",
   });
   it("CONTROL: reposting a LIVE post is allowed", async () => {
     await seedUser("reposter", { handle: "handle_reposter" });
     await seedPost("opost", "opauthor", { moderationStatus: "live" });
     const db = env.authenticatedContext("reposter").firestore();
-    await assertSucceeds(db.collection("posts").doc("reposter_repost_opost_live").set(repost()));
+    await assertSucceeds(db.collection("posts").doc("reposter_repost_opost").set(repost()));
   });
   it("reposting a HELD (pending_review) post is DENIED", async () => {
     await seedUser("reposter", { handle: "handle_reposter" });
     await seedPost("opost", "opauthor", { moderationStatus: "pending_review" });
     const db = env.authenticatedContext("reposter").firestore();
-    await assertFails(db.collection("posts").doc("reposter_repost_opost_held").set(repost()));
+    await assertFails(db.collection("posts").doc("reposter_repost_opost").set(repost()));
   });
 });
 
@@ -698,31 +700,32 @@ describe("isShareable type-lock: reply-repost consent pin cannot be sidestepped 
     authorId: "reposter", authorHandle: "handle_reposter", text: REPLY_TEXT,
     createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
     isRepost: true, originalPostId: "op", originalReplyId: "orr", originalAuthorId: "ra",
+    moderationStatus: "pending_validation",
     isShareable,
   });
 
   it("DENIED: reply-repost with truthy non-bool isShareable: 1 (old escape path)", async () => {
     await setup();
     const db = env.authenticatedContext("reposter").firestore();
-    await assertFails(db.collection("posts").doc("rr_nonbool_1").set(repost(1)));
+    await assertFails(db.collection("posts").doc("reposter_replyrepost_orr").set(repost(1)));
   });
 
   it('DENIED: reply-repost with string isShareable: "true"', async () => {
     await setup();
     const db = env.authenticatedContext("reposter").firestore();
-    await assertFails(db.collection("posts").doc("rr_nonbool_s").set(repost("true")));
+    await assertFails(db.collection("posts").doc("reposter_replyrepost_orr").set(repost("true")));
   });
 
   it("CONTROL: same repost with a genuine isShareable: false is accepted (understating consent)", async () => {
     await setup();
     const db = env.authenticatedContext("reposter").firestore();
-    await assertSucceeds(db.collection("posts").doc("rr_bool_false").set(repost(false)));
+    await assertSucceeds(db.collection("posts").doc("reposter_replyrepost_orr").set(repost(false)));
   });
 
   it("CONTROL: a genuine isShareable: true is still consent-DENIED (allowSharing off)", async () => {
     await setup();
     const db = env.authenticatedContext("reposter").firestore();
-    await assertFails(db.collection("posts").doc("rr_bool_true").set(repost(true)));
+    await assertFails(db.collection("posts").doc("reposter_replyrepost_orr").set(repost(true)));
   });
 });
 

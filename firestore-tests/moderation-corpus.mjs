@@ -13,7 +13,8 @@
 //
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { computePostFlagReason } = require("../functions/moderationLogic.js");
+const { computePostFlagReason, isPostExplicitCrisis, isPostConcerning } =
+  require("../functions/moderationLogic.js");
 
 // [text, expectedReason | null]
 const CASES = [
@@ -156,3 +157,39 @@ if (failed > 0) {
   process.exit(1);
 }
 console.log(`✓ moderation-corpus: ${CASES.length}/${CASES.length} — slur/threat/harassment/sexual gate + grief FPs all correct`);
+
+// ── crisis-tier pin (2026-10-07 pentest) ──
+// matchesCrisisPhrase only applied the 3+→1 repeat collapse, so padding the
+// double letter itself ("killl myself" → "kil myself") destroyed the match,
+// and dotless ı (U+0131) was unmapped AND deleted by the no-space lane.
+// Both were EXECUTED bypasses of the full pipeline. Pin them + FP guards.
+// [text, expectExplicit, expectConcerning]
+const CRISIS_CASES = [
+  ["i want to kill myself", true, true],          // control
+  ["i want to killl myself", true, true],         // padded double letter
+  ["i want to killlll myself", true, true],       // longer pad
+  ["kiilll myself", true, true],                  // pad spanning the i/l pair
+  ["k1lll myself", true, true],                   // leet + pad
+  ["i want to kıll myself", true, true],          // dotless ı (U+0131)
+  ["commit suıcıde", true, true],                 // dotless ı in suicide
+  ["betttter off dead", true, true],              // padded double ("better off dead" is explicit-tier)
+  // FP guards: emphasis padding + double-letter words must stay clean
+  ["my landlord billled me twice", false, false],
+  ["we killed it at karaoke last night", false, false],
+  ["that was a brilliant skilllful move", false, false],
+  ["i am sooooo done with him", false, false],
+];
+let crisisFailed = 0;
+for (const [text, wantExplicit, wantConcerning] of CRISIS_CASES) {
+  const gotE = !!isPostExplicitCrisis(text);
+  const gotC = !!isPostConcerning(text);
+  if (gotE !== wantExplicit || gotC !== wantConcerning) {
+    crisisFailed++;
+    console.error(`✗ CRISIS FAIL [${text}] => explicit:${gotE}/concerning:${gotC} (expected ${wantExplicit}/${wantConcerning})`);
+  }
+}
+if (crisisFailed > 0) {
+  console.error(`\n${crisisFailed}/${CRISIS_CASES.length} crisis-tier mismatch(es) — matchesCrisisPhrase drifted.`);
+  process.exit(1);
+}
+console.log(`✓ crisis-tier pin: ${CRISIS_CASES.length}/${CRISIS_CASES.length} — padding + dotless-ı evasions held, FP guards clean`);

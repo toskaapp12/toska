@@ -227,17 +227,27 @@ describe("baseline sanity", () => {
       await assertFails(a.collection("handles").doc("alice123").delete());
     });
 
-    it("registry rows are readable by any authenticated user (availability pre-check)", async () => {
+    it("registry point GETS are admin-only (2026-10-07: keyspace enumeration de-anon fix)", async () => {
+      // Point gets used to be open for availability pre-checks, but the iOS
+      // generator keyspace is ~900k combos — point-getting the whole registry
+      // reconstructed the full handle→uid directory. No client needs the
+      // read: the batched CREATE is the arbiter on both clients.
       await seedRegistryRow("alice123", "alice");
       const m = env.authenticatedContext("mallory").firestore();
-      await assertSucceeds(m.collection("handles").doc("alice123").get());
+      await assertFails(m.collection("handles").doc("alice123").get());
+      // Not even your own row: nothing legitimate reads it.
+      const a = env.authenticatedContext("alice").firestore();
+      await assertFails(a.collection("handles").doc("alice123").get());
+      // Admin dashboard retains read for moderation.
+      await setAdmin("modmin");
+      const adm = env.authenticatedContext("modmin").firestore();
+      await assertSucceeds(adm.collection("handles").doc("alice123").get());
     });
 
     it("registry LIST is denied — no user-directory enumeration", async () => {
       // The registry maps every handle to its uid; a collection scan would
       // hand any authed user a complete directory of ALL accounts, including
-      // ones that never posted. Point gets stay open (test above); list is
-      // closed.
+      // ones that never posted.
       await seedRegistryRow("alice123", "alice");
       await seedRegistryRow("bob456", "bob");
       const m = env.authenticatedContext("mallory").firestore();
@@ -298,6 +308,7 @@ describe("baseline sanity", () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "handle_alice",
         text: "hello world",
@@ -320,6 +331,7 @@ describe("post create: gifUrl host-lock (audit 2026-07-19)", () => {
   function postWithGif(gifUrl) {
     return env.authenticatedContext("alice").firestore()
       .collection("posts").doc("g1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice", authorHandle: "handle_alice", text: "with a gif",
         createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
         gifUrl,
@@ -349,6 +361,7 @@ describe("post create: GIF-only posts (owner 2026-09-17)", () => {
   function post(fields) {
     return env.authenticatedContext("alice").firestore()
       .collection("posts").doc("gonly1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice", authorHandle: "handle_alice",
         createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
         ...fields,
@@ -386,6 +399,7 @@ describe("post create: expiresAt bounded to the near future (audit 2026-07-17)",
       repostCount: 0,
       replyCount: 0,
       isWhisper: true,
+      moderationStatus: "pending_validation",
     };
     if (expiresAt !== undefined) data.expiresAt = expiresAt;
     return a.collection("posts").doc("p_exp").set(data);
@@ -415,6 +429,7 @@ describe("post create: expiresAt bounded to the near future (audit 2026-07-17)",
   it("rejects a midnight post with NO expiresAt at all", async () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(a.collection("posts").doc("p_mid").set({
+        moderationStatus: "pending_validation",
       authorId: "alice", authorHandle: "handle_alice", text: "hello world",
       createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
       isMidnightPost: true,
@@ -427,6 +442,7 @@ describe("post create: expiresAt bounded to the near future (audit 2026-07-17)",
   it("rejects a non-bool isWhisper (type-confusion, no expiresAt)", async () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(a.collection("posts").doc("p_wstr").set({
+        moderationStatus: "pending_validation",
       authorId: "alice", authorHandle: "handle_alice", text: "hello world",
       createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
       isWhisper: "x",
@@ -435,6 +451,7 @@ describe("post create: expiresAt bounded to the near future (audit 2026-07-17)",
   it("rejects a non-bool isMidnightPost (type-confusion, no expiresAt)", async () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(a.collection("posts").doc("p_mstr").set({
+        moderationStatus: "pending_validation",
       authorId: "alice", authorHandle: "handle_alice", text: "hello world",
       createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
       isMidnightPost: 1,
@@ -463,8 +480,8 @@ describe("post create: client moderationStatus is start-hidden only (audit 2026-
     return a.collection("posts").doc("p1").set(data);
   }
 
-  it("allows omitting moderationStatus (old clients)", async () => {
-    await assertSucceeds(postWith(undefined));
+  it("rejects omitting moderationStatus (2026-10-07: start-hidden is enforced, oldest live build sends it)", async () => {
+    await assertFails(postWith(undefined));
   });
   it("allows moderationStatus = pending_validation (new clients, start hidden)", async () => {
     await assertSucceeds(postWith("pending_validation"));
@@ -803,6 +820,7 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "handle_alice",
         text: "hello",
@@ -1340,6 +1358,7 @@ describe("reply create: schema lockdown + createdAt pin (audit P2)", () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
       b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "responding",
@@ -1355,6 +1374,7 @@ describe("reply create: schema lockdown + createdAt pin (audit P2)", () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
       b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         text: "responding",
         createdAt: serverTimestamp(),
@@ -1378,6 +1398,7 @@ describe("reply create: schema lockdown + createdAt pin (audit P2)", () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
       b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         text: "responding",
         createdAt: serverTimestamp(),
@@ -1687,6 +1708,7 @@ describe("notRestricted(): time-expiry leg", () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "handle_alice",
         text: "back online",
@@ -1706,6 +1728,7 @@ describe("notRestricted(): time-expiry leg", () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "handle_alice",
         text: "still under restriction",
@@ -1807,7 +1830,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
   it("allows a faithful repost", async () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_orig").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1827,7 +1851,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     // Attacker tries to attribute alice's real text to carol's byline.
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_orig").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1846,7 +1871,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
   it("rejects a repost with text that doesn't match the original", async () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_orig").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "fabricated quote",
@@ -1865,7 +1891,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
   it("rejects a repost pointing at a non-existent original", async () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_does_not_exist").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1898,7 +1925,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     });
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_first_repost").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1918,7 +1946,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setBlock("alice", "bob");
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_orig").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1943,7 +1972,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     // checks.
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_orig").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1965,7 +1995,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     // keys() so absent is accepted.
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_repost_p_orig").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "alice's words",
@@ -1987,7 +2018,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_replyrepost_r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "a reply",
@@ -2008,7 +2040,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice"); // reply really authored by alice
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_replyrepost_r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "a reply",
@@ -2029,7 +2062,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_replyrepost_r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "fabricated reply quote",
@@ -2049,7 +2083,8 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
   it("rejects a reply-repost pointing at a non-existent reply", async () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set({
+      b.collection("posts").doc("bob_replyrepost_does_not_exist").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "a reply",
@@ -2086,6 +2121,7 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     originalReplyId: "r1",
     originalAuthorId: "alice",
     originalHandle: "handle_alice",
+    moderationStatus: "pending_validation",
     ...overrides,
   });
 
@@ -2094,7 +2130,7 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: true }))
+      b.collection("posts").doc("bob_replyrepost_r1").set(replyRepostDoc({ isShareable: true }))
     );
   });
 
@@ -2103,7 +2139,7 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
-      b.collection("posts").doc("p_repost").set(replyRepostDoc())
+      b.collection("posts").doc("bob_replyrepost_r1").set(replyRepostDoc())
     );
   });
 
@@ -2112,7 +2148,7 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
-      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: false }))
+      b.collection("posts").doc("bob_replyrepost_r1").set(replyRepostDoc({ isShareable: false }))
     );
   });
 
@@ -2121,7 +2157,7 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
-      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: true }))
+      b.collection("posts").doc("bob_replyrepost_r1").set(replyRepostDoc({ isShareable: true }))
     );
   });
 
@@ -2130,7 +2166,7 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     await setReply("p_orig", "r1", "alice");
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
-      b.collection("posts").doc("p_repost").set(replyRepostDoc({ isShareable: false }))
+      b.collection("posts").doc("bob_replyrepost_r1").set(replyRepostDoc({ isShareable: false }))
     );
   });
 });
@@ -2230,6 +2266,7 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "handle_bob", // spoofed
         text: "hello",
@@ -2245,6 +2282,7 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
     const a = env.authenticatedContext("alice").firestore();
     await assertFails(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "@victim_lookalike",
         text: "hello",
@@ -2260,6 +2298,7 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         authorHandle: "handle_alice",
         text: "hello",
@@ -2277,6 +2316,7 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("posts").doc("p1").set({
+        moderationStatus: "pending_validation",
         authorId: "alice",
         text: "hello",
         createdAt: serverTimestamp(),
@@ -2292,6 +2332,7 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
     const b = env.authenticatedContext("bob").firestore();
     await assertFails(
       b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_alice", // spoofed
         text: "responding",
@@ -2305,6 +2346,7 @@ describe("authorHandle pin (post + reply): byline must match user-doc handle", (
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(
       b.collection("posts").doc("p1").collection("replies").doc("r1").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "responding",
@@ -3063,6 +3105,7 @@ describe("post create: isShareable is type-locked to bool (2026-08-05)", () => {
   function postWithShareable(isShareable) {
     return env.authenticatedContext("alice").firestore()
       .collection("posts").doc("p_sh").set({
+        moderationStatus: "pending_validation",
         authorId: "alice", authorHandle: "handle_alice", text: "hello world",
         createdAt: serverTimestamp(), likeCount: 0, repostCount: 0, replyCount: 0,
         isShareable,
@@ -3098,6 +3141,7 @@ describe("reply create: parentPostText/parentPostHandle validation (2026-08-05)"
   function replyWith(extra) {
     return env.authenticatedContext("bob").firestore()
       .collection("posts").doc("p_ps").collection("replies").doc("r_ps").set({
+        moderationStatus: "pending_validation",
         authorId: "bob",
         authorHandle: "handle_bob",
         text: "responding",

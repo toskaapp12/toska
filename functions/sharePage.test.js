@@ -5,6 +5,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   isValidDocId,
+  repostShapeTarget,
+  isReplyRepostId,
   evaluateSharePage,
   escapeHtml,
   excerpt,
@@ -43,6 +45,32 @@ test("doc id validation", () => {
   assert.ok(!isValidDocId("..%2Fadmin"));
   assert.ok(!isValidDocId("x".repeat(129)));
   assert.ok(!isValidDocId(null));
+});
+
+test("repost shape parse (de-anon oracle fix): 301 decided by id shape, not doc existence", () => {
+  // Well-formed repost ids parse to their original-post tail.
+  assert.equal(repostShapeTarget("uid123_repost_abcDEF789012345678ab"), "abcDEF789012345678ab");
+  // Greedy: tail is pinned after the LAST "_repost_" — no redirect loops.
+  assert.equal(repostShapeTarget("a_repost_b_repost_cDE45"), "cDE45");
+  // Uid part may itself contain underscores.
+  assert.equal(repostShapeTarget("we_ird_uid_repost_tail123"), "tail123");
+  // Non-repost ids (incl. plain auto-ids) don't parse.
+  assert.equal(repostShapeTarget("aB3x9012345678901z00"), null);
+  assert.equal(repostShapeTarget("repost_"), null);
+  assert.equal(repostShapeTarget("_repost_"), null);
+  // Underscore-bearing tail falls through to the normal doc path.
+  assert.equal(repostShapeTarget("x_repost_ab_cd"), null);
+  assert.equal(repostShapeTarget(null), null);
+});
+
+test("reply-repost ids 404 on shape (no public target, no existence read)", () => {
+  assert.ok(isReplyRepostId("uid123_replyrepost_r9012345678901234567"));
+  // Does NOT match the post-repost parse (char before "repost" is "y") —
+  // without the dedicated helper these fell through to the doc-read oracle.
+  assert.equal(repostShapeTarget("uid123_replyrepost_r9012345678901234567"), null);
+  assert.ok(!isReplyRepostId("uid123_repost_abc"));
+  assert.ok(!isReplyRepostId("plainAutoId1234567ab"));
+  assert.ok(!isReplyRepostId(null));
 });
 
 test("live shareable post renders, not indexable without curation", () => {

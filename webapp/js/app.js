@@ -900,6 +900,10 @@ async function viewFeed() {
     const search = el("input", {
         type: "search", class: "feed-search", placeholder: "search what's been said here…",
     });
+    // Holds server-wide search results; embedded in the layout below, wired
+    // up by the keydown handler further down. MUST be declared before the
+    // mount.replaceChildren that references it (TDZ).
+    const serverBox = el("div");
     // Rail-first DOM order keeps the phone layout identical to iOS (prompt →
     // search → tabs → feed); ≥1040px CSS moves the rail beside the feed.
     mount.replaceChildren(
@@ -929,8 +933,10 @@ async function viewFeed() {
     search.addEventListener("input", debounce(applyFilter, 250));
     // Server-wide search on ENTER (parity with iOS "from everywhere"): the
     // live filter above only covers loaded rows; submit queries ALL live
-    // posts via the server-stamped searchTokens keywords.
-    const serverBox = el("div");
+    // posts via the server-stamped searchTokens keywords. (serverBox itself
+    // is declared ABOVE the mount.replaceChildren that embeds it — it lived
+    // down here from 2026-09-21 to 10-21, a TDZ crash that broke the entire
+    // signed-in feed once hosting finally redeployed.)
     let searchGen = 0;
     search.addEventListener("keydown", async (ev) => {
         if (ev.key !== "Enter") return;

@@ -43,11 +43,18 @@ function isValidDocId(id) {
 // existence was an unauthenticated oracle for "did uid repost postId".
 // Parse the original-post id out of the SHAPE alone so the handler can
 // redirect every well-formed repost URL identically, with no Firestore
-// read. Greedy .+ pins the tail after the LAST "_repost_"; real original
-// ids are 20-char alnum auto-ids, so the hyphen-alnum tail charset holds
-// (an underscore-bearing tail falls through to the normal doc path).
+// read. Greedy .+ pins the tail after the LAST "_repost_".
+// 2026-10-21 sweep: the tail MUST allow underscores — demo/seeded post ids
+// carry them (demo_launch2_01), and the original hyphen-alnum-only charset
+// made their repost URLs fall through to the doc-existence path, quietly
+// reviving the 301-vs-404 oracle for exactly those posts. Caveat the wider
+// charset buys: an ORIGINAL id that itself contains "_repost_" would parse
+// to the wrong tail — impossible for client-created posts (rules pin repost
+// ids, auto-ids are plain alnum, reposting a repost is blocked); never name
+// a synthetic seed id that way.
 function repostShapeTarget(id) {
-  const m = typeof id === "string" ? id.match(/^.+_repost_([A-Za-z0-9-]+)$/) : null;
+  if (typeof id !== "string" || id.includes("_replyrepost_")) return null;
+  const m = id.match(/^.+_repost_([A-Za-z0-9_-]+)$/);
   return m ? m[1] : null;
 }
 

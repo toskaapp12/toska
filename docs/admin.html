@@ -509,7 +509,12 @@
             return {
                 reports: query(collection(db, "reports"), where("status", "==", "pending")),
                 pending: query(collection(db, "posts"), where("moderationStatus", "==", "pending_review")),
-                pendingReplies: query(collectionGroup(db, "replies"), where("moderationStatus", "==", "pending_review")),
+                // orderBy pins this to the (moderationStatus, pendingDetectedAt)
+                // COLLECTION_GROUP composite — the bare equality form needs a
+                // single-field CG exemption that doesn't exist, so this badge
+                // count silently FAILED_PRECONDITION'd (2026-10-22 sweep; the
+                // tab's own loader always ordered and was fine).
+                pendingReplies: query(collectionGroup(db, "replies"), where("moderationStatus", "==", "pending_review"), orderBy("pendingDetectedAt", "desc")),
                 flagged: query(collection(db, "posts"), where("flagged", "==", true)),
                 crisis: query(collection(db, "posts"), where("concerningContent", "==", true)),
                 // Concerning replies fold into the crisis badge below (not its

@@ -58,8 +58,13 @@ test("repost shape parse (de-anon oracle fix): 301 decided by id shape, not doc 
   assert.equal(repostShapeTarget("aB3x9012345678901z00"), null);
   assert.equal(repostShapeTarget("repost_"), null);
   assert.equal(repostShapeTarget("_repost_"), null);
-  // Underscore-bearing tail falls through to the normal doc path.
-  assert.equal(repostShapeTarget("x_repost_ab_cd"), null);
+  // 2026-10-21 sweep fix: underscore-bearing tails MUST parse — demo post
+  // ids carry underscores (demo_launch2_01), and the old alnum-hyphen-only
+  // tail let their repost URLs fall through to the doc-read oracle.
+  assert.equal(repostShapeTarget("zzuidzz_repost_demo_launch2_01"), "demo_launch2_01");
+  assert.equal(repostShapeTarget("x_repost_ab_cd"), "ab_cd");
+  // Reply-repost ids never parse as post-reposts (guarded explicitly).
+  assert.equal(repostShapeTarget("u_replyrepost_r123"), null);
   assert.equal(repostShapeTarget(null), null);
 });
 

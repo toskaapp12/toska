@@ -21,7 +21,8 @@ import XCTest
 //   4. test03_saveStateNoDrift — bookmark state drifted between the feed row
 //      and post detail after navigating in and back.
 //
-// Staging test account: salinarotess+nice@gmail.com (seeded).
+// Staging test account comes from the TOSKA_EMAIL env var (scheme/CLI);
+// real value in .local-credentials.md — public repo, nothing personal here.
 // Data hygiene: no new posts are created (rate limiter!) — tests edit an
 // existing own post and restore it, create + delete one draft, and send one
 // reply (best-effort deleted afterwards).
@@ -135,7 +136,7 @@ final class ClientBugRegressionTests: XCTestCase {
             let email = app.textFields["emailField"]
             XCTAssertTrue(waitFor(email, 8), "Email field missing", file: file, line: line)
             email.tap()
-            email.typeText("salinarotess+nice@gmail.com")
+            email.typeText(ProcessInfo.processInfo.environment["TOSKA_EMAIL"] ?? "stagingA@example.invalid")
             let password = app.secureTextFields["passwordField"]
             password.tap()
             // Never hardcode (2026-07-22 leak). Pass via the test runner:

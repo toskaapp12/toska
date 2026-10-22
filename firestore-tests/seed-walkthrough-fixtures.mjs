@@ -20,7 +20,9 @@ import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 const CFG = { apiKey: 'AIzaSyCTGuUzy9maPF84fZh5gD_-eZ2qkie75OQ', authDomain: 'toskastaging.firebaseapp.com', projectId: 'toskastaging' };
-const B_EMAIL = 'salinarotess+webv1rb70g8@gmail.com';
+// Real value lives in ~/Desktop/toska/.local-credentials.md (gitignored) —
+// public repo, so no personal address may be hardcoded here.
+const B_EMAIL = process.env.TOSKA_STAGING_B_EMAIL || 'stagingB@example.invalid';
 // Never hardcode this (2026-07-22 GitGuardian leak). Current value lives in
 // ~/Desktop/toska/.local-credentials.md (gitignored).
 const B_PASS = process.env.TOSKA_STAGING_TEST_PW_B;

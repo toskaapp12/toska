@@ -46,7 +46,7 @@ final class ShareCardInteractionTests: XCTestCase {
             app.buttons["sign in"].tap()
             let email = app.textFields["emailField"]
             XCTAssertTrue(waitFor(email, 8), "Email field missing")
-            email.tap(); email.typeText("salinarotess+nice@gmail.com")
+            email.tap(); email.typeText(ProcessInfo.processInfo.environment["TOSKA_EMAIL"] ?? "stagingA@example.invalid")
             let pw = app.secureTextFields["passwordField"]
             guard let stagingPw = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
                 XCTFail("TOSKA_STAGING_TEST_PW not set — see .local-credentials.md"); return

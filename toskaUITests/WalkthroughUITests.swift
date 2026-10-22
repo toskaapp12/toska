@@ -7,7 +7,7 @@ import XCTest
 // from the .xcresult. Methods are numbered: XCTest runs them alphabetically,
 // and auth state persists across launches via the keychain.
 //
-// Staging test account: salinarotess+nice@gmail.com (seeded).
+// Staging test account comes from the TOSKA_EMAIL env var (scheme/CLI).
 // This file is a throwaway driver for a manual-QA pass, not CI material —
 // it mutates staging data (a reply, a post, a repost).
 
@@ -285,7 +285,7 @@ final class WalkthroughUITests: XCTestCase {
         let email = app.textFields["emailField"]
         XCTAssertTrue(waitFor(email, 8), "Email field missing")
         email.tap()
-        email.typeText("salinarotess+nice@gmail.com")
+        email.typeText(ProcessInfo.processInfo.environment["TOSKA_EMAIL"] ?? "stagingA@example.invalid")
         let password = app.secureTextFields["passwordField"]
         password.tap()
         // Never hardcode (2026-07-22 leak) — pass TEST_RUNNER_TOSKA_STAGING_TEST_PW.
@@ -313,7 +313,7 @@ final class WalkthroughUITests: XCTestCase {
             app.buttons["sign in"].tap()
             let email = app.textFields["emailField"]
             XCTAssertTrue(waitFor(email, 8), "Email field missing")
-            email.tap(); email.typeText("salinarotess+nice@gmail.com")
+            email.tap(); email.typeText(ProcessInfo.processInfo.environment["TOSKA_EMAIL"] ?? "stagingA@example.invalid")
             let pw = app.secureTextFields["passwordField"]
             guard let stagingPw = ProcessInfo.processInfo.environment["TOSKA_STAGING_TEST_PW"] else {
                 XCTFail("TOSKA_STAGING_TEST_PW not set — see .local-credentials.md")
@@ -1518,7 +1518,7 @@ final class WalkthroughUITests: XCTestCase {
 
         // A → out, B → in.
         signOutInline()
-        signInInline(email: "salinarotess+webv1rb70g8@gmail.com", password: pwB)
+        signInInline(email: ProcessInfo.processInfo.environment["TOSKA_EMAIL_B"] ?? "stagingB@example.invalid", password: pwB)
         snap("23a-signed-in-as-B")
 
         // B finds A's post: felt + reply + follow.
@@ -1559,7 +1559,7 @@ final class WalkthroughUITests: XCTestCase {
 
         // B → out, A → in: verify the other side.
         signOutInline()
-        signInInline(email: "salinarotess+nice@gmail.com", password: pwA)
+        signInInline(email: ProcessInfo.processInfo.environment["TOSKA_EMAIL"] ?? "stagingA@example.invalid", password: pwA)
         let bell = app.buttons.matching(NSPredicate(
             format: "label BEGINSWITH 'Notifications'")).firstMatch
         forceTap(bell)

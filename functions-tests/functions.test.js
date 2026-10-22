@@ -23,7 +23,7 @@ process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "toska-test";
 
 const fns = require("../functions/index.js");
 const { __test } = fns;
-const { db, FieldValue, Timestamp, setReplyPendingReview, setReplyLive, cleanupLikesForUid,
+const { db, FieldValue, Timestamp, setReplyPendingReview, setReplyLive, cleanupLikesForUid, pageAdminsForCrisis,
         cleanupRepliesForUid, clearPostSubtree, claimedTransaction, checkRateLimit,
         pruneNotificationsOlderThan,
         isPostExplicitCrisis, isPostConcerning, computePostFlagReason,
@@ -222,6 +222,36 @@ describe("F-1 claimedTransaction", () => {
 // ─────────────────────────────────────────────────────────────────────
 // F-5: checkRateLimit — sliding window allow/deny
 // ─────────────────────────────────────────────────────────────────────
+describe("ACC-06 crisis email-backup tag precedes empty-recipient return", () => {
+  // The fallback admin uid moved out of committed code (deploy-time param,
+  // default ""). If the param is unset AND system/crisisAlertRecipients is
+  // missing, pages have no recipients — the crisis_needs_review log tag
+  // (which drives the Cloud Monitoring email alert) must STILL be emitted
+  // before the function returns, or a config regression silences crisis
+  // alerts entirely. Owner verifies the end-to-end page on staging in Phase 3.
+  it("emits crisis_needs_review with zero recipients and no throw", async () => {
+    await db.collection("system").doc("crisisAlertRecipients").delete().catch(() => {});
+    const logged = [];
+    const orig = console.log;
+    console.log = (...a) => { logged.push(a.join(" ")); };
+    try {
+      await pageAdminsForCrisis({
+        claimRef: db.collection("processedTriggerEvents").doc("test_crisis_tag_probe"),
+        title: "t", body: "b", dataPayload: { kind: "test" },
+        logLabel: "crisis-tag-test",
+      });
+    } finally {
+      console.log = orig;
+    }
+    const tagLine = logged.find((l) => l.includes('"tag":"crisis_needs_review"'));
+    assert.ok(tagLine, "crisis_needs_review tag must be logged even with zero recipients");
+    assert.ok(logged.some((l) => l.includes("no admin uids configured")),
+      "empty-recipient return path taken (no send attempted)");
+    const claim = await db.collection("processedTriggerEvents").doc("test_crisis_tag_probe").get();
+    assert.ok(!claim.exists, "claim must NOT be written when nothing was sent");
+  });
+});
+
 describe("F-5 checkRateLimit", () => {
   it("allows up to the max within the window, then denies", async () => {
     const uid = "rl-user";

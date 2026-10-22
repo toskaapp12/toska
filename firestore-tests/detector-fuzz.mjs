@@ -51,7 +51,7 @@ const TRANSFORMS = {
 const FIRST = ["John", "Sarah", "Michael", "Jessica", "David", "Emily", "Daniel",
   "Ashley", "James", "Olivia", "Ryan", "Megan", "Tyler", "Rachel", "Brandon", "Nicole"];
 const LAST = ["Johnson", "Smith", "Williams", "Garcia", "Martinez", "Rodriguez",
-  "Anderson", "Thompson", "Nguyen", "Patel", "Kowalski", "Okafor", "Salinaro", "Petrov"];
+  "Anderson", "Thompson", "Nguyen", "Patel", "Kowalski", "Okafor", "Marchetti", "Petrov"];
 // Sentence frames a real breakup post would use around a name.
 const FRAMES = [
   (n) => `my ex ${n} broke my heart`,

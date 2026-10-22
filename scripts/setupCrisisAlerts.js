@@ -20,10 +20,11 @@ const admin = require("firebase-admin");
 admin.initializeApp({ projectId: "toska-4ebf4" });
 const db = admin.firestore();
 
-// Recipients for prod crisis alerts. Default: the prod admin (salinarotess@
+// Recipients for prod crisis alerts. Default: the prod admin account
 // gmail.com). Add more uids here (or edit the Firestore doc directly later —
 // no redeploy needed) to page additional people.
-const RECIPIENT_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
+const RECIPIENT_UIDS = (process.env.RECIPIENT_UIDS || "").split(",").filter(Boolean);
+if (!RECIPIENT_UIDS.length) { console.error("set RECIPIENT_UIDS env var (comma-separated)"); process.exit(1); }
 
 (async () => {
   try {

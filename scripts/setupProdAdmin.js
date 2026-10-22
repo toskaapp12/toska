@@ -17,7 +17,8 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
-const ADMIN_UID = "alcxPIqLQZcTIwF5wjJMkK1yPlW2";
+const ADMIN_UID = process.env.ADMIN_UID;
+if (!ADMIN_UID) { console.error("set ADMIN_UID env var"); process.exit(1); }
 
 (async () => {
   try {

@@ -695,7 +695,7 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     // as dead code (the compiler warned `sentenceStarters` was never used); they
     // are removed. Layer 4 below has its own `canonicalSentenceStarters`.
 
-    // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
+    // Full-name shape: two consecutive Capitalized words ("Vera Marchetti").
     // Mirror of functions/moderation.js looksLikeFullName (2026-06-02). Catches
     // uncommon names with no relationship context; lowercase-surname / bare
     // single names still slip (that needs NER). Excludes common non-name

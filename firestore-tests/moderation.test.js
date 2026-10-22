@@ -429,7 +429,7 @@ describe("full-name heuristic: two consecutive Capitalized words (audit 2026-06-
   // The both-capitalized "First Last" shape is now held, with exclusions for
   // common non-name proper nouns. The lowercase-surname case still slips —
   // that needs NER and is intentionally not claimed here.
-  flag("uncommon full name flags", "Tess Salinaro");
+  flag("uncommon full name flags", "Vera Marchetti");
   flag("common full name flags", "John Smith");
   flag("full name mid-sentence flags", "i think Sarah Johnson is the one");
 
@@ -455,6 +455,6 @@ describe("M-2 false-positive fixes (audit 2026-06-08)", () => {
   flag("international phone still flags", "+44 20 7946 0958");
   flag("US phone still flags", "call me at 555 123 4567");
   flag("real first+last name still flags", "my ex Sarah Jones broke my heart");
-  flag("uncommon full name still flags", "Tess Salinaro ruined me");
+  flag("uncommon full name still flags", "Vera Marchetti ruined me");
   flag("name + common-word surname still flags", "Sarah Park texted me again");
 });

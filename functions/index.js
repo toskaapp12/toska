@@ -14,7 +14,7 @@ const {
 } = require("./moderationLogic");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
+const { defineSecret, defineString } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp, AggregateField } = require("firebase-admin/firestore");
@@ -40,6 +40,7 @@ const GIPHY_KEY = defineSecret("GIPHY_KEY");
 // hashes (see bannedIdentities.js). Set per-project via
 // `firebase functions:secrets:set BANNED_ID_PEPPER`.
 const BANNED_ID_PEPPER = defineSecret("BANNED_ID_PEPPER");
+const FALLBACK_ADMIN_UID = defineString("FALLBACK_ADMIN_UID", { default: "" });
 const { beforeUserCreated, HttpsError: IdentityHttpsError } = require("firebase-functions/v2/identity");
 const { identityHash, extractIdentities } = require("./bannedIdentities");
 
@@ -3371,7 +3372,7 @@ exports.onPostUpdated = onDocumentUpdated(
 //
 // The FALLBACK_ADMIN_UIDS literal inside pageAdminsForCrisis alerts the owner
 // even before `system/crisisAlertRecipients` is seeded (A-1 2026-06-09: the
-// uid is the real prod admin, salinarotess@gmail.com — an earlier literal was
+// uid is the real prod admin account — an earlier literal was
 // a TEST account and pages were dropped). Seed the doc so the literal is moot.
 exports.onPostCreatedAlertAdmins = onDocumentCreated(
   { document: "posts/{postId}", retry: true },
@@ -3408,7 +3409,11 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
   } catch (err) {
     console.warn(`${logLabel}: claim read failed, proceeding:`, err.message);
   }
-  const FALLBACK_ADMIN_UIDS = ["alcxPIqLQZcTIwF5wjJMkK1yPlW2"];
+  // Deploy-time param (ACC-06: repo is public — no uid literals in code).
+  // Real values live in gitignored .env.toska-4ebf4 / .env.toskastaging;
+  // empty string → no fallback recipients (email-backup alert still fires,
+  // see tag emission below, which now precedes the empty-recipient return).
+  const FALLBACK_ADMIN_UIDS = FALLBACK_ADMIN_UID.value() ? [FALLBACK_ADMIN_UID.value()] : [];
   const cfgSnap = await db.collection("system").doc("crisisAlertRecipients").get();
   // `uids` is hand-seeded (see A-1 note above) — if someone writes it as a
   // map/string instead of an array, `.filter` throws, the trigger fails, and
@@ -3422,18 +3427,19 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
   }
   const configured = (Array.isArray(rawUids) ? rawUids : []).filter((u) => typeof u === "string");
   const adminUids = configured.length > 0 ? configured : FALLBACK_ADMIN_UIDS;
+  // Email backup channel (independent of FCM): a structured tag the
+  // "Toska — crisis post (email backup)" Cloud Monitoring policy alerts on, so
+  // a crisis page reaches the admin by email even if every FCM push fails or
+  // the admin's phone is off. Emitted after the dedup gate, before the send
+  // AND before the empty-recipients return (ACC-06 reorder: with the fallback
+  // uid now a deploy-time param, a config regression must still surface via
+  // the email alert instead of pages dropping silently). Neutral — only the
+  // label (postId), no post content (L-1).
+  console.log(JSON.stringify({ tag: "crisis_needs_review", label: logLabel }));
   if (adminUids.length === 0) {
     console.log(`${logLabel}: tripped explicit-crisis but no admin uids configured`);
     return;
   }
-  // Email backup channel (independent of FCM): a structured tag the
-  // "Toska — crisis post (email backup)" Cloud Monitoring policy alerts on, so
-  // a crisis page reaches the admin by email even if every FCM push fails or
-  // the admin's phone is off. Emitted after the dedup gate, before the send,
-  // so a total FCM failure still triggers the email. Neutral — only the label
-  // (postId), no post content (L-1: content stays off notification surfaces);
-  // the admin taps into the crisis queue in admin.html to read it.
-  console.log(JSON.stringify({ tag: "crisis_needs_review", label: logLabel }));
   const tokens = [];
   for (const uid of adminUids) {
     // Same legacy fallback as sendPushNotification: tokens moved to the
@@ -6098,5 +6104,6 @@ Object.defineProperty(module.exports, "__test", {
   matchesCrisisPhrase,
   MOD_EXPLICIT_CRISIS,
   MOD_CONCERNING,
+  pageAdminsForCrisis,
   },
 });

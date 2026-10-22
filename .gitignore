@@ -53,3 +53,7 @@ firebase-debug.*.log
 .local-credentials.md
 # ...except the public-by-design security policy (2026-09-29).
 !/SECURITY.md
+
+# ACC-06 (public repo): deploy-time param files carry real uids/emails
+.env.*
+!.env.example

@@ -124,7 +124,7 @@ const SAFE_PROPER_NOUN_BIGRAMS = new Set([
 // treated as a phrase, not a name. This is intentionally a common-ENGLISH-word
 // list (a bounded, stable set) rather than an exhaustive non-name proper-noun
 // list (which can't scale). Real names like "Sarah Jones" or the uncommon
-// "Tess Salinaro" stay flagged because they don't contain a title word.
+// "Vera Marchetti" stay flagged because they don't contain a title word.
 const COMMON_TITLE_WORDS = new Set([
   "the", "a", "an", "of", "and", "to", "in", "on", "at", "for",
   "last", "first", "next", "final", "every",
@@ -150,13 +150,13 @@ const COMMON_TITLE_WORDS = new Set([
   "church", "temple", "castle", "palace", "diamond", "crystal", "rose", "stone",
 ]);
 
-// Full-name shape: two consecutive Capitalized words ("Tess Salinaro",
+// Full-name shape: two consecutive Capitalized words ("Vera Marchetti",
 // "John Smith") — a strong signal of a person's name even when neither word
 // is in our first/last-name dictionaries. 2026-06-01: added after a real full
 // name slipped through (uncommon name + no relationship context). Guards skip
 // safe words, all-ambiguous pairs, known non-name bigrams, and (M-2) common
 // English title/phrase bigrams. NOTE: this only catches the BOTH-capitalized
-// shape; "Tess salinaro" (lowercase surname) and bare single names still slip
+// shape; "Vera marchetti" (lowercase surname) and bare single names still slip
 // — reliably catching those needs NER/ML.
 function looksLikeFullName(text) {
   // Run the two-capitalized-words shape over the CANONICALIZED text, not the
@@ -397,7 +397,7 @@ function foldMathAlpha(cp) {
 // ASCII [A-Z][a-z] full-name regex: Mathematical Alphanumeric Symbols
 // (U+1D400+) and fullwidth Latin (U+FF21..FF5A). Unlike canonicalize (which
 // lowercases for dictionary lookup), this keeps case so the two-capitalized-
-// words shape still matches "𝐉𝐨𝐡𝐧 𝐒𝐚𝐥𝐢𝐧𝐚𝐫𝐨" → "John Salinaro". F-1.
+// words shape still matches "𝐉𝐨𝐡𝐧 𝐌𝐚𝐫𝐜𝐡𝐞𝐭𝐭𝐢" → "John Marchetti". F-1.
 function foldLetterformsKeepCase(text) {
   if (!text) return "";
   let result = "";
@@ -644,7 +644,7 @@ function containsNameOrIdentifyingInfo(text) {
   // capitalized-words shape), and lone LAST names by the canonicalized
   // name-layers further down. Contact info / addresses / handles are unchanged.
 
-  // Full-name shape: two consecutive Capitalized words ("Tess Salinaro").
+  // Full-name shape: two consecutive Capitalized words ("Vera Marchetti").
   if (looksLikeFullName(text)) return true;
 
   // 10+ digits → phone number heuristic.

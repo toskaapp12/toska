@@ -216,8 +216,12 @@ anonymity / crisis-detection / moderation-hold / auth invariants.
   client tokens — client-coupled change, not worth it pre-launch.
 - **confirmAdult rate limiter fails open** on Firestore outage (by design,
   F-5: own-doc idempotent write).
-- **Hardcoded fallback admin uid** in functions source (M-1 posture,
-  unchanged): acceptable while the repo is private.
+- **Repository is PUBLIC by decision (2026-10-23).** Tracked files carry no
+  personal identifiers (fix(ACC-06), f78589d); commit history predating that
+  commit retains the former author identity by an explicit no-history-rewrite
+  decision. The former hardcoded fallback admin uid moved to a deploy-time
+  param; admin authority rests on the rules-enforced admins/{uid} role doc,
+  never on uid secrecy.
 
 ## 9. Incident log
 

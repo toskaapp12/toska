@@ -57,3 +57,5 @@ firebase-debug.*.log
 # ACC-06 (public repo): deploy-time param files carry real uids/emails
 .env.*
 !.env.example
+# key-restriction backups and other machine-local state
+.local/

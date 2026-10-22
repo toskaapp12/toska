@@ -62,7 +62,14 @@ How to find post-backup deletions, in order of reliability:
   Phase 2+): (a) cascade writes a minimal uid-only erasure tombstone to an
   admin-only collection (GDPR Art. 17 "record of erasure" — standard
   practice), (b) raise function-log retention to ≥56 days, or (c) shorten
-  backup retention to ≤30 days.
+  backup retention to ≤30 days. **Owner note (2026-10-23, decision deferred):
+  option (a) is the closest fit as a MINIMAL record — an admin-only
+  `erasureTombstones/{uid}` doc holding ONLY `{deletedAt}` (uid is the doc id),
+  written by the cascade as its final step, with a Firestore TTL policy on
+  `deletedAt` + ~60 days so tombstones self-delete once no backup can
+  resurrect the account. Rules: `allow read, write: if false` (Admin SDK
+  only). No handle, no email, no content — just enough to re-run a cascade
+  after a restore.**
 - Cross-check: Firebase Auth has no queryable deleted-user tombstones; don't
   rely on it.
 

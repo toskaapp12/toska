@@ -107,7 +107,7 @@ struct SettingsView: View {
                                 // cards + hand-picked toskaapp.com features) —
                                 // this toggle is the consent for each, so the
                                 // scope can't live only in a one-time popup.
-                                toggleRow("allow sharing", subtitle: "let people share your words as image cards, and let a few be featured on toskaapp.com — always without your handle", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
+                                toggleRow("share publicly", subtitle: "your post may be featured on the toska website and appear in Google search. your handle is never shown.", icon: "square.and.arrow.up", iconColor: Color.toskaBlue, isOn: $settings.allowSharing)
                                 Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)
                                 toggleRow("show follower count", subtitle: "let others see how many people follow you", icon: "person.2.fill", iconColor: Color.toskaBlue, isOn: $settings.showFollowerCount)
                                 Rectangle().fill(ToskaColor.divider).frame(height: 1).padding(.leading, 28)

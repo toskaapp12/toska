@@ -128,6 +128,8 @@ const chunk = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, 
 let me = null;               // firebase user
 let blocked = new Set();     // uids I blocked (client-side filtering, like iOS)
 let blockedUnsub = null;
+let blockedBy = new Set();   // uids who blocked ME (block hardening 2026-10-23)
+let blockedByUnsub = null;
 let signupInProgress = false; // auth fires before the users doc exists — defer routing
 
 function startBlockedListener(uid) {
@@ -150,6 +152,29 @@ function startBlockedListener(uid) {
         () => {});
 }
 function stopBlockedListener() { if (blockedUnsub) { blockedUnsub(); blockedUnsub = null; } blocked = new Set(); }
+
+// Block hardening (2026-10-23): "who blocked me" — the inverse of `blocked`, so
+// a blocker's posts drop out of the blocked user's feed/search too. A
+// collectionGroup query over every /blocked doc whose blockedUid == my uid;
+// each doc lives at users/{blocker}/blocked/{myUid}, so the blocker's uid is the
+// grandparent (d.ref.parent.parent.id). The blockedUid collectionGroup index
+// already exists, and rules let the blocked party read these docs. Mirrors
+// startBlockedListener's grow-triggered re-render.
+function startBlockedByListener(uid) {
+    stopBlockedByListener();
+    blockedByUnsub = onSnapshot(
+        query(collectionGroup(db, "blocked"), where("blockedUid", "==", uid)),
+        snap => {
+            const next = new Set();
+            snap.forEach(d => { const b = d.ref.parent.parent?.id; if (b) next.add(b); });
+            let grew = false;
+            for (const id of next) if (!blockedBy.has(id)) { grew = true; break; }
+            blockedBy = next;
+            if (grew && activeFeedTab) viewFeed();
+        },
+        () => {});
+}
+function stopBlockedByListener() { if (blockedByUnsub) { blockedByUnsub(); blockedByUnsub = null; } blockedBy = new Set(); }
 
 let notifUnsub = null;
 function startNotifBadge(uid) {
@@ -606,8 +631,8 @@ let promptContext = null; // {promptDate, tag}
 function postVisible(d) {
     if (d.flagged === true) return false;
     if (d.expiresAt?.toDate && d.expiresAt.toDate() < new Date()) return false;
-    if (blocked.has(d.authorId)) return false;
-    if (d.originalAuthorId && blocked.has(d.originalAuthorId)) return false;
+    if (blocked.has(d.authorId) || blockedBy.has(d.authorId)) return false;
+    if (d.originalAuthorId && (blocked.has(d.originalAuthorId) || blockedBy.has(d.originalAuthorId))) return false;
     return true;
 }
 
@@ -850,6 +875,7 @@ function viewSignUp() {
             signupInProgress = false;
             initWrites(db, uid);
             startBlockedListener(uid);
+            startBlockedByListener(uid);
             startNotifBadge(uid);
             location.hash = "#/";
             route();
@@ -1407,7 +1433,7 @@ async function viewNotifications() {
             orderBy("createdAt", "desc"), limit(50)));
         mount.querySelector(".spinner")?.remove();
         const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-            .filter(n => !blocked.has(n.fromUserId));
+            .filter(n => !blocked.has(n.fromUserId) && !blockedBy.has(n.fromUserId));
         if (!rows.length) { list.append(emptyState("nothing yet. when someone feels your words, it lands here.")); return; }
         for (const n of rows) {
             const action = NOTIF_ACTION[n.type] ?? (n.message || n.type);
@@ -1804,7 +1830,7 @@ async function fetchReplies(postId) {
     const byId = new Map();
     for (const d of [...live.docs, ...mine.docs]) byId.set(d.id, d);
     const rows = [...byId.values()].map(d => ({ id: d.id, postId, ...d.data() }))
-        .filter(r => !blocked.has(r.authorId))
+        .filter(r => !blocked.has(r.authorId) && !blockedBy.has(r.authorId))
         .sort((a, b) => (a.createdAt?.toMillis() ?? 0) - (b.createdAt?.toMillis() ?? 0));
     return rows;
 }
@@ -2074,6 +2100,7 @@ window.addEventListener("hashchange", route);
 
 document.getElementById("signOutBtn").onclick = async () => {
     stopBlockedListener();
+    stopBlockedByListener();
     stopNotifBadge();
     resetWriteCaches();
     if (me) clearDrafts(me.uid); // drafts never outlive the session that wrote them
@@ -2134,7 +2161,7 @@ onAuthStateChanged(auth, async (user) => {
         // previous account's drafts so they can't leak into the next session.
         if (prev) clearDrafts(prev.uid);
         feedCache.clear(); activeFeedTab = null; followingUids = null;
-        stopBlockedListener(); stopNotifBadge(); resetWriteCaches(); route(); return;
+        stopBlockedListener(); stopBlockedByListener(); stopNotifBadge(); resetWriteCaches(); route(); return;
     }
     if (signupInProgress) return; // signup completes its own routing
     // Mirror ContentView.verifyUserDocumentAsync: the users doc must exist,
@@ -2193,6 +2220,7 @@ onAuthStateChanged(auth, async (user) => {
     }
     initWrites(db, user.uid);
     startBlockedListener(user.uid);
+    startBlockedByListener(user.uid);
     startNotifBadge(user.uid);
     route();
 });

@@ -106,6 +106,11 @@
         <input type="email" id="email" placeholder="email" autocomplete="email">
         <input type="password" id="password" placeholder="password" autocomplete="current-password">
         <button id="signInBtn">sign in</button>
+        <!-- TOTP second factor (shown only after password succeeds AND MFA is required) -->
+        <div id="mfaStep" style="display:none; margin-top:14px;">
+            <input type="text" id="mfaCode" placeholder="6-digit code from your authenticator" inputmode="numeric" autocomplete="one-time-code">
+            <button id="mfaBtn">verify</button>
+        </div>
         <p style="font-size:11.5px; color:#8a8d96; margin-top:12px; line-height:1.5;">protected by reCAPTCHA — Google's <a href="https://policies.google.com/privacy" style="color:#6d55c9;">privacy policy</a> and <a href="https://policies.google.com/terms" style="color:#6d55c9;">terms</a> apply.</p>
         <div id="loginError" class="error"></div>
     </div>
@@ -185,7 +190,7 @@
         // to commit once you have one.
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut, setPersistence, browserSessionPersistence, getMultiFactorResolver, TotpMultiFactorGenerator } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
 
@@ -485,10 +490,14 @@
         // --- Auth wiring ---
 
         document.getElementById("signInBtn").addEventListener("click", signIn);
+        document.getElementById("mfaBtn").addEventListener("click", completeMfa);
         document.getElementById("signOutBtn").addEventListener("click", () => fbSignOut(auth));
         document.querySelectorAll(".tabs button[data-tab]").forEach(btn => {
             btn.addEventListener("click", () => switchTab(btn.dataset.tab, btn));
         });
+
+        // Holds the resolver between the password step and the TOTP step.
+        let mfaResolver = null;
 
         async function signIn() {
             const email = document.getElementById("email").value;
@@ -497,8 +506,49 @@
             errEl.textContent = "";
             try {
                 await signInWithEmailAndPassword(auth, email, password);
+                // No MFA on this account → onAuthStateChanged takes over.
             } catch (e) {
-                errEl.textContent = e.message;
+                if (e.code === "auth/multi-factor-auth-required") {
+                    // Password was correct; a second factor is required. Reveal the
+                    // TOTP step and stash the resolver for completeMfa().
+                    try {
+                        mfaResolver = getMultiFactorResolver(auth, e);
+                    } catch (re) {
+                        errEl.textContent = "couldn't start MFA: " + (re.code || re.message);
+                        return;
+                    }
+                    document.getElementById("mfaStep").style.display = "block";
+                    document.getElementById("signInBtn").disabled = true;
+                    errEl.textContent = "enter the 6-digit code from your authenticator app";
+                    errEl.className = "muted";
+                    document.getElementById("mfaCode").focus();
+                } else {
+                    errEl.className = "error";
+                    errEl.textContent = e.code === "auth/invalid-credential"
+                        ? "wrong email or password" : (e.message || e.code);
+                }
+            }
+        }
+
+        async function completeMfa() {
+            const errEl = document.getElementById("loginError");
+            const code = document.getElementById("mfaCode").value.trim();
+            if (!mfaResolver) { errEl.className = "error"; errEl.textContent = "sign in again"; return; }
+            if (!/^\d{6}$/.test(code)) { errEl.className = "error"; errEl.textContent = "enter the 6 digits"; return; }
+            document.getElementById("mfaBtn").disabled = true;
+            errEl.className = "muted"; errEl.textContent = "verifying…";
+            try {
+                // The account has one TOTP factor; use its enrollment hint.
+                const hint = mfaResolver.hints[0];
+                const assertion = TotpMultiFactorGenerator.assertionForSignIn(hint.uid, code);
+                await mfaResolver.resolveSignIn(assertion);
+                // Success → onAuthStateChanged swaps to the app view.
+            } catch (e) {
+                errEl.className = "error";
+                errEl.textContent = (e.code === "auth/invalid-verification-code" || e.code === "auth/totp-challenge-timeout")
+                    ? "wrong or expired code — wait for the next one and retry"
+                    : (e.code || e.message);
+                document.getElementById("mfaBtn").disabled = false;
             }
         }
 
@@ -605,6 +655,13 @@
             } else {
                 document.getElementById("loginView").style.display = "flex";
                 document.getElementById("appView").style.display = "none";
+                // Reset the MFA step so a later sign-in starts clean (e.g. after
+                // idle sign-out or a not-an-admin bounce).
+                mfaResolver = null;
+                document.getElementById("mfaStep").style.display = "none";
+                document.getElementById("mfaCode").value = "";
+                document.getElementById("signInBtn").disabled = false;
+                document.getElementById("mfaBtn").disabled = false;
             }
         });
 

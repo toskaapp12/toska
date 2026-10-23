@@ -1216,7 +1216,7 @@ exports.sendPushNotification = onDocumentCreated(
         .collection("blocked").doc(fromUserId)
         .get();
       if (blockedSnap.exists) {
-        console.log(`Push suppressed: ${userId} blocked ${fromUserId}`);
+        console.log(`Push suppressed: recipient has blocked sender ${fromUserId}`);
         return;
       }
     }
@@ -2182,7 +2182,7 @@ exports.onBlockCreatedCleanupFollows = onDocumentCreated(
         `onBlockCreatedCleanupFollows incomplete for ${uid}->${blockedId}; ` +
         `retrying deletes: ${failures.join(", ")}`);
     }
-    console.log(`Block follow-graph teardown: ${uid} blocked ${blockedId}`);
+    console.log(`Block follow-graph teardown complete for blocker ${uid}`);
   }
 );
 
@@ -2901,7 +2901,9 @@ exports.rateLimitPosts = onDocumentCreated("posts/{postId}", async (event) => {
     .get();
 
   if (recentSnap.size > 5) {
-    console.log("Rate limit exceeded for user:", authorId, "— flagging post:", postId);
+    // LOG-01: no uid↔postId pairing in logs — the post doc itself carries
+    // authorId for admin triage; the log only needs the actioned doc.
+    console.log("Rate limit exceeded — flagging post:", postId);
     // setPendingReview, not a bare flagged:true: every other flag path pairs
     // the flag with a pending_review hold. A flag-only write leaves
     // moderationStatus "live", so any surface that filters solely on
@@ -3772,7 +3774,7 @@ exports.checkReportSLA = onSchedule("every 60 minutes", async () => {
       tag: "report_aged_24h",
       reportId: doc.id,
       ageHours: Math.round((Date.now() - (data.createdAt?.toMillis?.() || Date.now())) / (60 * 60 * 1000)),
-      reportedBy: data.reportedBy || null,
+      // LOG-01: reporter uid dropped from logs; the admin-only report doc has it.
       status: data.status || null,
     }));
   }
@@ -4225,8 +4227,9 @@ exports.rateLimitReports = onDocumentCreated(
       .limit(15)
       .get();
     if (recentByTargetSnap.size > 10) {
-      console.log("Report rate limit exceeded for target:", reportedUserId,
-        "from", reportedBy);
+      // LOG-01: reporter uid dropped — pairing reporter↔target in logs
+      // outlives its use; the deleted report carried it for the moment it mattered.
+      console.log("Report rate limit exceeded for target:", reportedUserId);
       await db.collection("reports").doc(event.params.reportId).delete();
     }
   }

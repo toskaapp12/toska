@@ -20,7 +20,10 @@ struct CreateAccountView: View {
     // from underage / non-agreeing users.
     @State private var showAgeGate = false
     @State private var showPolicyAcceptance = false
-    
+    // B94-iOS: sharing is opt-IN. Unchecked by default; writes allowSharing
+    // at account creation. (The Settings → Privacy toggle also controls it.)
+    @State private var optInSharing = false
+
     var body: some View {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
@@ -220,7 +223,31 @@ struct CreateAccountView: View {
                         .foregroundColor(Color.toskaErrorRed)
                         .padding(.bottom, 10)
                 }
-                
+
+                // B94-iOS: optional public-sharing consent, unchecked by default.
+                Button {
+                    optInSharing.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: optInSharing ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 18))
+                            .foregroundColor(optInSharing ? ToskaColor.accent : ToskaColor.dot)
+                            .padding(.top, 1)
+                        Text("share publicly — your post may be featured on the toska website and appear in Google search. your handle is never shown.")
+                            .font(ToskaFont.sans(11.5))
+                            .foregroundColor(ToskaColor.text2)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("sharingOptInCheckbox")
+                .accessibilityLabel("share publicly")
+                .accessibilityValue(optInSharing ? "on" : "off")
+                .padding(.bottom, 16)
+
                 Button {
                     attemptCreateAccount()
                 } label: {
@@ -389,7 +416,7 @@ struct CreateAccountView: View {
                         "followerCount": 0,
                         "followingCount": 0,
                         "totalLikes": 0,
-                        "allowSharing": false,   // opt-in (2026-10-23): off at creation; Settings toggle opts in
+                        "allowSharing": optInSharing,   // B94-iOS: opt-in checkbox on the sign-up form (unchecked by default)
                         "showFollowerCount": false,
                         "hasCompletedOnboarding": false,
                         "createdAt": FieldValue.serverTimestamp(),

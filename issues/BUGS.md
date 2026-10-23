@@ -107,7 +107,7 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## B94-iOS — Sharing opt-in on iOS (defaults done; sign-up choice pending)
 
-- **Severity:** MED (consent/privacy) · **Status:** PARTIAL — defaults flipped 2026-10-23 (rides next build); sign-up checkbox pending
+- **Severity:** MED (consent/privacy) · **Status:** FIXED 2026-10-23 — defaults false at all 3 paths + opt-in checkbox on the email sign-up form (CreateAccountView). Apple/Splash button flows keep default-off + Settings opt-in (no form to host a checkbox — owner to decide if a post-Apple-signup prompt is wanted).
 - **Done (2026-10-23):** creation default flipped to `allowSharing: false` at all three paths — CreateAccountView, AppleSignInHelper, SplashView. Settings toggle unchanged (still the opt-in control). Read-fallbacks (`?? true`) deliberately left so existing/legacy accounts are unchanged.
 - **Pending (build 94):** add an optional choice at sign-up (CreateAccountView + Apple/Splash onboarding) showing the SEO-01 wording, unchecked by default, that sets `allowSharing` at creation. Keep the Settings toggle.
 - **Do not** change existing accounts.

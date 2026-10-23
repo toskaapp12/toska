@@ -6,6 +6,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebas
 import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword,
     createUserWithEmailAndPassword, signOut, sendPasswordResetEmail,
+    getMultiFactorResolver, TotpMultiFactorGenerator,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 import {
     getFirestore, collection, collectionGroup, doc, getDoc, getDocs,
@@ -709,18 +710,69 @@ function viewSignIn() {
     const pw = el("input", { type: "password", autocomplete: "current-password", placeholder: "password" });
     const err = el("div");
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "sign in");
+    // TOTP second-factor step — hidden until an MFA-enrolled account signs in.
+    const mfaCode = el("input", { type: "text", inputmode: "numeric", autocomplete: "one-time-code", placeholder: "6-digit code from your authenticator" });
+    const mfaBtn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "verify");
+    const mfaStep = el("div", { style: "display:none; margin-top:8px;" },
+        el("div", { class: "field" }, el("label", {}, "two-factor code"), mfaCode), mfaBtn);
+    let mfaResolver = null;
+
+    // Map an auth error to a user-facing line. invalid-credential / wrong-password
+    // / user-not-found deliberately share ONE message so we never reveal whether
+    // an email has an account (email-enumeration protection is on by design).
+    // Raw codes go to the console only.
+    const authMessage = (e) => {
+        const code = e?.code ?? "";
+        console.error("[signin]", code || e, e);
+        if (/invalid-credential|wrong-password|user-not-found/.test(code)) return "that email and password don't match.";
+        if (/invalid-email|missing-email/.test(code)) return "that email doesn't look right.";
+        if (/too-many-requests/.test(code)) return "too many tries — wait a few minutes, then try again.";
+        if (/network-request-failed/.test(code)) return "you're offline. try again when you're back.";
+        if (/user-disabled/.test(code)) return "this account has been disabled.";
+        if (/app-check/.test(code)) return "couldn't verify this device. reload and try again.";
+        return GENERIC_ERR;
+    };
+
     btn.onclick = async () => {
         err.replaceChildren(); btn.disabled = true;
         try {
             await signInWithEmailAndPassword(auth, email.value.trim(), pw.value);
+            // No MFA → onAuthStateChanged routes into the app.
         } catch (e) {
-            const code = e.code ?? "";
-            const m = /invalid-credential|wrong-password|user-not-found/.test(code) ? "that email and password don't match."
-                : /invalid-email|missing-email/.test(code) ? "that email doesn't look right."
-                : /too-many-requests/.test(code) ? "too many tries — wait a few minutes, then try again."
-                : /network-request-failed/.test(code) ? "you're offline. try again when you're back."
-                : GENERIC_ERR;
-            err.replaceChildren(errorBox(m)); btn.disabled = false;
+            if (e.code === "auth/multi-factor-auth-required") {
+                try {
+                    mfaResolver = getMultiFactorResolver(auth, e);
+                } catch (re) {
+                    console.error("[signin] resolver", re);
+                    err.replaceChildren(errorBox(GENERIC_ERR)); btn.disabled = false; return;
+                }
+                mfaStep.style.display = "block";
+                err.replaceChildren(el("p", { class: "note", style: "margin:8px 0; color:var(--plum);" },
+                    "enter the 6-digit code from your authenticator app."));
+                mfaCode.focus();
+                // Leave btn disabled; the MFA step owns the rest.
+            } else {
+                err.replaceChildren(errorBox(authMessage(e))); btn.disabled = false;
+            }
+        }
+    };
+
+    mfaBtn.onclick = async () => {
+        const code = mfaCode.value.trim();
+        if (!mfaResolver) { err.replaceChildren(errorBox("start sign-in again.")); return; }
+        if (!/^\d{6}$/.test(code)) { err.replaceChildren(errorBox("enter the 6 digits.")); return; }
+        mfaBtn.disabled = true; err.replaceChildren();
+        try {
+            const hint = mfaResolver.hints[0];
+            const assertion = TotpMultiFactorGenerator.assertionForSignIn(hint.uid, code);
+            await mfaResolver.resolveSignIn(assertion);
+            // Success → onAuthStateChanged routes into the app.
+        } catch (e) {
+            console.error("[signin] mfa", e?.code || e, e);
+            const m = /invalid-verification-code|totp-challenge-timeout|invalid-payload/.test(e?.code ?? "")
+                ? "wrong or expired code — wait for the next one and try again."
+                : authMessage(e);
+            err.replaceChildren(errorBox(m)); mfaBtn.disabled = false;
         }
     };
     const resetNote = el("div");
@@ -748,6 +800,7 @@ function viewSignIn() {
             el("div", { style: "margin:2px 0 4px;" }, forgot),
             resetNote,
             err, el("div", { style: "margin-top:6px;" }, btn),
+            mfaStep,
             el("p", { class: "note", style: "margin-top:16px;" },
                 "protected by reCAPTCHA — Google's ",
                 el("a", { href: "https://policies.google.com/privacy", target: "_blank", rel: "noopener" }, "privacy policy"),

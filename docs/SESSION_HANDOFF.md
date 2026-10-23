@@ -12,13 +12,80 @@ _Last updated: 2026-10-23._
 - **Production is healthy and launch-hardened.** A full pre-launch audit
   (`AUDIT_REPORT.md`, gitignored, local only) was run and its Phase-2 fixes
   shipped. Latest release tag: **`v1.3-b93`**.
-- **iOS:** build **93** on TestFlight (v1.3), installable. Critical paths
-  verified in prod on a fresh install: sign-in, feed, GIF post, and the
-  crisis flow end-to-end (detection → 988 check-in → hold → crisis page push).
+- **iOS:** build **97** on TestFlight (v1.3) — see "Today (2026-10-23)" below.
+  Builds 94→97 all shipped today. Earlier critical paths verified in prod on a
+  fresh install: sign-in, feed, GIF post, and the crisis flow end-to-end
+  (detection → 988 check-in → hold → crisis page push).
 - **Projects:** `toska-4ebf4` (prod), `toskastaging` (staging/dev). Web app
   = Firebase Hosting (app.toskaapp.com). Marketing + legal + admin + prompts
   = GitHub Pages (www.toskaapp.com, from `docs/`). No Cloud Storage anywhere
   (media is Giphy URLs via a server proxy).
+
+## Today (2026-10-23) — MFA, FCM, watchdog, wording, blocking
+
+Chronological, with **LIVE** vs **WAITING** marked.
+
+**1. TOTP MFA sign-in** — the admin account has TOTP enrolled; the clients now
+handle the second factor on sign-in. iOS `SignInView` (resolver → TOTP assertion),
+web `app.js`, and `admin.html`. **LIVE** (web/admin deployed; iOS in builds 94+).
+Verified on device: owner signed out/in with password + TOTP on build 95.
+
+**2. FCM token fix (builds 94→96)** — sign-out calls `deleteToken`; a same-session
+sign-in only tried a one-shot `refreshFCMToken()` that fetched nothing before APNs
+re-registered, foreground never retried, and the Settings push toggle's
+already-authorized branch just wrote the pref. Net: any user signing out/in
+silently lost pushes (crisis pages included) until a cold launch. Fix:
+`PushNotificationManager.reregisterForPush()` (re-registers APNs + fetch/save),
+wired to sign-in, app-foreground-when-signed-in, and the toggle. **LIVE in build
+95**, device-verified all 3 paths (see B94-FCM in issues/BUGS.md).
+
+**3. Crisis delivery watchdog + retry fix** — `pageAdminsForCrisis` no-token path
+now records to `undeliveredCrisisPages` + relies on email backup instead of
+throwing (which had caused a ~103× Eventarc retry storm on a test crisis post).
+New `crisisDeliveryWatchdog` (onSchedule every 5 min) flags any crisis page with
+no delivery claim after 15 min, with two Cloud Monitoring policies (undelivered +
+heartbeat-absence) + a log metric. **LIVE in prod AND staging**, staging tested
+end-to-end (alert email confirmed). Scan #2 reuses the existing
+(concerningContent, createdAt DESC) index via an explicit orderBy.
+
+**4. Anonymity wording reconciliation** — removed absolute "anonymous for
+everyone / is it really anonymous? yes / no one can see who you are / every
+account is anonymous" claims (contradicted by the privacy policy's honest
+"pseudonymous, not anonymous"), kept true-about-other-users claims, added a
+de-anon reminder at onboarding + compose ("posts share one handle, so small
+details like places or workplaces can add up"). **LIVE:** website FAQ (Pages),
+web app (hosting). **In build 96/97:** iOS copy. App Store description +
+promo text finalized in `APP_STORE_METADATA.md` (gitignored) — **owner pastes to
+ASC**. Also removed the unsupported "you can change it whenever" line (no
+handle-change feature exists — see FEAT-HANDLE-CHANGE). `/p/` share pages verified
+to carry no handle/author id/author-post links. Full decision log in AUDIT_REPORT.md.
+
+**5. Blocking hardening (ex-on-a-breakup-app threat)** — before today, a blocked
+user could still read the blocker's posts (posts read rule was `isAuth()` only).
+  - **Option 1 (client-side filter):** BlockedUsersCache gains a "who blocked me"
+    set (collectionGroup on `/blocked` where `blockedUid==me`) + `isHiddenAuthor()`
+    used at all 12 content-filter sites; web mirrors it (`blockedBy` set).
+    **LIVE on web (hosting); iOS in build 97.** Filters by authorId so it survives
+    a handle change.
+  - **Option 2 (rules):** posts `read` split into `list` (unchanged) + `get`
+    (+`notBlockedBy(authorId)`), so a blocked user can't directly open/deep-link
+    the blocker's post. 5 new rules tests; suite 285 passing. **COMMITTED, NOT
+    DEPLOYED** — must deploy only AFTER build 97 + web are confirmed live (else
+    old-app blocked users hit denied direct-opens). ⚠️ **Pending owner: deploy
+    `firebase deploy --only firestore:rules --project toska-4ebf4` together, after
+    the owner tests blocking on build 97 with two accounts.**
+  - **Option 3 (handle-change suggestion):** DEFERRED post-launch — there is no
+    handle-change feature yet; building it (unique registry swap + optional
+    past-content backfill + the block suggestion) is logged as FEAT-HANDLE-CHANGE
+    in issues/BUGS.md.
+  - Confirmed: the blocked party could already read their own `/blocked` docs
+    (rules:967) so nothing new is revealed; blocker's replies on others' posts are
+    hidden too.
+
+**Build pipeline note:** ASC API Issuer `49354180-…`; upload uses the **Admin**
+key `BF6U2B58AQ` (the Developer key `4N8UF433DF` is rejected for cloud signing but
+fine for the group-assign API). `scripts/asc_add_build_to_group.js <N>` polls +
+assigns to the Internal (me) group.
 
 ## What shipped this cycle (2026-10-22 → 23)
 

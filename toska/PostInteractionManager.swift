@@ -306,6 +306,16 @@ class PostInteractionManager {
                onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
+               // B94-2: broadcast like like/save do, so the shared
+               // repostedPostIds (and every other rendered copy of this post)
+               // flips immediately instead of waiting for a refresh. The feed's
+               // handleInteractionChanged already has the "repost" case.
+               NotificationCenter.default.post(
+                   name: .postInteractionChanged,
+                   object: nil,
+                   userInfo: ["postId": postId, "action": "repost", "value": true]
+               )
+
                let db = Firestore.firestore()
 
                db.collection("posts")

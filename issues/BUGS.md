@@ -58,9 +58,7 @@ with a GIF post appearing in a live feed without any tap/scroll.
 
 ## B94-2 — Repost not reflected in the feed until manual refresh
 
-- **Severity:** LOW–MED (functionally correct — the repost IS created and persists; only the immediate UI feedback lags)
-- **Surface:** iOS repost action + feed (`toska/PostInteractionManager.swift`, `toska/FeedViewModel.swift`)
-- **Status:** OPEN — targeted for build 94
+- **Severity:** LOW–MED · **Surface:** iOS repost + feed · **Status:** FIXED 2026-10-23 — repost() now posts .postInteractionChanged (unrepost already did); the dead handleInteractionChanged 'repost' case now fires so all copies + the shared store flip immediately. Compiles.
 - **Reported:** 2026-10-23, owner device test on build 93
 - **Regression?** No. Pre-existing on 91/92 (same basis as B94-1).
 

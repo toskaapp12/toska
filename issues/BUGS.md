@@ -5,6 +5,40 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## FEAT-HANDLE-CHANGE — post-signup handle change + backfill + block suggestion (post-launch)
+
+- **Type:** FEATURE (post-launch) · **Surface:** iOS + web + rules + functions · **Status:** DEFERRED 2026-10-23
+- **Why:** there is NO post-signup handle-change today (handles are set only at
+  signup via the "shuffle" flow + `commitUserDocClaimingHandle`). Block hardening
+  Option 3 (a gentle "want a fresh handle?" suggestion after blocking) depends on
+  this, so Option 3 is deferred with it. The App Store "you can change it
+  whenever" claim was removed because nothing backs it (2026-10-23).
+- **Scope to build:**
+  1. **Change mechanism:** generate a unique handle (`generateUniqueHandleAsync`),
+     then ATOMICALLY release `handles/{oldLower}` + claim `handles/{newLower}` and
+     update `users/{uid}.handle` in one batch/transaction (prevents squatting +
+     uniqueness races). New rules path for a handle *update* (today the registry
+     rule is create/delete only). Add a rate-limit (e.g. once per N days) and
+     respect `bannedIdentities`/restricted-user checks.
+  2. **Past-content backfill:** `authorHandle` is denormalized on every post,
+     reply, and reflection with no backfill, so a change leaves old content under
+     the old handle. A callable Cloud Function would paginate the user's `posts`
+     (`where authorId==uid`), `replies` (collectionGroup `where authorId==uid`),
+     reflections, and the follow-graph `handle` mirrors and batch-update
+     `authorHandle`. Bounded + idempotent, but non-trivial (hundreds of docs,
+     collectionGroup over replies, Admin SDK server-side). Decide forward-only vs
+     backfilled at build time.
+  3. **Option 3 block suggestion (the trigger):** after a block (on
+     `.userBlocked`), show a calm, optional, dismissible sheet with a one-tap
+     "give me a new handle". Approved wording (variant 2):
+     > **a fresh handle?** they won't see your posts in their feed anymore. if
+     > you'd feel more at ease, you can switch to a new random handle for anything
+     > you write from now on. your older posts keep the handle they were written
+     > under.  [ give me a new handle ] [ not now ]
+     (If backfill ships, soften "older posts keep…" accordingly.)
+
+---
+
 ## B94-MFA — iOS sign-in can't complete a TOTP second factor (BLOCKING) [FIRST]
 
 - **Severity:** HIGH (blocking) · **Surface:** iOS sign-in (`toska/SignInView.swift`) · **Status:** FIXED 2026-10-23 (compiles; on-device verify after build 94)

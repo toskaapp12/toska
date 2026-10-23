@@ -225,4 +225,9 @@ anonymity / crisis-detection / moderation-hold / auth invariants.
 
 ## 9. Incident log
 
-_(none to date — append dated entries here)_
+- **2026-07-22 — credentials committed to the repository.** Three test/demo
+  account passwords found in committed internal docs (GitGuardian alert).
+  Rotated + tokens revoked same day; history rewritten; markdown quarantine
+  + gitleaks CI added. No evidence of misuse. Full post-mortem:
+  `incidents/2026-07-credentials.md`. (This entry corrects the previous
+  "none to date" — the incident predated this file and was never backfilled.)

@@ -23,8 +23,8 @@ jobs:
     name: Live site audit (headers, bundle, endpoints)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 (Node 24)
       with:
         node-version: '22'
     # LIVE=1 adds the deployed-site checks: security headers actually served,
@@ -37,8 +37,8 @@ jobs:
     name: Dependency vulnerability scan
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (Node 24)
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0 (Node 24)
       with:
         node-version: '22'
     # Production dependency trees only; fails on HIGH or CRITICAL advisories.
@@ -62,7 +62,26 @@ jobs:
           echo "$1 -> $code"
           [ "$code" = "$2" ] || { echo "EXPECTED $2"; exit 1; }
         }
+        # Cold-start tolerant: /sitemap.xml is a scale-to-zero Cloud Function hit
+        # only by crawlers + this check (~handful of requests/day), so the FIRST
+        # packet to a sleeping instance can occasionally 500 during
+        # scale-from-zero (verified 2026-10-22: 0-latency 500, no handler log, no
+        # container crash — a transient GFE race, not a bug or outage). Retry
+        # ONCE after a 10s warmup before failing. Still requires 200 — measures
+        # "does it serve?", not "does it serve the first cold packet?". Does NOT
+        # weaken any other check.
+        check_warm () {
+          local code
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$1")
+          echo "$1 -> $code (attempt 1)"
+          if [ "$code" != "$2" ]; then
+            sleep 10
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$1")
+            echo "$1 -> $code (attempt 2, after warmup)"
+            [ "$code" = "$2" ] || { echo "EXPECTED $2 after retry"; exit 1; }
+          fi
+        }
         check "https://app.toskaapp.com/" 200
         check "https://app.toskaapp.com/js/app.js" 200
         check "https://app.toskaapp.com/p/definitely-not-a-real-post" 404
-        check "https://app.toskaapp.com/sitemap.xml" 200
+        check_warm "https://app.toskaapp.com/sitemap.xml" 200

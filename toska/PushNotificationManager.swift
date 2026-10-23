@@ -68,6 +68,40 @@ class PushNotificationManager: NSObject {
         }
     }
 
+    /// Re-establish push registration for the currently signed-in user.
+    ///
+    /// B94-FCM (2026-10-23): the sign-out path calls `deleteToken`, which
+    /// invalidates the FCM token. After that, the registration-token delegate
+    /// only re-fires once APNs re-registers and FCM mints a *fresh* token — so
+    /// on a same-session sign-out → sign-in (no cold launch) nothing
+    /// re-registered APNs, `refreshFCMToken` alone fetched nothing, and the user
+    /// silently received no pushes until the next cold launch. Re-enabling the
+    /// in-app toggle didn't help either: when iOS permission is already granted,
+    /// that path only wrote the `pushEnabled` pref.
+    ///
+    /// This re-registers with APNs (idempotent — the real heal, since it makes
+    /// `didReceiveRegistrationToken` fire with the new token) AND does a
+    /// best-effort immediate fetch+save. Gated on the user having actually
+    /// granted notifications so we never register when they've declined. Safe to
+    /// call on sign-in, on app-foreground while signed in, and when the user
+    /// re-enables the push toggle.
+    func reregisterForPush() {
+        guard Auth.auth().currentUser?.uid != nil else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                Task { @MainActor in
+                    UIApplication.shared.registerForRemoteNotifications()
+                    self?.refreshFCMToken()
+                }
+            default:
+                // .denied / .notDetermined are handled by requestPermission();
+                // registering here would be a no-op the system drops.
+                break
+            }
+        }
+    }
+
     /// Fire-and-forget token clear. Use ONLY where the user doc is being
     /// deleted server-side anyway (account deletion / gate-decline) — there the
     /// Firestore wipe racing sign-out is harmless because the whole private/data

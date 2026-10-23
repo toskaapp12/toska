@@ -38,18 +38,28 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
-## B94-FCM — FCM token absent after MFA sign-out/sign-in (crisis delivery)
+## B94-FCM — FCM token not restored after sign-out/sign-in (crisis delivery)
 
-- **Severity:** HIGH if it persists · **Surface:** iOS push registration · **Status:** NEEDS DEVICE CONFIRM 2026-10-23
+- **Severity:** HIGH · **Surface:** iOS push registration · **Status:** FIXED 2026-10-23 (code; needs build 95 device verify)
 - **Finding:** after the owner's build-94 sign-out → sign-in, `users/{ownerUid}/private/data`
-  has **no `fcmToken`** and **`pushEnabled:false`** (`fcmTokenUpdatedAt` = 16:40:42Z =
-  the sign-out). Until a token re-registers, crisis pages would NOT reach this device.
-- **Most likely benign:** iOS re-registers the FCM token on app foreground once the
-  APNs token arrives, not synchronously at sign-in. Reopening/foregrounding the app
-  (notification permission still granted) should restore it.
-- **If it does NOT return after a clean relaunch:** build-94's MFA sign-in completion
-  skips token registration — real bug; wire the MFA sign-in success to trigger the
-  same token-register call the normal sign-in path uses.
+  had **no `fcmToken`**; toggling in-app notifications back on set `pushEnabled:true`
+  but STILL wrote no token (`fcmTokenUpdatedAt` stayed at the sign-out time), and
+  reopening the app didn't help. Crisis pages would not reach the device.
+- **Root cause (two gaps):**
+  1. Sign-out calls `Messaging.deleteToken` (invalidates the token). On a
+     same-session sign-in, `refreshFCMToken()` fires once via `.userDidSignIn` but
+     the token isn't minted yet (no APNs re-registration), so it fetches nothing;
+     `didReceiveRegistrationToken` never re-fires. Self-heals only on cold launch —
+     and foreground (scenePhase `.active`) only cleared the badge, never retried.
+  2. `SettingsView.requestPushPermissionIfNeeded()` `.authorized` branch did `break`
+     — re-enabling the toggle wrote the pref but never re-registered/fetched a token.
+  This hit ANY user who signed out and back in, not just MFA accounts.
+- **Fix:** new `PushNotificationManager.reregisterForPush()` — re-registers APNs
+  (so the delegate re-fires with a fresh token) + best-effort fetch+save, gated on
+  granted permission. Wired to: `.userDidSignIn` (ContentView), app-foreground when
+  signed in (ContentView scenePhase), and the Settings toggle `.authorized` branch.
+- **Verify on build 95:** sign out → sign in → `fcmToken` present in private/data;
+  toggle off/on restores it; foregrounding after a drop restores it.
 
 ---
 

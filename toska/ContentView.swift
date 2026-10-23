@@ -298,13 +298,13 @@ struct ContentView: View {
             // feed appeared. Loading → feed reads as a single clean transition.
             isLoading = true
             verifyUserDocument(uid: uid)
-            // Re-persist the FCM token for the now-signed-in user. The
-            // registration-token delegate only fires on token CHANGE, so a
-            // same-session account switch would otherwise leave this user's
-            // token unsaved and they'd receive no pushes until the next cold
-            // launch. Safe: guards on currentUser and only writes if a token
-            // exists, to the owner-only private/data doc.
-            PushNotificationManager.shared.refreshFCMToken()
+            // Re-establish push for the now-signed-in user. The registration
+            // delegate only fires on token CHANGE, and sign-out invalidated the
+            // token, so a same-session sign-in would otherwise leave this user
+            // with no pushes until the next cold launch (B94-FCM). reregister
+            // re-registers APNs (so the delegate re-fires with a fresh token)
+            // and does a best-effort immediate fetch+save.
+            PushNotificationManager.shared.reregisterForPush()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -313,6 +313,13 @@ struct ContentView: View {
                     UNUserNotificationCenter.current().setBadgeCount(0)
                 } else {
                     UIApplication.shared.applicationIconBadgeNumber = 0
+                }
+                // Self-heal push on foreground (B94-FCM): if the token was lost
+                // on a prior sign-out/sign-in, reopening the app now restores it
+                // instead of waiting for a cold launch. No-op when not signed in
+                // or notifications aren't granted.
+                if isLoggedIn {
+                    PushNotificationManager.shared.reregisterForPush()
                 }
             }
         }

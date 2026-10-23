@@ -669,9 +669,11 @@ struct SettingsView: View {
                     // FCM/push pipeline picks back up automatically.
                     showOSPushDeniedAlert = true
                 case .authorized, .provisional, .ephemeral:
-                    // Already granted — the pushEnabled=true Firestore pref is
-                    // all that was needed.
-                    break
+                    // Already granted. The pushEnabled pref alone isn't enough
+                    // if the device token was cleared (e.g. a prior
+                    // sign-out/sign-in dropped it — B94-FCM): re-register + save
+                    // so turning the toggle back on actually restores delivery.
+                    PushNotificationManager.shared.reregisterForPush()
                 @unknown default:
                     break
                 }

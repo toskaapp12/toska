@@ -26,9 +26,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## B94-1 — Feed GIF doesn't render until the row is re-laid-out (tap-in / scroll)
 
-- **Severity:** LOW (cosmetic; GIF always shows in the post detail view and after any scroll/refresh)
-- **Surface:** iOS feed (`toska/FeedView.swift`, `toska/FeedViewModel.swift`)
-- **Status:** OPEN — targeted for build 94
+- **Severity:** LOW (cosmetic) · **Surface:** iOS feed · **Status:** FIXED 2026-10-23 — gifUrl now on the FeedPost model, set in feedPost(from:), row reads post.gifUrl (side-dict fallback kept). Compiles.
 - **Reported:** 2026-10-23, owner device test on build 93
 - **Regression?** No. Pre-existing on 91/92 (established by code reading, not by running those builds — build 93's only iOS deltas were logging/wording/comments, which don't touch this path).
 

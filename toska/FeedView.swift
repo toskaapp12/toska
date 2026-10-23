@@ -562,6 +562,7 @@ struct FeedView: View {
                 originalHandle: data["originalHandle"] as? String,
                 originalAuthorId: data["originalAuthorId"] as? String,
                 originalPostId: data["originalPostId"] as? String,
+                gifUrl: data["gifUrl"] as? String,   // B94-1: carry on the model so the row renders it at first build
                 promptDate: data["promptDate"] as? String,
                 isRepost: data["isRepost"] as? Bool ?? false
             )
@@ -1877,7 +1878,7 @@ struct FeedColumn: View {
                                                                                                                                                         isAlreadyLiked: vm.likedPostIds.contains(post.originalPostId ?? post.id),
                                                                                                                                                         isAlreadySaved: vm.savedPostIds.contains(post.originalPostId ?? post.id),
                                                                                                                                                         isShareable: post.isShareable,
-                                                                                                                                                        gifUrl: vm.postGifUrls[post.id],
+                                                                                                                                                        gifUrl: post.gifUrl ?? vm.postGifUrls[post.id],
                                                                                                                                                         isMidnightPost: vm.midnightPostIds.contains(post.id),
                                                                                                                                                         isLetter: vm.letterPostIds.contains(post.id),
                                                                                                                                                         isRepostPost: vm.repostPostIds.contains(post.id),

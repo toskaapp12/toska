@@ -31,6 +31,11 @@ struct FeedPost: Identifiable, Equatable {
     // done this (targetPostId = originalPostId ?? postId). Carrying the id
     // lets iOS rows + navigation converge on the same model.
     var originalPostId: String? = nil
+    // B94-1: the post's GIF URL, carried on the model so the feed row has it at
+    // first build. Previously the row read it from FeedViewModel.postGifUrls, a
+    // side cache populated AFTER rows laid out, so a GIF didn't appear until the
+    // row rebuilt (scroll/tap-in). Set from data["gifUrl"] in feedPost(from:).
+    var gifUrl: String? = nil
     // Set (yyyy-MM-dd) when this post was written as a response to that day's
     // daily prompt. The feed renders such posts with the prompt shown in plum
     // above the person's reply, so prompt answers read as "prompt → reply".

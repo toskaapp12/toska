@@ -12,7 +12,12 @@ struct SignInView: View {
     @State private var isLoading = false
     @State private var showReset = false
     @State private var showCreate = false
-    
+    // TOTP second factor (B94-MFA): revealed only when sign-in returns
+    // secondFactorRequired for an MFA-enrolled account.
+    @State private var mfaResolver: MultiFactorResolver? = nil
+    @State private var mfaCode = ""
+    @State private var showMfa = false
+
     var body: some View {
         // NavigationStack so showReset can push PasswordResetView instead
         // of sheet-presenting it (consistency with the rest of the app's
@@ -131,25 +136,67 @@ struct SignInView: View {
                         .foregroundColor(.red)
                         .padding(.bottom, 10)
                 }
-                
-                Button {
-                    signIn()
-                } label: {
-                    ZStack {
-                        if isLoading {
-                            ProgressView().tint(ToskaColor.onAccent)
-                        } else {
-                            Text("sign in")
-                                .font(ToskaFont.sans(14, weight: .semibold))
-                                .foregroundColor(ToskaColor.onAccent)
+
+                if showMfa {
+                    Text("two-factor code")
+                        .font(ToskaFont.sans(10.5, weight: .semibold))
+                        .textCase(.uppercase)
+                        .tracking(0.74)
+                        .foregroundColor(ToskaColor.text2)
+                        .padding(.bottom, 8)
+                    Text("enter the 6-digit code from your authenticator app.")
+                        .font(ToskaFont.serifItalic(14))
+                        .foregroundColor(ToskaColor.text2)
+                        .padding(.bottom, 8)
+                    TextField("123456", text: $mfaCode)
+                        .font(ToskaFont.serif(16))
+                        .foregroundColor(ToskaColor.text)
+                        .tint(ToskaColor.accent)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 52)
+                        .background(ToskaColor.input, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .padding(.bottom, 12)
+                        .accessibilityIdentifier("mfaCodeField")
+                    Button {
+                        resolveMfa()
+                    } label: {
+                        ZStack {
+                            if isLoading {
+                                ProgressView().tint(ToskaColor.onAccent)
+                            } else {
+                                Text("verify")
+                                    .font(ToskaFont.sans(14, weight: .semibold))
+                                    .foregroundColor(ToskaColor.onAccent)
+                            }
                         }
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .background(ToskaColor.accent, in: Capsule())
+                        .accessibilityIdentifier("verifyMfaButton")
                     }
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .background(ToskaColor.accent, in: Capsule())
-                    .accessibilityIdentifier("signInButton")
+                    .disabled(isLoading)
+                    .padding(.bottom, 16)
+                } else {
+                    Button {
+                        signIn()
+                    } label: {
+                        ZStack {
+                            if isLoading {
+                                ProgressView().tint(ToskaColor.onAccent)
+                            } else {
+                                Text("sign in")
+                                    .font(ToskaFont.sans(14, weight: .semibold))
+                                    .foregroundColor(ToskaColor.onAccent)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 54)
+                        .background(ToskaColor.accent, in: Capsule())
+                        .accessibilityIdentifier("signInButton")
+                    }
+                    .disabled(isLoading)
+                    .padding(.bottom, 16)
                 }
-                .disabled(isLoading)
-                .padding(.bottom, 16)
                 
                 Spacer()
                 
@@ -264,8 +311,53 @@ struct SignInView: View {
                 }
             } catch {
                 isLoading = false
-                Telemetry.recordError(error, context: "SignInView.emailSignIn")
-                errorMessage = friendlyAuthErrorMessage(error)
+                let nsErr = error as NSError
+                // TOTP second factor required (B94-MFA): not an error to show —
+                // reveal the code step and resolve with the enrolled factor.
+                if nsErr.code == AuthErrorCode.secondFactorRequired.rawValue,
+                   let resolver = nsErr.userInfo[AuthErrorUserInfoMultiFactorResolverKey] as? MultiFactorResolver {
+                    mfaResolver = resolver
+                    showMfa = true
+                    errorMessage = ""
+                } else {
+                    Telemetry.recordError(error, context: "SignInView.emailSignIn")
+                    errorMessage = friendlyAuthErrorMessage(error)
+                }
+            }
+        }
+    }
+
+    func resolveMfa() {
+        guard let resolver = mfaResolver, let hint = resolver.hints.first else {
+            errorMessage = "please sign in again"
+            showMfa = false
+            return
+        }
+        let code = mfaCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.count == 6, code.allSatisfy(\.isNumber) else {
+            errorMessage = "enter the 6-digit code"
+            return
+        }
+        errorMessage = ""
+        isLoading = true
+        Task { @MainActor in
+            do {
+                let assertion = TOTPMultiFactorGenerator.assertionForSignIn(
+                    withEnrollmentID: hint.uid, oneTimePassword: code)
+                let result = try await resolver.resolveSignIn(with: assertion)
+                isLoading = false
+                Telemetry.signInCompleted(method: .email)
+                UserHandleCache.shared.startListening()
+                NotificationCenter.default.post(
+                    name: .userDidSignIn, object: nil, userInfo: ["uid": result.user.uid])
+                dismiss()
+            } catch {
+                isLoading = false
+                Telemetry.recordError(error, context: "SignInView.resolveMfa")
+                let ns = error as NSError
+                errorMessage = ns.code == AuthErrorCode.invalidVerificationCode.rawValue
+                    ? "wrong or expired code — wait for the next one and try again"
+                    : friendlyAuthErrorMessage(error)
             }
         }
     }

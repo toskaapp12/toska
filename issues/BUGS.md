@@ -7,7 +7,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## B94-MFA — iOS sign-in can't complete a TOTP second factor (BLOCKING) [FIRST]
 
-- **Severity:** HIGH (blocking) · **Surface:** iOS sign-in (`toska/` auth flow) · **Status:** OPEN — build 94, do FIRST
+- **Severity:** HIGH (blocking) · **Surface:** iOS sign-in (`toska/SignInView.swift`) · **Status:** FIXED 2026-10-23 (compiles; on-device verify after build 94)
 - **Why blocking:** the owner's admin account now has TOTP MFA enrolled. iOS has
   no multi-factor sign-in handling, so signing out of the app = locked out of
   that account (the account crisis pages go to). The current iOS session stays

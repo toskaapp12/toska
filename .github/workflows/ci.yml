@@ -32,17 +32,17 @@ jobs:
     name: Firestore rules unit tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Set up Node 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
         cache: 'npm'
         cache-dependency-path: firestore-tests/package-lock.json
 
     - name: Set up Java 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
       with:
         distribution: 'temurin'
         java-version: '21'
@@ -78,10 +78,10 @@ jobs:
     name: Cloud Functions syntax check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Set up Node 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
 
@@ -98,15 +98,15 @@ jobs:
     name: Cloud Functions unit tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Set up Node 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
 
     - name: Set up Java 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
       with:
         distribution: 'temurin'
         java-version: '21'
@@ -141,10 +141,10 @@ jobs:
     name: Swift-JS detector parity (macOS)
     runs-on: macos-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Set up Node 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
 
@@ -186,11 +186,11 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       with:
         fetch-depth: 0   # full history so a reintroduced secret in any commit is caught
     - name: gitleaks
-      uses: gitleaks/gitleaks-action@v2
+      uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
       env:
         GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
         GITLEAKS_ENABLE_SUMMARY: "true"
@@ -202,8 +202,8 @@ jobs:
     name: SBOM (functions prod deps)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
     - name: Generate CycloneDX SBOM
@@ -212,7 +212,7 @@ jobs:
         npm install --no-audit --no-fund --omit=dev
         npx --yes @cyclonedx/cyclonedx-npm@latest --omit dev --output-file /tmp/sbom.json || npx --yes @cyclonedx/cyclonedx-npm@latest --output-file /tmp/sbom.json
         echo "SBOM components: $(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/sbom.json')).components?.length ?? 0)")"
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: sbom-functions
         path: /tmp/sbom.json
@@ -222,8 +222,8 @@ jobs:
     name: SAST (Semgrep)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
       with:
         python-version: '3.12'
     - name: Install Semgrep
@@ -238,7 +238,7 @@ jobs:
     env:
       HAS_PLIST: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_B64 != '' }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       if: env.HAS_PLIST == 'true'
     - name: Restore GoogleService-Info.plist
       if: env.HAS_PLIST == 'true'
@@ -285,10 +285,10 @@ jobs:
       contents: read
       id-token: write
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Set up Node 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
         cache: 'npm'
@@ -299,7 +299,7 @@ jobs:
       run: npm install --no-audit --no-fund
 
     - name: Auth to Google Cloud via Workload Identity Federation
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
       with:
         workload_identity_provider: projects/260913424323/locations/global/workloadIdentityPools/github-actions/providers/github
         service_account: github-actions-staging-probes@toskastaging.iam.gserviceaccount.com
@@ -364,10 +364,10 @@ jobs:
       # with "the GitHub Action workflow must specify ... ".
       id-token: write
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
     - name: Set up Node 22
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '22'
 
@@ -375,7 +375,7 @@ jobs:
       run: npm install -g firebase-tools@15
 
     - name: Auth to Google Cloud via Workload Identity Federation
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
       with:
         workload_identity_provider: projects/260913424323/locations/global/workloadIdentityPools/github-actions/providers/github
         service_account: github-actions-rules-deploy@toskastaging.iam.gserviceaccount.com

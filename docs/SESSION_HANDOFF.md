@@ -67,12 +67,24 @@ Launch-audit Phase 2, all live in prod unless noted:
   cold-start blips hitting crawlers/health-checks, no real users; the health
   check was made retry-tolerant instead.
 
+## ⚠ Active constraint (until B94-MFA ships)
+
+The admin account has TOTP MFA enrolled, but **iOS and the web app (app.js) do
+not yet handle the TOTP sign-in step** (admin.html does). Until build 94 ships
+MFA handling on iOS + web:
+- **Do NOT sign out of the iOS app** on the admin account — you could not sign
+  back in (recovery would be an Admin-SDK factor unenroll).
+- **Do NOT change the admin account password** or revoke its tokens.
+- The current iOS session stays valid and the device's FCM token is live, so
+  crisis pages still arrive.
+
 ## In progress
 
 - **Build 94** (not yet built or uploaded) — three items from
   `issues/BUGS.md`, each reproduced/fixed/tested before an owner-approved
   build:
-  1. **B94-1** feed GIF render timing (row should observe `postGifUrls`).
+  1. **B94-MFA** iOS TOTP sign-in handling (BLOCKING — do first).
+  2. **B94-1** feed GIF render timing (row should observe `postGifUrls`).
   2. **B94-2** repost optimistic UI update.
   3. **B94-iOS** sign-up sharing choice (SEO-01 wording, unchecked default);
      the default-false flip is already committed.

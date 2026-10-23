@@ -5,6 +5,25 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## B94-MFA — iOS sign-in can't complete a TOTP second factor (BLOCKING) [FIRST]
+
+- **Severity:** HIGH (blocking) · **Surface:** iOS sign-in (`toska/` auth flow) · **Status:** OPEN — build 94, do FIRST
+- **Why blocking:** the owner's admin account now has TOTP MFA enrolled. iOS has
+  no multi-factor sign-in handling, so signing out of the app = locked out of
+  that account (the account crisis pages go to). The current iOS session stays
+  valid (sessions persist through enrollment), so there's no live outage — but
+  until this ships, DO NOT sign out of iOS on that account or change its
+  password/revoke its tokens.
+- **Fix:** implement the MFA resolver in the Swift sign-in path — catch the
+  multi-factor-required error, get the `MultiFactorResolver`, prompt for the
+  6-digit code, build `TOTPMultiFactorGenerator.assertionForSignIn(enrollmentID,
+  code)` and `resolver.resolveSignIn(assertion)`. Mirror of the admin.html + web
+  app.js web flow. Clear errors for wrong/expired code.
+- **Recovery if locked out meanwhile:** Admin-SDK unenroll (ops doc) → sign in
+  with password → re-enroll.
+
+---
+
 ## B94-1 — Feed GIF doesn't render until the row is re-laid-out (tap-in / scroll)
 
 - **Severity:** LOW (cosmetic; GIF always shows in the post detail view and after any scroll/refresh)

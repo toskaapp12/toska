@@ -673,6 +673,14 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
                 .padding(.top, 4)
+
+            Text("posts share one handle, so details like names, places, or workplaces can add up.")
+                .font(ToskaFont.sans(11))
+                .foregroundColor(Color.toskaPlaceholderGray)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .padding(.top, 2)
+                .padding(.horizontal, 32)
         }
     }
     

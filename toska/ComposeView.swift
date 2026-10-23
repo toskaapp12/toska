@@ -725,7 +725,7 @@ struct ComposeView: View {
                         .font(ToskaFont.serifItalic(18))
                         .foregroundColor(LateNightTheme.handleText)
 
-                    Text("your post might include a name or identifying info.\n\neveryone here is anonymous. including the people in your story. that's what makes it safe.")
+                    Text("your post might include a name or identifying info.\n\nkeep names out — yours and theirs. posts share one handle, so small details like places or workplaces can add up.")
                         .font(ToskaFont.sans(12))
                         .foregroundColor(LateNightTheme.secondaryText)
                         .multilineTextAlignment(.center)
@@ -1547,10 +1547,21 @@ struct StableGifPreview: View {
                         .foregroundColor(LateNightTheme.tertiaryText)
                     )
             } else {
-                LateNightTheme.inputBackground
-                    .frame(height: 120)
-                    .cornerRadius(10)
-                    .overlay(ProgressView().scaleEffect(0.7).tint(LateNightTheme.tertiaryText))
+                // B94-3: calm neutral placeholder at a stable reserved height so
+                // the row doesn't jump when the GIF paints (the old 120pt box
+                // snapped up to the GIF's height) and there's no bare-spinner
+                // flash. An arbitrary Giphy GIF's aspect isn't known before the
+                // download, so we reserve a typical height and crossfade the GIF
+                // in on load (the `data` branch's .transition(.opacity)).
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(LateNightTheme.inputBackground)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: min(maxHeight, 160))
+                    .overlay(
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 18, weight: .ultraLight))
+                            .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
+                    )
             }
         }
         .task(id: urlString) {

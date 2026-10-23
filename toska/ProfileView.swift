@@ -1877,7 +1877,7 @@ struct EditReplyView: View {
                 }
             }
         } message: {
-            Text("your reply may include a name or identifying info. toska is anonymous for everyone.")
+            Text("your reply may include a name or identifying info. keep names out — yours and theirs.")
         }
         .alert("content not allowed", isPresented: $showContentWarning) {
             Button("ok", role: .cancel) {}

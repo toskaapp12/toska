@@ -2280,7 +2280,7 @@ struct EditPostView: View {
                     saveEdit()
                 }
             }
-        } message: { Text("your edit may include a name or identifying info. toska is anonymous for everyone.") }
+        } message: { Text("your edit may include a name or identifying info. keep names out — yours and theirs.") }
         .overlay {
             if showGentleCheck {
                 CrisisCheckInView(

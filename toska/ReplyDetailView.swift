@@ -392,7 +392,7 @@ struct ReplyDetailView: View {
                 nameConfirmed = true
                 sendReply()
             }
-        } message: { Text("your reply may include a name or identifying info. toska is anonymous for everyone.") }
+        } message: { Text("your reply may include a name or identifying info. keep names out — yours and theirs.") }
     }
 
     private var composerBar: some View {

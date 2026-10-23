@@ -57,7 +57,7 @@ struct CreateAccountView: View {
                     .padding(.bottom, 20)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("your anonymous handle")
+                                    Text("your random handle")
                                         .font(ToskaFont.sans(10.5, weight: .semibold))
                                         .textCase(.uppercase)
                                         .tracking(0.74)

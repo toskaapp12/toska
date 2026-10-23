@@ -24,9 +24,38 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## B94-3 — Feed GIF shows a brief blank before loading (minor polish)
+
+- **Severity:** LOW (polish, not a blocker) · **Surface:** iOS feed · **Status:** OPEN
+- **Reported:** 2026-10-23, owner device test on build 94. The B94-1 render-timing
+  bug is fixed (GIF now appears without tapping in), but there's still a slight
+  load delay where the row shows empty space before the GIF paints.
+- **Quick idea:** render a placeholder while the GIF loads — a neutral
+  rounded-rect at the GIF's aspect ratio (or a low-res thumbnail / first-frame
+  still if the host exposes one), swapped for the animated GIF on load. Prevents
+  the empty-gap flash and the row-height jump. `StableGifPreview` (FeedView.swift
+  ~868) is the place; it already has the URL by value now.
+
+---
+
+## B94-FCM — FCM token absent after MFA sign-out/sign-in (crisis delivery)
+
+- **Severity:** HIGH if it persists · **Surface:** iOS push registration · **Status:** NEEDS DEVICE CONFIRM 2026-10-23
+- **Finding:** after the owner's build-94 sign-out → sign-in, `users/{ownerUid}/private/data`
+  has **no `fcmToken`** and **`pushEnabled:false`** (`fcmTokenUpdatedAt` = 16:40:42Z =
+  the sign-out). Until a token re-registers, crisis pages would NOT reach this device.
+- **Most likely benign:** iOS re-registers the FCM token on app foreground once the
+  APNs token arrives, not synchronously at sign-in. Reopening/foregrounding the app
+  (notification permission still granted) should restore it.
+- **If it does NOT return after a clean relaunch:** build-94's MFA sign-in completion
+  skips token registration — real bug; wire the MFA sign-in success to trigger the
+  same token-register call the normal sign-in path uses.
+
+---
+
 ## B94-1 — Feed GIF doesn't render until the row is re-laid-out (tap-in / scroll)
 
-- **Severity:** LOW (cosmetic) · **Surface:** iOS feed · **Status:** FIXED 2026-10-23 — gifUrl now on the FeedPost model, set in feedPost(from:), row reads post.gifUrl (side-dict fallback kept). Compiles.
+- **Severity:** LOW (cosmetic) · **Surface:** iOS feed · **Status:** FIXED 2026-10-23 — gifUrl now on the FeedPost model, set in feedPost(from:), row reads post.gifUrl (side-dict fallback kept). Compiles. Verified on device build 94 (renders without tapping; residual load-delay = B94-3).
 - **Reported:** 2026-10-23, owner device test on build 93
 - **Regression?** No. Pre-existing on 91/92 (established by code reading, not by running those builds — build 93's only iOS deltas were logging/wording/comments, which don't touch this path).
 

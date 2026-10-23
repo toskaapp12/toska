@@ -67,16 +67,21 @@ Launch-audit Phase 2, all live in prod unless noted:
   cold-start blips hitting crawlers/health-checks, no real users; the health
   check was made retry-tolerant instead.
 
-## ⚠ Active constraint (until B94-MFA ships)
+## ✅ B94-MFA verified on device (2026-10-23) — sign-out restriction LIFTED
 
-The admin account has TOTP MFA enrolled, but **iOS and the web app (app.js) do
-not yet handle the TOTP sign-in step** (admin.html does). Until build 94 ships
-MFA handling on iOS + web:
-- **Do NOT sign out of the iOS app** on the admin account — you could not sign
-  back in (recovery would be an Admin-SDK factor unenroll).
-- **Do NOT change the admin account password** or revoke its tokens.
-- The current iOS session stays valid and the device's FCM token is live, so
-  crisis pages still arrive.
+Build 94 is on the owner's device and **TOTP sign-in works**: the owner signed
+out and back in with password + 6-digit TOTP code successfully. iOS now handles
+the second factor. The earlier "do NOT sign out of the iOS app / don't change
+the admin password" constraint is **lifted** — the account is no longer at risk
+of lockout. (admin.html + web app.js also handle MFA.)
+
+⚠ **One follow-up (B94-FCM):** right after that sign-out/sign-in, the owner's
+`users/{uid}/private/data` had **no `fcmToken`** and `pushEnabled:false`. Likely
+the token just re-registers on next app foreground — but **crisis pages will not
+reach that device until it does.** Reopen/foreground the app, then re-verify the
+token is present before relying on crisis delivery to that phone. If it stays
+absent after a clean relaunch, the MFA sign-in path is skipping token
+registration (see B94-FCM in issues/BUGS.md).
 
 ## In progress
 

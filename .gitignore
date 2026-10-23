@@ -59,3 +59,8 @@ firebase-debug.*.log
 !.env.example
 # key-restriction backups and other machine-local state
 .local/
+# GIT-03 belt-and-suspenders: key material must never be committable
+*.p8
+*.p12
+*.pem
+*-adminsdk-*.json

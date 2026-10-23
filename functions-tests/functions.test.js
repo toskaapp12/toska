@@ -250,6 +250,37 @@ describe("ACC-06 crisis email-backup tag precedes empty-recipient return", () =>
     const claim = await db.collection("processedTriggerEvents").doc("test_crisis_tag_probe").get();
     assert.ok(!claim.exists, "claim must NOT be written when nothing was sent");
   });
+
+  it("recipient configured but NO token: records durably, logs once, does NOT throw or claim", async () => {
+    // Seed a recipient with no fcmToken (the signed-out-admin case that caused
+    // the overnight retry storm). pageAdminsForCrisis must record it and return,
+    // not throw (which would make Eventarc retry for hours).
+    await db.collection("system").doc("crisisAlertRecipients").set({ uids: ["notoken_admin"] });
+    await db.collection("users").doc("notoken_admin").set({ handle: "x" }); // no private/data.fcmToken
+    const claimRef = db.collection("processedTriggerEvents").doc("crisisAlert_notoken_probe");
+    const logged = [];
+    const orig = console.warn;
+    console.warn = (...a) => { logged.push(a.join(" ")); };
+    let threw = false;
+    try {
+      await pageAdminsForCrisis({
+        claimRef, title: "t", body: "b",
+        dataPayload: { kind: "test", postId: "notoken_probe" },
+        logLabel: "crisis-alert(notoken_probe)",
+      });
+    } catch { threw = true; } finally { console.warn = orig; }
+
+    assert.ok(!threw, "must NOT throw when the admin has no token (no retry storm)");
+    const undel = await db.collection("undeliveredCrisisPages").doc("crisisAlert_notoken_probe").get();
+    assert.ok(undel.exists && undel.data().reason === "no_admin_token", "durable undelivered record written");
+    const claim = await claimRef.get();
+    assert.ok(!claim.exists, "claim (== delivered) must NOT be set when nothing was delivered");
+    assert.ok(logged.some((l) => l.includes("no FCM token for any")), "logs one clear warning");
+
+    await db.collection("system").doc("crisisAlertRecipients").delete().catch(() => {});
+    await db.collection("users").doc("notoken_admin").delete().catch(() => {});
+    await db.collection("undeliveredCrisisPages").doc("crisisAlert_notoken_probe").delete().catch(() => {});
+  });
 });
 
 describe("F-5 checkRateLimit", () => {

@@ -3457,11 +3457,27 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
     if (typeof token === "string" && token.length > 0) tokens.push(token);
   }
   if (tokens.length === 0) {
-    // A crisis page with no deliverable token is exactly the dropped-page
-    // scenario: fail so redelivery retries — the admin's device may refresh
-    // its token between attempts. The admin.html crisis queue is the durable
-    // backstop either way.
-    throw new Error(`${logLabel}: no FCM tokens for ${adminUids.length} admins`);
+    // No deliverable device token for ANY admin (e.g. the admin is signed
+    // out). Previously this threw so Eventarc would retry — but if the admin
+    // is simply offline that retries for the full event-retention window
+    // (hours) and fires the function-error alert 100+ times, while the alert
+    // already reached the admin two other ways: the email-backup tag emitted
+    // above, and the admin.html crisis queue (concerningContent posts /
+    // crisisReplyQueue). Record it durably and RETURN without throwing — no
+    // retry storm, no alert spam. We deliberately do NOT set the claim doc
+    // (claim == delivered); a persistently-undelivered page is then caught by
+    // the "crisis post has no delivery claim after 15m" monitoring alert.
+    // (Owner decision 2026-10-23, after a crisis test sat undelivered
+    // overnight while the admin's device was signed out: the email backup +
+    // crisis queue are the safety net; a multi-hour retry storm is not.)
+    await db.collection("undeliveredCrisisPages").doc(claimRef.id).set({
+      logLabel,
+      reason: "no_admin_token",
+      adminCount: adminUids.length,
+      detectedAt: FieldValue.serverTimestamp(),
+    }, { merge: true }).catch((e) => console.warn(`${logLabel}: undelivered-record write failed: ${e.message}`));
+    console.warn(`${logLabel}: no FCM token for any of ${adminUids.length} admin(s) — recorded in undeliveredCrisisPages; relying on email-backup + crisis queue, NOT retrying`);
+    return;
   }
   const resp = await getMessaging().sendEachForMulticast({
     notification: { title, body }, data: dataPayload, tokens,

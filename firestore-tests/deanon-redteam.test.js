@@ -222,3 +222,43 @@ describe("DE-ANON RED TEAM: 2026-10-07 tightenings", () => {
     }));
   });
 });
+
+// ── TEST-01 (2026-10-23): logged-out WRITE denial, every writable path ──
+// SEC-02 proves structurally that all write rules require auth; this pins it
+// behaviorally. Every attempt below must fail for an unauthenticated client.
+describe("TEST-01: unauthenticated writes are denied everywhere", () => {
+  const attempts = (db) => ({
+    "users create": () => db.collection("users").doc("anonU").set({ handle: "anon_h", createdAt: new Date() }),
+    "users update": () => db.collection("users").doc(VICTIM).update({ handle: "stolen" }),
+    "handles create": () => db.collection("handles").doc("anon_h").set({ uid: "anonU" }),
+    "posts create": () => db.collection("posts").doc("anonP").set({ authorId: "anonU", text: "hi", createdAt: new Date(), likeCount: 0, repostCount: 0, replyCount: 0, moderationStatus: "pending_validation" }),
+    "posts update": () => db.collection("posts").doc("vpost").update({ text: "defaced" }),
+    "posts delete": () => db.collection("posts").doc("vpost").delete(),
+    "replies create": () => db.collection("posts").doc("vpost").collection("replies").doc("r").set({ authorId: "anonU", text: "x", createdAt: new Date(), moderationStatus: "pending_validation" }),
+    "post likes create": () => db.collection("posts").doc("vpost").collection("likes").doc("anonU").set({ createdAt: new Date() }),
+    "reflections create": () => db.collection("posts").doc("vpost").collection("reflections").doc("anonU").set({ authorId: "anonU", text: "x", createdAt: new Date() }),
+    "following create": () => db.collection("users").doc(VICTIM).collection("following").doc("x").set({ handle: "h", createdAt: new Date() }),
+    "followers create": () => db.collection("users").doc(VICTIM).collection("followers").doc("x").set({ handle: "h", createdAt: new Date() }),
+    "notifications create": () => db.collection("users").doc(VICTIM).collection("notifications").doc("n").set({ type: "like", postId: "vpost", createdAt: new Date(), isRead: false }),
+    "saved create": () => db.collection("users").doc(VICTIM).collection("saved").doc("vpost").set({ createdAt: new Date() }),
+    "liked create": () => db.collection("users").doc(VICTIM).collection("liked").doc("vpost").set({ createdAt: new Date() }),
+    "savedReplies create": () => db.collection("users").doc(VICTIM).collection("savedReplies").doc("r").set({ createdAt: new Date() }),
+    "likedReplies create": () => db.collection("users").doc(VICTIM).collection("likedReplies").doc("r").set({ createdAt: new Date() }),
+    "blocked create": () => db.collection("users").doc(VICTIM).collection("blocked").doc("x").set({ createdAt: new Date() }),
+    "presence write": () => db.collection("users").doc(VICTIM).collection("presence").doc("state").set({ online: true }),
+    "private write": () => db.collection("users").doc(VICTIM).collection("private").doc("data").set({ email: "x" }),
+    "drafts create": () => db.collection("users").doc(VICTIM).collection("drafts").doc("d").set({ text: "x", updatedAt: new Date() }),
+    "reports create": () => db.collection("reports").doc("rp").set({ reportedBy: "anonU", reason: "spam", type: "post", status: "pending", createdAt: new Date(), postId: "vpost" }),
+    "pendingDeletions create": () => db.collection("pendingDeletions").doc("anonU").set({ requestedAt: new Date() }),
+    "crisisReplyQueue update": () => db.collection("crisisReplyQueue").doc("c").set({ reviewed: true }),
+    "admins create": () => db.collection("admins").doc("anonU").set({ role: "admin" }),
+    "config write": () => db.collection("config").doc("clientPolicy").set({ minBuild: 999 }),
+    "meta write": () => db.collection("meta").doc("tagCounts").set({ hacked: 1 }),
+  });
+  it("denies all 26 unauthenticated write shapes", async () => {
+    const db = asAnon();
+    for (const [label, fn] of Object.entries(attempts(db))) {
+      await assertFails(fn()).catch((e) => { throw new Error(`${label}: ${e.message}`); });
+    }
+  });
+});

@@ -494,6 +494,47 @@ describe("post create: client moderationStatus is start-hidden only (audit 2026-
   });
 });
 
+describe("posts get: block-aware (block hardening 2026-10-23)", () => {
+  // Option 2: a post's GET is denied when the author has blocked the caller
+  // (server-enforced half of the block), while LIST stays open so the shared
+  // feed never fails wholesale (list block-hiding is client-side). A null read
+  // stays allowed so non-existent reads and the repost-dedup transaction work.
+  beforeEach(async () => {
+    await setUserDoc("alice");   // author
+    await setUserDoc("bob");     // blocked by alice
+    await setUserDoc("carol");   // unrelated
+    await setPost("p1", "alice", { moderationStatus: "live" });
+    await setBlock("alice", "bob");
+  });
+
+  it("denies a blocked caller GET of the blocker's post", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(b.collection("posts").doc("p1").get());
+  });
+
+  it("still lets the blocked caller LIST the feed (list is not block-filtered)", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(
+      b.collection("posts").where("moderationStatus", "==", "live").get()
+    );
+  });
+
+  it("lets the author GET their own post", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(a.collection("posts").doc("p1").get());
+  });
+
+  it("lets an unrelated user GET the post", async () => {
+    const c = env.authenticatedContext("carol").firestore();
+    await assertSucceeds(c.collection("posts").doc("p1").get());
+  });
+
+  it("allows GET of a non-existent post (null read, no block deref)", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    await assertSucceeds(b.collection("posts").doc("does_not_exist").get());
+  });
+});
+
 describe("Finding 3: blocked user cannot create save notification", () => {
   it("rejects save notification when post author has blocked the actor", async () => {
     await setUserDoc("alice"); // post author

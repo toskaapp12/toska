@@ -150,7 +150,7 @@ struct ContentView: View {
                             try await recordPolicyAcceptance(for: uid)
                             showPolicyUpdate = false
                         } catch {
-                            print("⚠️ recordPolicyAcceptance failed: \(error)")
+                            debugLog("⚠️ recordPolicyAcceptance failed: \(error)")
                             Telemetry.recordError(error, context: "recordPolicyAcceptance.bump.v\(currentPolicyVersion)")
                             // Leave the modal up so the user can retry. The
                             // next-launch acceptedPolicyVersion check is a
@@ -339,7 +339,7 @@ struct ContentView: View {
                 .limit(to: 100)
                 .getDocumentsAsync()
         } catch {
-            print("⚠️ pruneOldNotifications failed — check composite index: \(error)")
+            debugLog("⚠️ pruneOldNotifications failed — check composite index: \(error)")
             return
         }
         guard !Task.isCancelled else { return }
@@ -349,7 +349,7 @@ struct ContentView: View {
         do {
             try await batch.commit()
         } catch {
-            print("⚠️ pruneOldNotifications batch failed: \(error)")
+            debugLog("⚠️ pruneOldNotifications batch failed: \(error)")
         }
     }
 
@@ -402,7 +402,7 @@ struct ContentView: View {
                     switch nsError.code {
                     case 7,   // permission-denied
                          16:  // unauthenticated
-                        print("⚠️ verifyUserDocument: permanent error, aborting retry loop: \(error)")
+                        debugLog("⚠️ verifyUserDocument: permanent error, aborting retry loop: \(error)")
                         Telemetry.recordError(error, context: "ContentView.verifyUserDocumentAsync.permanent")
                         isLoading = false
                         showVerifyError = true

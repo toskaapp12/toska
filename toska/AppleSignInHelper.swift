@@ -254,7 +254,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
             // Falling back to a detached UIWindow means the ASAuthorizationController
             // has no real anchor to present over — sign-in will visibly fail. Log so
             // this shows up in the console rather than silently failing.
-            print("⚠️ AppleSignIn: no foreground window for presentation anchor; sign-in may fail")
+            debugLog("⚠️ AppleSignIn: no foreground window for presentation anchor; sign-in may fail")
             return UIWindow()
         }
         return window
@@ -282,7 +282,7 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
                 return
             } catch {
                 lastError = error
-                print("⚠️ Apple token revocation attempt \(attempt + 1) failed: \(error.localizedDescription)")
+                debugLog("⚠️ Apple token revocation attempt \(attempt + 1) failed: \(error.localizedDescription)")
                 if attempt < delays.count {
                     try? await Task.sleep(nanoseconds: delays[attempt])
                 }

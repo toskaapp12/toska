@@ -372,7 +372,7 @@ struct MainTabView: View {
             }
         }
         .onAppear {
-            print("⚡️ MainTabView appeared")
+            debugLog("⚡️ MainTabView appeared")
             startUnreadListener()
             // Resolve admin status at app entry (one admins/{uid} doc read,
             // owner-readable per rules) so the admin-only delete items in the
@@ -523,7 +523,7 @@ struct MainTabView: View {
             do {
                 try await batch.commit()
             } catch {
-                print("⚠️ markAllNotificationsRead batch failed: \(error)")
+                debugLog("⚠️ markAllNotificationsRead batch failed: \(error)")
                 break
             }
 

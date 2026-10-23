@@ -1294,7 +1294,7 @@ struct ComposeView: View {
                     dismiss()
                 }
             } catch {
-                print("⚠️ ComposeView.saveAsDraft failed: \(error)")
+                debugLog("⚠️ ComposeView.saveAsDraft failed: \(error)")
                 Telemetry.recordError(error, context: "ComposeView.saveAsDraft")
                 postError = "couldn't save. try again."
             }
@@ -1473,7 +1473,7 @@ struct ComposeView: View {
                                 do {
                                     try await draftRef.delete()
                                 } catch {
-                                    print("⚠️ ComposeView post-success draft delete failed: \(error)")
+                                    debugLog("⚠️ ComposeView post-success draft delete failed: \(error)")
                                 }
                             }
                         }

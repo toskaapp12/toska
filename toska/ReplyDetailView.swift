@@ -33,7 +33,7 @@ struct ReplyDetailView: View {
     @State private var hasLoadedChildren = false
     // Mirrors PostDetailView.replyLoadFailed (H2) — set when the children
     // listener errors, cleared on the next good snapshot. Without it the error
-    // branch only print()ed, hasLoadedChildren stayed false, and the skeleton
+    // branch only debugLog()ed, hasLoadedChildren stayed false, and the skeleton
     // rows rendered FOREVER with no retry path. (2026-08-05)
     @State private var childrenLoadFailed = false
     // True once the focal reply has been seen live in a snapshot. Dismissal on
@@ -480,7 +480,7 @@ struct ReplyDetailView: View {
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
-                        print("⚠️ ReplyDetailView listener error: \(error)")
+                        debugLog("⚠️ ReplyDetailView listener error: \(error)")
                         // Surface + retry (mirrors PostDetailView H2): without
                         // this flag hasLoadedChildren stayed false and the UI
                         // showed skeletons indefinitely with no way out.

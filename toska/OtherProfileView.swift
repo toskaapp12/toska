@@ -316,7 +316,7 @@ struct OtherProfileView: View {
                     // app; if we can't determine block state (network/permission
                     // error), do NOT render content that might belong to a
                     // blocked user. Dismiss rather than fail open.
-                    print("⚠️ OtherProfileView block check failed, failing closed: \(error)")
+                    debugLog("⚠️ OtherProfileView block check failed, failing closed: \(error)")
                     dismiss()
                 }
             }

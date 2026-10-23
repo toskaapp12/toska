@@ -208,7 +208,7 @@ struct AnniversaryCardView: View {
                        .getDocumentAsync()
                    let postAuthorId = postSnap.data()?["authorId"] as? String ?? ""
                    guard postAuthorId == uid else {
-                       print("⚠️ AnniversaryCardView: post \(postId) authorId does not match current user; skipping reflection load")
+                       debugLog("⚠️ AnniversaryCardView: post \(postId) authorId does not match current user; skipping reflection load")
                        return
                    }
                    let snapshot = try await Firestore.firestore()
@@ -220,7 +220,7 @@ struct AnniversaryCardView: View {
                        reflectionSaved = true
                    }
                } catch {
-                   print("⚠️ checkExistingReflection failed: \(error)")
+                   debugLog("⚠️ checkExistingReflection failed: \(error)")
                }
            }
        }
@@ -273,7 +273,7 @@ struct AnniversaryCardView: View {
                             reflectionSaved = true
                         }
                     } catch {
-                        print("⚠️ saveReflection failed: \(error)")
+                        debugLog("⚠️ saveReflection failed: \(error)")
                         isSaving = false
                         saveError = "couldn't save. try again."
                     }

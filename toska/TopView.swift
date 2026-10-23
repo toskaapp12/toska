@@ -273,7 +273,7 @@ struct TopView: View {
             .getDocuments { snapshot, error in
                 Task { @MainActor in
                     if let error = error {
-                        print("❌ TopView query error: \(error)")
+                        debugLog("❌ TopView query error: \(error)")
                         loadingPeriods.remove(fetchPeriod)
                         fetchedAt[fetchPeriod] = Date()
                         loadFailedPeriods.insert(fetchPeriod)
@@ -289,7 +289,7 @@ struct TopView: View {
                     }
                     // Reached the server successfully — clear any prior failure.
                     loadFailedPeriods.remove(fetchPeriod)
-                    print("📊 TopView got \(documents.count) docs")
+                    debugLog("📊 TopView got \(documents.count) docs")
                     var engaged: [(handle: String, text: String, tag: String?, likes: Int, replies: Int, reposts: Int, time: String, id: String, authorId: String, score: Double)] = []
 
                     for doc in documents {
@@ -333,7 +333,7 @@ struct TopView: View {
                         .sorted { $0.score > $1.score }
                         .prefix(10)
                         .map { RankedPost(id: $0.id, handle: $0.handle, text: $0.text, tag: $0.tag, likes: $0.likes, authorId: $0.authorId, replies: $0.replies, reposts: $0.reposts, time: $0.time) }
-                    print("📊 TopView showing \(ranked.count) ranked, engaged: \(engaged.count)")
+                    debugLog("📊 TopView showing \(ranked.count) ranked, engaged: \(engaged.count)")
                     cache[fetchPeriod] = ranked
                     loadingPeriods.remove(fetchPeriod)
                     fetchedAt[fetchPeriod] = Date()

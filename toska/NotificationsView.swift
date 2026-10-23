@@ -523,7 +523,7 @@ struct NotificationsView: View {
                 // wasn't — and we'd then irreversibly delete their
                 // notifications referencing that post.
                 if let error = error {
-                    print("⚠️ openPost: getDocument failed: \(error)")
+                    debugLog("⚠️ openPost: getDocument failed: \(error)")
                     // permission-denied is deterministic (post moderation-held
                     // or otherwise unreadable) — tell the user instead of a
                     // silent dead tap. Transient errors stay silent, and we
@@ -621,7 +621,7 @@ struct NotificationsView: View {
                 for doc in docs { batch.updateData(["isRead": true], forDocument: doc.reference) }
                 batch.commit { error in
                     if let error = error {
-                        print("⚠️ markAllRemainingAsRead batch failed: \(error)")
+                        debugLog("⚠️ markAllRemainingAsRead batch failed: \(error)")
                         return
                     }
                     // T-9 (2026-06-11): markAllRemainingAsRead is @MainActor-
@@ -662,7 +662,7 @@ struct NotificationsView: View {
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
-                        print("⚠️ notifications listener error: \(error)")
+                        debugLog("⚠️ notifications listener error: \(error)")
                         isLoading = false
                         notificationsLoadFailed = true
                         return

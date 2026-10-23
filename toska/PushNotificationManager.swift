@@ -60,7 +60,7 @@ class PushNotificationManager: NSObject {
         guard Auth.auth().currentUser?.uid != nil else { return }
         Messaging.messaging().token { [weak self] token, error in
             if let error = error {
-                print("⚠️ refreshFCMToken fetch failed: \(error)")
+                debugLog("⚠️ refreshFCMToken fetch failed: \(error)")
                 return
             }
             guard let token = token else { return }
@@ -91,7 +91,7 @@ class PushNotificationManager: NSObject {
         //    it would let a flaky network stall sign-out.
         Messaging.messaging().deleteToken { error in
             if let error = error {
-                print("⚠️ FCM deleteToken failed: \(error)")
+                debugLog("⚠️ FCM deleteToken failed: \(error)")
                 Telemetry.recordError(error, context: "PushNotificationManager.deleteToken")
             }
         }
@@ -110,7 +110,7 @@ class PushNotificationManager: NSObject {
                     .updateData(["fcmToken": FieldValue.delete()])
             }
         } catch {
-            print("⚠️ clearFCMToken Firestore wipe failed/timed out: \(error)")
+            debugLog("⚠️ clearFCMToken Firestore wipe failed/timed out: \(error)")
             Telemetry.recordError(error, context: "PushNotificationManager.clearFCMToken")
         }
         // Stale legacy fcmToken on the main user doc is cleaned up server-side:

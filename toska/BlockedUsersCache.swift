@@ -82,7 +82,7 @@ class BlockedUsersCache {
                 // empty the cache and make every blocked user appear unblocked
                 // until the listener reconnects.
                 if let error = error {
-                    print("⚠️ BlockedUsersCache listener error: \(error)")
+                    debugLog("⚠️ BlockedUsersCache listener error: \(error)")
                     return
                 }
                 guard let snapshot = snapshot else { return }
@@ -184,7 +184,7 @@ class BlockedUsersCache {
         // error path online.
         if !NetworkMonitor.shared.isConnected {
             docRef.setData(data) { error in
-                if let error = error { print("⚠️ BlockedUsersCache.block (queued offline) failed: \(error)") }
+                if let error = error { debugLog("⚠️ BlockedUsersCache.block (queued offline) failed: \(error)") }
             }
             postUserBlockedBroadcast(userId: userId, handle: handle)
             return true
@@ -217,7 +217,7 @@ class BlockedUsersCache {
         case .failure(let error):
             // 3. Revert if the write failed — but only if THIS call added the
             //    block; don't clear a block that already persisted.
-            print("⚠️ BlockedUsersCache.block failed: \(error)")
+            debugLog("⚠️ BlockedUsersCache.block failed: \(error)")
             if !wasBlocked { removeLocal(userId) }
             return false
         }
@@ -255,7 +255,7 @@ class BlockedUsersCache {
                 .collection("users").document(uid)
                 .collection("blocked").document(userId)
                 .delete { error in
-                    if let error = error { print("⚠️ BlockedUsersCache.unblock (queued offline) failed: \(error)") }
+                    if let error = error { debugLog("⚠️ BlockedUsersCache.unblock (queued offline) failed: \(error)") }
                 }
             return true
         }
@@ -267,7 +267,7 @@ class BlockedUsersCache {
             return true
         } catch {
             // 3. Revert if the write failed.
-            print("⚠️ BlockedUsersCache.unblock failed: \(error)")
+            debugLog("⚠️ BlockedUsersCache.unblock failed: \(error)")
             insertLocal(userId)
             return false
         }

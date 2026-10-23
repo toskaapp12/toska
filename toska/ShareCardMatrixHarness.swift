@@ -17,7 +17,7 @@ enum ShareCardMatrixHarness {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             run(outDir: outDir)
-            print("SHARECARD_MATRIX_DONE")
+            debugLog("SHARECARD_MATRIX_DONE")
             exit(0)
         }
     }

@@ -667,7 +667,7 @@ struct ExploreView: View {
                 .getDocument { snapshot, error in
                     Task { @MainActor in
                         if let error = error {
-                            print("⚠️ fetchBreakupStageCounts failed: \(error)")
+                            debugLog("⚠️ fetchBreakupStageCounts failed: \(error)")
                             return
                         }
                         guard let data = snapshot?.data() else { return }
@@ -688,7 +688,7 @@ struct ExploreView: View {
                 .getDocument { snapshot, error in
                     Task { @MainActor in
                         if let error = error {
-                            print("⚠️ fetchTagCounts failed: \(error)")
+                            debugLog("⚠️ fetchTagCounts failed: \(error)")
                             return
                         }
                         guard let data = snapshot?.data() else { return }

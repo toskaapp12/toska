@@ -602,7 +602,7 @@ class FeedViewModel: ObservableObject {
                 }
                 todaysPromptResponse = FeedView.feedPost(from: doc)
             } catch {
-                print("⚠️ fetchTodaysPromptResponse failed: \(error)")
+                debugLog("⚠️ fetchTodaysPromptResponse failed: \(error)")
                 // Leave existing value alone on transient error.
             }
         }
@@ -695,22 +695,22 @@ class FeedViewModel: ObservableObject {
     }
 
     func loadInitialData() {
-            print("⚡️ loadInitialData called — hasFetchedInitial: \(hasFetchedInitial), hasAuth: \(Auth.auth().currentUser != nil)")
+            debugLog("⚡️ loadInitialData called — hasFetchedInitial: \(hasFetchedInitial), hasAuth: \(Auth.auth().currentUser != nil)")
             guard !hasFetchedInitial else {
-                print("⚡️ loadInitialData — already fetched, posts.count: \(posts.count)")
+                debugLog("⚡️ loadInitialData — already fetched, posts.count: \(posts.count)")
                 if posts.isEmpty {
                     fetchPosts()
                 }
                 return
             }
             guard Auth.auth().currentUser != nil else {
-                print("🛑 loadInitialData — auth is nil, should not happen after isLoggedIn=true")
+                debugLog("🛑 loadInitialData — auth is nil, should not happen after isLoggedIn=true")
                 return
             }
             hasFetchedInitial = true
                                 lastForegroundFetch = Date()
                                 savedScrollPostId = nil
-                                print("⚡️ loadInitialData — proceeding with fetch")
+                                debugLog("⚡️ loadInitialData — proceeding with fetch")
 
             supplementaryTask?.cancel()
                     supplementaryTask = Task { @MainActor in
@@ -1213,14 +1213,14 @@ class FeedViewModel: ObservableObject {
 
     func fetchPosts() {
             guard Auth.auth().currentUser != nil else {
-                print("⚠️ fetchPosts — skipped, currentUser is nil at call time")
+                debugLog("⚠️ fetchPosts — skipped, currentUser is nil at call time")
                 return
             }
             // Coalesce concurrent callers. Without this, every rapid onAppear /
             // notification trigger fires a fresh 60-doc Firestore query in parallel,
             // wasting reads and racing on posts assignment.
             guard !isFetchingPosts else {
-                print("⚠️ fetchPosts — already in flight, skipping")
+                debugLog("⚠️ fetchPosts — already in flight, skipping")
                 return
             }
             isFetchingPosts = true
@@ -1230,7 +1230,7 @@ class FeedViewModel: ObservableObject {
             // session, and the UI can incorrectly show end-of-feed copy.
             endedDueToBlocking = false
             let db = Firestore.firestore()
-            print("🔄 fetchPosts — firing Firestore query, hasAuth: \(Auth.auth().currentUser != nil)")
+            debugLog("🔄 fetchPosts — firing Firestore query, hasAuth: \(Auth.auth().currentUser != nil)")
 
             Task { @MainActor in
                 defer { self.isFetchingPosts = false }
@@ -1264,7 +1264,7 @@ class FeedViewModel: ObservableObject {
                 guard Auth.auth().currentUser?.uid == capturedUid else { return }
                 self.fetchError = nil
                 let documents = snapshot.documents
-                print("✅ fetchPosts — got \(documents.count) docs from Firestore")
+                debugLog("✅ fetchPosts — got \(documents.count) docs from Firestore")
                 let filtered = self.filterBlocked(documents: documents)
 
                     let scored: [(doc: QueryDocumentSnapshot, score: Double)] = filtered.map { doc in
@@ -1358,7 +1358,7 @@ class FeedViewModel: ObservableObject {
                         self.extractPostMetadata(from: item.doc)
                     }
 
-                print("✅ fetchPosts — setting \(newPosts.count) posts after scoring/filtering")
+                debugLog("✅ fetchPosts — setting \(newPosts.count) posts after scoring/filtering")
 
                 if !newPosts.isEmpty {
                                                                                                                             self.posts = newPosts
@@ -1433,7 +1433,7 @@ class FeedViewModel: ObservableObject {
                         return
                     }
                     if let error = error {
-                        print("⚠️ loadMorePosts error: \(error)")
+                        debugLog("⚠️ loadMorePosts error: \(error)")
                         self.isLoadingMore = false
                         self.fetchError = "couldn't load more posts — pull to retry"
                         return
@@ -1626,7 +1626,7 @@ class FeedViewModel: ObservableObject {
                         .limit(to: 1)
                         .getDocumentsAsync()
                 } catch {
-                    print("⚠️ fetchAnniversaryPost(\(m.label)) — check composite index (authorId, isRepost, createdAt): \(error)")
+                    debugLog("⚠️ fetchAnniversaryPost(\(m.label)) — check composite index (authorId, isRepost, createdAt): \(error)")
                     continue
                 }
                 // Captured-uid recheck. The query filter is `authorId == uid`,

@@ -341,18 +341,18 @@ struct FeedView: View {
                .accessibilityElement(children: .contain)
                .accessibilityIdentifier("feedView")
                .onAppear {
-                                                 print("⚡️ FeedView onAppear — hasLoadedOnce: \(vm.hasLoadedOnce), hasAuth: \(Auth.auth().currentUser != nil), posts.count: \(vm.posts.count)")
+                                                 debugLog("⚡️ FeedView onAppear — hasLoadedOnce: \(vm.hasLoadedOnce), hasAuth: \(Auth.auth().currentUser != nil), posts.count: \(vm.posts.count)")
                                                  vm.dragOffset = 0
                                                  vm.savedScrollPostId = nil
                                                  if !vm.hasLoadedOnce {
                                                      if Auth.auth().currentUser != nil {
-                                                         print("⚡️ FeedView onAppear — calling loadInitialData")
+                                                         debugLog("⚡️ FeedView onAppear — calling loadInitialData")
                                                          vm.loadInitialData()
                                                      } else {
-                                                         print("🛑 FeedView onAppear — skipped, auth is nil")
+                                                         debugLog("🛑 FeedView onAppear — skipped, auth is nil")
                                                      }
                                                  } else {
-                                                     print("⚡️ FeedView onAppear — skipped, hasLoadedOnce already true")
+                                                     debugLog("⚡️ FeedView onAppear — skipped, hasLoadedOnce already true")
                                                  }
                                                  // Take-a-break arming removed (2026-07-30): the
                                                  // 15-minute session timer popped the banner
@@ -360,9 +360,9 @@ struct FeedView: View {
                                                  // in the .newPostCreated handler below.
                                              }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
-                                                 print("⚡️ AuthDidVerify received in FeedView — hasLoadedOnce: \(vm.hasLoadedOnce), posts.count: \(vm.posts.count)")
+                                                 debugLog("⚡️ AuthDidVerify received in FeedView — hasLoadedOnce: \(vm.hasLoadedOnce), posts.count: \(vm.posts.count)")
                                                  if !vm.hasLoadedOnce {
-                                                     print("⚡️ AuthDidVerify received in FeedView — calling loadInitialData")
+                                                     debugLog("⚡️ AuthDidVerify received in FeedView — calling loadInitialData")
                                                      vm.loadInitialData()
                                                  }
                                              }
@@ -2014,7 +2014,7 @@ struct FeedColumn: View {
                     
                                 if vm.postsForTab(tab).isEmpty && !vm.hasLoadedOnce {
                                                                     #if DEBUG
-                                                                    let _ = print("🎨 BODY — branch: SKELETONS (posts.isEmpty, !hasLoadedOnce)")
+                                                                    let _ = debugLog("🎨 BODY — branch: SKELETONS (posts.isEmpty, !hasLoadedOnce)")
                                                                     #endif
                                                                     ForEach(0..<6, id: \.self) { _ in
                                                                         SkeletonPostRow()
@@ -2022,7 +2022,7 @@ struct FeedColumn: View {
                                                                     }
                                                                 } else if vm.postsForTab(tab).isEmpty && vm.hasLoadedOnce && tab == 0 {
                                                                     #if DEBUG
-                                                                    let _ = print("🎨 BODY — branch: EMPTY STATE (posts.isEmpty, hasLoadedOnce, tab 0)")
+                                                                    let _ = debugLog("🎨 BODY — branch: EMPTY STATE (posts.isEmpty, hasLoadedOnce, tab 0)")
                                                                     #endif
                                     // First-run empty state. The fetch finished
                                     // and there's genuinely nothing to show

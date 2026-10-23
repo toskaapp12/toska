@@ -439,7 +439,7 @@ struct CreateAccountView: View {
                                         )
                                         dismiss()
                 } catch {
-                    print("⚠️ CreateAccount: user doc write failed: \(error)")
+                    debugLog("⚠️ CreateAccount: user doc write failed: \(error)")
                     Telemetry.recordError(error, context: "CreateAccount.userDocWrite")
                     isLoading = false
                     errorMessage = "account creation failed — please try again"
@@ -449,7 +449,7 @@ struct CreateAccountView: View {
                     do {
                         try await Auth.auth().currentUser?.delete()
                     } catch let deleteError {
-                        print("⚠️ CreateAccount: auth rollback delete failed: \(deleteError); falling back to signOut")
+                        debugLog("⚠️ CreateAccount: auth rollback delete failed: \(deleteError); falling back to signOut")
                         Telemetry.recordError(deleteError, context: "CreateAccount.rollbackDelete")
                         try? Auth.auth().signOut()
                     }

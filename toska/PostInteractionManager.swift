@@ -131,7 +131,7 @@ class PostInteractionManager {
                                          object: nil,
                                          userInfo: ["postId": postId, "action": "like", "value": currentlyLiked]
                                      )
-                    print("⚠️ toggleLike transaction failed: \(error)")
+                    debugLog("⚠️ toggleLike transaction failed: \(error)")
                 } else {
                     // Rate-limit timestamp is now set on attempt (above), not
                     // here on success — keeps double-tap behaviour consistent
@@ -237,7 +237,7 @@ class PostInteractionManager {
             Task { @MainActor in
                 RateLimiter.shared.markSaveComplete(postId)
                 if let error = error {
-                    print("⚠️ toggleSave transaction failed: \(error)")
+                    debugLog("⚠️ toggleSave transaction failed: \(error)")
                     // Roll back optimistic update.
                     onUpdate(currentlySaved)
                     NotificationCenter.default.post(
@@ -281,7 +281,7 @@ class PostInteractionManager {
         // No self-repost (owner re-ruling 2026-09-22 eve; rules enforce too).
         guard uid != authorId else { return }
                guard NetworkMonitor.shared.isConnected else {
-                   print("⚠️ repost — offline, skipping")
+                   debugLog("⚠️ repost — offline, skipping")
                    return
                }
                // Record on attempt — same rationale as toggleLike/toggleSave.
@@ -320,7 +320,7 @@ class PostInteractionManager {
                     // non-nil error simultaneously — the old condition lets the duplicate
                     // check pass with stale cached data. Correct check: any error → fail safe.
                     if let error = error {
-                        print("⚠️ repost dedup check failed: \(error)")
+                        debugLog("⚠️ repost dedup check failed: \(error)")
                         RateLimiter.shared.markRepostComplete(postId)
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                         return
@@ -342,7 +342,7 @@ class PostInteractionManager {
                         do {
                             snapshot = try await db.collection("posts").document(postId).getDocumentAsync()
                         } catch {
-                            print("⚠️ repost post fetch failed: \(error)")
+                            debugLog("⚠️ repost post fetch failed: \(error)")
                             RateLimiter.shared.markRepostComplete(postId)
                             onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                             return
@@ -513,7 +513,7 @@ class PostInteractionManager {
                                 Task { @MainActor in
                                     RateLimiter.shared.markRepostComplete(postId)
                                     if let txError = txError {
-                                        print("⚠️ repost transaction failed: \(txError)")
+                                        debugLog("⚠️ repost transaction failed: \(txError)")
                                         // Roll back the optimistic update (locally and
                                         // across other surfaces that mirrored it).
                                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
@@ -580,7 +580,7 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            print("⚠️ unrepost — offline, skipping")
+            debugLog("⚠️ unrepost — offline, skipping")
             return
         }
         // Serialize against a concurrent repost/unrepost on the same post so a
@@ -602,7 +602,7 @@ class PostInteractionManager {
         func rollback(_ error: Error?) {
             Task { @MainActor in
                 RateLimiter.shared.markRepostComplete(postId)
-                print("⚠️ unrepost failed: \(String(describing: error))")
+                debugLog("⚠️ unrepost failed: \(String(describing: error))")
                 onUpdate(RepostResult(isReposted: true, newCount: currentCount))
                 NotificationCenter.default.post(
                     name: .postInteractionChanged, object: nil,
@@ -741,7 +741,7 @@ class PostInteractionManager {
                 // (e.g. a rules regression that denies notification creates)
                 // surface in production instead of vanishing.
                 if let error = error {
-                    print("⚠️ sendNotification(\(type)) failed: \(error.localizedDescription)")
+                    debugLog("⚠️ sendNotification(\(type)) failed: \(error.localizedDescription)")
                     Telemetry.recordError(error, context: "PostInteractionManager.sendNotification.\(type)")
                 }
             }
@@ -774,7 +774,7 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            print("⚠️ toggleReplyLike — offline, skipping")
+            debugLog("⚠️ toggleReplyLike — offline, skipping")
             return
         }
         // F-P2-1: no self-like on your own reply — mirrors toggleLike; the
@@ -843,7 +843,7 @@ class PostInteractionManager {
                 RateLimiter.shared.markLikeComplete(rlKey)
                 if let error = error {
                     onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
-                    print("⚠️ toggleReplyLike transaction failed: \(error)")
+                    debugLog("⚠️ toggleReplyLike transaction failed: \(error)")
                 }
             }
         })
@@ -877,7 +877,7 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            print("⚠️ toggleReplySave — offline, skipping")
+            debugLog("⚠️ toggleReplySave — offline, skipping")
             return
         }
         // Rate-limit + in-flight guard (previously toggleReplySave had NEITHER,
@@ -933,7 +933,7 @@ class PostInteractionManager {
             Task { @MainActor in
                 RateLimiter.shared.markSaveComplete(rlKey)
                 if let error = error {
-                    print("⚠️ toggleReplySave transaction failed: \(error)")
+                    debugLog("⚠️ toggleReplySave transaction failed: \(error)")
                     onUpdate(currentlySaved)
                 }
             }
@@ -966,7 +966,7 @@ class PostInteractionManager {
         }
         guard uid != replyAuthorId else { return }
         guard NetworkMonitor.shared.isConnected else {
-            print("⚠️ repostReply — offline, skipping")
+            debugLog("⚠️ repostReply — offline, skipping")
             return
         }
         // Rate-limit on the reply id (mirrors repost()). Without this gate,
@@ -1071,7 +1071,7 @@ class PostInteractionManager {
                 Task { @MainActor in
                     RateLimiter.shared.markRepostComplete(flightKey)
                     if let error = error {
-                        print("⚠️ repostReply transaction failed: \(error)")
+                        debugLog("⚠️ repostReply transaction failed: \(error)")
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
                         return
                     }
@@ -1123,7 +1123,7 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            print("⚠️ unrepostReply — offline, skipping")
+            debugLog("⚠️ unrepostReply — offline, skipping")
             return
         }
         // Serialize against a concurrent repost/unrepost on the same reply so a
@@ -1141,7 +1141,7 @@ class PostInteractionManager {
             Task { @MainActor in
                 RateLimiter.shared.markRepostComplete(flightKey)
                 if let error = error {
-                    print("⚠️ unrepostReply failed: \(error)")
+                    debugLog("⚠️ unrepostReply failed: \(error)")
                     onUpdate(RepostResult(isReposted: true, newCount: currentCount))
                 }
             }

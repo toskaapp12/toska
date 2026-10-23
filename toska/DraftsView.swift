@@ -200,7 +200,7 @@ struct DraftsView: View {
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == capturedUid else { return }
                     if let error = error {
-                        print("⚠️ DraftsView listener error: \(error)")
+                        debugLog("⚠️ DraftsView listener error: \(error)")
                         draftsLoadFailed = true
                         return
                     }
@@ -245,7 +245,7 @@ struct DraftsView: View {
                     // only print-logged (a no-op in release), so a real
                     // permission/backend error left the draft silently
                     // un-deleted. Surface it + buzz so the user knows to retry.
-                    print("⚠️ DraftsView delete failed: \(error)")
+                    debugLog("⚠️ DraftsView delete failed: \(error)")
                     Task { @MainActor in
                         UINotificationFeedbackGenerator().notificationOccurred(.error)
                         deleteError = "couldn't delete that draft — try again in a moment."

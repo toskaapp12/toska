@@ -534,7 +534,7 @@ struct ProfileView: View {
                             // a delete failure (network drop, permission edge
                             // case) was logged nowhere and the user had no
                             // signal that their delete didn't take effect.
-                            print("⚠️ deleteReply failed: \(error)")
+                            debugLog("⚠️ deleteReply failed: \(error)")
                             Telemetry.recordError(error, context: "ProfileView.deleteReply")
                             deleteReplyError = "couldn't delete — try again"
                         } else {
@@ -670,7 +670,7 @@ struct ProfileView: View {
                    guard Auth.auth().currentUser?.uid == uid else { return }
                    postCount = Int(truncating: postSnap?.count ?? 0)
                } catch {
-                   print("⚠️ loadProfile failed: \(error)")
+                   debugLog("⚠️ loadProfile failed: \(error)")
                    // H2: only surface the banner if we still have nothing to
                    // show — a transient failure after a prior good load
                    // shouldn't overwrite a populated header.
@@ -705,7 +705,7 @@ struct ProfileView: View {
                 // staging builds hit their own reconcileMyCounts instead of
                 // cross-calling prod (toska-4ebf4). Fail safe if unavailable.
                 guard let projectID = FirebaseApp.app()?.options.projectID else {
-                    print("⚠️ reconcileMyCounts: no FirebaseApp projectID; skipping")
+                    debugLog("⚠️ reconcileMyCounts: no FirebaseApp projectID; skipping")
                     return
                 }
                 guard let endpoint = URL(string: "https://us-central1-\(projectID).cloudfunctions.net/reconcileMyCounts") else { return }
@@ -714,7 +714,7 @@ struct ProfileView: View {
                 do {
                     appCheckToken = try await AppCheck.appCheck().token(forcingRefresh: false).token
                 } catch {
-                    print("⚠️ reconcileMyCounts: app check token fetch failed: \(error)")
+                    debugLog("⚠️ reconcileMyCounts: app check token fetch failed: \(error)")
                     return
                 }
 
@@ -741,7 +741,7 @@ struct ProfileView: View {
                     if let f = json["followingCount"] as? Int { self.followingCount = f }
                     UserDefaults.standard.set(Date(), forKey: lastKey)
                 } catch {
-                    print("⚠️ reconcileMyCounts call failed: \(error)")
+                    debugLog("⚠️ reconcileMyCounts call failed: \(error)")
                 }
             }
     }
@@ -776,7 +776,7 @@ struct ProfileView: View {
                 Task { @MainActor in
                     guard Auth.auth().currentUser?.uid == uid else { return }
                     if let error = error {
-                        print("⚠️ loadMyPosts list fetch failed: \(error)")
+                        debugLog("⚠️ loadMyPosts list fetch failed: \(error)")
                         return
                     }
                     guard let documents = snapshot?.documents else { return }
@@ -862,7 +862,7 @@ struct ProfileView: View {
                         }
                         Task {
                             do { try await cleanupBatch.commit() }
-                            catch { print("⚠️ saved posts cleanup batch failed: \(error)") }
+                            catch { debugLog("⚠️ saved posts cleanup batch failed: \(error)") }
                         }
                     }
                 }
@@ -1120,7 +1120,7 @@ struct ProfileView: View {
                         }
                         Task {
                             do { try await cleanupBatch.commit() }
-                            catch { print("⚠️ liked posts cleanup batch failed: \(error)") }
+                            catch { debugLog("⚠️ liked posts cleanup batch failed: \(error)") }
                         }
                     }
                 }
@@ -1657,7 +1657,7 @@ struct FollowListView: View {
                 // callback must not mutate the new user's state.
                 guard Auth.auth().currentUser?.uid == myUid else { return }
                 if let error = error {
-                    print("⚠️ FollowListView.unfollow failed: \(error)")
+                    debugLog("⚠️ FollowListView.unfollow failed: \(error)")
                     Telemetry.recordError(error, context: "FollowListView.performUnfollow")
                     withAnimation {
                         users = originalUsers
@@ -1949,7 +1949,7 @@ struct EditReplyView: View {
                         // became tappable again with no error context. Now
                         // we surface a banner so the user knows to retry
                         // and Crashlytics gets the failure for diagnosis.
-                        print("⚠️ EditReply.saveReply failed: \(error)")
+                        debugLog("⚠️ EditReply.saveReply failed: \(error)")
                         Telemetry.recordError(error, context: "EditReplyView.saveReply")
                         saveError = "couldn't save — try again"
                         return

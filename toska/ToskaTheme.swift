@@ -8,7 +8,7 @@ import FirebaseCrashlytics
 import FirebaseFunctions
 
 #if !DEBUG
-func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {}
+func debugLog(_ items: Any..., separator: String = " ", terminator: String = "\n") {}
 #endif
 
 extension Color {
@@ -584,7 +584,7 @@ enum Telemetry {
         guard isOptedIn else { return }
         Analytics.logEvent(name, parameters: parameters.isEmpty ? nil : parameters)
         #if DEBUG
-        print("📊 \(name) \(parameters)")
+        debugLog("📊 \(name) \(parameters)")
         #endif
     }
 
@@ -622,7 +622,7 @@ enum Telemetry {
         Crashlytics.crashlytics().record(error: sanitized)
         #if DEBUG
         let suffix = context.map { " [\($0)]" } ?? ""
-        print("💥 non-fatal\(suffix): \(error)")
+        debugLog("💥 non-fatal\(suffix): \(error)")
         #endif
     }
 
@@ -1496,7 +1496,7 @@ func confirmAdultServerSide(uid: String) async throws {
                 attemptsRemaining -= 1
                 continue
             }
-            print("⚠️ confirmAdult call failed: \(error.localizedDescription)")
+            debugLog("⚠️ confirmAdult call failed: \(error.localizedDescription)")
             Telemetry.recordError(error, context: "confirmAdult.callable")
             throw error
         }
@@ -1841,7 +1841,7 @@ struct ReportSheet: View {
             Task { @MainActor in
                 isSubmitting = false
                 if let error = error {
-                    print("⚠️ submitReport failed: \(error)")
+                    debugLog("⚠️ submitReport failed: \(error)")
                     Telemetry.recordError(error, context: "ReportSheet.submit")
                     submitFailed = true
                 } else {

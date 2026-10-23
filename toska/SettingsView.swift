@@ -734,7 +734,7 @@ struct SettingsView: View {
                         ], forDocument: privateRef, merge: true)
                         try await batch.commit()
                     } catch {
-                        print("⚠️ saveSettings failed: \(error)")
+                        debugLog("⚠️ saveSettings failed: \(error)")
                         // Tell the user their change didn't persist before
                         // we re-pull the server state and visually revert
                         // their toggle. Without this, the toggle just snaps
@@ -1035,7 +1035,7 @@ struct SettingsView: View {
                 payload["presenceDates"] = presenceSnap.documents.map { $0.documentID }
             } catch {
                 exportError = "couldn't export all your data — check your connection and try again."
-                print("⚠️ exportData incomplete, not presenting partial file: \(error)")
+                debugLog("⚠️ exportData incomplete, not presenting partial file: \(error)")
                 return
             }
 
@@ -1075,7 +1075,7 @@ struct SettingsView: View {
                 }
             } catch {
                 exportError = "couldn't build export — try again."
-                print("⚠️ exportData serialize/write failed: \(error)")
+                debugLog("⚠️ exportData serialize/write failed: \(error)")
             }
         }
     }

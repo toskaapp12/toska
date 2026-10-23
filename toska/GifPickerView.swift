@@ -262,7 +262,7 @@ struct GifPickerView: View {
                 // upstream failures to the user, but log the root cause to
                 // Crashlytics so fixes don't have to chase blind reports of
                 // "GIFs don't work."
-                print("⚠️ giphyProxy callable failed: \(error.localizedDescription)")
+                debugLog("⚠️ giphyProxy callable failed: \(error.localizedDescription)")
                 Telemetry.recordError(error, context: "Giphy.callable.\(mode)")
                 // Stale failure must not surface an error / kill the spinner for
                 // the newer in-flight request that superseded this one.

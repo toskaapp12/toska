@@ -76,7 +76,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func application(_ application: UIApplication,
                          didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-            print("🔥 AppDelegate — didFinishLaunching")
+            debugLog("🔥 AppDelegate — didFinishLaunching")
             // SIMULATOR APP CHECK GOTCHA — see RUNBOOK.md → Local development
             // → "Simulator App Check — first-run gotcha". On a fresh simulator
             // install, the debug token printed below must be registered in
@@ -102,7 +102,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             if let stagingPath = Bundle.main.path(forResource: "GoogleService-Info-Staging", ofType: "plist"),
                let stagingOptions = FirebaseOptions(contentsOfFile: stagingPath) {
                 FirebaseApp.configure(options: stagingOptions)
-                print("🔥 Firebase configured against STAGING (toskastaging)")
+                debugLog("🔥 Firebase configured against STAGING (toskastaging)")
             } else {
                 // Fail closed: a missing staging plist must NOT silently
                 // configure Debug against prod — that's how prior incidents
@@ -227,7 +227,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // the build, simulator without push capability, network issues at
         // app start) — we want to see them in Crashlytics so a regression
         // in entitlements or APNS config surfaces fast.
-        print("⚠️ APNS registration failed: \(error)")
+        debugLog("⚠️ APNS registration failed: \(error)")
         Telemetry.recordError(error, context: "AppDelegate.didFailToRegisterForRemoteNotifications")
     }
 }

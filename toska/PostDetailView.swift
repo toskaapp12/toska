@@ -1601,7 +1601,7 @@ struct PostDetailView: View {
             .limit(to: 500)
             .addSnapshotListener { snapshot, error in
                 if let error = error {
-                    print("⚠️ fetchReplies(live) listener error for post \(postId): \(error)")
+                    debugLog("⚠️ fetchReplies(live) listener error for post \(postId): \(error)")
                     Telemetry.recordError(error, context: "PostDetailView.fetchReplies.live")
                     Task { @MainActor in
                         guard Auth.auth().currentUser?.uid == capturedUid else { return }
@@ -1632,7 +1632,7 @@ struct PostDetailView: View {
                 .order(by: "createdAt", descending: false)
                 .addSnapshotListener { snapshot, error in
                     if let error = error {
-                        print("⚠️ fetchReplies(mine) listener error for post \(postId): \(error)")
+                        debugLog("⚠️ fetchReplies(mine) listener error for post \(postId): \(error)")
                         Telemetry.recordError(error, context: "PostDetailView.fetchReplies.mine")
                         Task { @MainActor in
                             guard Auth.auth().currentUser?.uid == capturedUid else { return }
@@ -1680,7 +1680,7 @@ struct PostDetailView: View {
             }
         }
 
-        print("ℹ️ fetchReplies recombine for post \(postId): \(rawLiveReplies.count) live + \(rawHeldReplies.count) held → \(flat.count)")
+        debugLog("ℹ️ fetchReplies recombine for post \(postId): \(rawLiveReplies.count) live + \(rawHeldReplies.count) held → \(flat.count)")
         withAnimation(.easeInOut(duration: 0.2)) {
             replyList = buildThreadedReplies(from: flat)
             hasLoadedReplies = true
@@ -1790,7 +1790,7 @@ struct PostDetailView: View {
             .delete { error in
                 Task { @MainActor in
                     if let error = error {
-                        print("⚠️ deleteReply failed: \(error)")
+                        debugLog("⚠️ deleteReply failed: \(error)")
                         Telemetry.recordError(error, context: "PostDetailView.deleteReply")
                         deleteReplyError = "couldn't delete — try again"
                     } else {
@@ -1974,7 +1974,7 @@ struct PostDetailView: View {
                 // same, which made the "view author's profile" button vanish
                 // on any transient Firestore error.
                 if let error = error {
-                    print("⚠️ lookupAuthorId failed: \(error)")
+                    debugLog("⚠️ lookupAuthorId failed: \(error)")
                     isAuthorIdLoading = false
                     return
                 }

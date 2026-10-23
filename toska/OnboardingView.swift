@@ -334,7 +334,7 @@ struct OnboardingView: View {
                             try await recordPolicyAcceptance(for: uid)
                             showPolicyAcceptance = false
                         } catch {
-                            print("⚠️ recordPolicyAcceptance failed: \(error)")
+                            debugLog("⚠️ recordPolicyAcceptance failed: \(error)")
                             Telemetry.recordError(error, context: "recordPolicyAcceptance.signup.v\(currentPolicyVersion)")
                             // Leave the modal up; user can retry. The user
                             // is mid-signup, so re-prompting on next launch
@@ -452,7 +452,7 @@ struct OnboardingView: View {
                     showAgeGate = true
                 }
             } catch {
-                print("⚠️ checkAcceptanceStatus failed (attempt \(attempt)): \(error)")
+                debugLog("⚠️ checkAcceptanceStatus failed (attempt \(attempt)): \(error)")
                 // The old comment ("a subsequent onAppear retries") was wrong:
                 // onAppear fires once on mount, and advancing steps doesn't
                 // re-mount, so a failed read left step >= 1 stranded on a bare
@@ -488,7 +488,7 @@ struct OnboardingView: View {
             do {
                 try await Auth.auth().currentUser?.delete()
             } catch {
-                print("⚠️ gate decline: auth delete failed, falling back to signOut: \(error)")
+                debugLog("⚠️ gate decline: auth delete failed, falling back to signOut: \(error)")
                 try? Auth.auth().signOut()
             }
             NotificationCenter.default.post(name: .userDidSignOut, object: nil)
@@ -510,7 +510,7 @@ struct OnboardingView: View {
                         .collection("private").document("data")
                         .setData(["breakupStage": stage], merge: true)
                 } catch {
-                    print("⚠️ Onboarding stage save failed: \(error)")
+                    debugLog("⚠️ Onboarding stage save failed: \(error)")
                     Telemetry.recordError(error, context: "Onboarding.saveStage")
                     // Best-effort — fall through to advance. Unlike mood,
                     // there's no in-app surface yet that breaks if stage
@@ -585,7 +585,7 @@ struct OnboardingView: View {
                         .collection("private").document("data")
                         .setData(["selectedMood": mood], merge: true)
                 } catch {
-                    print("⚠️ Onboarding mood save failed: \(error)")
+                    debugLog("⚠️ Onboarding mood save failed: \(error)")
                     Telemetry.recordError(error, context: "Onboarding.saveMood")
                     // Surface the error to the user rather than silently
                     // advancing — the mood drives personalization downstream.
@@ -781,7 +781,7 @@ struct OnboardingView: View {
             } catch {
                 // Silent fallback — the line just doesn't render. Better
                 // than surfacing a load error inside the onboarding flow.
-                print("⚠️ fetchStageCohortCount failed: \(error)")
+                debugLog("⚠️ fetchStageCohortCount failed: \(error)")
             }
         }
     }

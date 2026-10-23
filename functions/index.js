@@ -6094,34 +6094,62 @@ exports.crisisDeliveryWatchdog = onSchedule(
     const cutoff = Timestamp.fromDate(new Date(now - 15 * 60 * 1000));       // >15 min old
     const floor = Timestamp.fromDate(new Date(now - 24 * 60 * 60 * 1000));   // scan bound
     const undelivered = new Set();
+    let scanErrors = 0;
+
+    // Each scan is isolated: if one throws (e.g. a missing index), it logs and
+    // increments scanErrors so the generic function-error policy still fires,
+    // but the OTHER scan and the heartbeat still run — a single failure must
+    // never silently blind the whole watchdog.
 
     // (1) Persisted no-token records >15m old with still no delivery claim.
     //     Keyed by the page's claim id → SURVIVES post deletion (a crisis post
     //     deleted before 15m is still caught here if its page failed).
-    const recs = await db.collection("undeliveredCrisisPages")
-      .where("detectedAt", "<", cutoff).get();
-    for (const d of recs.docs) {
-      const claim = await db.collection("processedTriggerEvents").doc(d.id).get();
-      if (!claim.exists) undelivered.add(d.id.replace(/^crisisAlert_/, ""));
+    try {
+      const recs = await db.collection("undeliveredCrisisPages")
+        .where("detectedAt", "<", cutoff).get();
+      for (const d of recs.docs) {
+        const claim = await db.collection("processedTriggerEvents").doc(d.id).get();
+        if (!claim.exists) undelivered.add(d.id.replace(/^crisisAlert_/, ""));
+      }
+    } catch (e) {
+      scanErrors++;
+      console.error("crisisDeliveryWatchdog scan(1) undeliveredCrisisPages failed:", e);
     }
 
     // (2) Live concerning posts 15m–24h old with no delivery claim — catches the
     //     transient-send-failure path (tokens existed, all sends failed, retries
-    //     exhausted) that leaves no record. Uses the existing
+    //     exhausted) that leaves no record. Uses the
     //     (concerningContent, createdAt) composite index.
-    const posts = await db.collection("posts")
-      .where("concerningContent", "==", true)
-      .where("createdAt", "<", cutoff)
-      .where("createdAt", ">", floor).get();
-    for (const p of posts.docs) {
-      const claim = await db.collection("processedTriggerEvents").doc(`crisisAlert_${p.id}`).get();
-      if (!claim.exists) undelivered.add(p.id);
+    try {
+      const posts = await db.collection("posts")
+        .where("concerningContent", "==", true)
+        .where("createdAt", "<", cutoff)
+        .where("createdAt", ">", floor)
+        // Explicit DESC order so this reuses the existing
+        // (concerningContent ASC, createdAt DESC) index that both projects
+        // already have — without it, the range filter implies createdAt ASC
+        // and would demand a second, ASC-direction index.
+        .orderBy("createdAt", "desc").get();
+      for (const p of posts.docs) {
+        const claim = await db.collection("processedTriggerEvents").doc(`crisisAlert_${p.id}`).get();
+        if (!claim.exists) undelivered.add(p.id);
+      }
+    } catch (e) {
+      scanErrors++;
+      console.error("crisisDeliveryWatchdog scan(2) concerning posts failed:", e);
     }
 
     for (const postId of undelivered) {
       console.warn(JSON.stringify({ tag: "crisis_page_undelivered", postId }));
     }
-    console.log(JSON.stringify({ tag: "crisis_watchdog_heartbeat", undelivered: undelivered.size }));
+    console.log(JSON.stringify({
+      tag: "crisis_watchdog_heartbeat", undelivered: undelivered.size, scanErrors,
+    }));
+    // Surface scan failures to the generic error policy AFTER the heartbeat has
+    // been emitted, so a persistent index/permission problem still pages.
+    if (scanErrors > 0) {
+      throw new Error(`crisisDeliveryWatchdog: ${scanErrors} scan(s) failed this run`);
+    }
   }
 );
 

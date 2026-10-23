@@ -75,13 +75,12 @@ the second factor. The earlier "do NOT sign out of the iOS app / don't change
 the admin password" constraint is **lifted** — the account is no longer at risk
 of lockout. (admin.html + web app.js also handle MFA.)
 
-⚠ **One follow-up (B94-FCM):** right after that sign-out/sign-in, the owner's
-`users/{uid}/private/data` had **no `fcmToken`** and `pushEnabled:false`. Likely
-the token just re-registers on next app foreground — but **crisis pages will not
-reach that device until it does.** Reopen/foreground the app, then re-verify the
-token is present before relying on crisis delivery to that phone. If it stays
-absent after a clean relaunch, the MFA sign-in path is skipping token
-registration (see B94-FCM in issues/BUGS.md).
+✅ **B94-FCM fixed + device-verified on build 95 (2026-10-23).** The earlier
+token-loss after sign-out/sign-in is resolved: `PushNotificationManager.reregisterForPush()`
+now restores the FCM token on sign-in, app-foreground, and push-toggle re-enable.
+All three paths verified on-device to write a fresh token to `private/data`;
+crisis delivery to the owner device confirmed restored. Build 95 (v1.3) is on
+TestFlight in the Internal (me) group.
 
 ## In progress
 

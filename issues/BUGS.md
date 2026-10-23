@@ -40,7 +40,11 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## B94-FCM — FCM token not restored after sign-out/sign-in (crisis delivery)
 
-- **Severity:** HIGH · **Surface:** iOS push registration · **Status:** FIXED 2026-10-23 (code; needs build 95 device verify)
+- **Severity:** HIGH · **Surface:** iOS push registration · **Status:** FIXED + DEVICE-VERIFIED on build 95, 2026-10-23
+- **Device verification (build 95):** all three recovery paths confirmed to write a
+  fresh token to `private/data` — (1) sign-out → sign-in w/ TOTP, (2) Settings push
+  toggle off → on, (3) foreground after a server-side token drop. Crisis delivery
+  to the owner device confirmed restored.
 - **Finding:** after the owner's build-94 sign-out → sign-in, `users/{ownerUid}/private/data`
   had **no `fcmToken`**; toggling in-app notifications back on set `pushEnabled:true`
   but STILL wrote no token (`fcmTokenUpdatedAt` stayed at the sign-out time), and

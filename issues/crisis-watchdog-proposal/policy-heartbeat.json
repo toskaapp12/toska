@@ -1,0 +1,17 @@
+{
+  "displayName": "Toska — crisis watchdog STALLED (no heartbeat)",
+  "combiner": "OR",
+  "conditions": [{
+    "displayName": "no watchdog heartbeat for 20 min",
+    "conditionThreshold": {
+      "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/crisis_watchdog_heartbeat\"",
+      "comparison": "COMPARISON_LT",
+      "thresholdValue": 1,
+      "duration": "1200s",
+      "aggregations": [{ "alignmentPeriod": "600s", "perSeriesAligner": "ALIGN_SUM" }]
+    }
+  }],
+  "notificationChannels": ["projects/toska-4ebf4/notificationChannels/17038690850716525077"],
+  "alertStrategy": { "autoClose": "1800s" },
+  "severity": "CRITICAL"
+}

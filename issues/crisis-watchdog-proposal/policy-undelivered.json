@@ -1,0 +1,13 @@
+{
+  "displayName": "Toska — crisis page UNDELIVERED (watchdog)",
+  "combiner": "OR",
+  "conditions": [{
+    "displayName": "crisis_page_undelivered emitted",
+    "conditionMatchedLog": {
+      "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"crisisdeliverywatchdog\" AND jsonPayload.tag=\"crisis_page_undelivered\""
+    }
+  }],
+  "notificationChannels": ["projects/toska-4ebf4/notificationChannels/17038690850716525077"],
+  "alertStrategy": { "notificationRateLimit": { "period": "300s" }, "autoClose": "1800s" },
+  "severity": "CRITICAL"
+}

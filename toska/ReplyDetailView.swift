@@ -502,7 +502,7 @@ struct ReplyDetailView: View {
                     for doc in docs {
                         let data = doc.data()
                         let authorId = data["authorId"] as? String ?? ""
-                        if BlockedUsersCache.shared.isBlocked(authorId) { continue }
+                        if BlockedUsersCache.shared.isHiddenAuthor(authorId) { continue }
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                         let item = ThreadedReply(
                             id: doc.documentID,

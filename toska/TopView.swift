@@ -295,7 +295,7 @@ struct TopView: View {
                     for doc in documents {
                         let data = doc.data()
                         let authorId = data["authorId"] as? String ?? ""
-                        if BlockedUsersCache.shared.isBlocked(authorId) { continue }
+                        if BlockedUsersCache.shared.isHiddenAuthor(authorId) { continue }
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { continue }
                         // Don't surface auto-flagged or admin-flagged posts on the
                         // trending screen (mirrors FeedViewModel.filterBlocked).

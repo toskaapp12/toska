@@ -281,7 +281,7 @@ struct PostDetailView: View {
                                 // Saved/Liked tab) must not render their content.
                                 // The .userBlocked receiver only covers blocking
                                 // WHILE viewing; this covers already-blocked-on-open.
-                                if BlockedUsersCache.shared.isBlocked(authorId) { dismiss(); return }
+                                if BlockedUsersCache.shared.isHiddenAuthor(authorId) { dismiss(); return }
                                 authorUserId = authorId
                                 isAuthorIdLoading = false
                             } else {
@@ -1551,7 +1551,7 @@ struct PostDetailView: View {
     private static func threadedReply(from doc: QueryDocumentSnapshot) -> ThreadedReply? {
         let data = doc.data()
         let authorId = data["authorId"] as? String ?? ""
-        if BlockedUsersCache.shared.isBlocked(authorId) { return nil }
+        if BlockedUsersCache.shared.isHiddenAuthor(authorId) { return nil }
         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         let isPending = (data["moderationStatus"] as? String) == "pending_review"
         return ThreadedReply(
@@ -1989,7 +1989,7 @@ struct PostDetailView: View {
                 // M-2 (2026-07-19 audit): the post whose author we just resolved
                 // may be one the viewer already blocked (opened by id with no
                 // author passed in). Leave rather than render blocked content.
-                if !authorUserId.isEmpty, BlockedUsersCache.shared.isBlocked(authorUserId) { dismiss(); return }
+                if !authorUserId.isEmpty, BlockedUsersCache.shared.isHiddenAuthor(authorUserId) { dismiss(); return }
                 isAuthorIdLoading = false
             }
         }
@@ -2005,7 +2005,7 @@ struct PostDetailView: View {
         }
         guard Auth.auth().currentUser?.uid != nil, !postId.isEmpty else { return }
         if UserHandleCache.shared.isRestricted { return }
-        if BlockedUsersCache.shared.isBlocked(authorUserId) { return }
+        if BlockedUsersCache.shared.isHiddenAuthor(authorUserId) { return }
         if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
         if let violation = contentViolation(in: trimmed) {
             replyContentWarningMessage = contentViolationMessage(for: violation)

@@ -413,7 +413,7 @@ struct ExploreView: View {
                     guard !hasFetchedInitial else { return }
                     hasFetchedInitial = true
                     if !allPosts.isEmpty {
-                        allPosts.removeAll { BlockedUsersCache.shared.isBlocked($0.authorId) }
+                        allPosts.removeAll { BlockedUsersCache.shared.isHiddenAuthor($0.authorId) }
                     }
                     fetchTrendingPosts()
                     fetchTagCounts()
@@ -429,7 +429,7 @@ struct ExploreView: View {
     // MARK: - Parse helper
     
     func parsePosts(from documents: [QueryDocumentSnapshot]) -> [ExplorePost] {
-        documents.compactMap { try? ExplorePost(doc: $0, blockedUserIds: BlockedUsersCache.shared.blockedUserIds) }
+        documents.compactMap { try? ExplorePost(doc: $0, blockedUserIds: BlockedUsersCache.shared.hiddenAuthorIds) }
     }
     
     // MARK: - People Feeling This
@@ -456,7 +456,7 @@ struct ExploreView: View {
                   let authorId = data["authorId"] as? String ?? ""
                   let authorHandle = data["authorHandle"] as? String ?? "anonymous"
                   if authorId == uid { continue }
-                  if BlockedUsersCache.shared.isBlocked(authorId) { continue }
+                  if BlockedUsersCache.shared.isHiddenAuthor(authorId) { continue }
                   if seen.contains(authorId) { continue }
                   seen.insert(authorId)
                   people.append(FeelingPerson(id: authorId, handle: authorHandle))
@@ -493,7 +493,7 @@ struct ExploreView: View {
         if !allPosts.isEmpty {
                             localResults = allPosts
                                                     .filter { post in
-                                                        !BlockedUsersCache.shared.isBlocked(post.authorId) &&
+                                                        !BlockedUsersCache.shared.isHiddenAuthor(post.authorId) &&
                                                         (post.text.lowercased().contains(query) ||
                                                          (post.tag?.lowercased().contains(query) ?? false) ||
                                                          post.handle.lowercased().contains(query))

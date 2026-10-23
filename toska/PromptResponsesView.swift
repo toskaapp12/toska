@@ -111,7 +111,7 @@ struct PromptResponsesView: View {
                 guard Auth.auth().currentUser?.uid == capturedUid else { return }
                 responses = snap.documents
                     .map { FeedView.feedPost(from: $0) }
-                    .filter { !BlockedUsersCache.shared.isBlocked($0.authorId) }
+                    .filter { !BlockedUsersCache.shared.isHiddenAuthor($0.authorId) }
                 hasLoaded = true
             } catch {
                 loadFailed = true

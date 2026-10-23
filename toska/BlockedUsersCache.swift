@@ -22,6 +22,27 @@ class BlockedUsersCache {
         return _blockedUserIds
     }
 
+    // Block hardening (2026-10-23): authors who have blocked ME — the inverse of
+    // _blockedUserIds. Populated by a collectionGroup listener over every
+    // /blocked doc whose blockedUid == my uid (the doc is already readable by
+    // the blocked party per firestore.rules:967, so this reveals nothing new).
+    // Kept SEPARATE from _blockedUserIds so block-STATE UI (the "unblock"
+    // button) keeps using isBlocked() and never offers to unblock someone who
+    // blocked me. Content-filter surfaces use isHiddenAuthor()/hiddenAuthorIds.
+    private nonisolated(unsafe) var _blockedByUserIds: Set<String> = []
+
+    var blockedByUserIds: Set<String> {
+        lock.lock(); defer { lock.unlock() }
+        return _blockedByUserIds
+    }
+
+    /// Union of "I blocked them" + "they blocked me" — the set to use for
+    /// content filtering (feed, search, replies, profiles).
+    var hiddenAuthorIds: Set<String> {
+        lock.lock(); defer { lock.unlock() }
+        return _blockedUserIds.union(_blockedByUserIds)
+    }
+
     private func setBlockedUserIds(_ ids: Set<String>) {
         lock.lock()
         let added = ids.subtracting(_blockedUserIds)
@@ -43,6 +64,21 @@ class BlockedUsersCache {
         }
     }
 
+    // Mirrors setBlockedUserIds: an author who newly blocks me must prune their
+    // already-rendered posts from my feed, same as an in-app block does. An
+    // unblock (set shrinks) adds nothing, so it never strips rows.
+    private func setBlockedByUserIds(_ ids: Set<String>) {
+        lock.lock()
+        let added = ids.subtracting(_blockedByUserIds)
+        _blockedByUserIds = ids
+        lock.unlock()
+        if !added.isEmpty {
+            Task { @MainActor in
+                for uid in added { self.postUserBlockedBroadcast(userId: uid, handle: nil) }
+            }
+        }
+    }
+
     private func insertLocal(_ id: String) {
         lock.lock(); defer { lock.unlock() }
         _blockedUserIds.insert(id)
@@ -54,6 +90,7 @@ class BlockedUsersCache {
     }
 
     private var listener: ListenerRegistration? = nil
+    private var blockedByListener: ListenerRegistration? = nil
     private var currentUid: String? = nil
 
     private nonisolated init() {}
@@ -92,12 +129,40 @@ class BlockedUsersCache {
                     self.setBlockedUserIds(ids)
                 }
             }
+
+        // Block hardening (2026-10-23): "who blocked me". A collectionGroup
+        // listener over every /blocked doc whose blockedUid == my uid. Each
+        // such doc lives at users/{blocker}/blocked/{myUid}, so the blocker's
+        // uid is the grandparent document id. The blockedUid collectionGroup
+        // index already exists (firestore.indexes.json). Rules allow the blocked
+        // party to read these docs (firestore.rules:967), so the query is
+        // permitted. On error we keep the existing set (same reasoning as above).
+        blockedByListener = Firestore.firestore()
+            .collectionGroup("blocked")
+            .whereField("blockedUid", isEqualTo: uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    debugLog("⚠️ BlockedUsersCache blockedBy listener error: \(error)")
+                    return
+                }
+                guard let snapshot = snapshot else { return }
+                let ids = Set(snapshot.documents.compactMap {
+                    $0.reference.parent.parent?.documentID
+                })
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentUid == capturedUid else { return }
+                    self.setBlockedByUserIds(ids)
+                }
+            }
     }
 
     func stopListening() {
         listener?.remove()
         listener = nil
+        blockedByListener?.remove()
+        blockedByListener = nil
         setBlockedUserIds([])
+        setBlockedByUserIds([])
         currentUid = nil
     }
 
@@ -107,6 +172,21 @@ class BlockedUsersCache {
         guard !userId.isEmpty else { return false }
         lock.lock(); defer { lock.unlock() }
         return _blockedUserIds.contains(userId)
+    }
+
+    /// True if the given user has blocked ME (I did not necessarily block them).
+    nonisolated func isBlockedBy(_ userId: String) -> Bool {
+        guard !userId.isEmpty else { return false }
+        lock.lock(); defer { lock.unlock() }
+        return _blockedByUserIds.contains(userId)
+    }
+
+    /// Content-filter predicate: hide an author's content if I blocked them OR
+    /// they blocked me. Filters by authorId (uid), so it survives a handle
+    /// change. Use this everywhere posts/replies are listed; keep isBlocked()
+    /// for block-STATE UI.
+    nonisolated func isHiddenAuthor(_ userId: String) -> Bool {
+        isBlocked(userId) || isBlockedBy(userId)
     }
 
     // MARK: - Mutating

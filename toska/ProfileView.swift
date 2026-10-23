@@ -894,7 +894,7 @@ struct ProfileView: View {
                 // MED-P3-1: drop a saved reply whose author the owner has blocked
                 // (the block promise covers replies). Pre-fix docs have no
                 // authorId ("") and aren't filterable — they render as before.
-                if !authorId.isEmpty, BlockedUsersCache.shared.isBlocked(authorId) { return nil }
+                if !authorId.isEmpty, BlockedUsersCache.shared.isHiddenAuthor(authorId) { return nil }
                 let savedAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 return SavedReply(
                     id: doc.documentID,
@@ -995,7 +995,7 @@ struct ProfileView: View {
                 let authorId = data["authorId"] as? String ?? ""
                 // MED-P3-1: drop a liked reply whose author the owner has blocked.
                 // Pre-fix docs have no authorId ("") and render as before.
-                if !authorId.isEmpty, BlockedUsersCache.shared.isBlocked(authorId) { return nil }
+                if !authorId.isEmpty, BlockedUsersCache.shared.isHiddenAuthor(authorId) { return nil }
                 let likedAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                 return LikedReply(
                     id: doc.documentID,
@@ -2043,9 +2043,9 @@ fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost?
     // rendering in those tabs (and opened in PostDetailView). Single choke point:
     // both loaders and the per-doc fallback build rows through here. Covers
     // reposts via originalAuthorId (the byline the row renders).
-    if BlockedUsersCache.shared.isBlocked(data["authorId"] as? String ?? "") { return nil }
+    if BlockedUsersCache.shared.isHiddenAuthor(data["authorId"] as? String ?? "") { return nil }
     if let originalAuthorId = data["originalAuthorId"] as? String,
-       BlockedUsersCache.shared.isBlocked(originalAuthorId) { return nil }
+       BlockedUsersCache.shared.isHiddenAuthor(originalAuthorId) { return nil }
     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
     return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt, gifUrl: data["gifUrl"] as? String, originalPostId: data["originalPostId"] as? String, originalAuthorId: data["originalAuthorId"] as? String)
 }

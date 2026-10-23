@@ -677,7 +677,7 @@ class FeedViewModel: ObservableObject {
                     // the sort deterministic (Swift's sort isn't stable).
                     self.serverSearchResults = docs
                         .map { FeedView.feedPost(from: $0) }
-                        .filter { !BlockedUsersCache.shared.isBlocked($0.authorId) }
+                        .filter { !BlockedUsersCache.shared.isHiddenAuthor($0.authorId) }
                         .enumerated()
                         .sorted { a, b in
                             let (ha, hb) = (hits(a.element), hits(b.element))
@@ -1146,9 +1146,9 @@ class FeedViewModel: ObservableObject {
         return documents.filter { doc in
             let data = doc.data()
             let authorId = data["authorId"] as? String ?? ""
-            if BlockedUsersCache.shared.isBlocked(authorId) { return false }
+            if BlockedUsersCache.shared.isHiddenAuthor(authorId) { return false }
             if let originalAuthorId = data["originalAuthorId"] as? String,
-               BlockedUsersCache.shared.isBlocked(originalAuthorId) { return false }
+               BlockedUsersCache.shared.isHiddenAuthor(originalAuthorId) { return false }
             if let expiresAt = data["expiresAt"] as? Timestamp,
                expiresAt.dateValue() < Date() { return false }
             // Hide posts flagged by server-side moderation (Cloud Functions)

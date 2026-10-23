@@ -676,7 +676,7 @@ struct NotificationsView: View {
                     // Filter out notifications from blocked users at render time.
                     let visibleDocuments = documents.filter { doc in
                         let fromUserId = doc.data()["fromUserId"] as? String ?? ""
-                        return fromUserId.isEmpty || !BlockedUsersCache.shared.isBlocked(fromUserId)
+                        return fromUserId.isEmpty || !BlockedUsersCache.shared.isHiddenAuthor(fromUserId)
                     }
 
                     notifications = visibleDocuments.map { doc -> NotificationItem in

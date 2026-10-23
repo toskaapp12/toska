@@ -82,6 +82,20 @@ All three paths verified on-device to write a fresh token to `private/data`;
 crisis delivery to the owner device confirmed restored. Build 95 (v1.3) is on
 TestFlight in the Internal (me) group.
 
+## Anonymity wording reconciliation (2026-10-23)
+
+Reconciled the "anonymous" promises against the privacy policy's honest
+"pseudonymous, not anonymous" stance. User-facing copy avoids "pseudonymous"
+(legal keeps it), keeps the warm lowercase voice, drops absolute claims
+("anonymous for everyone", "really anonymous? yes / no one can see who you are",
+"every account is anonymous"), keeps true-about-other-users claims, and adds a
+de-anonymization reminder (onboarding + compose): "posts share one handle, so
+small details like places or workplaces can add up." Full decision log in
+AUDIT_REPORT.md. Ship: website→Pages (live); web app→staging first, prod on
+approval; iOS (7 files)→build 96 w/ B94-3 GIF placeholder; App Store copy→owner
+pastes from APP_STORE_METADATA.md (gitignored). #7 verified: /p/ share pages
+carry no handle/author id/author-post links.
+
 ## In progress
 
 - **Build 94** (not yet built or uploaded) — three items from

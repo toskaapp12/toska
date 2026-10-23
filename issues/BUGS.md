@@ -75,3 +75,19 @@ after the listener catches up.
 *Both found during the build-93 production verification pass. Critical paths
 (sign-in, feed load, GIF post, crisis detection + 988 + crisis page push,
 moderation) all confirmed working on 93; these two are cosmetic/feedback polish.*
+
+---
+
+## B94-W — Full web sharing-consent UI (checkbox at sign-up + web settings toggle)
+
+- **Severity:** MED (consent/privacy) · **Status:** OPEN — build 94 / web
+- **Context:** As of 2026-10-23 web sign-up sets `allowSharing: false` (opt-in; stops the silent opt-in that had no wording and no control). But web still has NO way for a user to turn sharing *on* later, and no wording is shown. iOS has a Settings toggle; web has nothing.
+- **Proposed:** (a) add an optional checkbox at web sign-up with the SEO-01 wording ("share publicly — your post may be featured on the toska website and appear in Google search. your handle is never shown."), unchecked by default, writing `allowSharing` accordingly; (b) add a sharing toggle to the web app (settings/profile) so web users can see and change it, matching iOS. Reuse `showSharing` wording verbatim from iOS SettingsView.
+- **Do not** change existing accounts.
+
+## B94-iOS — Sharing opt-in on iOS (defaults done; sign-up choice pending)
+
+- **Severity:** MED (consent/privacy) · **Status:** PARTIAL — defaults flipped 2026-10-23 (rides next build); sign-up checkbox pending
+- **Done (2026-10-23):** creation default flipped to `allowSharing: false` at all three paths — CreateAccountView, AppleSignInHelper, SplashView. Settings toggle unchanged (still the opt-in control). Read-fallbacks (`?? true`) deliberately left so existing/legacy accounts are unchanged.
+- **Pending (build 94):** add an optional choice at sign-up (CreateAccountView + Apple/Splash onboarding) showing the SEO-01 wording, unchecked by default, that sets `allowSharing` at creation. Keep the Settings toggle.
+- **Do not** change existing accounts.

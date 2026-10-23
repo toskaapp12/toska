@@ -852,7 +852,10 @@ async function claimHandleAndCreateUserDoc(uid) {
         batch.set(doc(db, "users", uid), {
             handle,
             followerCount: 0, followingCount: 0, totalLikes: 0,
-            allowSharing: true, showFollowerCount: false,
+            // Sharing is OPT-IN (2026-10-23): new web accounts are NOT publicly
+            // shareable until the user turns it on (full web consent UI pending —
+            // see issues/BUGS.md B94-W). Existing accounts unchanged.
+            allowSharing: false, showFollowerCount: false,
             hasCompletedOnboarding: false,
             createdAt: serverTimestamp(),
             acceptedPolicyVersion: POLICY_VERSION,

@@ -228,7 +228,7 @@ struct SplashView: View {
             "followerCount": 0,
             "followingCount": 0,
             "totalLikes": 0,
-            "allowSharing": true,
+            "allowSharing": false,   // opt-in (2026-10-23): off at creation; Settings toggle opts in
             "showFollowerCount": false,
             "hasCompletedOnboarding": false,
             "createdAt": FieldValue.serverTimestamp()

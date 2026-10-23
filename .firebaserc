@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "toska-4ebf4",
+    "default": "toskastaging",
     "prod": "toska-4ebf4",
     "staging": "toskastaging"
   },

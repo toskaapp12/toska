@@ -11,6 +11,7 @@
          ('unsafe-inline' is required because the app logic is an inline module and
          GitHub Pages can't serve a nonce). connect-src allows Firebase backends. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.googleapis.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://www.gstatic.com https://www.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://firestore.googleapis.com wss://*.firebaseio.com https://www.google.com https://www.recaptcha.net; frame-src https://www.google.com https://www.recaptcha.net; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <meta name="robots" content="noindex, nofollow">
     <title>toska admin</title>
     <style>
         /* ── Toska admin — light theme (2026-06-29 redesign) ──
@@ -183,7 +184,7 @@
         // to commit once you have one.
         // ============================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut as fbSignOut, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, collection, collectionGroup, query, where, orderBy, limit, startAfter, getDocs, getCountFromServer, doc, getDoc, updateDoc, deleteDoc, serverTimestamp, deleteField } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
 
@@ -253,6 +254,22 @@
         }
 
         const auth = getAuth(app);
+        // ADM-08: session-only persistence (sign-in dies with the tab) + a
+        // 30-minute idle sign-out. This dashboard reads real user reports —
+        // an abandoned signed-in tab shouldn't stay privileged overnight.
+        setPersistence(auth, browserSessionPersistence).catch(() => {});
+        let idleTimer = null;
+        const IDLE_MS = 30 * 60 * 1000;
+        const armIdle = () => {
+            clearTimeout(idleTimer);
+            if (!auth.currentUser) return;
+            idleTimer = setTimeout(async () => {
+                try { await fbSignOut(auth); } finally { location.reload(); }
+            }, IDLE_MS);
+        };
+        for (const ev of ["click", "keydown", "scroll", "visibilitychange"]) {
+            document.addEventListener(ev, armIdle, { passive: true });
+        }
         const db = getFirestore(app);
         // us-central1 (default) — where adminDeleteAccount is deployed.
         const functions = getFunctions(app);
@@ -566,6 +583,7 @@
         }
 
         onAuthStateChanged(auth, async (user) => {
+            armIdle();
             const errEl = document.getElementById("loginError");
             if (user) {
                 try {

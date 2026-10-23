@@ -42,7 +42,7 @@ const VIOLATION_COPY = {
     harassment: "this reads like it's aimed at hurting someone. toska is for your feelings, not attacks.",
     targeted_threat: "this sounds like it could be threatening toward someone. if that's not what you meant, a small edit will fix it.",
     spam_or_commercial: "this looks like it might be spam or promotional content.",
-    contains_link: "toska doesn't allow links. this is an anonymous space — keep it about the words.",
+    contains_link: "toska doesn't allow links — keep it about the words.",
 };
 const HARD_BLOCK = new Set(["hate_speech", "sexual_content", "harassment"]);
 
@@ -70,7 +70,7 @@ function anonymityDialog() {
             el("p", { class: "modal-body" },
                 "your post might include a name or identifying info.",
                 el("br"), el("br"),
-                "everyone here is anonymous. including the people in your story. that's what makes it safe."),
+                "keep names out — yours and theirs. posts share one handle, so small details like places or workplaces can add up."),
             el("p", { class: "modal-hint" }, "try “he”, “she”, “they”, or just “you”"),
             el("div", { class: "modal-actions" },
                 el("button", { class: "btn", onclick: () => { close(); resolve("edit"); } }, "edit my post"),

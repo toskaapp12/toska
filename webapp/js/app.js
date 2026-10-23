@@ -1777,7 +1777,7 @@ function reportSheet(target) { // {type, postId?, replyId?, reportedUserId, repo
     const card = el("div", { class: "modal-card" });
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
     card.append(el("h3", {}, "what's wrong here?"),
-        el("p", { class: "modal-hint", style: "margin-bottom:10px;" }, "reports are anonymous. a human looks at every one."));
+        el("p", { class: "modal-hint", style: "margin-bottom:10px;" }, "the person you report won't know it was you. a human looks at every one."));
     for (const r of REPORT_REASONS) {
         card.append(el("button", {
             class: "tab", style: "display:block; width:100%; text-align:left; margin:7px 0; border-radius:12px; padding:13px 15px;",

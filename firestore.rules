@@ -1133,22 +1133,8 @@ service cloud.firestore {
       // transaction as a dedup safety net — that read hit the null-deref and
       // failed the whole transaction with PERMISSION_DENIED ("green→grey").
       // Confirmed via on-device FIRFirestoreErrorDomain Code=7 + staging repro.
-      // list (feed / search) keeps the plain predicate — a per-document block
-      // check on a LIST query makes the WHOLE query fail when any returned row
-      // is denied (Firestore list semantics), which would break the shared feed
-      // for anyone who has ever been blocked. Block-hiding in lists is handled
-      // client-side (BlockedUsersCache.isHiddenAuthor on iOS, blockedBy set on
-      // web).
-      allow list: if isAuth()
+      allow read: if isAuth()
         && (resource == null || moderationVisible(resource.data));
-      // get (direct open / deep-link / notification tap / share-sheet) ALSO
-      // denies a post whose author has blocked the caller — the server-enforced
-      // half of the block, so it holds regardless of client. resource==null
-      // stays allowed: a non-existent read returns null (no leak), and the
-      // repost-dedup transaction reads its not-yet-created repost doc.
-      allow get: if isAuth()
-        && (resource == null || moderationVisible(resource.data))
-        && (resource == null || notBlockedBy(resource.data.authorId));
       allow create: if isAuth()
         && notRestricted()
         && hasConfirmedAdult()

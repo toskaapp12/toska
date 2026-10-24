@@ -172,7 +172,10 @@ function startBlockedByListener(uid) {
             blockedBy = next;
             if (grew && activeFeedTab) viewFeed();
         },
-        () => {});
+        // Surface failures (e.g. a missing collectionGroup index or a rules
+        // denial) instead of silently leaving blockedBy empty — a swallowed
+        // error here let a missing index hide a blocker's posts with no signal.
+        (e) => console.warn("blockedBy listener error:", e?.code || e));
 }
 function stopBlockedByListener() { if (blockedByUnsub) { blockedByUnsub(); blockedByUnsub = null; } blockedBy = new Set(); }
 

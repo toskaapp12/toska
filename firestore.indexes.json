@@ -691,6 +691,20 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "blocked",
+      "fieldPath": "blockedUid",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
       "collectionGroup": "notifications",
       "fieldPath": "fromUserId",
       "indexes": [

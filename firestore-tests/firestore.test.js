@@ -61,6 +61,20 @@ async function setBlock(blocker, blocked) {
   });
 }
 
+// Like setBlock but writes the queryable blockedUid field (pinned == doc id),
+// as the real clients do — required to exercise the collectionGroup read rule.
+async function setBlockWithUid(blocker, blockedUid) {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await ctx
+      .firestore()
+      .collection("users")
+      .doc(blocker)
+      .collection("blocked")
+      .doc(blockedUid)
+      .set({ blockedAt: new Date(), blockedUid });
+  });
+}
+
 async function setPost(postId, authorId, extra = {}) {
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx
@@ -532,6 +546,55 @@ describe("posts get: block-aware (block hardening 2026-10-23)", () => {
   it("allows GET of a non-existent post (null read, no block deref)", async () => {
     const b = env.authenticatedContext("bob").firestore();
     await assertSucceeds(b.collection("posts").doc("does_not_exist").get());
+  });
+});
+
+describe("blocked collectionGroup read: who-blocked-me query (block hardening 2026-10-23)", () => {
+  // The blockedBy listener runs collectionGroup("blocked").where("blockedUid","==",me).
+  // The nested /users/{userId}/blocked/{blockedId} rule does NOT grant
+  // collection-group access; the recursive /{path=**}/blocked/{blockedId} rule
+  // allows reading ONLY docs where blockedUid == the caller. These tests run the
+  // REAL query shape so a future rule/coverage regression is caught here, not in prod.
+  beforeEach(async () => {
+    await setUserDoc("alice");
+    await setUserDoc("bob");
+    await setUserDoc("carol");
+    await setUserDoc("dave");
+    await setUserDoc("erin");
+    await setBlockWithUid("alice", "bob");   // alice blocked bob
+    await setBlockWithUid("dave", "erin");   // dave blocked erin (an unrelated block)
+  });
+
+  it("lets the blocked user query their own blockers and get the doc", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    const snap = await assertSucceeds(
+      b.collectionGroup("blocked").where("blockedUid", "==", "bob").get()
+    );
+    assert.strictEqual(snap.size, 1);
+    assert.strictEqual(snap.docs[0].ref.parent.parent.id, "alice"); // the blocker
+  });
+
+  it("denies querying for someone else's blockedUid", async () => {
+    const b = env.authenticatedContext("bob").firestore();
+    // a doc with blockedUid==erin exists (dave→erin); bob may not read it
+    await assertFails(
+      b.collectionGroup("blocked").where("blockedUid", "==", "erin").get()
+    );
+  });
+
+  it("an unrelated user querying their own blockedUid gets nothing (allowed, empty)", async () => {
+    const c = env.authenticatedContext("carol").firestore();
+    const snap = await assertSucceeds(
+      c.collectionGroup("blocked").where("blockedUid", "==", "carol").get()
+    );
+    assert.strictEqual(snap.size, 0);
+  });
+
+  it("denies an unauthenticated collectionGroup query", async () => {
+    const u = env.unauthenticatedContext().firestore();
+    await assertFails(
+      u.collectionGroup("blocked").where("blockedUid", "==", "bob").get()
+    );
   });
 });
 

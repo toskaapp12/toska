@@ -2111,6 +2111,23 @@ service cloud.firestore {
         || (isAuth() && resource.data.authorId == request.auth.uid);
     }
 
+    // Collection-group read for the "who blocked me" query (block hardening
+    // 2026-10-23). The nested /users/{userId}/blocked/{blockedId} rule governs
+    // direct access + a single user's subcollection, but a
+    // collectionGroup("blocked") query spanning all users is NOT covered by it —
+    // Firestore requires a recursive-wildcard match for collection-group access.
+    // Narrow by design: read ONLY block docs where the caller is the blocked
+    // party (blockedUid == me) — exactly what the blockedBy listener filters on,
+    // and a subset of what the nested rule already permits for direct reads.
+    // READ ONLY: writes stay governed by the nested rule (owner-only create/delete).
+    // Also unblocks the account-deletion cascade's blockedUid collectionGroup
+    // cleanup query. SEPARATE from the Option 2 posts-get block check.
+    match /{path=**}/blocked/{blockedId} {
+      allow read: if isAuth()
+        && resource != null
+        && resource.data.blockedUid == request.auth.uid;
+    }
+
     // Server-maintained aggregate counters. Cloud Functions write here via
     // Admin SDK (which bypasses rules); clients only read.
     //   meta/tagCounts          — onPostCreated/Deleted maintain per-tag

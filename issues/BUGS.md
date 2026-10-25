@@ -26,6 +26,20 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## FCM-DIAG — remove the build-99 fcmDiag diagnostic before public launch (BLOCKING)
+
+- **Severity:** BLOCKING for launch · **Surface:** iOS (PushNotificationManager, toskaApp) · **Status:** OPEN 2026-10-25
+- Build 99 adds `recordFcmDiag()` which appends status strings (no user content)
+  to the signed-in admin's own `private/data.fcmDiag` at each push-registration
+  step, to diagnose the FCM account-switch token loss on a release TestFlight
+  build (debugLog is stripped in release). Gated to admins (AdminManager) = the
+  owner only. **MUST be removed before public launch:** delete `recordFcmDiag` +
+  all its call sites (PushNotificationManager saveFCMToken/refreshFCMToken/
+  reregister/didReceiveRegistrationToken, toskaApp didRegister/didFail), and
+  one-time clear the owner's `fcmDiag` field. Diagnostic-only; not for prod users.
+
+---
+
 ## TEST-ONBTARGET — wire a Swift unit-test target (follow-up)
 
 - **Type:** test infra follow-up · **Surface:** Xcode project · **Status:** OPEN 2026-10-25

@@ -40,6 +40,7 @@ class PushNotificationManager: NSObject {
     /// user — that's a real impersonation vector.
     func saveFCMToken(_ token: String) {
             guard let uid = Auth.auth().currentUser?.uid else { return }
+            recordFcmDiag("saveFCMToken: write issued len=\(token.count)")
             Firestore.firestore()
                 .collection("users").document(uid)
                 .collection("private").document("data")
@@ -48,6 +49,25 @@ class PushNotificationManager: NSObject {
                     "fcmTokenUpdatedAt": FieldValue.serverTimestamp()
                 ], merge: true)
         }
+
+    // ── FCM diagnostic (build 99, TEMPORARY — remove before public launch) ──
+    // debugLog compiles to nothing in release, so to see where FCM
+    // re-registration fails on a TestFlight build we append STATUS STRINGS ONLY
+    // (no user content) to the signed-in user's own private/data.fcmDiag. Gated
+    // to admins (= the owner) via AdminManager so it never writes for ordinary
+    // users and carries no uid literal (ACC-06). Blocking removal item: FCM-DIAG
+    // in issues/BUGS.md.
+    nonisolated func recordFcmDiag(_ status: String) {
+        Task { @MainActor in
+            guard AdminManager.shared.isAdmin,
+                  let uid = Auth.auth().currentUser?.uid else { return }
+            let stamp = ISO8601DateFormatter().string(from: Date())
+            Firestore.firestore()
+                .collection("users").document(uid)
+                .collection("private").document("data")
+                .setData(["fcmDiag": FieldValue.arrayUnion(["\(stamp) \(status)"])], merge: true)
+        }
+    }
 
     /// Explicitly fetch + persist the current FCM token. The registration-token
     /// delegate only fires when the token CHANGES, so on a same-session account
@@ -61,9 +81,14 @@ class PushNotificationManager: NSObject {
         Messaging.messaging().token { [weak self] token, error in
             if let error = error {
                 debugLog("⚠️ refreshFCMToken fetch failed: \(error)")
+                self?.recordFcmDiag("refreshFCMToken: error \((error as NSError).code)")
                 return
             }
-            guard let token = token else { return }
+            guard let token = token else {
+                self?.recordFcmDiag("refreshFCMToken: nil token")
+                return
+            }
+            self?.recordFcmDiag("refreshFCMToken: got token len=\(token.count)")
             Task { @MainActor in self?.saveFCMToken(token) }
         }
     }
@@ -90,6 +115,7 @@ class PushNotificationManager: NSObject {
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
             switch settings.authorizationStatus {
             case .authorized, .provisional, .ephemeral:
+                self?.recordFcmDiag("reregister: authStatus=\(settings.authorizationStatus.rawValue) → registering + refresh")
                 Task { @MainActor in
                     UIApplication.shared.registerForRemoteNotifications()
                     self?.refreshFCMToken()
@@ -97,6 +123,7 @@ class PushNotificationManager: NSObject {
             default:
                 // .denied / .notDetermined are handled by requestPermission();
                 // registering here would be a no-op the system drops.
+                self?.recordFcmDiag("reregister: authStatus=\(settings.authorizationStatus.rawValue) → NOT registering (permission not granted)")
                 break
             }
         }
@@ -157,7 +184,11 @@ class PushNotificationManager: NSObject {
 // MARK: - MessagingDelegate
 extension PushNotificationManager: MessagingDelegate {
     nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        guard let token = fcmToken else { return }
+        guard let token = fcmToken else {
+            recordFcmDiag("didReceiveRegistrationToken: nil")
+            return
+        }
+        recordFcmDiag("didReceiveRegistrationToken: len=\(token.count)")
         Task { @MainActor in
             saveFCMToken(token)
         }

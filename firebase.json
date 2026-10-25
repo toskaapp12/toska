@@ -10,6 +10,7 @@
       { "source": "/p/**", "function": "sharePage" },
       { "source": "/og/**", "function": "shareCardImage" },
       { "source": "/sitemap.xml", "function": "postsSitemap" },
+      { "source": "/auth", "destination": "/auth.html" },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

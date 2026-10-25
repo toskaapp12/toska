@@ -73,18 +73,17 @@ user could still read the blocker's posts (posts read rule was `isAuth()` only).
     collection-group queries) — **deployed prod+staging**. Both also fix the
     account-deletion cascade's silently-failing block-cleanup query. The web
     `blockedBy` error callback now `console.warn`s instead of swallowing.
-  - **⚠️ PROD RULES PROVENANCE (2026-10-24):** prod firestore.rules = branch
-    **`rules-prod-2026-10-24` @ `5fac94c`** (collectionGroup blocked read rule;
-    **Option 2 NOT included**). `main@HEAD` contains Option 2 — **do NOT run
-    `firebase deploy --only firestore:rules` from main** until the two-account
-    retest passes, or you'll ship Option 2 early. Deploy Option 2 from main only
-    after owner's go.
-  - **Option 2 (rules):** posts `read` split into `list` (unchanged) + `get`
-    (+`notBlockedBy(authorId)`), so a blocked user can't directly open/deep-link
-    the blocker's post. Rules tests; suite 289 passing. **COMMITTED on main, NOT
-    DEPLOYED** (prod runs 5fac94c without it). ⚠️ **Pending owner: deploy from
-    main `firebase deploy --only firestore:rules --project toska-4ebf4`
-    TOGETHER, after the two-account block retest on build 97 passes.**
+  - **✅ PROD RULES PROVENANCE (updated 2026-10-25):** blocking verified on web
+    + iOS build 97, so Option 2 was deployed. Prod firestore.rules now =
+    **`main@f09ae87`, tag `rules-prod-2026-10-25-opt2`** (collectionGroup blocked
+    read rule **+ Option 2 posts-get block check**). This matches `main@HEAD`.
+    (Prior pin `rules-prod-2026-10-24 @ 5fac94c` was the interim collectionGroup-only
+    state, now superseded.)
+  - **Option 2 (rules):** posts `read` split into `list` (unchanged — feed
+    unaffected) + `get` (+`notBlockedBy(authorId)`), so a blocked user can't
+    directly open/deep-link the blocker's post. Suite 289 passing. **DEPLOYED
+    PROD 2026-10-25** (feed-list rule byte-identical to before; no server-side
+    permission errors post-deploy).
   - **Option 3 (handle-change suggestion):** DEFERRED post-launch — there is no
     handle-change feature yet; building it (unique registry swap + optional
     past-content backfill + the block suggestion) is logged as FEAT-HANDLE-CHANGE

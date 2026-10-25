@@ -5,6 +5,76 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## SEC-UUID — HIGH uuid advisory (GHSA-w5hq-g745-h8pq) via gaxios in Cloud Functions
+
+- **Severity:** HIGH advisory, but **not reachable** in our usage · **Surface:** functions (CI Security Watch "Dependency vulnerability scan") · **Status:** FIX APPLIED in working tree (lockfile), NOT committed/deployed — 2026-10-25
+- **What triggered it:** `npm audit --omit=dev --audit-level=high` in `functions/`
+  found uuid GHSA-w5hq-g745-h8pq ("missing buffer bounds check in v3/v5/v6 when a
+  `buf` arg is provided") — HIGH — pulled in transitively via **gaxios** (the HTTP
+  client under google-auth-library / @google-cloud libs that firebase-admin uses).
+  Also 2 moderate (gaxios 6.x → old uuid). The job fails on HIGH, hence red.
+- **Reachability (plain language):** NOT reachable. The flaw only bites when uuid
+  is called with a caller-supplied output buffer (v3/v5/v6 + `buf`). Google's libs
+  use `uuid.v4()` with no buffer to mint request ids; our code never calls uuid
+  with a buffer. No exploit path in Toska.
+- **Fix:** `npm audit fix --omit=dev` in functions/ — lockfile-only bump that
+  clears the HIGH (re-audit at `--audit-level=high` exits 0). 2 moderate remain
+  (gaxios 6.x, below the gate; the documented "needs firebase-admin major" set).
+  No Dependabot PR exists. 112 functions tests still pass.
+- **Deploy:** functions dep change → **staging first, then prod on owner approval.**
+  Currently applied to the working tree only; CI clears once the lockfile is committed.
+
+---
+
+## ONB-1 — existing accounts re-shown new-user onboarding on sign-in
+
+- **Severity:** MED (UX + minor data-loss risk) · **Surface:** iOS (ContentView.verifyUserDocumentAsync) · **Status:** OPEN, fix proposed — 2026-10-25
+- **Finding:** the gate is `data["hasCompletedOnboarding"] as? Bool ?? false; if
+  !hasCompletedOnboarding { showOnboarding = true }` (ContentView:428-431). It's an
+  ACCOUNT flag (user doc), not a device flag (owner's guess was close). Both accounts
+  involved have `hasCompletedOnboarding=true` in Firestore, yet onboarding re-showed
+  during rapid account-switching — so the `?? false` default fires onboarding on a
+  stale/empty/cached read of the just-switched-to user doc (false negative), not a
+  persistence failure.
+- **Overwrite check:** onboarding completion writes only `hasCompletedOnboarding`,
+  `selectedMood`, `breakupStage` (all merge). It does NOT write `allowSharing`,
+  `handle`, or `confirmedAdult`, so re-running can't clobber those. The only data
+  risk is overwriting `selectedMood`/`breakupStage`; the main harm is the UX.
+- **Proposed fix (existing accounts skip onboarding entirely):** in verifyUserDocument
+  (a) read the user doc from SERVER for the onboarding decision (no cache), (b) show
+  onboarding ONLY on an explicit `hasCompletedOnboarding == false` from an existing
+  doc — never default a missing/unknown read to false, and (c) treat any established
+  account as onboarded (e.g. `confirmedAdult == true`), since attestation only
+  happens at creation/onboarding. New accounts still onboard via the creation paths
+  that post `.showOnboarding` (Splash/CreateAccount/AppleSignIn).
+
+---
+
+## RESET-1 — password reset uses Firebase's default page
+
+- **Severity:** LOW (polish/trust) · **Surface:** web (Firebase Auth action handler) · **Status:** OPEN, fix proposed — 2026-10-25
+- **Finding:** "forgot your password" lands on Firebase's generic default reset page
+  (single field, default styling) — off-brand and no confirm field / clear 8-char
+  message / graceful expired-link handling.
+- **Proposed fix — custom reset page on toskaapp.com** via Firebase Auth custom
+  action URL. Needs:
+  1. **Hosting route** — a `/auth/action` page (Pages or Hosting) that parses
+     `mode`/`oobCode`, calls `verifyPasswordResetCode` then `confirmPasswordReset`.
+  2. **Two password fields** (new + confirm) with inline match check, enforcing the
+     same **8-char minimum** as sign-up with a clear message.
+  3. **Authorized domain** — toskaapp.com already authorized; confirm the action
+     page's exact origin is in Firebase Auth authorized domains.
+  4. **Email template** — point Firebase Auth → Templates → Password reset "action
+     URL" at the custom page.
+  5. **Expired/used links** — `verifyPasswordResetCode` throws `auth/expired-action-code`
+     / `auth/invalid-action-code`; render a calm "this link expired — request a new
+     one" with a resend path.
+  6. **App Check** — the reset page runs pre-auth; if the web App Check enforcement
+     covers Identity Toolkit, the page needs a reCAPTCHA App Check provider
+     initialized (mirror admin.html/app.js) or the reset call will be blocked.
+
+---
+
 ## FEAT-HANDLE-CHANGE — post-signup handle change + backfill + block suggestion (post-launch)
 
 - **Type:** FEATURE (post-launch) · **Surface:** iOS + web + rules + functions · **Status:** DEFERRED 2026-10-23

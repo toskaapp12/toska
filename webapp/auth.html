@@ -72,10 +72,17 @@
     <button id="submit" disabled>set new password</button>
   </div>
 
-  <!-- success -->
+  <!-- success (password reset) -->
   <div id="done" hidden>
     <h1>password updated</h1>
     <p class="msg">you can sign in with your new password now.</p>
+    <p class="msg"><a href="/">open toska</a></p>
+  </div>
+
+  <!-- success (verifyEmail / verifyAndChangeEmail / recoverEmail) -->
+  <div id="info" hidden>
+    <h1 id="infoTitle">done</h1>
+    <p class="msg" id="infoBody"></p>
     <p class="msg"><a href="/">open toska</a></p>
   </div>
 
@@ -104,6 +111,7 @@ import { FIREBASE_CONFIG, IS_PROD, RECAPTCHA_SITE_KEY } from "./js/config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import {
   getAuth, verifyPasswordResetCode, confirmPasswordReset, sendPasswordResetEmail,
+  applyActionCode, checkActionCode,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
 
 const app = initializeApp(FIREBASE_CONFIG);
@@ -121,23 +129,44 @@ if (IS_PROD) {
 const auth = getAuth(app);
 
 const $ = (id) => document.getElementById(id);
-const show = (id) => { for (const s of ["loading","form","done","expired","fallback"]) $(s).hidden = (s !== id); };
+const show = (id) => { for (const s of ["loading","form","done","info","expired","fallback"]) $(s).hidden = (s !== id); };
+const showInfo = (title, body) => { $("infoTitle").textContent = title; $("infoBody").textContent = body; show("info"); };
+const isExpired = (e) => e?.code === "auth/expired-action-code" || e?.code === "auth/invalid-action-code";
 
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode");
 const oobCode = params.get("oobCode");
 const MIN = 8;
 
-if (mode !== "resetPassword" || !oobCode) {
+// Dispatch every email-action mode Firebase can route here. Only resetPassword
+// uses the two-field form; verify/recover/change just apply the code and report.
+// Anything unknown (or a missing code) → safe fallback, never a blank page.
+if (!oobCode) {
   show("fallback");
-} else {
-  // Validate the code first; a used/expired code throws here.
-  verifyPasswordResetCode(auth, oobCode)
+} else if (mode === "resetPassword") {
+  verifyPasswordResetCode(auth, oobCode)      // throws on used/expired
     .then(() => { show("form"); wireForm(); })
-    .catch((e) => {
-      console.warn("verifyPasswordResetCode:", e?.code || e);
-      show("expired");
-    });
+    .catch((e) => { console.warn("verifyPasswordResetCode:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
+} else if (mode === "verifyEmail") {
+  applyActionCode(auth, oobCode)
+    .then(() => showInfo("email verified", "your email address is confirmed. you can head back to toska."))
+    .catch((e) => { console.warn("verifyEmail:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
+} else if (mode === "verifyAndChangeEmail") {
+  applyActionCode(auth, oobCode)
+    .then(() => showInfo("email updated", "your sign-in email has been changed. sign in with the new address."))
+    .catch((e) => { console.warn("verifyAndChangeEmail:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
+} else if (mode === "recoverEmail") {
+  // Undo an email change the account owner didn't make. Restore, then nudge a
+  // password reset since the address may have been compromised.
+  checkActionCode(auth, oobCode)
+    .then((info) => applyActionCode(auth, oobCode).then(() => info))
+    .then((info) => {
+      const restored = info?.data?.email ? ` (${info.data.email})` : "";
+      showInfo("email restored", `your original email${restored} is back on the account. if you didn't request the change, reset your password too.`);
+    })
+    .catch((e) => { console.warn("recoverEmail:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
+} else {
+  show("fallback");
 }
 
 function validate() {

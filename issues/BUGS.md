@@ -61,7 +61,25 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
-## RESET-1 — password reset uses Firebase's default page
+## AUTH-05 / RESET-EMAIL — unbranded reset email + branded-HTML-email plan
+
+- **Severity:** MED (trust) · **Surface:** Firebase Auth email templates + DNS · **Status:** OPEN; owner editing console; branded-HTML plan deferred — 2026-10-25
+- **Current (read via Identity Platform admin API):** public-facing name **UNSET**
+  → `%APP_NAME%` renders as `project-183467627187` in every subject/body/sign-off.
+  `sendEmail.method = DEFAULT` (Firebase sends from a `firebaseapp.com` noreply),
+  all templates `customized=null`, subjects are Firebase's generic
+  "Reset your password for %APP_NAME%" etc.
+- **Owner doing in console now:** set public-facing name to "toska"; set sender
+  name + calm lowercase subjects + toska-voice bodies on the reset / verify /
+  change templates. (I can re-read the API afterward to confirm it took.)
+- **Deferred — send from `noreply@toskaapp.com`:** must NOT go live until Firebase's
+  SPF+DKIM DNS records are added in Squarespace and DMARC still passes (our SPF is
+  `-all`, DMARC `p=reject`). Safe order documented in chat 2026-10-25.
+- **Deferred — fully branded HTML email:** out of scope for Firebase's plaintext
+  templates. Plan: a Cloud Function uses `generatePasswordResetLink()` (custom
+  continueUrl → /auth) and sends an HTML email via a provider. Recommend
+  **Resend** (clean API, generous free tier ~3k/mo, simple DKIM) or Postmark
+  (best deliverability, ~$15/mo). Cost at our volume: ~$0 (free tier). Decide later.
 
 - **Severity:** LOW (polish/trust) · **Surface:** web (Firebase Auth action handler) · **Status:** OPEN, fix proposed — 2026-10-25
 - **Finding:** "forgot your password" lands on Firebase's generic default reset page

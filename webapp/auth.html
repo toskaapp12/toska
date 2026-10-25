@@ -4,107 +4,89 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<title>toska — reset password</title>
+<meta name="theme-color" content="#f7f3ea">
+<title>toska</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;1,7..72,400&display=swap" rel="stylesheet">
+<!-- Reuse the web app's real design system (tokens, .auth-card, .field,
+     .pw-wrap/.pw-toggle, .btn, .note, [data-theme=night]) — not an approximation. -->
+<link rel="stylesheet" href="/styles.css">
 <style>
-  :root {
-    --paper: oklch(0.978 0.007 82); --ink: oklch(0.258 0.020 298);
-    --meta: oklch(0.448 0.018 298); --faint: oklch(0.62 0.016 298);
-    --hair: oklch(0.918 0.011 78); --accent: oklch(0.335 0.082 294);
-    --accent-text: oklch(0.385 0.095 294); --on-accent: oklch(0.970 0.010 82);
-    --danger: oklch(0.55 0.13 25);
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100dvh; background: var(--paper); color: var(--ink);
-    font-family: "Instrument Sans", system-ui, sans-serif;
-    display: flex; align-items: flex-start; justify-content: center;
-    padding: 14dvh 22px 40px;
-  }
-  .card { width: 100%; max-width: 360px; }
-  .brand {
-    font-family: "Literata", Georgia, serif; font-size: 23px; letter-spacing: 0.01em;
-    color: var(--accent-text); margin-bottom: 26px;
-  }
-  h1 {
-    font-family: "Literata", Georgia, serif; font-weight: 500; font-size: 20px;
-    line-height: 1.3; margin: 0 0 18px;
-  }
-  label { display: block; font-size: 12.5px; color: var(--meta); margin: 16px 0 6px; }
-  input[type=password] {
-    width: 100%; padding: 12px 13px; font-size: 16px; color: var(--ink);
-    background: transparent; border: 1px solid var(--hair); border-radius: 11px;
-    font-family: inherit;
-  }
-  input:focus { outline: none; border-color: var(--accent); }
-  .hint { font-size: 12px; color: var(--faint); margin: 7px 2px 0; line-height: 1.45; }
+  /* only the few bits specific to this page */
+  .auth-card .lead { font-size: 26px; }
+  .hint { margin-top: 9px; }
   .hint.bad { color: var(--danger); }
-  button {
-    width: 100%; margin-top: 22px; padding: 13px; font-size: 14.5px; font-weight: 600;
-    font-family: inherit; color: var(--on-accent); background: var(--accent);
-    border: none; border-radius: 11px; cursor: pointer;
-  }
-  button:disabled { opacity: 0.5; cursor: default; }
-  .msg { font-size: 13.5px; color: var(--meta); line-height: 1.5; margin-top: 10px; }
-  .msg.err { color: var(--danger); }
-  a { color: var(--accent-text); }
-  .center { text-align: center; }
+  #resend { width: 100%; }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="brand">toska</div>
+<main class="auth-card">
+  <a class="wordmark" href="/">toska</a>
 
   <!-- verifying the link -->
-  <div id="loading"><p class="msg">checking your link…</p></div>
+  <section id="loading">
+    <p class="note tagline">one moment…</p>
+  </section>
 
-  <!-- the reset form -->
-  <div id="form" hidden>
-    <h1>choose a new password</h1>
-    <label for="pw1">new password</label>
-    <input id="pw1" type="password" autocomplete="new-password" autofocus>
-    <label for="pw2">confirm password</label>
-    <input id="pw2" type="password" autocomplete="new-password">
-    <p class="hint" id="hint">at least 8 characters.</p>
-    <button id="submit" disabled>set new password</button>
-  </div>
+  <!-- reset password form -->
+  <section id="form" hidden>
+    <h1 class="lead">choose a new password</h1>
+    <p class="note tagline">let's get you back in.</p>
+    <div class="field">
+      <label for="pw1">new password</label>
+      <div class="pw-wrap">
+        <input id="pw1" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="at least 8 characters">
+        <button type="button" class="pw-toggle" id="t1" aria-label="show password" aria-pressed="false"></button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="pw2">confirm password</label>
+      <div class="pw-wrap">
+        <input id="pw2" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="type it again">
+        <button type="button" class="pw-toggle" id="t2" aria-label="show password" aria-pressed="false"></button>
+      </div>
+    </div>
+    <p class="note hint" id="hint">at least 8 characters.</p>
+    <button class="btn" id="submit" disabled>set new password</button>
+  </section>
 
-  <!-- success (password reset) -->
-  <div id="done" hidden>
-    <h1>password updated</h1>
-    <p class="msg">you can sign in with your new password now.</p>
-    <p class="msg"><a href="/">open toska</a></p>
-  </div>
+  <!-- reset success -->
+  <section id="done" hidden>
+    <h1 class="lead">you're all set</h1>
+    <p class="note tagline">sign in with your new password.</p>
+    <a class="btn" href="/">open toska</a>
+  </section>
 
-  <!-- success (verifyEmail / verifyAndChangeEmail / recoverEmail) -->
-  <div id="info" hidden>
-    <h1 id="infoTitle">done</h1>
-    <p class="msg" id="infoBody"></p>
-    <p class="msg"><a href="/">open toska</a></p>
-  </div>
+  <!-- verify / change / recover success -->
+  <section id="info" hidden>
+    <h1 class="lead" id="infoTitle"></h1>
+    <p class="note tagline" id="infoBody"></p>
+    <a class="btn" href="/">open toska</a>
+  </section>
 
-  <!-- expired / invalid link -->
-  <div id="expired" hidden>
-    <h1>this link has expired</h1>
-    <p class="msg">password reset links are single-use and time-limited. enter your
-      email and we'll send a fresh one.</p>
-    <label for="resend">email</label>
-    <input id="resend" type="email" inputmode="email" autocomplete="email"
-           style="width:100%;padding:12px 13px;font-size:16px;border:1px solid var(--hair);border-radius:11px;background:transparent;color:var(--ink);font-family:inherit;">
-    <button id="resendBtn">send a new link</button>
-    <p class="msg" id="resendMsg" hidden>if that email has an account, a reset link is on its way.</p>
-  </div>
+  <!-- expired / used link — warm, not an error -->
+  <section id="expired" hidden>
+    <h1 class="lead">let's get you a fresh link</h1>
+    <p class="note tagline">reset links expire after a while, just to keep things safe.
+      pop your email in and we'll send a new one.</p>
+    <div class="field">
+      <label for="resend">email</label>
+      <input id="resend" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="you@example.com">
+    </div>
+    <button class="btn" id="resendBtn">send a new link</button>
+    <p class="note hint" id="resendMsg" hidden>if that email has an account, a fresh link is on its way.</p>
+  </section>
 
-  <!-- unsupported mode / generic error -->
-  <div id="fallback" hidden>
-    <h1>something's off</h1>
-    <p class="msg">this link isn't one we can handle here.
-      <a href="/">head to toska</a> and try again.</p>
-  </div>
-</div>
+  <!-- anything we can't handle -->
+  <section id="fallback" hidden>
+    <h1 class="lead">that link didn't work</h1>
+    <p class="note tagline">it may have already been used. head back to toska and try again —
+      we'll get you sorted.</p>
+    <a class="btn" href="/">open toska</a>
+  </section>
+</main>
 
 <script type="module">
 import { FIREBASE_CONFIG, IS_PROD, RECAPTCHA_SITE_KEY } from "./js/config.js";
@@ -113,6 +95,9 @@ import {
   getAuth, verifyPasswordResetCode, confirmPasswordReset, sendPasswordResetEmail,
   applyActionCode, checkActionCode,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+
+// Mirror the app's late-night theme (styles.css [data-theme=night]).
+if (new Date().getHours() < 5) document.documentElement.dataset.theme = "night";
 
 const app = initializeApp(FIREBASE_CONFIG);
 // App Check mirrors app.js: prod enforces on Auth, so init before any Auth call.
@@ -128,41 +113,52 @@ if (IS_PROD) {
 }
 const auth = getAuth(app);
 
+const EYE = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 const $ = (id) => document.getElementById(id);
-const show = (id) => { for (const s of ["loading","form","done","info","expired","fallback"]) $(s).hidden = (s !== id); };
-const showInfo = (title, body) => { $("infoTitle").textContent = title; $("infoBody").textContent = body; show("info"); };
+const STATES = ["loading","form","done","info","expired","fallback"];
+const show = (id) => { for (const s of STATES) $(s).hidden = (s !== id); };
+const showInfo = (t, b) => { $("infoTitle").textContent = t; $("infoBody").textContent = b; show("info"); };
 const isExpired = (e) => e?.code === "auth/expired-action-code" || e?.code === "auth/invalid-action-code";
+
+// show/hide eye toggle — same behavior as the app's pwField().
+function wireToggle(btnId, inputId) {
+  const btn = $(btnId), input = $(inputId);
+  btn.innerHTML = EYE;
+  btn.onclick = () => {
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    btn.innerHTML = reveal ? EYE_OFF : EYE;
+    btn.setAttribute("aria-label", reveal ? "hide password" : "show password");
+    btn.setAttribute("aria-pressed", String(reveal));
+  };
+}
 
 const params = new URLSearchParams(location.search);
 const mode = params.get("mode");
 const oobCode = params.get("oobCode");
 const MIN = 8;
 
-// Dispatch every email-action mode Firebase can route here. Only resetPassword
-// uses the two-field form; verify/recover/change just apply the code and report.
-// Anything unknown (or a missing code) → safe fallback, never a blank page.
 if (!oobCode) {
   show("fallback");
 } else if (mode === "resetPassword") {
-  verifyPasswordResetCode(auth, oobCode)      // throws on used/expired
-    .then(() => { show("form"); wireForm(); })
+  verifyPasswordResetCode(auth, oobCode)
+    .then(() => { show("form"); wireToggle("t1","pw1"); wireToggle("t2","pw2"); wireForm(); })
     .catch((e) => { console.warn("verifyPasswordResetCode:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
 } else if (mode === "verifyEmail") {
   applyActionCode(auth, oobCode)
-    .then(() => showInfo("email verified", "your email address is confirmed. you can head back to toska."))
+    .then(() => showInfo("email confirmed", "your email address is verified. you're good to head back to toska."))
     .catch((e) => { console.warn("verifyEmail:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
 } else if (mode === "verifyAndChangeEmail") {
   applyActionCode(auth, oobCode)
-    .then(() => showInfo("email updated", "your sign-in email has been changed. sign in with the new address."))
+    .then(() => showInfo("email updated", "your sign-in email has been changed. use the new address next time you sign in."))
     .catch((e) => { console.warn("verifyAndChangeEmail:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
 } else if (mode === "recoverEmail") {
-  // Undo an email change the account owner didn't make. Restore, then nudge a
-  // password reset since the address may have been compromised.
   checkActionCode(auth, oobCode)
     .then((info) => applyActionCode(auth, oobCode).then(() => info))
     .then((info) => {
       const restored = info?.data?.email ? ` (${info.data.email})` : "";
-      showInfo("email restored", `your original email${restored} is back on the account. if you didn't request the change, reset your password too.`);
+      showInfo("email change undone", `your original email${restored} is back on the account. if that change wasn't you, reset your password too, just to be safe.`);
     })
     .catch((e) => { console.warn("recoverEmail:", e?.code || e); show(isExpired(e) ? "expired" : "fallback"); });
 } else {
@@ -170,17 +166,16 @@ if (!oobCode) {
 }
 
 function validate() {
-  const a = $("pw1").value, b = $("pw2").value;
-  const hint = $("hint");
+  const a = $("pw1").value, b = $("pw2").value, hint = $("hint");
   if (a.length > 0 && a.length < MIN) {
-    hint.textContent = `at least ${MIN} characters (you have ${a.length}).`;
+    hint.textContent = `a little longer — ${MIN} characters minimum (you have ${a.length}).`;
     hint.classList.add("bad"); $("submit").disabled = true; return;
   }
   if (b.length > 0 && a !== b) {
     hint.textContent = "those don't match yet."; hint.classList.add("bad");
     $("submit").disabled = true; return;
   }
-  hint.textContent = `at least ${MIN} characters.`; hint.classList.remove("bad");
+  hint.textContent = "at least 8 characters."; hint.classList.remove("bad");
   $("submit").disabled = !(a.length >= MIN && a === b);
 }
 
@@ -196,21 +191,15 @@ function wireForm() {
       show("done");
     } catch (e) {
       console.warn("confirmPasswordReset:", e?.code || e);
-      // Code can expire between load and submit.
-      if (e?.code === "auth/expired-action-code" || e?.code === "auth/invalid-action-code") {
-        show("expired");
-      } else {
-        const hint = $("hint");
-        hint.textContent = "couldn't save that — please try again.";
-        hint.classList.add("bad");
-        $("submit").disabled = false; $("submit").textContent = "set new password";
-      }
+      if (isExpired(e)) { show("expired"); return; }
+      $("hint").textContent = "couldn't save that just now — give it another try.";
+      $("hint").classList.add("bad");
+      $("submit").disabled = false; $("submit").textContent = "set new password";
     }
   });
 }
 
-// Expired-state resend. We never reveal whether an email has an account
-// (enumeration protection) — always show the same confirmation.
+// Enumeration-safe resend — always the same confirmation.
 $("resendBtn").addEventListener("click", async () => {
   const email = $("resend").value.trim();
   if (!email) return;

@@ -449,11 +449,11 @@ struct ContentView: View {
                 // not via this check.
                 let fromCache = snapshot?.metadata.isFromCache ?? true
                 let flag = data["hasCompletedOnboarding"] as? Bool
-                let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                let attestedAdult = data["confirmedAdult"] as? Bool ?? false
                 // Downstream policy-version + age-reprompt checks keep the original
                 // conservative default (missing → not-onboarded).
                 let hasCompletedOnboarding = flag ?? false
-                if Self.shouldShowOnboarding(flag: flag, fromCache: fromCache, confirmedAdult: confirmedAdult) {
+                if Self.shouldShowOnboarding(flag: flag, fromCache: fromCache, confirmedAdult: attestedAdult) {
                     showOnboarding = true
                 }
 

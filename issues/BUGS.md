@@ -26,6 +26,17 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## TEST-ONBTARGET — wire a Swift unit-test target (follow-up)
+
+- **Type:** test infra follow-up · **Surface:** Xcode project · **Status:** OPEN 2026-10-25
+- The repo has only a UI-test target (`toskaUITests`, black-box, no `@testable`
+  access). `toskaTests/OnboardingGateTests.swift` (ONB-1 matrix) needs a **Unit
+  Testing Bundle** target with `@testable import toska` to run in Xcode/CI. Build
+  98 shipped without waiting for it (ONB-1 logic matrix-verified 6/6 standalone).
+  Add the target and include that file; then it runs with the suite.
+
+---
+
 ## ONB-1 — existing accounts re-shown new-user onboarding on sign-in
 
 - **Severity:** MED (UX + minor data-loss risk) · **Surface:** iOS (ContentView.verifyUserDocumentAsync) · **Status:** OPEN, fix proposed — 2026-10-25

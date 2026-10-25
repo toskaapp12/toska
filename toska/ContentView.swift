@@ -371,6 +371,18 @@ struct ContentView: View {
 
     // MARK: - User Document Verification
 
+    /// Pure decision (ONB-1, build 98): should a RETURNING sign-in show onboarding?
+    /// New accounts onboard via the `.showOnboarding` posted on the creation paths,
+    /// NOT this check. Here we only onboard on a SERVER-confirmed explicit `false`
+    /// for an account that hasn't already attested adulthood — a cached/stale read,
+    /// a missing flag, or confirmedAdult==true all mean "skip", so existing accounts
+    /// are never re-onboarded. Extracted as a pure static func for unit testing.
+    static func shouldShowOnboarding(flag: Bool?, fromCache: Bool, confirmedAdult: Bool) -> Bool {
+        guard !fromCache else { return false }       // never act on a cached/stale read
+        guard !confirmedAdult else { return false }  // established (attested) account
+        return flag == false                         // explicit false only (nil → skip)
+    }
+
     func verifyUserDocument(uid: String) {
         verifyTask?.cancel()
         verifyTask = Task {
@@ -425,9 +437,23 @@ struct ContentView: View {
 
             if snapshot?.exists == true {
                 let data = snapshot?.data() ?? [:]
-                let hasCompletedOnboarding =
-                    data["hasCompletedOnboarding"] as? Bool ?? false
-                if !hasCompletedOnboarding {
+                // ONB-1 (build 98): existing accounts must skip onboarding entirely.
+                // The old `?? false` default re-onboarded established accounts when
+                // this returning-sign-in read came from the local cache (stale/empty
+                // right after an account switch) or lacked the field. Now show
+                // onboarding ONLY on a SERVER-confirmed explicit `false` for an
+                // account that has NOT already attested adulthood. A cached read, a
+                // missing flag, or confirmedAdult==true all mean "don't onboard".
+                // New accounts are unaffected — they onboard via the `.showOnboarding`
+                // posted on the creation paths (Splash/CreateAccount/AppleSignIn),
+                // not via this check.
+                let fromCache = snapshot?.metadata.isFromCache ?? true
+                let flag = data["hasCompletedOnboarding"] as? Bool
+                let confirmedAdult = data["confirmedAdult"] as? Bool ?? false
+                // Downstream policy-version + age-reprompt checks keep the original
+                // conservative default (missing → not-onboarded).
+                let hasCompletedOnboarding = flag ?? false
+                if Self.shouldShowOnboarding(flag: flag, fromCache: fromCache, confirmedAdult: confirmedAdult) {
                     showOnboarding = true
                 }
 

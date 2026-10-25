@@ -218,6 +218,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
+        // B94-FCM gap (build 98): a real sign-out calls Messaging.deleteToken,
+        // which invalidates the FCM token. On the next sign-in, reregisterForPush
+        // fires refreshFCMToken() IMMEDIATELY after registerForRemoteNotifications
+        // — before this APNs callback runs — so the fetch finds no token and
+        // nothing is saved (the account-switch gap: sign out of B, sign in as
+        // owner → no token → no crisis pushes). Now that the APNs token is set,
+        // FCM can mint a fresh token, so fetch+save HERE, when it's actually
+        // available. Guards on currentUser, so it no-ops when signed out.
+        PushNotificationManager.shared.refreshFCMToken()
     }
 
     func application(_ application: UIApplication,

@@ -8,7 +8,8 @@
       "comparison": "COMPARISON_LT",
       "thresholdValue": 1,
       "duration": "1200s",
-      "aggregations": [{ "alignmentPeriod": "600s", "perSeriesAligner": "ALIGN_SUM" }]
+      "_comment": "crossSeriesReducer REDUCE_SUM groups all revisions into one series — without it a deploy's revision rotation leaves the OLD revision's series silent and FALSE-fires this absence alert (fixed 2026-10-25).",
+      "aggregations": [{ "alignmentPeriod": "600s", "perSeriesAligner": "ALIGN_SUM", "crossSeriesReducer": "REDUCE_SUM", "groupByFields": ["resource.label.service_name"] }]
     }
   }],
   "notificationChannels": ["projects/toska-4ebf4/notificationChannels/17038690850716525077"],

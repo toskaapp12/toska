@@ -218,7 +218,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Messaging.messaging().apnsToken = deviceToken
-        PushNotificationManager.shared.recordFcmDiag("didRegisterAPNs: len=\(deviceToken.count)")
         // B94-FCM gap (build 98): a real sign-out calls Messaging.deleteToken,
         // which invalidates the FCM token. On the next sign-in, reregisterForPush
         // fires refreshFCMToken() IMMEDIATELY after registerForRemoteNotifications
@@ -238,7 +237,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // app start) — we want to see them in Crashlytics so a regression
         // in entitlements or APNS config surfaces fast.
         debugLog("⚠️ APNS registration failed: \(error)")
-        PushNotificationManager.shared.recordFcmDiag("didFailAPNs: \((error as NSError).code)")
         Telemetry.recordError(error, context: "AppDelegate.didFailToRegisterForRemoteNotifications")
     }
 }

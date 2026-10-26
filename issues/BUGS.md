@@ -26,7 +26,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
-## FCM-DIAG — remove the build-99 fcmDiag diagnostic before public launch (BLOCKING)
+## FCM-DIAG — REMOVED before launch ✓ (build 100, 2026-10-26)
 
 - **Severity:** BLOCKING for launch · **Surface:** iOS (PushNotificationManager, toskaApp) · **Status:** OPEN 2026-10-25
 - Build 99 adds `recordFcmDiag()` which appends status strings (no user content)

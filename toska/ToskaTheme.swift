@@ -1128,7 +1128,7 @@ toska is for your own feelings, your own story. you can say anything about your 
   • use toska to buy, sell, or solicit illegal goods or services
 
 3. how we moderate
-toska has zero tolerance for objectionable content and abusive behavior. content that violates these rules and users who post it are not welcome here. we review every report we receive and we aim to review reported content and act on violations within 24 hours. action may mean removing the post, warning the user, or terminating the account. we don't publicly discuss moderation decisions, but we respond to every report.
+toska has zero tolerance for objectionable content and abusive behavior. content that violates these rules and users who post it are not welcome here. we review every report we receive and aim to act on violations within 24 hours. action may mean removing the post, warning the user, or terminating the account. we don't publicly discuss moderation decisions.
 
 4. safety resources
 toska is not a substitute for professional help. if you are in crisis, please reach out to a local crisis line — the in-app safety check-in shows the right number for where you are. if you or someone else is in immediate danger, please call \(CrisisLines.emergencyNumber).

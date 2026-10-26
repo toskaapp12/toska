@@ -7,7 +7,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## SEC-UUID — HIGH uuid advisory (GHSA-w5hq-g745-h8pq) via gaxios in Cloud Functions
 
-- **Severity:** HIGH advisory, but **not reachable** in our usage · **Surface:** functions (CI Security Watch "Dependency vulnerability scan") · **Status:** FIX APPLIED in working tree (lockfile), NOT committed/deployed — 2026-10-25
+- **Severity:** HIGH advisory, but **not reachable** in our usage · **Surface:** functions (CI Security Watch "Dependency vulnerability scan") · **Status:** RESOLVED — lockfile fix committed (c2f0dcf) + functions deployed to staging + prod 2026-10-25; Security Watch green
 - **What triggered it:** `npm audit --omit=dev --audit-level=high` in `functions/`
   found uuid GHSA-w5hq-g745-h8pq ("missing buffer bounds check in v3/v5/v6 when a
   `buf` arg is provided") — HIGH — pulled in transitively via **gaxios** (the HTTP
@@ -53,7 +53,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## ONB-1 — existing accounts re-shown new-user onboarding on sign-in
 
-- **Severity:** MED (UX + minor data-loss risk) · **Surface:** iOS (ContentView.verifyUserDocumentAsync) · **Status:** OPEN, fix proposed — 2026-10-25
+- **Severity:** MED (UX + minor data-loss risk) · **Surface:** iOS (ContentView.verifyUserDocumentAsync) · **Status:** FIXED + shipped in build 98 (shouldShowOnboarding server/explicit-false/confirmedAdult gate; matrix 6/6)
 - **Finding:** the gate is `data["hasCompletedOnboarding"] as? Bool ?? false; if
   !hasCompletedOnboarding { showOnboarding = true }` (ContentView:428-431). It's an
   ACCOUNT flag (user doc), not a device flag (owner's guess was close). Both accounts
@@ -75,46 +75,44 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
-## AUTH-05 / RESET-EMAIL — unbranded reset email + branded-HTML-email plan
+## RESET-1 — custom /auth page — DONE
 
-- **Severity:** MED (trust) · **Surface:** Firebase Auth email templates + DNS · **Status:** OPEN; owner editing console; branded-HTML plan deferred — 2026-10-25
-- **Current (read via Identity Platform admin API):** public-facing name **UNSET**
-  → `%APP_NAME%` renders as `project-183467627187` in every subject/body/sign-off.
-  `sendEmail.method = DEFAULT` (Firebase sends from a `firebaseapp.com` noreply),
-  all templates `customized=null`, subjects are Firebase's generic
-  "Reset your password for %APP_NAME%" etc.
-- **Owner doing in console now:** set public-facing name to "toska"; set sender
-  name + calm lowercase subjects + toska-voice bodies on the reset / verify /
-  change templates. (I can re-read the API afterward to confirm it took.)
-- **Deferred — send from `noreply@toskaapp.com`:** must NOT go live until Firebase's
-  SPF+DKIM DNS records are added in Squarespace and DMARC still passes (our SPF is
-  `-all`, DMARC `p=reject`). Safe order documented in chat 2026-10-25.
-- **Deferred — fully branded HTML email:** out of scope for Firebase's plaintext
-  templates. Plan: a Cloud Function uses `generatePasswordResetLink()` (custom
-  continueUrl → /auth) and sends an HTML email via a provider. Recommend
-  **Resend** (clean API, generous free tier ~3k/mo, simple DKIM) or Postmark
-  (best deliverability, ~$15/mo). Cost at our volume: ~$0 (free tier). Decide later.
+- **Status:** SHIPPED to prod 2026-10-25. `webapp/auth.html` + `webapp/js/auth.js`,
+  route `/auth` (firebase.json). Handles resetPassword (two fields, 8-char, eye
+  toggles), verifyEmail, verifyAndChangeEmail, recoverEmail, fallback; reuses the
+  app design system; dark mode; expired/used-link resend; App Check on prod.
+  Verified in a real browser. NOTE: not reachable from real reset emails until the
+  email action URL points at it (blocked — see below).
 
-- **Severity:** LOW (polish/trust) · **Surface:** web (Firebase Auth action handler) · **Status:** OPEN, fix proposed — 2026-10-25
-- **Finding:** "forgot your password" lands on Firebase's generic default reset page
-  (single field, default styling) — off-brand and no confirm field / clear 8-char
-  message / graceful expired-link handling.
-- **Proposed fix — custom reset page on toskaapp.com** via Firebase Auth custom
-  action URL. Needs:
-  1. **Hosting route** — a `/auth/action` page (Pages or Hosting) that parses
-     `mode`/`oobCode`, calls `verifyPasswordResetCode` then `confirmPasswordReset`.
-  2. **Two password fields** (new + confirm) with inline match check, enforcing the
-     same **8-char minimum** as sign-up with a clear message.
-  3. **Authorized domain** — toskaapp.com already authorized; confirm the action
-     page's exact origin is in Firebase Auth authorized domains.
-  4. **Email template** — point Firebase Auth → Templates → Password reset "action
-     URL" at the custom page.
-  5. **Expired/used links** — `verifyPasswordResetCode` throws `auth/expired-action-code`
-     / `auth/invalid-action-code`; render a calm "this link expired — request a new
-     one" with a resend path.
-  6. **App Check** — the reset page runs pre-auth; if the web App Check enforcement
-     covers Identity Toolkit, the page needs a reCAPTCHA App Check provider
-     initialized (mirror admin.html/app.js) or the reset call will be blocked.
+## AUTH-05 — email branding — RESOLVED (good enough for launch)
+
+- **Status:** public-facing name set to **"Toska"** (verified: project displayName
+  = "Toska"), so `%APP_NAME%` renders "Toska" in the default reset/verify/change
+  emails. **Template text + action-URL editing is LOCKED for this project** (console
+  banner "Email template updates are currently unavailable… contact Firebase
+  Support"; admin API returns `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`). So the default
+  emails stay (now "Toska"-branded) and the custom /auth page isn't reachable from
+  them until unlocked or Option B ships. Support ticket text is in chat 2026-10-25.
+
+## RESET-EMAIL / Option B — branded sending via Resend (POST-LAUNCH, parked)
+
+- **Severity:** post-launch polish · **Surface:** functions + iOS + web + DNS · **Status:** PARKED 2026-10-26 (default emails are fine for soft launch)
+- **Built, committed, UNDEPLOYED:** `sendBrandedPasswordReset` callable (functions/
+  index.js, commit 91498b3) — App Check-enforced, enumeration-safe, rate-limited
+  (3/h per email + 10/h per IP), `generatePasswordResetLink` → rewrite to
+  `app.toskaapp.com/auth` → branded HTML via **Resend**. `RESET_FROM` defaults to
+  Resend's onboarding domain. Clients NOT wired yet.
+- **To resume (owner setup):** 1) create a Resend account; 2) make an API key;
+  3) set it as a secret yourself (`npx firebase-tools functions:secrets:set
+  RESEND_API_KEY --project toskastaging`, then prod) — Claude never sees it;
+  4) add domain `toskaapp.com` in Resend → it shows the exact DKIM CNAMEs + SPF
+  value + return-path; 5) add those in Squarespace (merge the SPF include into the
+  single SPF TXT before `-all`; DKIM CNAMEs; return-path), keeping DMARC `p=reject`.
+- **Then Claude:** deploy callable to staging + test to the owner's address; after
+  Resend verifies the domain and a test shows spf=pass/dkim=pass/dmarc=pass, flip
+  `RESET_FROM` → `noreply@toskaapp.com`, wire iOS (new build) + web "forgot
+  password" to the callable, deploy prod. **Do NOT switch prod clients before DNS
+  verification** (onboarding domain only delivers to the account owner).
 
 ---
 

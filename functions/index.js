@@ -5979,8 +5979,8 @@ exports.auditPostDeletion = onDocumentDeleted(
 //
 // Emits a structured warning log on every new pending report so a
 // Cloud Logging-based alert policy in Cloud Monitoring can match and
-// route to the existing Toska Alerts notification channel
-// (salte@saltedevelopments.com). The in-app ReportSheet promises
+// route to the existing Toska Alerts notification channel. The in-app
+// ReportSheet promises
 // "reports are reviewed within 24 hours" — without this, the admin
 // only sees new reports when they happen to open admin.html.
 //

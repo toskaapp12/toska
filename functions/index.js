@@ -21,6 +21,7 @@ const { getFirestore, FieldValue, Timestamp, AggregateField } = require("firebas
 const { getAuth } = require("firebase-admin/auth");
 const { getAppCheck } = require("firebase-admin/app-check");
 const { getMessaging } = require("firebase-admin/messaging");
+const crypto = require("crypto");
 
 // IMPROVE (2026-06-11): project-wide function defaults. region pins every
 // function to us-central1 (matching the deployed set); maxInstances caps the
@@ -6079,6 +6080,94 @@ exports.notifyAdminsOfNewReport = onDocumentCreated(
     }
   }
 );
+
+// ============================================================
+// Branded password-reset email (RESET-EMAIL / Option B, 2026-10-26)
+//
+// Firebase's email templates + action URL are LOCKED for this project
+// (console + API both refuse edits), so we send our own: generate the reset
+// link with the Admin SDK, rewrite it to the custom /auth page, and deliver a
+// branded HTML email via Resend. iOS + web "forgot password" call this instead
+// of Firebase's default send. App Check enforced; enumeration-safe; rate-limited.
+//
+// ⚠️ DO NOT point prod clients here until toskaapp.com is verified in Resend and
+// a test shows spf=pass/dkim=pass/dmarc=pass — Resend's onboarding domain only
+// delivers to the account owner (real users would get nothing). RESET_FROM stays
+// on the onboarding domain until the DNS flip. See RESET-EMAIL in BUGS.md.
+// ============================================================
+const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
+// Flip to "toska <noreply@toskaapp.com>" ONLY after Resend domain verification.
+const RESET_FROM = defineString("RESET_FROM", { default: "toska <onboarding@resend.dev>" });
+
+exports.sendBrandedPasswordReset = onCall(
+  { secrets: [RESEND_API_KEY], enforceAppCheck: true },
+  async (request) => {
+    // Enumeration protection: identical response whether or not the email exists.
+    const SAME = { ok: true };
+    const email = String(request.data?.email || "").trim().toLowerCase();
+    if (!email || email.length > 254 || !email.includes("@")) return SAME;
+
+    // Rate limit: sliding 1h window per-email AND per-IP, in Firestore.
+    const now = Date.now();
+    const WINDOW = 60 * 60 * 1000;
+    const h = (s) => crypto.createHash("sha256").update(s).digest("hex").slice(0, 32);
+    const ip = request.rawRequest?.ip || "unknown";
+    const gates = [
+      { ref: db.collection("passwordResetThrottle").doc("e_" + h(email)), max: 3 },
+      { ref: db.collection("passwordResetThrottle").doc("ip_" + h(ip)), max: 10 },
+    ];
+    for (const { ref, max } of gates) {
+      const prior = ((await ref.get()).data()?.hits || []).filter((t) => now - t < WINDOW);
+      if (prior.length >= max) return SAME; // throttled — same outward response
+    }
+    for (const { ref } of gates) {
+      await ref.set({ hits: FieldValue.arrayUnion(now) }, { merge: true }).catch(() => {});
+    }
+
+    // Generate the reset oobCode; rewrite to the custom /auth page.
+    let oob;
+    try {
+      const link = await getAuth().generatePasswordResetLink(email);
+      oob = new URL(link).searchParams.get("oobCode");
+    } catch (e) {
+      return SAME; // user-not-found / invalid → no send, no leak
+    }
+    if (!oob) return SAME;
+    const url = `https://app.toskaapp.com/auth?mode=resetPassword&oobCode=${encodeURIComponent(oob)}`;
+
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${RESEND_API_KEY.value()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: RESET_FROM.value(),
+          to: [email],
+          subject: "reset your toska password",
+          html: resetEmailHtml(url),
+        }),
+      });
+      if (!res.ok) console.warn("sendBrandedPasswordReset: Resend", res.status, (await res.text()).slice(0, 200));
+    } catch (e) {
+      console.warn("sendBrandedPasswordReset: send failed:", e.message);
+    }
+    return SAME;
+  }
+);
+
+function resetEmailHtml(url) {
+  // Inline styles only — email clients strip <style>/external CSS. Stone paper,
+  // serif wordmark, plum button, warm lowercase copy, matching the app.
+  return `<!DOCTYPE html><html><body style="margin:0;background:#f7f3ea;padding:32px 0;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#2b2635">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table role="presentation" width="100%" style="max-width:440px" cellpadding="0" cellspacing="0"><tr><td style="padding:0 28px">
+<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;color:#4a3d7a;padding-bottom:20px">toska</div>
+<div style="font-family:Georgia,'Times New Roman',serif;font-size:22px;padding-bottom:6px">reset your password</div>
+<p style="font-size:15px;line-height:1.6;color:#5a5466;margin:10px 0 22px">someone asked to reset the password for your toska account. tap below to choose a new one — the link works for a little while, then expires.</p>
+<a href="${url}" style="display:inline-block;background:#4a3d7a;color:#f7f3ea;text-decoration:none;font-size:15px;font-weight:600;padding:13px 22px;border-radius:12px">reset your password</a>
+<p style="font-size:13px;line-height:1.6;color:#8a8498;margin:24px 0 0">if this wasn't you, you can ignore this email and your password stays the same.</p>
+<p style="font-size:13px;color:#8a8498;margin:18px 0 0">— toska</p>
+</td></tr></table></td></tr></table></body></html>`;
+}
 
 // ============================================================
 // Crisis-page delivery watchdog (2026-10-23)

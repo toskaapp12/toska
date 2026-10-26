@@ -308,6 +308,22 @@ jobs:
       working-directory: firestore-tests
       run: node deletion-cascade.mjs
 
+    # Index smoke-probe: runs the app's index-dependent queries against staging;
+    # a missing composite/collection-group index (which the emulator can't catch)
+    # FAILS the build before it silently breaks a feature in prod.
+    - name: Index smoke-probe (staging)
+      working-directory: firestore-tests
+      env:
+        GOOGLE_CLOUD_PROJECT: toskastaging
+      run: node index-smoke-probe.mjs
+
+    # Staging<->prod index drift. Skips gracefully here (no prod creds in CI);
+    # auto-activates if a prod read-only WIF SA (roles/datastore.viewer) is added.
+    # Until then it's a local pre-prod-deploy step (runbooks/deploy-checklist.md).
+    - name: Index drift check (staging vs prod)
+      working-directory: firestore-tests
+      run: node index-drift-check.mjs
+
   # Auto-deploys firestore.rules to staging on every push to main, gated
   # on the rules-tests job passing. Closes the staging-drift gap surfaced
   # by the 2026-05-04 Tier 2 #4 dry-run, where staging's deployed rules

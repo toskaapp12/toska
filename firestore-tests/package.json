@@ -8,6 +8,8 @@
     "test:moderation": "npx mocha --timeout 5000 moderation.test.js",
     "test:rules": "PATH=\"/opt/homebrew/opt/openjdk@21/bin:$PATH\" firebase emulators:exec --only firestore,auth --project=toska-test 'npx mocha --timeout 15000 firestore.test.js hostile-user.test.js deanon-redteam.test.js'",
     "test:parity": "node detector-parity.mjs",
+    "test:indexes": "GOOGLE_CLOUD_PROJECT=toskastaging node index-smoke-probe.mjs",
+    "test:indexes:drift": "node index-drift-check.mjs",
     "e2e": "node e2e-test.mjs"
   },
   "devDependencies": {

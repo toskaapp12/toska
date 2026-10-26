@@ -37,3 +37,15 @@ actually caught real incidents.
 - Record which commit/tag is live (prod rules provenance in SESSION_HANDOFF).
 - Confirm the main feed still loads for a normal user; check Cloud Logging for
   permission errors.
+
+## Before ANY `firebase deploy --only firestore:indexes` to prod
+- Run the **staging↔prod index drift check** so staging stays a valid proxy:
+  ```
+  cd firestore-tests && node index-drift-check.mjs
+  ```
+  Exit 0 = in sync. If it lists indexes present in one project but not the other,
+  deploy indexes to the lagging project. (CI runs the staging **smoke-probe**
+  automatically; the drift check skips in CI until a prod read-only WIF SA is
+  added — this local run is the stopgap.)
+- A new index-dependent query also needs a row in
+  `firestore-tests/index-smoke-probe.mjs` (the manifest), or CI won't guard it.

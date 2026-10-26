@@ -45,7 +45,7 @@ To run the app (feeds, threads, notifications), personalize your feed, detect an
 
 ## 4. Public sharing of posts (your control)
 
-If your **allow sharing** setting is on (default on; Settings → Privacy):
+If your **allow sharing** setting is on (default **off** — opt-in; change it in the toska app (Settings → Privacy) or on the web, from your profile):
 
 - other users can render a post of yours as a **share-card image** — words and feeling tag only, never your handle or any identifier;
 - a small number of posts, hand-picked by us, may appear on **toskaapp.com** and its share pages — same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.

@@ -850,6 +850,7 @@ function viewSignUp() {
     const pw = el("input", { type: "password", autocomplete: "new-password", placeholder: "at least 6 characters" });
     const adult = el("input", { type: "checkbox", id: "adultCk", style: "width:auto;" });
     const terms = el("input", { type: "checkbox", id: "termsCk", style: "width:auto;" });
+    const share = el("input", { type: "checkbox", id: "shareCk", style: "width:auto;" }); // B94-W: opt-in, unchecked
     const err = el("div");
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "create account");
     btn.onclick = async () => {
@@ -863,7 +864,7 @@ function viewSignUp() {
             const cred = await createUserWithEmailAndPassword(auth, email.value.trim(), pw.value);
             created = true;
             const uid = cred.user.uid;
-            await claimHandleAndCreateUserDoc(uid);
+            await claimHandleAndCreateUserDoc(uid, share.checked);
             // Email-minimization (2026-07-21 privacy hardening): email is NOT copied
             // into Firestore — it lives only in Firebase Auth (no join to a uid's
             // posts), which a Firestore breach can't touch. auth.currentUser.email is
@@ -910,6 +911,9 @@ function viewSignUp() {
                     el("a", { class: "plain", href: "https://www.toskaapp.com/terms", target: "_blank" }, "terms of service"),
                     " and ",
                     el("a", { class: "plain", href: "https://www.toskaapp.com/privacy", target: "_blank" }, "privacy policy"))),
+            el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin:10px 0 14px; cursor:pointer;", for: "shareCk" },
+                share, el("span", {},
+                    "share publicly — your post may be featured on the toska website and appear in Google search. your handle is never shown. (you can change this any time on your profile.)")),
             err, el("div", { style: "margin-top:6px;" }, btn),
 el("p", { class: "note", style: "margin-top:16px;" },
                 "protected by reCAPTCHA — Google's ",
@@ -923,7 +927,7 @@ el("p", { class: "note", style: "margin-top:16px;" },
     );
 }
 
-async function claimHandleAndCreateUserDoc(uid) {
+async function claimHandleAndCreateUserDoc(uid, allowSharing = false) {
     for (let attempt = 0; attempt < 4; attempt++) {
         const handle = "anonymous_" + crypto.randomUUID().replaceAll("-", "").slice(0, 8);
         // No availability pre-read: handles/{h} gets are admin-only now
@@ -934,10 +938,9 @@ async function claimHandleAndCreateUserDoc(uid) {
         batch.set(doc(db, "users", uid), {
             handle,
             followerCount: 0, followingCount: 0, totalLikes: 0,
-            // Sharing is OPT-IN (2026-10-23): new web accounts are NOT publicly
-            // shareable until the user turns it on (full web consent UI pending —
-            // see issues/BUGS.md B94-W). Existing accounts unchanged.
-            allowSharing: false, showFollowerCount: false,
+            // Sharing is OPT-IN (2026-10-23): default off; the signup checkbox
+            // (B94-W) can turn it on, and the profile toggle changes it later.
+            allowSharing, showFollowerCount: false,
             hasCompletedOnboarding: false,
             createdAt: serverTimestamp(),
             acceptedPolicyVersion: POLICY_VERSION,
@@ -1936,6 +1939,21 @@ async function viewProfile(uid) {
             own ? stat(ud.followingCount, "following") : null,
             stat(ud.totalLikes, "felt")),
         own ? el("a", { class: "plain", href: "#/blocked", style: "font-size:13px;" }, "blocked users") : null,
+        // B94-W: web sharing toggle (opt-in; mirrors the iOS Settings → Privacy
+        // toggle). Reads/writes allowSharing on the user doc; handle never shown.
+        own ? (() => {
+            const ck = el("input", { type: "checkbox", id: "shareToggle", style: "width:auto;" });
+            ck.checked = ud.allowSharing === true;
+            ck.onchange = async () => {
+                try {
+                    await setDoc(doc(db, "users", uid), { allowSharing: ck.checked }, { merge: true });
+                    resetWriteCaches(); // so createPost's isShareable picks up the new value
+                    toast(ck.checked ? "sharing on — new posts may be featured (handle never shown)." : "sharing off — your posts stay in the app.");
+                } catch (e) { ck.checked = !ck.checked; toast("couldn't save that — try again."); }
+            };
+            return el("label", { class: "note", style: "display:flex; gap:9px; align-items:flex-start; margin-top:14px; cursor:pointer;", for: "shareToggle" },
+                ck, el("span", {}, "share publicly — featured posts may appear on the toska website and in Google search. your handle is never shown."));
+        })() : null,
     );
     const list = el("div");
     if (own) {

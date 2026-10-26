@@ -52,7 +52,7 @@ You can report any post, reply, or user in-app, and block any user (the blocked 
 
 You own what you write. So we can run the app, you grant us a non-exclusive, worldwide, royalty-free, sublicensable (only to our infrastructure providers acting on our behalf) license to **host, store, display, reproduce, and distribute your content within the toska service** — including showing it in feeds, threads, search, and notifications. You represent that you have the rights to the content you post and that it does not violate these terms or any law or third-party right.
 
-Two narrower, **optional** uses are controlled by your "allow sharing" setting (on by default, off any time in Settings → Privacy):
+Two narrower, **optional** uses are controlled by your "allow sharing" setting (off for new accounts; change it any time in the toska app (Settings → Privacy) or on the web, from your profile):
 
 - **Share cards:** other users may render one of your posts as a shareable image. The card carries the words and feeling tag only — never your handle or any account identifier.
 - **Website featuring:** we may hand-pick a small number of posts to display on toskaapp.com and its share pages, again without your handle or any identifier.

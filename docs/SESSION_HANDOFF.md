@@ -5,21 +5,95 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-10-23._
+_Last updated: 2026-10-27 (through commit `49e2f89`)._
 
 ## Where things stand
 
 - **Production is healthy and launch-hardened.** A full pre-launch audit
   (`AUDIT_REPORT.md`, gitignored, local only) was run and its Phase-2 fixes
-  shipped. Latest release tag: **`v1.3-b93`**.
-- **iOS:** build **97** on TestFlight (v1.3) — see "Today (2026-10-23)" below.
-  Builds 94→97 all shipped today. Earlier critical paths verified in prod on a
-  fresh install: sign-in, feed, GIF post, and the crisis flow end-to-end
-  (detection → 988 check-in → hold → crisis page push).
+  shipped. Latest release tag: **`v1.3-b93`** (tags lag the builds; prod rules
+  pinned at `rules-prod-2026-10-25-opt2` = `main@f09ae87`).
+- **iOS:** build **102** on TestFlight (v1.3) is the launch candidate — owner
+  hand-testing on device 2026-10-27. Build 100 was the first "clean" candidate
+  (FCM-DIAG stripped); 102 adds the consent cluster, M4/M5 auth fixes, lavender
+  own-post tint, and GIF perf (see "Latest (2026-10-26 → 27)"). Critical paths
+  verified in prod on earlier builds: sign-in (+TOTP), feed, GIF post, blocking,
+  and the crisis flow end-to-end (detection → 988 check-in → hold → crisis page
+  push).
+- **Web (app.toskaapp.com):** everything through `7a3cd07` is **deployed to
+  prod** — sharing-consent UI (B94-W), 8-char password message (WEB-PW-8),
+  iOS-parity word-pair handles (WEB-HANDLE-FORMAT), warm App Check + signup
+  progress message (WEB-AUTH-LATENCY step 1), own-post tint, WebP GIFs.
+- **Functions (prod):** consent render-gate + re-stamp (CONSENT-B/C) deployed
+  2026-10-26; crisis watchdog, SEC-UUID lockfile fix, and the parked (un-exported)
+  branded-reset callable are all as committed.
 - **Projects:** `toska-4ebf4` (prod), `toskastaging` (staging/dev). Web app
   = Firebase Hosting (app.toskaapp.com). Marketing + legal + admin + prompts
   = GitHub Pages (www.toskaapp.com, from `docs/`). No Cloud Storage anywhere
   (media is Giphy URLs via a server proxy).
+
+## Latest (2026-10-26 → 27) — consent cluster, build 102, web parity, test infra
+
+All **LIVE/COMMITTED** unless marked. Details per id in `issues/BUGS.md`.
+
+**1. Sharing-consent cluster (`c246d6a`, 2026-10-26).**
+  - **B render-gate (functions, PROD):** `evaluateSharePage` takes the author's
+    LIVE `allowSharing` and 404s when it isn't true, on every public surface —
+    `/p/` (sharePage), `/og/*.png` (shareCardImage), the sitemap, and
+    `publicFeed` (batched author lookup). **B re-stamp:** `validatePost` clears
+    `isShareable` on an original post when the author's consent is off.
+  - **C (functions, PROD):** `onAllowSharingChanged` queries by `authorId` and
+    branches on `isRepost` in code (the old `isRepost == false` filter skipped
+    field-less originals, so revocation never retracted them).
+  - **D (iOS + web):** consent reads flipped `?? true` → `?? false` (fail
+    closed), except the repost-mirror reads that rules pin to the original.
+  - **E (web, PROD):** `createPost` excludes midnight posts from `isShareable`.
+  - **A (iOS, build 102):** `UserHandleCache.allowSharing` defaults false;
+    `ComposeView.postNow` reads the real value from the handle snapshot during
+    the post-sign-in window.
+  - **Why not rules:** the posts-create rule sits AT the 1000-expression
+    ceiling (TECH-DEBT-RULES-CEILING). Verified: `sharePage.test.js` 21/21,
+    **staging consent probe 9/9** (`firestore-tests/consent-render-gate-probe.mjs`),
+    prod smoke (consenting author renders 200, non-consenting 404s).
+
+**2. Build 102 (iOS, `c246d6a`)** — consent A/D above; **M4** (await
+`clearFCMTokenAndWait` before `signOut` on the verify-error escape hatch);
+**M5** (Apple Sign-In resumes with an error instead of hanging on a dead
+window); own-post lavender tint (prompt-card color, displayed-author based so
+reposts of others aren't tinted); GIF perf — off-main decode + decoded-image
+cache, URLCache dedupe, WebP rendition with .gif fallback, prefetch of the next
+rows. B94-3's neutral placeholder shipped earlier in build 96 (`5ff0121`); 102's
+perf work is the rest of that polish — **device-verify on 102**.
+
+**3. Web (`69a01f7`, `c246d6a`, `7a3cd07`, all PROD):** B94-W sharing consent
+(signup checkbox + profile toggle; privacy/terms re-worded); WEB-AUTH-LATENCY
+step 1 (warm App Check on load, "setting up your space…", un-awaited
+`confirmAdult` with in-session retry — 18+ gate is rule-enforced server-side;
+**minInstances declined** by owner); WEB-PW-8 (8-char placeholder + client guard
++ error mapping); WEB-HANDLE-FORMAT (`{adjective}_{noun}_{n}` handles ported
+from `ContentModeration.swift` word lists — keep in sync; the collision
+fallback stays word-based, **never `anonymous_`**; the 3 existing prod
+`anonymous_` accounts are owner test accounts, left as-is).
+
+**4. Test infra (`7a3cd07`, `49e2f89`, 2026-10-27 full-app-test pass):**
+`fulltest-backend-probe.mjs` (moderation + counters + crisis) and
+`fulltest-cleanup.mjs`, both now tearing down `undeliveredCrisisPages/` +
+`processedTriggerEvents/` for test posts (CRISIS-TEST-CLEANUP — a probe crisis
+post had tripped the staging watchdog once; prod was clean). DELETION-CASCADE
+verified clean on staging. A fixed staging-only App Check debug token
+(`sim-uitest-fixed`, value in the gitignored creds file) is wired via
+`applyAppCheckDebugToken(app)` into every auth UI-test class
+(APPCHECK-STAGING-DEBUG). **Authenticated simulator UI tests still don't load
+the feed (IOS-SIM-AUTH-FEED) — App Check was ruled out as the cause; deferred
+post-launch. Authenticated iOS flows are hand-tested on a real device.**
+Non-auth UI tests pass.
+
+**5. Earlier in the window:** FCM-DIAG stripped (build 100); RESET-1 custom
+`/auth` page live (unreachable from Firebase's default emails — template
+editing is locked for the project, AUTH-05); Option B branded reset via Resend
+built, **parked and un-exported** (its secret/param had blocked deploys);
+ONB-1 fixed in build 98; SEC-UUID lockfile fix deployed staging + prod; CI
+index smoke-probe + staging/prod drift check (`b9d097e`).
 
 ## Today (2026-10-23) — MFA, FCM, watchdog, wording, blocking
 
@@ -175,27 +249,37 @@ carry no handle/author id/author-post links.
 
 ## In progress
 
-- **Build 94** (not yet built or uploaded) — three items from
-  `issues/BUGS.md`, each reproduced/fixed/tested before an owner-approved
-  build:
-  1. **B94-MFA** iOS TOTP sign-in handling (BLOCKING — do first).
-  2. **B94-1** feed GIF render timing (row should observe `postGifUrls`).
-  2. **B94-2** repost optimistic UI update.
-  3. **B94-iOS** sign-up sharing choice (SEO-01 wording, unchecked default);
-     the default-false flip is already committed.
-  Also queued: **B94-W** full web sharing-consent UI (checkbox + web settings
-  toggle), and a reminder to re-edit the privacy/terms sharing lines once the
-  web toggle + sign-up checkboxes exist.
+- **Build 102 hand test (owner, on device, 2026-10-27).** Everything in the
+  "Latest" section above is committed and deployed; the working tree is clean
+  at `49e2f89`. Findings from the hand test get logged in `issues/BUGS.md` and
+  fixed for a build 103 if needed. Things worth exercising on 102: compose →
+  post right after sign-in / account switch (consent A), own-post tint, GIF
+  rows (placeholder → crossfade, no row jump), Apple Sign-In (M5), the
+  verify-error "back to login" path (M4), onboarding not re-shown on an
+  existing account (ONB-1).
+- **Open code items (small, post-launch unless the hand test surfaces them):**
+  M3 (cancel the 15s sign-in sweep task on disappear), L1 (start
+  BlockedUsersCache on the inline sign-in paths), L2 (handle-registry orphan
+  on signup rollback), L3 (feed filter should fail closed on missing
+  `moderationStatus`), L5 (`unrepostReply` doesn't broadcast `.postDeleted`),
+  M2 (vestigial DM-cleanup step), TEST-ONBTARGET (Swift unit-test target).
+- **Deferred features:** FEAT-HANDLE-CHANGE (+ Option 3 block suggestion),
+  B94-APPLE post-signup sharing prompt, RESET-EMAIL Option B (Resend),
+  TECH-DEBT-RULES-CEILING refactor, IOS-SIM-AUTH-FEED.
 
 ## Open items (owner / manual)
 
-- Browser checklist A (incognito): sign-in, 8-char signup gate, fresh-signup
-  `allowSharing:false` confirmation, password-reset email, admin MFA sign-in,
-  reports tab. (Code + staging verified; true prod-browser steps are
-  owner-only — the API-key referrer lock correctly blocks headless testing.)
+- App Store: paste description + promo text from `APP_STORE_METADATA.md`
+  (gitignored) into ASC; pick the launch build (102 if the hand test is clean).
+- Browser checklist A (incognito, prod): sign-in, 8-char signup gate +
+  word-pair handle on a fresh signup, fresh-signup `allowSharing:false`,
+  sharing toggle on the web profile, password-reset email, admin MFA sign-in,
+  reports tab. (Staging verified; the API-key referrer lock correctly blocks
+  headless prod testing, so these are owner-only.)
 - Normal push receipt (like/reply) on device.
-- Glance at Crashlytics + Performance dashboards to eyeball build-93 data
-  (restriction can't break them; just visual confirmation).
+- Glance at Crashlytics + Performance dashboards (visual confirmation only).
+- Firebase Support ticket for the locked email templates (AUTH-05) if branded
+  reset emails matter before Option B.
 - Manual account hardening from the audit: 2FA + offline recovery codes
   across Google / GitHub / Apple / both Squarespace accounts; domain
   transfer-lock + auto-renew; the off-repo operations document.

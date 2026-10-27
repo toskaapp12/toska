@@ -28,7 +28,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## FCM-DIAG — REMOVED before launch ✓ (build 100, 2026-10-26)
 
-- **Severity:** BLOCKING for launch · **Surface:** iOS (PushNotificationManager, toskaApp) · **Status:** OPEN 2026-10-25
+- **Severity:** BLOCKING for launch · **Surface:** iOS (PushNotificationManager, toskaApp) · **Status:** RESOLVED — stripped in build 100 (0915117, 2026-10-26)
 - Build 99 adds `recordFcmDiag()` which appends status strings (no user content)
   to the signed-in admin's own `private/data.fcmDiag` at each push-registration
   step, to diagnose the FCM account-switch token loss on a release TestFlight
@@ -178,7 +178,7 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ## B94-3 — Feed GIF shows a brief blank before loading (minor polish)
 
-- **Severity:** LOW (polish, not a blocker) · **Surface:** iOS feed · **Status:** OPEN
+- **Severity:** LOW (polish, not a blocker) · **Surface:** iOS feed · **Status:** FIXED — neutral placeholder (stable reserved height + crossfade, `StableGifPreview` in ComposeView.swift) shipped in build 96 (5ff0121); build 102 (c246d6a) added off-main decode + decoded-image cache, WebP rendition w/ .gif fallback, and next-row prefetch. **Device-verify on 102.**
 - **Reported:** 2026-10-23, owner device test on build 94. The B94-1 render-timing
   bug is fixed (GIF now appears without tapping in), but there's still a slight
   load delay where the row shows empty space before the GIF paints.
@@ -322,7 +322,7 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## CONSENT-B/C — sharing opt-in enforced server-side (render-gate + re-stamp)
 
-- **Severity:** MED (consent/privacy) · **Surface:** functions · **Status:** FIXED (working tree, 2026-10-26) — pending staging probe + owner review before prod
+- **Severity:** MED (consent/privacy) · **Surface:** functions · **Status:** DEPLOYED PROD 2026-10-26 + committed (c246d6a) — staging probe 9/9 (`consent-render-gate-probe.mjs`), prod smoke: consenting author renders 200, non-consenting 404s
 - **Why not in rules:** B (bind isShareable→allowSharing at post-create) couldn't fit the create rule (see TECH-DEBT-RULES-CEILING). Enforced instead at every public render surface + a server re-stamp.
 - **B render-gate:** `evaluateSharePage` now takes the author's LIVE `allowSharing` and 404s when it isn't true — covering `/p/` (sharePage), `/og/*.png` (shareCardImage), the sitemap, and publicFeed (batched author lookup). Closes tampered self-stamps, stored-flag drift, and "turned sharing off after sharing."
 - **B re-stamp:** `validatePost` clears `isShareable` on an ORIGINAL post when the author's live consent is off (so the in-app share button respects it too). Reposts untouched (rule-pinned to the original author's consent).
@@ -333,7 +333,7 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## CONSENT-A/D/E — client opt-in hardening (iOS + web)
 
-- **Severity:** MED (consent/privacy) · **Surface:** iOS + web · **Status:** FIXED (working tree, 2026-10-26, iOS → build 102)
+- **Severity:** MED (consent/privacy) · **Surface:** iOS + web · **Status:** FIXED + committed (c246d6a) — web live in prod; iOS in build 102 (on TestFlight, hand-test 2026-10-27)
 - **A (iOS):** `UserHandleCache.allowSharing` now defaults **false** (was true) + reset to false in `stopListening`; `ComposeView.postNow` reads the real `allowSharing` from the same user-doc snapshot it fetches for the handle when the cache is still unloaded — so a post composed in the post-sign-in/account-switch window is never over-shared, and a genuine opt-in isn't dropped.
 - **D:** flipped the `?? true` consent reads to `?? false` (fail closed) — UserHandleCache:87, FeedView:561, PostDetailView:1152, ProfileView:973/1068, ShareCardView:48, SettingsView:611, PostInteractionManager reply-repost author read:1032, and web writes.js createPost. LEFT `?? true` on the repost-mirror reads (PostInteractionManager:414, web writes.js:229) — rules pin a repost's isShareable to `== original.get('isShareable', true)`, so flipping only that side would reject reposts of field-less originals.
 - **E (web):** `createPost` adds `&& !isMidnight` to isShareable, matching iOS (ComposeView excludes expiresAtMidnight).
@@ -366,7 +366,7 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## WEB-PW-8 — web signup accepted 7-char passwords / unclear message (FIXED)
 
-- **Severity:** MED (auth policy mismatch) · **Surface:** web (app.js) · **Status:** FIXED 2026-10-27 (staging-verified; prod pending owner approval)
+- **Severity:** MED (auth policy mismatch) · **Surface:** web (app.js) · **Status:** FIXED 2026-10-27 — staging-verified, DEPLOYED PROD hosting + committed (7a3cd07)
 - Found in the 2026-10-27 full-app-test pass: web signup had no client length check, the placeholder said "at least 6 characters", and the weak-password error mapped to "…at least 6", contradicting the server's 8-char policy.
 - **Fix:** placeholder → "at least 8 characters"; client-side `pw.length < 8` guard with "password must be at least 8 characters."; weak-password / password-does-not-meet-requirements error mapped to the same 8-char message. Staging-verified: 7-char blocked with the correct message.
 
@@ -374,7 +374,7 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## WEB-HANDLE-FORMAT — web accounts got anonymous_<uuid> instead of word-pair handles (FIXED, new accounts)
 
-- **Severity:** MED (cross-surface parity / brand) · **Surface:** web (app.js) · **Status:** FIXED 2026-10-27 for NEW accounts (staging-verified: `sadly_wound_916`); prod pending owner approval
+- **Severity:** MED (cross-surface parity / brand) · **Surface:** web (app.js) · **Status:** FIXED 2026-10-27 for NEW accounts — staging-verified (`sadly_wound_916`), DEPLOYED PROD hosting + committed (7a3cd07)
 - Web `claimHandleAndCreateUserDoc` generated `anonymous_<uuid8>`; iOS generates `{adjective}_{noun}_{1-999}`. Fix ports the EXACT iOS word lists (ContentModeration.swift handleAdjectives/handleNouns, 30+30 — keep in sync) to app.js `HANDLE_ADJECTIVES`/`HANDLE_NOUNS` + `randomWordHandle()`; same batched handles/{h} registry claim; the last-resort fallback after 4 collisions (≈900k combos) stays WORD-BASED with a wide 6-digit number (`randomWordHandle(999999)`) — **never anonymous_** (owner 2026-10-27) — so signup can't hard-fail and no anonymous_ handles are ever minted.
 - **Existing prod `anonymous_` handles: 3 of 11 users** (3 registry rows) — the web-created accounts. **NOT migrated** — only new accounts change. Migrating the 3 would ripple through the handle registry + byline pins; left for a separate owner decision.
 
@@ -424,14 +424,14 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## M5 — Apple Sign-In silently no-ops when no presentation window (FIXED)
 
-- **Severity:** MED (auth) · **Surface:** iOS (AppleSignInHelper) · **Status:** FIXED (working tree, 2026-10-26, build 102)
+- **Severity:** MED (auth) · **Surface:** iOS (AppleSignInHelper) · **Status:** FIXED + committed (c246d6a), in build 102
 - `presentationAnchor` returned a throwaway `UIWindow()` when no foreground key window was found → the Apple sheet presented over an invisible window and the continuation hung ("button does nothing"). Fix: try the active scene's key window, then any scene's key window, then any window; if truly none, resume the continuation with an error ("Couldn't start Sign in with Apple. Please try again.") so the UI surfaces it, then return a detached anchor only to satisfy the non-optional API.
 
 ---
 
 ## M4 — "back to login" raced clearFCMToken against signOut (FIXED)
 
-- **Severity:** MED (push/account hygiene) · **Surface:** iOS (ContentView verify-error escape hatch) · **Status:** FIXED (working tree, 2026-10-26, build 102)
+- **Severity:** MED (push/account hygiene) · **Surface:** iOS (ContentView verify-error escape hatch) · **Status:** FIXED + committed (c246d6a), in build 102
 - The escape-hatch button called fire-and-forget `clearFCMToken()` then `signOut()` immediately; `clearFCMTokenAndWait` reads `currentUser?.uid`, which `signOut()` clears first, so the Firestore `fcmToken` delete could be skipped (stale token → pushes to the wrong account). Fix: wrap in a `Task { @MainActor }` and `await clearFCMTokenAndWait()` before `signOut()`, matching every other sign-out path.
 
 ---

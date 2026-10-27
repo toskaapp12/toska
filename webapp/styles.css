@@ -173,6 +173,11 @@ header.app .actions { display: flex; gap: 14px; align-items: center; }
     transition: background 0.15s ease;
 }
 a.post-row:hover { background: var(--paper-3); }
+/* own posts get the prompt-card lavender (2026-10-26) — reuses --prompt-bg so
+   night mode is already handled; own hover keeps the tint instead of flipping
+   to stone. Not applied to reposts of other people's posts (see postRow). */
+.post-row.mine { background: var(--prompt-bg); border-bottom-color: var(--prompt-hair); }
+a.post-row.mine:hover { background: var(--prompt-bg); filter: brightness(0.985); }
 .post-text { font-size: 18.5px; line-height: 1.62; color: var(--ink); white-space: pre-wrap; word-break: break-word; text-wrap: pretty; }
 .post-meta {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

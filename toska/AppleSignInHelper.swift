@@ -248,16 +248,28 @@ class AppleSignInHelper: NSObject, ObservableObject, ASAuthorizationControllerDe
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        guard let scene = UIApplication.shared.connectedScenes
-            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
-              let window = scene.keyWindow else {
-            // Falling back to a detached UIWindow means the ASAuthorizationController
-            // has no real anchor to present over — sign-in will visibly fail. Log so
-            // this shows up in the console rather than silently failing.
-            debugLog("⚠️ AppleSignIn: no foreground window for presentation anchor; sign-in may fail")
-            return UIWindow()
+        // Prefer the active scene's key window; fall back to ANY window scene's
+        // key window, then ANY window at all, before giving up — a brief
+        // scene-activation race shouldn't sink sign-in.
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let window = scenes.first(where: { $0.activationState == .foregroundActive })?.keyWindow
+            ?? scenes.compactMap({ $0.keyWindow }).first
+            ?? scenes.flatMap({ $0.windows }).first {
+            return window
         }
-        return window
+        // M5 (2026-10-26): truly no window. Presenting over a throwaway
+        // UIWindow() makes the Apple sheet invisible and hangs the continuation
+        // forever (the button "does nothing"). Fail the flow NOW so the UI
+        // surfaces an error, then return a detached anchor only to satisfy the
+        // non-optional API — the resumed continuation has already ended sign-in.
+        debugLog("⚠️ AppleSignIn: no window for presentation anchor — failing sign-in")
+        Task { @MainActor in
+            continuation?.resume(throwing: NSError(
+                domain: "AppleSignIn", code: -10,
+                userInfo: [NSLocalizedDescriptionKey: "Couldn't start Sign in with Apple. Please try again."]))
+            continuation = nil
+        }
+        return UIWindow()
     }
 
     // MARK: - Token Revocation

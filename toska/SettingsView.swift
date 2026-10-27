@@ -608,7 +608,7 @@ struct SettingsView: View {
                }
 
                settings = UserSettings(
-                   allowSharing: main["allowSharing"] as? Bool ?? true,
+                   allowSharing: main["allowSharing"] as? Bool ?? false, // D: fail closed (opt-in)
                    showFollowerCount: main["showFollowerCount"] as? Bool ?? false,
                    notifyLikes: boolPref("notifyLikes", default: true),
                    notifyReplies: boolPref("notifyReplies", default: true),

@@ -95,8 +95,13 @@ export async function createPost({ text, tag, isLetter, isWhisper, isMidnight, g
         likeCount: 0, repostCount: 0, replyCount: 0,
         isRepost: false,
         // Mirrors ComposeView: the user's allowSharing setting AND
-        // letter/whisper both force the share affordance off.
-        isShareable: (profile.allowSharing ?? true) && !isLetter && !isWhisper,
+        // letter/whisper/midnight all force the share affordance off.
+        // D (2026-10-26): default OFF — sharing is opt-in, so a user doc
+        // without allowSharing is NOT consenting (fail closed), matching the
+        // ?? false reads elsewhere. E: add !isMidnight to match iOS
+        // (ComposeView excludes expiresAtMidnight); a midnight post's share
+        // card would outlive the post.
+        isShareable: (profile.allowSharing ?? false) && !isLetter && !isWhisper && !isMidnight,
         createdAt: serverTimestamp(),
         moderationStatus: "pending_validation",
     };

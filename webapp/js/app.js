@@ -30,12 +30,17 @@ const app = initializeApp(FIREBASE_CONFIG);
 // simulator path). Failure to init must not brick the page.
 if (IS_PROD) {
     try {
-        const { initializeAppCheck, ReCaptchaEnterpriseProvider } =
+        const { initializeAppCheck, ReCaptchaEnterpriseProvider, getToken } =
             await import("https://www.gstatic.com/firebasejs/11.0.1/firebase-app-check.js");
-        initializeAppCheck(app, {
+        const appCheck = initializeAppCheck(app, {
             provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
             isTokenAutoRefreshEnabled: true,
         });
+        // Perf (2026-10-26): mint a token NOW, at idle page-load time, so the
+        // multi-second reCAPTCHA Enterprise attestation isn't paid on the user's
+        // first attested call (sign-in / sign-up). Without this the cold mint
+        // lands on the submit click. Fire-and-forget; auto-refresh keeps it warm.
+        getToken(appCheck, /* forceRefresh */ false).catch(() => {});
     } catch (e) { console.warn("app check init failed", e); }
 }
 
@@ -53,6 +58,24 @@ onSnapshot(doc(db, "config", "clientPolicy"),
     (snap) => { const d = snap.data() ?? {}; policy = { kill: d.kill ?? {}, notice: d.notice ?? "" }; },
     () => { /* fail-open */ });
 const functions = getFunctions(app);
+
+// confirmAdult is server-owned and GATES posting + replying (firestore.rules
+// hasConfirmedAdult on both create rules). Perf (2026-10-26): signup no longer
+// BLOCKS routing on it — we fire it and retry in-session with backoff so a
+// transient failure self-heals without a relaunch; onAuthStateChanged also
+// re-fires it on every later sign-in as the backstop. Because the server blocks
+// posts/replies until it records, un-awaiting can never let an unconfirmed user
+// post or reply.
+async function confirmAdultWithRetry(attempts = 4) {
+    for (let i = 0; i < attempts; i++) {
+        try { await httpsCallable(functions, "confirmAdult")({}); return true; }
+        catch (e) {
+            console.warn(`confirmAdult attempt ${i + 1} failed`, e?.code);
+            if (i < attempts - 1) await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+        }
+    }
+    return false;
+}
 
 // Late night: mirror LateNightTheme — device hour < 5 flips the whole app.
 if (new Date().getHours() < 5) document.documentElement.dataset.theme = "night";
@@ -107,9 +130,27 @@ const spinner = () => el("span", { class: "spinner" });
 // URL is a giphy host; otherwise drop it silently. Belt-and-suspenders behind
 // the server lock + the img-src CSP that already blocks non-giphy/data hosts.
 const GIPHY_HOST = /^https:\/\/([a-z0-9-]+\.)+giphy\.com\//i;
+// Perf (2026-10-26): serve the WebP variant of a giphy rendition by swapping the
+// ".gif" extension (e.g. .../200w.gif → .../200w.webp) — ~30-50% smaller and
+// faster to decode, derived client-side from the stored URL so NO data migration
+// is needed. Host-lock is unaffected (same giphy host). If the WebP variant
+// 404s, fall back to the stored .gif once.
+function giphyWebp(url) { return url.replace(/\.gif(\?|$)/i, ".webp$1"); }
 function gifImg(url, style) {
     if (typeof url !== "string" || !GIPHY_HOST.test(url)) return null;
-    return el("img", { src: url, loading: "lazy", style, alt: "gif" });
+    const webp = giphyWebp(url);
+    const img = el("img", { src: webp, loading: "lazy", decoding: "async", style, alt: "gif" });
+    if (webp !== url) img.addEventListener("error", () => { if (img.src !== url) img.src = url; }, { once: true });
+    return img;
+}
+// Warm a page's GIFs into the browser HTTP cache ahead of the lazy threshold so
+// they're ready as the user scrolls (prefetch a few rows ahead). Cheap: the
+// feed page is small, and <img loading="lazy"> still defers the real render.
+function prefetchGifs(docs) {
+    for (const d of docs) {
+        const u = d?.gifUrl;
+        if (typeof u === "string" && GIPHY_HOST.test(u)) { const im = new Image(); im.src = giphyWebp(u); }
+    }
 }
 
 function relTime(ts) {
@@ -682,17 +723,20 @@ function ephemeralChip(d) {
     return el("span", { class: "tag ephemeral" }, (d.isWhisper ? "whisper" : "midnight") + fade);
 }
 function postRow(id, d) {
+    // "mine" = the DISPLAYED author is me (on a repost that's the ORIGINAL
+    // author), so a repost of someone else's post is NOT tinted (2026-10-26).
+    const mine = (d.isRepost ? d.originalAuthorId : d.authorId) === me?.uid;
     const meta = el("div", { class: "post-meta" },
         tagChip(d.tag),
         // Own handle in accent (owner 2026-09-22): accent = "you" app-wide.
         el("span", {
-            class: "handle" + ((d.isRepost ? d.originalAuthorId : d.authorId) === me?.uid ? " own" : ""),
+            class: "handle" + (mine ? " own" : ""),
         }, d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous")),
         el("span", {}, relTime(d.createdAt)),
         ephemeralChip(d),
     );
     // Words first, then the feeling line, then the stats line (design order).
-    return el("a", { class: "post-row", href: `#/post/${id}` },
+    return el("a", { class: "post-row" + (mine ? " mine" : ""), href: `#/post/${id}` },
         d.isRepost ? el("div", { class: "repost-strip" }, d.authorId === me?.uid ? "you reposted" : `${d.authorHandle ?? "anonymous"} reposted`) : null,
         el("div", { class: "post-text" }, d.text ?? ""),
         gifImg(d.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
@@ -858,6 +902,7 @@ function viewSignUp() {
         if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 18 or older.")); return; }
         if (!terms.checked) { err.replaceChildren(errorBox("please read and accept the terms and privacy policy to continue.")); return; }
         btn.disabled = true;
+        btn.textContent = "setting up your space…"; // perf 2026-10-26: honest cover for the residual setup time
         signupInProgress = true;
         let created = false;
         try {
@@ -869,13 +914,10 @@ function viewSignUp() {
             // into Firestore — it lives only in Firebase Auth (no join to a uid's
             // posts), which a Firestore breach can't touch. auth.currentUser.email is
             // the source of truth for the rare places that need it.
-            try {
-                await httpsCallable(functions, "confirmAdult")({});
-            } catch (e) {
-                // Staging web has no App Check attestation; the app re-fires
-                // confirmAdult on later sign-ins, matching iOS behavior.
-                console.warn("confirmAdult deferred", e?.code);
-            }
+            // confirmAdult: fire WITHOUT blocking routing (perf 2026-10-26). It
+            // retries in-session; the server gates posting/replying until it
+            // records, so the user reaches the feed instantly either way.
+            confirmAdultWithRetry();
             signupInProgress = false;
             initWrites(db, uid);
             startBlockedListener(uid);
@@ -892,7 +934,7 @@ function viewSignUp() {
                 : GENERIC_ERR;
             // toast survives the re-render that the rollback's auth event triggers
             toast(m, 5000);
-            err.replaceChildren(errorBox(m)); btn.disabled = false;
+            err.replaceChildren(errorBox(m)); btn.disabled = false; btn.textContent = "create account";
             if (created && auth.currentUser) { try { await auth.currentUser.delete(); } catch {} }
         }
     };
@@ -1081,6 +1123,7 @@ async function viewFeed() {
             return;
         }
         for (const [id, d] of rows) list.append(postRow(id, d));
+        prefetchGifs(rows.map(([, d]) => d)); // warm this page's GIFs (2026-10-26)
         // Page-size checks use the RAW fetch count (_fetched), not the
         // visible rows: one blocked/expired/flagged doc in the first page used
         // to drop the count below 60 and hide "more" forever.
@@ -1091,6 +1134,7 @@ async function viewFeed() {
                 try {
                     const next = await fetchForYou(cache.cursor);
                     for (const [id, d] of next) list.append(postRow(id, d));
+                    prefetchGifs(next.map(([, d]) => d)); // warm next page's GIFs (2026-10-26)
                     list.append(more); // keep the button below the new rows
                     cache.rows.push(...next);
                     cache.cursor = next._cursor;
@@ -1395,7 +1439,8 @@ async function viewTop() {
             return;
         }
         const [heroId, hero] = ranked[0];
-        list.append(el("a", { class: "hero-card post-row", href: `#/post/${heroId}`, style: "display:block;" },
+        const heroMine = (hero.isRepost ? hero.originalAuthorId : hero.authorId) === me?.uid; // 2026-10-26 own-post tint
+        list.append(el("a", { class: "hero-card post-row" + (heroMine ? " mine" : ""), href: `#/post/${heroId}`, style: "display:block;" },
             el("div", { class: "eyebrow" },
                 `most felt ${topPeriod === "all time" ? "of all time" : topPeriod}`),
             el("span", { class: "rank-num" }, "01"),
@@ -1492,7 +1537,8 @@ async function viewPost(postId) {
         }
         const d = ps.data();
         const own = d.authorId === me.uid;
-        const body = el("div", { class: "post-row", style: "cursor:default; border-bottom:none;" },
+        const mine = (d.isRepost ? d.originalAuthorId : d.authorId) === me?.uid; // 2026-10-26 own-post tint
+        const body = el("div", { class: "post-row" + (mine ? " mine" : ""), style: "cursor:default; border-bottom:none;" },
             d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle} reposted`) : null,
             (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
             el("div", { class: "post-text", style: "font-size:17px; line-height:1.68;" }, d.text ?? ""),
@@ -1994,6 +2040,7 @@ async function viewProfile(uid) {
 function renderPostDocs(list, rows, opts = {}) {
     list.replaceChildren();
     if (!rows.length) { list.append(emptyState(opts.emptyMsg ?? "nothing here yet.")); return; }
+    prefetchGifs(rows.map(([, d]) => d)); // warm this tab's GIFs (2026-10-26)
     for (const [id, d] of rows) {
         const row = postRow(id, d);
         if (opts.showPending && (d.moderationStatus ?? "live") !== "live") row.prepend(pendingBanner());

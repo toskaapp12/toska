@@ -970,7 +970,7 @@ struct ProfileView: View {
                 replies: data["replyCount"] as? Int ?? 0,
                 time: ToskaFormatters.timeAgo(from: createdAt),
                 authorId: data["authorId"] as? String ?? "",
-                isShareable: data["isShareable"] as? Bool ?? true
+                isShareable: data["isShareable"] as? Bool ?? false // D: fail closed (opt-in)
             )
             showPost = true
         }
@@ -1065,7 +1065,7 @@ struct ProfileView: View {
                 replies: data["replyCount"] as? Int ?? 0,
                 time: ToskaFormatters.timeAgo(from: createdAt),
                 authorId: data["authorId"] as? String ?? "",
-                isShareable: data["isShareable"] as? Bool ?? true
+                isShareable: data["isShareable"] as? Bool ?? false // D: fail closed (opt-in)
             )
             showPost = true
         }

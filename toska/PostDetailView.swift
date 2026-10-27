@@ -560,6 +560,13 @@ struct PostDetailView: View {
                         postHeaderSection
                             .padding(.horizontal, 28)
                             .padding(.top, 18)
+                            .padding(.bottom, 14)
+                            // Own-post tint (2026-10-26): the opened post sits on
+                            // the prompt-card lavender when it's yours, matching
+                            // the feed row. The detail view renders an original
+                            // post, so isOwnPost (authorUserId == me) is the
+                            // displayed-author test. promptBg has a night value.
+                            .background(isOwnPost ? ToskaColor.promptBg : Color.clear)
 
                         // Hairline + "27 REPLIES" eyebrow (design 2026-09-16).
                         Rectangle().fill(ToskaColor.divider).frame(height: 1)
@@ -1147,9 +1154,10 @@ struct PostDetailView: View {
                     if data["isWhisper"] as? Bool == true { isWhisper = true }
                     // Unconditional assignment (not set-if-true): consent
                     // revocation while the view is open must hide the share
-                    // button, not just enable it. Missing field == shareable,
-                    // matching FeedView.feedPost(from:).
-                    isShareable = data["isShareable"] as? Bool ?? true
+                    // button, not just enable it. Missing field == NOT
+                    // shareable (D 2026-10-26, opt-in era), matching
+                    // FeedView.feedPost(from:).
+                    isShareable = data["isShareable"] as? Bool ?? false
                     // Mirror the post body from server truth so an edit (this
                     // user's via EditPostView, or a remote edit) is reflected.
                     // The view's onAppear seeds postText from the immutable init

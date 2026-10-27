@@ -21,7 +21,11 @@ class UserHandleCache {
     static let shared = UserHandleCache()
 
     private(set) var handle: String = "anonymous"
-    private(set) var allowSharing: Bool = true
+    // A (2026-10-26): default FALSE in the opt-in era — until the user doc
+    // loads we must NOT assume consent, or a post composed in the post-sign-in
+    // window could be stamped shareable against the user's choice. ComposeView
+    // reads the real value from Firestore when the cache is still unloaded.
+    private(set) var allowSharing: Bool = false
     // Mirrors the user's "gentle check-in" setting. Default true so a user who
     // hasn't seen Settings yet still gets the soft-tier check-in. The explicit
     // crisis tier ignores this flag — see CrisisCheckInView / crisisLevel(for:).
@@ -84,7 +88,7 @@ class UserHandleCache {
                         Task { @MainActor [weak self] in
                             guard let self, self.currentUid == capturedUid else { return }
                             self.handle = snapshot?.data()?["handle"] as? String ?? "anonymous"
-                            self.allowSharing = snapshot?.data()?["allowSharing"] as? Bool ?? true
+                            self.allowSharing = snapshot?.data()?["allowSharing"] as? Bool ?? false // D: fail closed (opt-in)
                             self.legacyGentleCheckIn = snapshot?.data()?["gentleCheckIn"] as? Bool ?? true
                             // A.5 #9 migration: legacy source — private/data
                             // (below) wins when it carries the fields, same
@@ -131,7 +135,7 @@ class UserHandleCache {
         privateListener?.remove()
         privateListener = nil
         handle = "anonymous"
-        allowSharing = true
+        allowSharing = false // A: fail closed until a user doc loads
         gentleCheckIn = true
         privateGentleCheckIn = nil
         legacyGentleCheckIn = true

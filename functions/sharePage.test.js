@@ -79,13 +79,25 @@ test("reply-repost ids 404 on shape (no public target, no existence read)", () =
 });
 
 test("live shareable post renders, not indexable without curation", () => {
-  const v = evaluateSharePage(livePost(), NOW);
+  const v = evaluateSharePage(livePost(), NOW, true);
   assert.deepEqual(v, { outcome: "render", indexable: false });
 });
 
 test("webFeatured post is indexable", () => {
-  const v = evaluateSharePage(livePost({ webFeatured: true }), NOW);
+  const v = evaluateSharePage(livePost({ webFeatured: true }), NOW, true);
   assert.deepEqual(v, { outcome: "render", indexable: true });
+});
+
+// B (2026-10-26): the author's LIVE allowSharing — passed by every public
+// caller — is re-checked here, independent of the post's stored isShareable.
+test("author consent off ⇒ not_found even when the post's stored isShareable is true", () => {
+  assert.equal(evaluateSharePage(livePost(), NOW, false).outcome, "not_found");
+});
+test("author consent missing ⇒ not_found (fail closed)", () => {
+  assert.equal(evaluateSharePage(livePost(), NOW, undefined).outcome, "not_found");
+});
+test("author consent on + stored isShareable true ⇒ render", () => {
+  assert.equal(evaluateSharePage(livePost(), NOW, true).outcome, "render");
 });
 
 test("every not_found gate", () => {
@@ -103,18 +115,22 @@ test("every not_found gate", () => {
     ["repost with invalid original id", livePost({ isRepost: true, originalPostId: "a/b" })],
   ];
   for (const [name, post] of cases) {
-    assert.equal(evaluateSharePage(post, NOW).outcome, "not_found", name);
+    // authorAllowSharing=true so each case isolates its OWN gate (consent is
+    // covered separately above).
+    assert.equal(evaluateSharePage(post, NOW, true).outcome, "not_found", name);
   }
 });
 
 test("unexpired expiresAt still renders", () => {
-  const v = evaluateSharePage(livePost({ expiresAt: ts(NOW + 3600e3) }), NOW);
+  const v = evaluateSharePage(livePost({ expiresAt: ts(NOW + 3600e3) }), NOW, true);
   assert.equal(v.outcome, "render");
 });
 
-test("repost redirects to original", () => {
+test("repost redirects to original (consent re-checked at the target)", () => {
+  // The redirect is decided before the consent gate; the original re-runs the
+  // full gate with ITS author's live allowSharing, so consent still applies.
   const v = evaluateSharePage(
-    livePost({ isRepost: true, originalPostId: "orig12345678901234ab" }), NOW);
+    livePost({ isRepost: true, originalPostId: "orig12345678901234ab" }), NOW, false);
   assert.deepEqual(v, { outcome: "redirect", to: "orig12345678901234ab" });
 });
 
@@ -123,13 +139,13 @@ test("sensitive text is never indexable, even when featured", () => {
   // change ever un-flags these, this test failing is the signal to pick new
   // fixtures — the invariant under test is flagged ⇒ noindex.
   const crisis = livePost({ webFeatured: true, text: "i want to kill myself tonight" });
-  const vc = evaluateSharePage(crisis, NOW);
+  const vc = evaluateSharePage(crisis, NOW, true);
   assert.equal(vc.outcome, "render", "crisis text still renders if live+shareable");
   assert.equal(vc.indexable, false);
   // Name-shaped text (real prod tester posts look like this) — a careless
   // webFeatured flag must not make it indexable.
   const named = livePost({ webFeatured: true, text: "Ally McNiel" });
-  const vn = evaluateSharePage(named, NOW);
+  const vn = evaluateSharePage(named, NOW, true);
   assert.equal(vn.outcome, "render");
   assert.equal(vn.indexable, false);
 });

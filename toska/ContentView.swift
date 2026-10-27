@@ -67,13 +67,18 @@ struct ContentView: View {
                             // way back to the login screen instead of a dead-end.
                             Button {
                                 showVerifyError = false
-                                // Parity with the other sign-out paths (fire-and-
-                                // forget; may no-op here since this screen is
-                                // reached on a permission-denied verify, but the
-                                // next successful sign-in re-persists the token).
-                                PushNotificationManager.shared.clearFCMToken()
-                                try? Auth.auth().signOut()
-                                NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                                // M4 (2026-10-26): await the token wipe BEFORE
+                                // signOut(). clearFCMTokenAndWait reads
+                                // currentUser?.uid, which signOut() clears — the
+                                // old fire-and-forget clearFCMToken() raced that
+                                // and could skip the Firestore fcmToken delete,
+                                // leaving a stale token that pushes to the wrong
+                                // account. Every other sign-out path awaits.
+                                Task { @MainActor in
+                                    await PushNotificationManager.shared.clearFCMTokenAndWait()
+                                    try? Auth.auth().signOut()
+                                    NotificationCenter.default.post(name: .userDidSignOut, object: nil)
+                                }
                             } label: {
                                 Text("back to login")
                                     .font(ToskaFont.sans(12))

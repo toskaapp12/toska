@@ -97,6 +97,13 @@ Format: severity · surface · status. "Pre-existing" = present before the
 ## RESET-EMAIL / Option B — branded sending via Resend (POST-LAUNCH, parked)
 
 - **Severity:** post-launch polish · **Surface:** functions + iOS + web + DNS · **Status:** PARKED 2026-10-26 (default emails are fine for soft launch)
+- **NOT EXPORTED (2026-10-26):** the `sendBrandedPasswordReset` block in
+  functions/index.js is wrapped in a `/* PARKED … */` block comment, including
+  its `defineSecret("RESEND_API_KEY")` + `defineString("RESET_FROM")`. This is
+  deliberate: those param declarations ran at module load and made EVERY
+  `firebase deploy` demand a RESEND_API_KEY secret + RESET_FROM value (it blocked
+  the consent-fix staging deploy). **To resume:** uncomment the block and restore
+  the `exports.` prefix (step 1 below). Confirmed never deployed to staging or prod.
 - **Built, committed, UNDEPLOYED:** `sendBrandedPasswordReset` callable (functions/
   index.js, commit 91498b3) — App Check-enforced, enumeration-safe, rate-limited
   (3/h per email + 10/h per IP), `generatePasswordResetLink` → rewrite to
@@ -301,3 +308,71 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 ## B94-APPLE — one-time post-signup sharing prompt for Apple/Splash (deferred)
 
 - **Status:** DEFERRED (owner decision 2026-10-23). Apple/Splash button flows keep allowSharing:false at creation + Settings opt-in. Future nicety: a one-time "share publicly?" prompt (SEO-01 wording) after an Apple/Splash first sign-up so those users see the choice without opening Settings.
+
+---
+
+## TECH-DEBT-RULES-CEILING — posts-create rule is AT the 1000-expression limit (post-launch refactor)
+
+- **Severity:** tech debt (blocks future rule-layer security changes) · **Surface:** firestore.rules · **Status:** OPEN, logged 2026-10-26
+- The `allow create` on `match /posts/{postId}` evaluates right at Firestore's hard **1000-expression ceiling**. Confirmed empirically: adding consent binding B (one `||` clause + a `get()`) made the emulator reject even the happy path with `Unable to evaluate ... maximum of 1000 expressions ... for 'create'`. The clause was reverted; B now lives in Cloud Functions + render-gates instead (see CONSENT-B below).
+- **Impact:** any NEW post-create security constraint cannot be added at the rule layer until expressions are freed. New checks must go into `validatePost`/render gates, which carry a brief visibility window the rule layer doesn't.
+- **Fix direction (post-launch):** either (a) split the posts-create rule (factor repost vs original into separate `match` legs or helper functions to shrink the evaluated chain), or (b) move some existing checks into `validatePost` to reclaim headroom. Measure with the emulator after each change.
+
+---
+
+## CONSENT-B/C — sharing opt-in enforced server-side (render-gate + re-stamp)
+
+- **Severity:** MED (consent/privacy) · **Surface:** functions · **Status:** FIXED (working tree, 2026-10-26) — pending staging probe + owner review before prod
+- **Why not in rules:** B (bind isShareable→allowSharing at post-create) couldn't fit the create rule (see TECH-DEBT-RULES-CEILING). Enforced instead at every public render surface + a server re-stamp.
+- **B render-gate:** `evaluateSharePage` now takes the author's LIVE `allowSharing` and 404s when it isn't true — covering `/p/` (sharePage), `/og/*.png` (shareCardImage), the sitemap, and publicFeed (batched author lookup). Closes tampered self-stamps, stored-flag drift, and "turned sharing off after sharing."
+- **B re-stamp:** `validatePost` clears `isShareable` on an ORIGINAL post when the author's live consent is off (so the in-app share button respects it too). Reposts untouched (rule-pinned to the original author's consent).
+- **C:** `onAllowSharingChanged` now queries own posts by `authorId` only and branches on `isRepost` in code — the old `.where("isRepost","==",false)` silently skipped field-less originals, so revocation never retracted them.
+- **Tests:** sharePage.test.js +3 consent cases (21/21 pass). Staging probe pending (post w/ allowSharing false, and author-turns-off-after-sharing, must 404 on every public surface).
+
+---
+
+## CONSENT-A/D/E — client opt-in hardening (iOS + web)
+
+- **Severity:** MED (consent/privacy) · **Surface:** iOS + web · **Status:** FIXED (working tree, 2026-10-26, iOS → build 102)
+- **A (iOS):** `UserHandleCache.allowSharing` now defaults **false** (was true) + reset to false in `stopListening`; `ComposeView.postNow` reads the real `allowSharing` from the same user-doc snapshot it fetches for the handle when the cache is still unloaded — so a post composed in the post-sign-in/account-switch window is never over-shared, and a genuine opt-in isn't dropped.
+- **D:** flipped the `?? true` consent reads to `?? false` (fail closed) — UserHandleCache:87, FeedView:561, PostDetailView:1152, ProfileView:973/1068, ShareCardView:48, SettingsView:611, PostInteractionManager reply-repost author read:1032, and web writes.js createPost. LEFT `?? true` on the repost-mirror reads (PostInteractionManager:414, web writes.js:229) — rules pin a repost's isShareable to `== original.get('isShareable', true)`, so flipping only that side would reject reposts of field-less originals.
+- **E (web):** `createPost` adds `&& !isMidnight` to isShareable, matching iOS (ComposeView excludes expiresAtMidnight).
+
+---
+
+## M5 — Apple Sign-In silently no-ops when no presentation window (FIXED)
+
+- **Severity:** MED (auth) · **Surface:** iOS (AppleSignInHelper) · **Status:** FIXED (working tree, 2026-10-26, build 102)
+- `presentationAnchor` returned a throwaway `UIWindow()` when no foreground key window was found → the Apple sheet presented over an invisible window and the continuation hung ("button does nothing"). Fix: try the active scene's key window, then any scene's key window, then any window; if truly none, resume the continuation with an error ("Couldn't start Sign in with Apple. Please try again.") so the UI surfaces it, then return a detached anchor only to satisfy the non-optional API.
+
+---
+
+## M4 — "back to login" raced clearFCMToken against signOut (FIXED)
+
+- **Severity:** MED (push/account hygiene) · **Surface:** iOS (ContentView verify-error escape hatch) · **Status:** FIXED (working tree, 2026-10-26, build 102)
+- The escape-hatch button called fire-and-forget `clearFCMToken()` then `signOut()` immediately; `clearFCMTokenAndWait` reads `currentUser?.uid`, which `signOut()` clears first, so the Firestore `fcmToken` delete could be skipped (stale token → pushes to the wrong account). Fix: wrap in a `Task { @MainActor }` and `await clearFCMTokenAndWait()` before `signOut()`, matching every other sign-out path.
+
+---
+
+## M3 — uncancelled 15s sign-in sweep Task can complete after the user leaves (OPEN)
+
+- **Severity:** MED (auth lifecycle) · **Surface:** iOS (SignInView ~296) · **Status:** OPEN, logged 2026-10-26
+- On a 30s email-sign-in timeout, a bare `Task` polls `currentUser` for 15s with no cancellation on disappear. If the user backs out, it can still complete sign-in and `dismiss()` out from under them. Not a cross-account leak (the late `signIn` only sets the just-submitted credential). Fix: store the task, cancel in `.onDisappear`, and require `currentUser` was nil at call start.
+
+---
+
+## M2 — dead DM-cleanup step still runs each account-deletion cascade (OPEN)
+
+- **Severity:** LOW (vestigial) · **Surface:** functions (cleanupUserConversationsForUid ~501) · **Status:** OPEN, logged 2026-10-26
+- DMs were cut (conversations/messages denied in rules), so no convo docs exist, yet every deletion pays a `participants array-contains uid` query, and the comment block still asserts live DM-cleanup semantics. Harmless; drop the step or mark it vestigial.
+
+---
+
+## LOW-BATCH-2026-10-26 — minor review findings (OPEN)
+
+- **Severity:** LOW · **Surface:** iOS/functions · **Status:** OPEN, logged 2026-10-26
+- **L1** — BlockedUsersCache not started on the inline sign-in success paths (SignInView/AppleSignInHelper/SplashView/CreateAccountView start only UserHandleCache; block cache starts via toskaApp.swift:181 auth-state callback). Ordering window where a feed can render before blocks load. Fix: start BlockedUsersCache alongside UserHandleCache on each path.
+- **L2** — New-account rollback orphans the claimed handle-registry entry (AppleSignInHelper ~165/211, parallel Google/email paths): rollback deletes the auth user but not the handle claim, slowly burning handles.
+- **L3** — `FeedViewModel` client filter defaults missing `moderationStatus` to `"live"` (fail-open). Low risk (all posts created with an explicit status); prefer fail-closed.
+- **L5** — `unrepostReply` (PostInteractionManager ~1150) only deletes the deterministic doc and doesn't broadcast `.postDeleted`, unlike `unrepost`; a legacy reply-repost row could linger until refresh.
+- **L4 (nit)** — `SettingsView` ~1060 `var url` should be `let` (compiler warning only).

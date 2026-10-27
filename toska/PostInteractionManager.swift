@@ -1029,7 +1029,7 @@ class PostInteractionManager {
             if !freshReplyAuthorId.isEmpty,
                let authorSnap = try? await db.collection("users").document(freshReplyAuthorId).getDocumentAsync(),
                let authorData = authorSnap.data() {
-                replyAuthorAllowsSharing = authorData["allowSharing"] as? Bool ?? true
+                replyAuthorAllowsSharing = authorData["allowSharing"] as? Bool ?? false // D: fail closed (matches the comment above)
                 if let liveHandle = authorData["handle"] as? String,
                    !liveHandle.isEmpty {
                     resolvedReplyHandle = liveHandle

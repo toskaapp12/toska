@@ -142,17 +142,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // flip; this line applies the stored preference at launch.
             Performance.sharedInstance().isDataCollectionEnabled = Telemetry.isOptedIn
 
-        // Bump URLCache so AsyncImage / GIF reloads don't constantly refetch.
-        // The URLSession default is ~4 MB memory + ~20 MB disk, which a feed
-        // full of Giphy GIFs evicts within a few minutes of scrolling. 50 MB
-        // memory + 200 MB disk holds enough that returning to a screen
-        // doesn't redownload the same media. Numbers are conservative —
-        // iOS aggressively reclaims under memory pressure.
-        URLCache.shared = URLCache(
-            memoryCapacity: 50 * 1024 * 1024,
-            diskCapacity: 200 * 1024 * 1024,
-            diskPath: nil
-        )
+        // URLCache for AsyncImage / GIF media is configured ONCE in init()
+        // (64 MB memory / 256 MB disk). init() runs before this delegate
+        // callback, so a second assignment here previously OVERWROTE the larger
+        // cache with a smaller 50/200 — silently halving it (2026-10-26 fix:
+        // removed the duplicate so the intended 64/256 actually takes effect).
 
         UNUserNotificationCenter.current().delegate = PushNotificationManager.shared
         Messaging.messaging().delegate = PushNotificationManager.shared

@@ -8,7 +8,7 @@ import FirebaseFirestore
 // kept current by the onAllowSharingChanged backfill), so reply-share consent
 // is resolved at TAP time from the author's public allowSharing projection on
 // their user doc. Fail CLOSED: a failed read must never publish someone's
-// words. Missing field mirrors the post-side default (isShareable ?? true).
+// words. Missing field fails CLOSED (not shareable) in the opt-in era (D 2026-10-26).
 enum ShareConsent {
     /// The public share-page link for a post, or nil when no such page exists.
     /// Mirrors the server's render gate in functions/sharePage.js exactly —
@@ -45,7 +45,7 @@ enum ShareConsent {
             let snap = try await Firestore.firestore()
                 .collection("users").document(authorId).getDocumentAsync()
             guard let data = snap.data() else { return false }
-            return data["allowSharing"] as? Bool ?? true
+            return data["allowSharing"] as? Bool ?? false // D: fail closed (opt-in)
         } catch {
             return false
         }

@@ -558,7 +558,7 @@ struct FeedView: View {
                 replies: data["replyCount"] as? Int ?? 0,
                 time: Self.timeAgoString(from: createdAt),
                 authorId: data["authorId"] as? String ?? "",
-                isShareable: data["isShareable"] as? Bool ?? true,
+                isShareable: data["isShareable"] as? Bool ?? false, // D: fail closed (opt-in)
                 originalHandle: data["originalHandle"] as? String,
                 originalAuthorId: data["originalAuthorId"] as? String,
                 originalPostId: data["originalPostId"] as? String,
@@ -1013,6 +1013,15 @@ struct FeedPostRow: View, Equatable {
                                             .padding(.horizontal, 28)
                                             .padding(.top, isLetter ? 30 : 24)
                                             .padding(.bottom, isLetter ? 26 : 18)
+                                            // Own-post tint (2026-10-26): the
+                                            // user's own posts sit on the prompt-
+                                            // card lavender everywhere they're
+                                            // listed. displayedHandleIsOwn is the
+                                            // DISPLAYED author (original author on
+                                            // a repost), so a repost of someone
+                                            // else's post is NOT tinted. promptBg
+                                            // already has a night-mode value.
+                                            .background(displayedHandleIsOwn ? ToskaColor.promptBg : Color.clear)
                                             .contentShape(Rectangle())
                                             .overlay(alignment: .bottom) {
                                                 Rectangle()

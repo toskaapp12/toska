@@ -74,7 +74,16 @@ function isReplyRepostId(id) {
 //   { outcome: "not_found" }
 //   { outcome: "redirect", to: "<originalPostId>" }
 //   { outcome: "render", indexable: boolean }
-function evaluateSharePage(post, nowMs) {
+// authorAllowSharing: the author's LIVE users/{authorId}.allowSharing, fetched
+// by the caller (sharePage / shareCardImage / postsSitemap). B (2026-10-26):
+// post.isShareable is a create-time snapshot; re-checking the author's CURRENT
+// consent here is the real enforcement of the opt-in. It closes three gaps the
+// stored flag can't: (1) a tampered self-stamp (isShareable:true written with
+// allowSharing:false — the posts-create rule is at the 1000-expression ceiling
+// and can't bind them); (2) stored-flag drift after onAllowSharingChanged
+// misses a field-less post; (3) an author who turns sharing off after a post
+// was shared. Pass false when the author doc is missing → fail closed.
+function evaluateSharePage(post, nowMs, authorAllowSharing) {
   if (!post) return { outcome: "not_found" };
 
   // A repost is the same words under a different doc id — send readers (and
@@ -91,6 +100,8 @@ function evaluateSharePage(post, nowMs) {
   // stricter line for public surfaces.
   if (post.moderationStatus !== "live") return { outcome: "not_found" };
   if (post.isShareable !== true) return { outcome: "not_found" };
+  // Author's live consent — not just the post's stored flag (see header).
+  if (authorAllowSharing !== true) return { outcome: "not_found" };
   if (post.isWhisper === true || post.isMidnightPost === true) return { outcome: "not_found" };
   // isLetter (2026-08-05): letters are the most intimate content class and
   // BOTH clients already treat them as never publicly shareable (iOS

@@ -1340,20 +1340,29 @@ struct ComposeView: View {
         // card is a local image that OUTLIVES the post it came from — so a
         // midnight post rendered to a card defeats the disappears-tonight
         // promise exactly the way a whisper card would.
-        let allowSharing = UserHandleCache.shared.allowSharing && !isLetter && !isWhisper && !expiresAtMidnight
-
         Task { @MainActor in
             guard self.isPosting else { return }
 
             // Resolve handle — fall back to Firestore if cache hasn't loaded yet
             let freshHandle = UserHandleCache.shared.handle
             let resolvedHandle: String
+            // A (2026-10-26 consent review): allowSharing now defaults to FALSE
+            // in the cache until the user doc loads (opt-in era). When the cache
+            // is still unloaded (handle == "anonymous") read the real value from
+            // the SAME user-doc snapshot we fetch for the handle — so a genuine
+            // opt-in isn't dropped in the post-sign-in / account-switch window,
+            // and a non-consenting user is never over-shared. Fail closed if the
+            // field is absent.
+            var resolvedAllowSharing = UserHandleCache.shared.allowSharing
             if freshHandle == "anonymous" {
                 let snap = try? await db.collection("users").document(uid).getDocumentAsync()
                 resolvedHandle = snap?.data()?["handle"] as? String ?? "anonymous"
+                resolvedAllowSharing = snap?.data()?["allowSharing"] as? Bool ?? false
             } else {
                 resolvedHandle = freshHandle
             }
+            // Letters/whispers/midnight are never shareable (rationale above).
+            let allowSharing = resolvedAllowSharing && !isLetter && !isWhisper && !expiresAtMidnight
 
             var postData: [String: Any] = [
                             "authorId": uid,
@@ -1523,13 +1532,13 @@ struct ComposeView: View {
 struct StableGifPreview: View {
     let urlString: String
     var maxHeight: CGFloat = 180
-    @State private var data: Data? = nil
+    @State private var image: UIImage? = nil
     @State private var failed = false
 
     var body: some View {
         Group {
-            if let data = data {
-                AnimatedGifImageView(data: data)
+            if let image = image {
+                AnimatedGifImageView(image: image)
                     .frame(maxWidth: .infinity, maxHeight: maxHeight)
                     .cornerRadius(10)
                     .transition(.opacity)
@@ -1565,27 +1574,61 @@ struct StableGifPreview: View {
             }
         }
         .task(id: urlString) {
-            guard let url = URL(string: urlString),
-                  GifLoadGuard.isAllowedHost(url) else {
-                // Unknown/hostile host (a post's gifUrl is attacker-controlled).
-                // Don't download arbitrary URLs — show the failed placeholder.
-                failed = true
+            // Decoded-image cache hit → no network, no re-decode (2026-10-26).
+            if let cached = GifLoadGuard.decodedCache.object(forKey: urlString as NSString) {
+                failed = false
+                image = cached
                 return
             }
+            guard URL(string: urlString) != nil else { failed = true; return }
             failed = false
             do {
-                let (downloaded, _) = try await URLSession.shared.data(from: url)
-                guard downloaded.count <= GifLoadGuard.maxBytes else {
-                    // Oversized payload — abort before decoding to avoid OOM.
-                    failed = true
-                    return
+                // Prefer the WebP variant (smaller/faster to decode); fall back to
+                // the stored .gif if WebP isn't available (404 → nil decode).
+                let webpStr = GifLoadGuard.webpVariant(urlString)
+                var decoded = try await Self.fetchAndDecode(webpStr)
+                if decoded == nil, webpStr != urlString {
+                    decoded = try await Self.fetchAndDecode(urlString)
                 }
-                withAnimation(.easeIn(duration: 0.2)) { data = downloaded }
+                if let decoded {
+                    GifLoadGuard.decodedCache.setObject(decoded, forKey: urlString as NSString)
+                    withAnimation(.easeIn(duration: 0.2)) { image = decoded }
+                } else {
+                    failed = true
+                }
             } catch is CancellationError {
                 // URL changed or view torn down — don't flip to failed.
             } catch {
                 failed = true
             }
+        }
+    }
+
+    // Download + decode OFF the main thread. The per-frame ImageIO decode used to
+    // run synchronously in updateUIView on every scroll (the "slow after
+    // placeholder" jank); now it happens once on a background task and the result
+    // is cached by URL. Host-allowlisted; byte-capped before decoding.
+    static func fetchAndDecode(_ s: String) async throws -> UIImage? {
+        guard let url = URL(string: s), GifLoadGuard.isAllowedHost(url) else { return nil }
+        let (downloaded, _) = try await URLSession.shared.data(from: url)
+        guard downloaded.count <= GifLoadGuard.maxBytes else { return nil }
+        return await Task.detached(priority: .userInitiated) {
+            AnimatedGifImageView.animatedImage(from: downloaded) ?? UIImage(data: downloaded)
+        }.value
+    }
+
+    // Warm an upcoming GIF into the decoded cache (download + decode off the main
+    // thread) so it renders instantly when its row appears — "prefetch a few rows
+    // ahead" (2026-10-26). No-op on a cache hit; low-priority so it never
+    // competes with the visible rows' own loads.
+    static func prefetch(_ urlString: String) {
+        guard GifLoadGuard.decodedCache.object(forKey: urlString as NSString) == nil,
+              URL(string: urlString) != nil else { return }
+        Task.detached(priority: .utility) {
+            let webpStr = GifLoadGuard.webpVariant(urlString)
+            var img: UIImage? = try? await fetchAndDecode(webpStr)
+            if img == nil, webpStr != urlString { img = try? await fetchAndDecode(urlString) }
+            if let img { GifLoadGuard.decodedCache.setObject(img, forKey: urlString as NSString) }
         }
     }
 }
@@ -1601,6 +1644,30 @@ enum GifLoadGuard {
     // Cap decoded frames so a many-frame GIF can't blow memory.
     static let maxFrames = 120
 
+    // Decoded-image cache (2026-10-26): per-frame ImageIO decoding is expensive
+    // and used to re-run on the main thread every time a cell scrolled back on.
+    // Cache the decoded UIImage by URL so a re-appear is a dictionary hit, not a
+    // re-download + re-decode. Bounded so a long scroll can't grow unbounded.
+    static let decodedCache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 60
+        return c
+    }()
+
+    // WebP variant of a giphy rendition URL (".gif" → ".webp"): ~30-50% smaller
+    // and faster to decode, derived from the stored URL so NO data migration is
+    // needed. Only swaps a trailing ".gif" (path end or before a query); the
+    // host-lock still holds (same giphy host). Caller falls back to the .gif if
+    // the webp 404s.
+    static func webpVariant(_ s: String) -> String {
+        guard let r = s.range(of: ".gif", options: .caseInsensitive) else { return s }
+        let after = s[r.upperBound...]
+        if after.isEmpty || after.first == "?" {
+            return s.replacingCharacters(in: r, with: ".webp")
+        }
+        return s
+    }
+
     static func isAllowedHost(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         // Matches giphy.com, media.giphy.com, media0.giphy.com, etc.
@@ -1613,7 +1680,10 @@ enum GifLoadGuard {
 // animatedImage frames, so we have to drop down to UIKit. Single-frame
 // images (PNG/JPG or 1-frame GIFs) fall back to a static UIImage.
 private struct AnimatedGifImageView: UIViewRepresentable {
-    let data: Data
+    // Pre-decoded (2026-10-26): decoding now happens once, off the main thread,
+    // in StableGifPreview — this view just displays the result, so updateUIView
+    // no longer re-decodes every frame on each SwiftUI update / scroll.
+    let image: UIImage
 
     func makeUIView(context: Context) -> UIImageView {
         let v = UIImageView()
@@ -1628,12 +1698,10 @@ private struct AnimatedGifImageView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIImageView, context: Context) {
-        if let animated = Self.animatedImage(from: data) {
-            uiView.image = animated
-            uiView.startAnimating()
-        } else if let still = UIImage(data: data) {
-            uiView.image = still
-        }
+        guard uiView.image !== image else { return }
+        uiView.image = image
+        // animatedImage(with:) sets .images; a still has nil .images.
+        if image.images != nil { uiView.startAnimating() }
     }
 
     static func animatedImage(from data: Data) -> UIImage? {
@@ -1657,17 +1725,28 @@ private struct AnimatedGifImageView: UIViewRepresentable {
     }
 
     static func frameDelay(at index: Int, source: CGImageSource) -> Double {
-        guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
-              let gifProps = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any] else {
             return 0.1
         }
         // Prefer unclamped delay (true source value); fall back to clamped
         // (browsers historically floor very-low delays around 10ms).
-        if let unclamped = gifProps[kCGImagePropertyGIFUnclampedDelayTime] as? Double, unclamped > 0 {
-            return unclamped
+        if let gifProps = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] {
+            if let unclamped = gifProps[kCGImagePropertyGIFUnclampedDelayTime] as? Double, unclamped > 0 {
+                return unclamped
+            }
+            if let clamped = gifProps[kCGImagePropertyGIFDelayTime] as? Double, clamped > 0 {
+                return clamped
+            }
         }
-        if let clamped = gifProps[kCGImagePropertyGIFDelayTime] as? Double, clamped > 0 {
-            return clamped
+        // Animated WebP (2026-10-26): we now serve the .webp rendition, whose
+        // per-frame delays live under the WebP dictionary, not the GIF one.
+        if let webpProps = props[kCGImagePropertyWebPDictionary] as? [CFString: Any] {
+            if let unclamped = webpProps[kCGImagePropertyWebPUnclampedDelayTime] as? Double, unclamped > 0 {
+                return unclamped
+            }
+            if let clamped = webpProps[kCGImagePropertyWebPDelayTime] as? Double, clamped > 0 {
+                return clamped
+            }
         }
         return 0.1
     }

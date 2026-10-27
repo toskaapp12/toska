@@ -915,12 +915,22 @@ exports.onAllowSharingChanged = onDocumentUpdated("users/{userId}", async (event
     }
     return n;
   };
-  const ownSnap = await db.collection("posts")
-    .where("authorId", "==", uid).where("isRepost", "==", false).get();
+  // C (2026-10-26): query by authorId ONLY and branch on isRepost in code.
+  // The old `.where("isRepost","==",false)` silently skipped any original post
+  // written WITHOUT the isRepost field — Firestore equality does not match a
+  // missing field — so a revocation never retracted those (a tampered or
+  // legacy field-less post stayed shareable after the author turned sharing
+  // off). `isRepost !== true` is the correct "original post" test, and the
+  // reposter's own reposts of OTHER people's posts are left untouched (their
+  // isShareable is pinned to the ORIGINAL author's consent, handled by the
+  // originalAuthorId leg below).
+  const ownAllSnap = await db.collection("posts")
+    .where("authorId", "==", uid).get();
+  const ownDocs = ownAllSnap.docs.filter((d) => d.data().isRepost !== true);
   // isMidnightPost joins the exclusion (2026-08-06): turning sharing back ON
   // must not re-stamp an expiring post as shareable, same reasoning as
   // whispers — a share card outlives the post.
-  const own = await apply(ownSnap,
+  const own = await apply({ docs: ownDocs },
     (d) => after && d.isLetter !== true && d.isWhisper !== true && d.isMidnightPost !== true);
   if (own === -1) {
     console.log(`onAllowSharingChanged(${uid}): stale delivery (setting changed again) — aborted`);
@@ -932,7 +942,7 @@ exports.onAllowSharingChanged = onDocumentUpdated("users/{userId}", async (event
   // those flags, but every original is in the own-posts snapshot above —
   // collect the unshareable ids there instead of paying a get() per repost.
   const unshareableOriginals = new Set();
-  for (const doc of ownSnap.docs) {
+  for (const doc of ownDocs) {
     const d = doc.data();
     if (d.isLetter === true || d.isWhisper === true) unshareableOriginals.add(doc.id);
   }
@@ -2402,6 +2412,26 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
           || !/^\d{4}-\d{2}-\d{2}$/.test(postData.promptDate))) {
     console.warn(`validatePost ${postId}: stripping malformed promptDate (${typeof postData.promptDate}, ${String(postData.promptDate).length} chars)`);
     await db.collection("posts").doc(postId).update({ promptDate: FieldValue.delete() });
+  }
+
+  // B (2026-10-26 consent review) re-stamp: enforce the author's opt-in
+  // server-side so the in-app share button — which reads the stored
+  // isShareable flag — respects it too. The posts-create rule is at
+  // Firestore's 1000-expression ceiling and cannot bind isShareable to
+  // allowSharing (see issues/BUGS.md), so a tampered client can write
+  // isShareable:true while its allowSharing is false. Here we clear it when
+  // the author's live consent isn't on. ORIGINAL posts only — reposts already
+  // pin isShareable to the ORIGINAL author's consent at the rule layer
+  // (firestore.rules repost branches), so the reposter's setting must not
+  // override that. The public render surfaces re-check consent live as a
+  // backstop; this just keeps the stored flag honest for the client.
+  if (postData.isRepost !== true && postData.isShareable === true
+      && typeof postData.authorId === "string") {
+    const authorSnap = await db.collection("users").doc(postData.authorId).get();
+    if (!(authorSnap.exists && authorSnap.data().allowSharing === true)) {
+      console.warn(`validatePost ${postId}: clearing isShareable — author ${postData.authorId} has sharing off`);
+      await db.collection("posts").doc(postId).update({ isShareable: false });
+    }
   }
 
   // Reposts now run through their own validation path. Previously this
@@ -5068,6 +5098,23 @@ exports.giphyProxy = onCall(
 // (the site calls the raw cloudfunctions.net URL — nothing fronts it, so the
 // s-maxage header alone caps nothing; the memo makes repeat hits within 10
 // minutes cost zero Firestore reads per warm instance).
+// B (2026-10-26): the author's LIVE sharing consent, the real enforcement of
+// the opt-in on every public surface. post.isShareable is only a create-time
+// snapshot; each public endpoint re-checks the author's CURRENT allowSharing so
+// a post never renders publicly when consent is (or has become) off. Fails
+// closed: missing author doc or field → false. The posts-create rule can't bind
+// isShareable→allowSharing (it's at the 1000-expression ceiling), so this
+// render-time gate — plus the onPostCreated re-stamp — is where the opt-in is
+// enforced. See issues/BUGS.md (rules-expression-ceiling tech debt).
+async function authorAllowsSharing(post) {
+  const uid = post && post.authorId;
+  if (!uid || typeof uid !== "string") return false;
+  try {
+    const u = await db.collection("users").doc(uid).get();
+    return u.exists && u.data().allowSharing === true;
+  } catch (e) { return false; }
+}
+
 let publicFeedMemo = { at: 0, body: null };
 exports.publicFeed = onRequest(
   { cors: ["https://toskaapp.com", "https://www.toskaapp.com"] },
@@ -5095,10 +5142,23 @@ exports.publicFeed = onRequest(
       const posts = [];
       const docs = [...snap.docs].sort((a, b) =>
         (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0));
+      // B (2026-10-26): author's LIVE allowSharing, batched (one getAll). Mirrors
+      // the sitemap/sharePage gate — isShareable is a stale snapshot, so re-check
+      // current consent before publishing to the marketing feed.
+      const authorIds = [...new Set(
+        docs.map((d) => d.data().authorId).filter((x) => typeof x === "string")
+      )];
+      const allowMap = new Map();
+      if (authorIds.length) {
+        const refs = authorIds.map((id) => db.collection("users").doc(id));
+        const userSnaps = await db.getAll(...refs);
+        for (const us of userSnaps) allowMap.set(us.id, us.exists && us.data().allowSharing === true);
+      }
       for (const doc of docs) {
         const d = doc.data();
         if (d.moderationStatus !== "live") continue;
         if (d.isRepost === true || d.isShareable !== true) continue;
+        if (allowMap.get(d.authorId) !== true) continue; // live consent (B)
         if (d.isWhisper === true || d.isMidnightPost === true) continue;
         // Letters too (2026-08-06): sharePage.js gates them off /p/ pages, but
         // this feed never did — so a curated letter would publish to
@@ -5186,7 +5246,8 @@ exports.sharePage = onRequest(async (req, res) => {
       return;
     }
     const snap = await db.collection("posts").doc(postId).get();
-    const verdict = share.evaluateSharePage(snap.exists ? snap.data() : null, Date.now());
+    const post0 = snap.exists ? snap.data() : null;
+    const verdict = share.evaluateSharePage(post0, Date.now(), await authorAllowsSharing(post0));
     if (verdict.outcome === "redirect") {
       // Backstop for a repost doc whose id somehow doesn't match the
       // deterministic shape (shouldn't exist; rules pin the id format).
@@ -5245,7 +5306,8 @@ exports.shareCardImage = onRequest({ memory: "512MiB" }, async (req, res) => {
       return;
     }
     const snap = await db.collection("posts").doc(postId).get();
-    const verdict = share.evaluateSharePage(snap.exists ? snap.data() : null, Date.now());
+    const post0 = snap.exists ? snap.data() : null;
+    const verdict = share.evaluateSharePage(post0, Date.now(), await authorAllowsSharing(post0));
     if (verdict.outcome !== "render") {
       // Reposts included: the page 301s to the original, whose og:image is
       // the original's card — a card for the repost id has no consumer.
@@ -5283,11 +5345,23 @@ exports.postsSitemap = onRequest(async (req, res) => {
       .limit(500)
       .get();
     const now = Date.now();
+    // B (2026-10-26): batch the authors' live allowSharing so the sitemap also
+    // drops a post whose author's consent is off, with one getAll (not N reads).
+    const authorIds = [...new Set(
+      snap.docs.map((d) => d.data().authorId).filter((x) => typeof x === "string")
+    )];
+    const allowMap = new Map();
+    if (authorIds.length) {
+      const refs = authorIds.map((id) => db.collection("users").doc(id));
+      const userSnaps = await db.getAll(...refs);
+      for (const us of userSnaps) allowMap.set(us.id, us.exists && us.data().allowSharing === true);
+    }
     const entries = [];
     for (const doc of snap.docs) {
-      const verdict = share.evaluateSharePage(doc.data(), now);
+      const d = doc.data();
+      const verdict = share.evaluateSharePage(d, now, allowMap.get(d.authorId) === true);
       if (verdict.outcome === "render" && verdict.indexable) {
-        entries.push({ postId: doc.id, createdAtMs: doc.data().createdAt?.toMillis?.() });
+        entries.push({ postId: doc.id, createdAtMs: d.createdAt?.toMillis?.() });
       }
     }
     res.set("Content-Type", "application/xml; charset=utf-8");
@@ -6095,6 +6169,15 @@ exports.notifyAdminsOfNewReport = onDocumentCreated(
 // delivers to the account owner (real users would get nothing). RESET_FROM stays
 // on the onboarding domain until the DNS flip. See RESET-EMAIL in BUGS.md.
 // ============================================================
+/* PARKED (2026-10-26): sendBrandedPasswordReset is NOT exported until Resend is
+   configured — see RESET-EMAIL in BUGS.md. Kept here verbatim for reference, but
+   commented out as a block so its defineSecret(RESEND_API_KEY) /
+   defineString(RESET_FROM) do NOT register params at module load — otherwise
+   every `firebase deploy` demands a RESEND_API_KEY secret + RESET_FROM value,
+   even when deploying unrelated functions. To re-enable: uncomment this block,
+   restore the `exports.` prefix, set the RESEND_API_KEY secret, and verify the
+   Resend domain (spf/dkim/dmarc pass) before pointing prod clients at it.
+
 const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 // Flip to "toska <noreply@toskaapp.com>" ONLY after Resend domain verification.
 const RESET_FROM = defineString("RESET_FROM", { default: "toska <onboarding@resend.dev>" });
@@ -6168,6 +6251,8 @@ function resetEmailHtml(url) {
 <p style="font-size:13px;color:#8a8498;margin:18px 0 0">— toska</p>
 </td></tr></table></td></tr></table></body></html>`;
 }
+*/
+// END PARKED sendBrandedPasswordReset (see RESET-EMAIL in BUGS.md)
 
 // ============================================================
 // Crisis-page delivery watchdog (2026-10-23)

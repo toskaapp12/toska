@@ -561,12 +561,12 @@ struct PostDetailView: View {
                             .padding(.horizontal, 28)
                             .padding(.top, 18)
                             .padding(.bottom, 14)
-                            // Own-post tint (2026-10-26): the opened post sits on
-                            // the prompt-card lavender when it's yours, matching
-                            // the feed row. The detail view renders an original
-                            // post, so isOwnPost (authorUserId == me) is the
-                            // displayed-author test. promptBg has a night value.
-                            .background(isOwnPost ? ToskaColor.promptBg : Color.clear)
+                            // Own-post surface (2026-10-27): the opened post sits
+                            // on the white card (neutral lifted surface at night)
+                            // when it's yours, matching the feed row. The detail
+                            // view renders an original post, so isOwnPost
+                            // (authorUserId == me) is the displayed-author test.
+                            .background(isOwnPost ? ToskaColor.ownPostBg : Color.clear)
 
                         // Hairline + "27 REPLIES" eyebrow (design 2026-09-16).
                         Rectangle().fill(ToskaColor.divider).frame(height: 1)

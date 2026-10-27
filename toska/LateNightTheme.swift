@@ -163,6 +163,16 @@ struct LateNightTheme {
     static var promptEyebrow: Color { isLateNight ? Color(hex: "B2A3DE") : Color(hex: "534477") }
     static var promptInk: Color     { isLateNight ? Color(hex: "E9E6EF") : Color(hex: "221D2F") }
 
+    // Own-post surface (2026-10-27): white card on the stone paper by day; a
+    // slightly lifted NEUTRAL surface at night (oklch 0.265 0.012 298) so it
+    // reads apart from the purple-tinted prompt band. Mirrors --own-bg /
+    // --own-hair in webapp/styles.css. Was promptBg, which blended with the
+    // prompt card when your post sat directly under it.
+    static var ownPostBg: Color     { isLateNight ? Color(hex: "26242A") : Color(hex: "FFFFFF") }
+    static var ownPostHair: Color   { isLateNight ? divider2 : divider }
+    // Soft lift under the white card; invisible on dark, so nil at night.
+    static var ownPostShadow: Color { isLateNight ? Color.clear : Color(hex: "3A2D5C").opacity(0.07) }
+
     // Timestamp / meta tertiary, badge, and scrim
     static var timeText: Color { isLateNight ? Color(hex: "6A6770") : Color(hex: "87848F") }
     static var badge: Color    { Color.toskaWhisperPink }

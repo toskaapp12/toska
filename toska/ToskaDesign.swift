@@ -147,6 +147,9 @@ enum ToskaColor {
     static var promptHair: Color    { LateNightTheme.promptHair }
     static var promptEyebrow: Color { LateNightTheme.promptEyebrow }
     static var promptInk: Color     { LateNightTheme.promptInk }
+    static var ownPostBg: Color     { LateNightTheme.ownPostBg }      // own-post white card (2026-10-27)
+    static var ownPostHair: Color   { LateNightTheme.ownPostHair }
+    static var ownPostShadow: Color { LateNightTheme.ownPostShadow }
 }
 
 // MARK: - Emotion Tag Tints

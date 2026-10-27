@@ -5,6 +5,14 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
+
+- **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)
+- **Finding (owner, build 102):** the own-post tint reused `promptBg`, so an own post directly under the daily prompt merged with it into one purple block.
+- **Fix:** own posts become a **white card** (`#FFFFFF`) on the stone paper by day, with the standard bottom hairline and a faint lift shadow (1px/2px, ink-violet 7%); at night a slightly lifted **neutral** surface (`oklch(0.265 0.012 298)` ≈ `#26242A`, no shadow, hair-2 bottom hairline) so it sits apart from the purple-tinted prompt band. Tokens: web `--own-bg/--own-hair/--own-shadow`; iOS `LateNightTheme.ownPostBg/ownPostHair/ownPostShadow` (ToskaColor aliases). Scope unchanged: displayed author == me only; reposts of others untouched; own-handle accent color kept.
+
+---
+
 ## SEC-UUID — HIGH uuid advisory (GHSA-w5hq-g745-h8pq) via gaxios in Cloud Functions
 
 - **Severity:** HIGH advisory, but **not reachable** in our usage · **Surface:** functions (CI Security Watch "Dependency vulnerability scan") · **Status:** RESOLVED — lockfile fix committed (c2f0dcf) + functions deployed to staging + prod 2026-10-25; Security Watch green

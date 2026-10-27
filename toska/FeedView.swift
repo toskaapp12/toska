@@ -1013,19 +1013,25 @@ struct FeedPostRow: View, Equatable {
                                             .padding(.horizontal, 28)
                                             .padding(.top, isLetter ? 30 : 24)
                                             .padding(.bottom, isLetter ? 26 : 18)
-                                            // Own-post tint (2026-10-26): the
-                                            // user's own posts sit on the prompt-
-                                            // card lavender everywhere they're
-                                            // listed. displayedHandleIsOwn is the
-                                            // DISPLAYED author (original author on
-                                            // a repost), so a repost of someone
-                                            // else's post is NOT tinted. promptBg
-                                            // already has a night-mode value.
-                                            .background(displayedHandleIsOwn ? ToskaColor.promptBg : Color.clear)
+                                            // Own-post surface (2026-10-27): the
+                                            // user's own posts sit on a white card
+                                            // (neutral lifted surface at night)
+                                            // everywhere they're listed — was the
+                                            // prompt lavender, which merged with
+                                            // the prompt card. displayedHandleIsOwn
+                                            // is the DISPLAYED author (original
+                                            // author on a repost), so a repost of
+                                            // someone else's post is NOT tinted.
+                                            .background(
+                                                Rectangle()
+                                                    .fill(displayedHandleIsOwn ? ToskaColor.ownPostBg : Color.clear)
+                                                    .shadow(color: displayedHandleIsOwn ? ToskaColor.ownPostShadow : Color.clear, radius: 2, x: 0, y: 1)
+                                            )
+                                            .zIndex(displayedHandleIsOwn ? 1 : 0)
                                             .contentShape(Rectangle())
                                             .overlay(alignment: .bottom) {
                                                 Rectangle()
-                                                    .fill(ToskaColor.divider)
+                                                    .fill(displayedHandleIsOwn ? ToskaColor.ownPostHair : ToskaColor.divider)
                                                     .frame(height: 1)
                                             }
                 .contextMenu {

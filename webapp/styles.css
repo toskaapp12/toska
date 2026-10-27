@@ -24,6 +24,12 @@
     --prompt-ink: oklch(0.245 0.035 298);
     --danger: oklch(0.55 0.13 25);
     --shadow-lift: 0 12px 34px -14px oklch(0.325 0.048 300 / 0.30);
+    /* own-post surface (2026-10-27): a white card on the stone paper. Was the
+       prompt-card lavender, which blended with the prompt when your post sat
+       right under it. Night: a slightly lifted NEUTRAL surface (no shadow). */
+    --own-bg: #ffffff;
+    --own-hair: var(--hair);
+    --own-shadow: 0 1px 2px oklch(0.325 0.048 300 / 0.07);
     /* legacy aliases still referenced by a few rules */
     --ground: var(--paper); --card: var(--paper); --hairline: var(--hair);
     --plum: var(--accent); --plum-soft: var(--accent-text); --night: oklch(0.19 0.015 298);
@@ -46,6 +52,7 @@
     --accent: oklch(0.72 0.090 294); --accent-text: oklch(0.78 0.090 294); --on-accent: oklch(0.19 0.015 298);
     --prompt-bg: oklch(0.24 0.030 300); --prompt-hair: oklch(0.30 0.032 300);
     --prompt-eyebrow: oklch(0.75 0.085 296); --prompt-ink: oklch(0.93 0.012 300);
+    --own-bg: oklch(0.265 0.012 298); --own-hair: var(--hair-2); --own-shadow: none;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -173,11 +180,17 @@ header.app .actions { display: flex; gap: 14px; align-items: center; }
     transition: background 0.15s ease;
 }
 a.post-row:hover { background: var(--paper-3); }
-/* own posts get the prompt-card lavender (2026-10-26) — reuses --prompt-bg so
-   night mode is already handled; own hover keeps the tint instead of flipping
-   to stone. Not applied to reposts of other people's posts (see postRow). */
-.post-row.mine { background: var(--prompt-bg); border-bottom-color: var(--prompt-hair); }
-a.post-row.mine:hover { background: var(--prompt-bg); filter: brightness(0.985); }
+/* own posts sit on a white card (2026-10-27; was prompt lavender, which merged
+   with the prompt card). --own-* carry the night values; the soft shadow lifts
+   the band over the next row (z-index so it paints above the sibling). Own
+   hover keeps the surface instead of flipping to stone. Not applied to reposts
+   of other people's posts (see postRow). */
+.post-row.mine {
+    position: relative; z-index: 1;
+    background: var(--own-bg); border-bottom-color: var(--own-hair); box-shadow: var(--own-shadow);
+}
+a.post-row.mine:hover { background: var(--own-bg); filter: brightness(0.985); }
+[data-theme="night"] a.post-row.mine:hover { filter: brightness(1.08); }
 .post-text { font-size: 18.5px; line-height: 1.62; color: var(--ink); white-space: pre-wrap; word-break: break-word; text-wrap: pretty; }
 .post-meta {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

@@ -891,7 +891,7 @@ function viewSignIn() {
 function viewSignUp() {
     setChrome(true);
     const email = el("input", { type: "email", autocomplete: "email", placeholder: "you@example.com" });
-    const pw = el("input", { type: "password", autocomplete: "new-password", placeholder: "at least 6 characters" });
+    const pw = el("input", { type: "password", autocomplete: "new-password", placeholder: "at least 8 characters" });
     const adult = el("input", { type: "checkbox", id: "adultCk", style: "width:auto;" });
     const terms = el("input", { type: "checkbox", id: "termsCk", style: "width:auto;" });
     const share = el("input", { type: "checkbox", id: "shareCk", style: "width:auto;" }); // B94-W: opt-in, unchecked
@@ -901,6 +901,9 @@ function viewSignUp() {
         err.replaceChildren();
         if (!adult.checked) { err.replaceChildren(errorBox("toska is for adults — please confirm you're 18 or older.")); return; }
         if (!terms.checked) { err.replaceChildren(errorBox("please read and accept the terms and privacy policy to continue.")); return; }
+        // Match the server password policy (8-char minimum) with a clear message
+        // up front, instead of letting the backend return a vaguer error.
+        if ((pw.value || "").length < 8) { err.replaceChildren(errorBox("password must be at least 8 characters.")); return; }
         btn.disabled = true;
         btn.textContent = "setting up your space…"; // perf 2026-10-26: honest cover for the residual setup time
         signupInProgress = true;
@@ -928,7 +931,7 @@ function viewSignUp() {
         } catch (e) {
             signupInProgress = false;
             const m = e?.code === "auth/email-already-in-use" ? "that email already has an account — sign in instead."
-                : e?.code === "auth/weak-password" ? "password needs at least 6 characters."
+                : /weak-password|password-does-not-meet-requirements/.test(e?.code ?? "") ? "password must be at least 8 characters."
                 : /invalid-email|missing-email/.test(e?.code ?? "") ? "that email doesn't look right."
                 : /network-request-failed/.test(e?.code ?? "") ? "you're offline. try again when you're back."
                 : GENERIC_ERR;
@@ -969,13 +972,41 @@ el("p", { class: "note", style: "margin-top:16px;" },
     );
 }
 
+// Handle word lists — SHARED with iOS (ContentModeration.swift
+// handleAdjectives / handleNouns). Keep these IN SYNC with that file: new web
+// accounts now get the same "{adjective}_{noun}_{1-999}" handles as iOS
+// (2026-10-27), instead of the old anonymous_<uuid> format.
+const HANDLE_ADJECTIVES = [
+    "quiet", "still", "soft", "lost", "tired", "gentle", "fading", "sleepless",
+    "distant", "hollow", "heavy", "broken", "wandering", "waiting", "restless",
+    "silent", "lonely", "aching", "drifting", "numb", "awake", "unsaid", "almost",
+    "barely", "dimly", "slowly", "sadly", "deeply", "half", "nearly",
+];
+const HANDLE_NOUNS = [
+    "ghost", "echo", "rain", "shadow", "light", "heart", "moon", "night",
+    "storm", "drift", "flame", "cloud", "wave", "stone", "dust", "ember",
+    "frost", "shore", "wound", "blur", "haze", "tide", "spark", "soul",
+    "dream", "ache", "sigh", "dark", "glow", "void",
+];
+function randomWordHandle(maxNum = 999) {
+    const a = HANDLE_ADJECTIVES[Math.floor(Math.random() * HANDLE_ADJECTIVES.length)];
+    const n = HANDLE_NOUNS[Math.floor(Math.random() * HANDLE_NOUNS.length)];
+    return `${a}_${n}_${Math.floor(Math.random() * maxNum) + 1}`;
+}
+
 async function claimHandleAndCreateUserDoc(uid, allowSharing = false) {
-    for (let attempt = 0; attempt < 4; attempt++) {
-        const handle = "anonymous_" + crypto.randomUUID().replaceAll("-", "").slice(0, 8);
-        // No availability pre-read: handles/{h} gets are admin-only now
-        // (2026-10-07 de-anon fix — the registry was point-get enumerable).
-        // The batched create below is the arbiter, as it always was: a
-        // collision fails the commit and we retry with a fresh candidate.
+    for (let attempt = 0; attempt < 5; attempt++) {
+        // Word-pair handle matching iOS. The batched create below is the
+        // uniqueness arbiter (handles/{h} gets are admin-only since the
+        // 2026-10-07 de-anon fix, so no pre-read). Only the FINAL attempt falls
+        // back to a UUID handle so signup can't hard-fail on the vanishingly
+        // unlikely event of 4 collisions (30×30×999 ≈ 900k combos).
+        // Last-resort fallback (after 4 word-pair collisions — ≈impossible at
+        // 30×30×999 ≈ 900k combos) stays WORD-BASED: never anonymous_. A wide
+        // 6-digit number (30×30×900k ≈ 810M combos) makes it collision-proof.
+        const handle = attempt < 4
+            ? randomWordHandle()
+            : randomWordHandle(999999);
         const batch = writeBatch(db);
         batch.set(doc(db, "users", uid), {
             handle,
@@ -990,7 +1021,7 @@ async function claimHandleAndCreateUserDoc(uid, allowSharing = false) {
         });
         batch.set(doc(db, "handles", handle.toLowerCase()), { uid });
         try { await batch.commit(); return handle; }
-        catch (e) { if (attempt === 3) throw e; }
+        catch (e) { if (attempt === 4) throw e; }
     }
     throw new Error("could not claim a handle");
 }

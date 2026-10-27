@@ -340,6 +340,60 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ---
 
+## WEB-AUTH-LATENCY — slow web sign-in/sign-up (step 1 FIXED; minInstances DECLINED)
+
+- **Severity:** perf · **Surface:** web (app.js) + functions · **Status:** step 1 SHIPPED prod 2026-10-26 (c246d6a); minInstances **decided AGAINST** (owner, 2026-10-26)
+- **Symptom:** web sign-in paused a beat; sign-up sat ~10s on the same screen.
+- **Root cause:** reCAPTCHA Enterprise App Check token was minted lazily on the
+  first attested call (the submit click), not on page load; signup additionally
+  waited on two cold-start functions in the account-creation critical path
+  (`blockBannedSignups` beforeUserCreated, `confirmAdult` callable).
+- **Step 1 shipped:** (a) warm App Check — mint a token at page load so it's
+  ready by submit; (b) "setting up your space…" progress message on signup;
+  (c) un-await `confirmAdult` and retry it in-session (safe: the 18+ gate is
+  enforced server-side — posts AND replies create rules require
+  `hasConfirmedAdult()`, firestore.rules:1154/1615, and `confirmedAdult` is
+  server-owned, so routing can't bypass the age check).
+- **minInstances — DECLINED (owner 2026-10-26):** after the warm-up, sign-in is
+  noticeably faster, so the App Check mint was the dominant cost, not function
+  cold starts. Not worth ~$6–12/mo for always-warm `blockBannedSignups` +
+  `confirmAdult`. **Revisit only if** signup feels slow again in the 5–10s range
+  (that would point back at those two cold starts); then `minInstances: 1` on
+  just those two is the fix. Sign-in is unaffected by minInstances (no blocking
+  function on that path).
+
+---
+
+## WEB-PW-8 — web signup accepted 7-char passwords / unclear message (FIXED)
+
+- **Severity:** MED (auth policy mismatch) · **Surface:** web (app.js) · **Status:** FIXED 2026-10-27 (staging-verified; prod pending owner approval)
+- Found in the 2026-10-27 full-app-test pass: web signup had no client length check, the placeholder said "at least 6 characters", and the weak-password error mapped to "…at least 6", contradicting the server's 8-char policy.
+- **Fix:** placeholder → "at least 8 characters"; client-side `pw.length < 8` guard with "password must be at least 8 characters."; weak-password / password-does-not-meet-requirements error mapped to the same 8-char message. Staging-verified: 7-char blocked with the correct message.
+
+---
+
+## WEB-HANDLE-FORMAT — web accounts got anonymous_<uuid> instead of word-pair handles (FIXED, new accounts)
+
+- **Severity:** MED (cross-surface parity / brand) · **Surface:** web (app.js) · **Status:** FIXED 2026-10-27 for NEW accounts (staging-verified: `sadly_wound_916`); prod pending owner approval
+- Web `claimHandleAndCreateUserDoc` generated `anonymous_<uuid8>`; iOS generates `{adjective}_{noun}_{1-999}`. Fix ports the EXACT iOS word lists (ContentModeration.swift handleAdjectives/handleNouns, 30+30 — keep in sync) to app.js `HANDLE_ADJECTIVES`/`HANDLE_NOUNS` + `randomWordHandle()`; same batched handles/{h} registry claim; the last-resort fallback after 4 collisions (≈900k combos) stays WORD-BASED with a wide 6-digit number (`randomWordHandle(999999)`) — **never anonymous_** (owner 2026-10-27) — so signup can't hard-fail and no anonymous_ handles are ever minted.
+- **Existing prod `anonymous_` handles: 3 of 11 users** (3 registry rows) — the web-created accounts. **NOT migrated** — only new accounts change. Migrating the 3 would ripple through the handle registry + byline pins; left for a separate owner decision.
+
+---
+
+## APPCHECK-STAGING-DEBUG — iOS simulator App Check debug token registered (STAGING ONLY)
+
+- **Severity:** test infra · **Surface:** iOS UI tests vs staging · **Status:** DONE 2026-10-27
+- The iOS simulator uses `AppCheckDebugProviderFactory` (toskaApp.swift:87); its debug token wasn't registered, so authenticated UI tests stalled at "Feed didn't load after sign-in". Registered the sim's token (`D1C03947-…`) as a debug token on the **staging** iOS app only (`projects/260913424323/apps/1:260913424323:ios:a6631554b2614bed01ff76`, displayName sim-uitest-2026-10-27). **Never registered for prod.** Also documented the UI-test gotchas: run `-parallel-testing-enabled NO` (clone keychain -34018) and pass creds as `TEST_RUNNER_`-prefixed env vars.
+
+---
+
+## DELETION-CASCADE — §11 GDPR cascade verified clean (2026-10-27)
+
+- **Severity:** verification · **Surface:** functions (staging) · **Status:** PASS 2026-10-27
+- `firestore-tests/deletion-cascade.mjs` (live staging): after deleting users/V, NO residue — V's post, reply, like, repost, user subtree, O's follower/following entries for V, and V's report all removed; O.followerCount correctly decremented to 0.
+
+---
+
 ## M5 — Apple Sign-In silently no-ops when no presentation window (FIXED)
 
 - **Severity:** MED (auth) · **Surface:** iOS (AppleSignInHelper) · **Status:** FIXED (working tree, 2026-10-26, build 102)

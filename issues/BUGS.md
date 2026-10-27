@@ -382,8 +382,27 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 ## APPCHECK-STAGING-DEBUG — iOS simulator App Check debug token registered (STAGING ONLY)
 
-- **Severity:** test infra · **Surface:** iOS UI tests vs staging · **Status:** DONE 2026-10-27
-- The iOS simulator uses `AppCheckDebugProviderFactory` (toskaApp.swift:87); its debug token wasn't registered, so authenticated UI tests stalled at "Feed didn't load after sign-in". Registered the sim's token (`D1C03947-…`) as a debug token on the **staging** iOS app only (`projects/260913424323/apps/1:260913424323:ios:a6631554b2614bed01ff76`, displayName sim-uitest-2026-10-27). **Never registered for prod.** Also documented the UI-test gotchas: run `-parallel-testing-enabled NO` (clone keychain -34018) and pass creds as `TEST_RUNNER_`-prefixed env vars.
+- **Severity:** test infra · **Surface:** iOS UI tests vs staging · **Status:** DONE 2026-10-27 (fixed-token setup)
+- The iOS simulator uses `AppCheckDebugProviderFactory` (toskaApp.swift:87, `#if DEBUG` only — Release uses AppAttestProviderFactory and NEVER reads FIRAAppCheckDebugToken). Authenticated UI tests stalled at "Feed didn't load after sign-in" because the debug token wasn't registered — and `xcodebuild test` reinstalls the app each run, rotating the token, so a one-off captured token never sticks.
+- **Repeatable setup (fixed token):**
+  1. A fixed UUID lives in the gitignored `~/Desktop/toska/.local-credentials.md` as `TOSKA_STAGING_APPCHECK_DEBUG_TOKEN=<uuid>` (NOT committed — repo is public).
+  2. It's registered as a debug token on the **staging** iOS app ONLY: `projects/260913424323/apps/1:260913424323:ios:a6631554b2614bed01ff76/debugTokens` (displayName `sim-uitest-fixed`). **Never prod.** (The old rotating `sim-uitest-2026-10-27` token was deleted.)
+  3. `build/ios-uitest.sh` exports `TEST_RUNNER_FIRAAppCheckDebugToken` (read from the creds file); XCTest forwards `TEST_RUNNER_`-prefixed vars to the runner, and each auth test class's `setUpWithError` calls `applyAppCheckDebugToken(app)` (WalkthroughUITests.swift) to put it in `app.launchEnvironment["FIRAAppCheckDebugToken"]` for the DEBUG debug-provider.
+- Also: run `-parallel-testing-enabled NO` (clone keychain -34018) and pass staging creds as `TEST_RUNNER_TOSKA_EMAIL` / `TEST_RUNNER_TOSKA_STAGING_TEST_PW`.
+
+---
+
+## IOS-SIM-AUTH-FEED — authenticated iOS UI tests don't load the feed on the simulator (post-launch test-infra)
+
+- **Severity:** test-infra (NOT a product bug) · **Surface:** iOS XCUITest vs staging · **Status:** OPEN, deferred post-launch 2026-10-27. **Authenticated iOS flows are tested BY HAND on a real device for now.**
+- **Symptom:** every authenticated UI test (`WalkthroughUITests.test02_login`, `test02z_coldLaunchFeedRenders`, all `CrossSurfaceTests`, `ShareCardInteractionTests`) fails at "Feed didn't load after sign-in." Sign-in (Auth) succeeds; the feed never populates in the simulator. Web sign-in loads the feed fine on the same staging backend, so **the data/rules are correct — this is simulator-specific.**
+- **What I learned (2026-10-27), ruling out App Check:**
+  - The simulator's debug token does NOT rotate — it persists in the app container (`D1C03947…`) across `xcodebuild test` reinstalls.
+  - Registering that exact token for staging (run `by759021c`) did **not** fix the feed load.
+  - A fixed injected token (`FIRAAppCheckDebugToken` via `launchEnvironment`) was **ignored** — the persisted UserDefaults token wins unless the container is erased first.
+  - Both paths → identical "Feed didn't load." **So App Check registration is not the fix**; the blocker is deeper (matches the long-standing "simulator has ~4 stacked App Check issues" note).
+- **Non-auth iOS tests pass** (splash, logged-out feed, sign-in/create-account flow existence, launch, perf, sign-out, probe) — those remain useful CI/local signal.
+- **Next steps (post-launch):** either run the auth UI tests on a **registered real device** (reliable), or, to make the simulator path work, `simctl erase` before the run so the injected fixed token is used AND dig into why the feed listener doesn't populate under the debug App Check provider. The harness is ready for a real device (fixed token registered; `applyAppCheckDebugToken` hook wired into every auth test class).
 
 ---
 
@@ -391,6 +410,15 @@ moderation) all confirmed working on 93; these two are cosmetic/feedback polish.
 
 - **Severity:** verification · **Surface:** functions (staging) · **Status:** PASS 2026-10-27
 - `firestore-tests/deletion-cascade.mjs` (live staging): after deleting users/V, NO residue — V's post, reply, like, repost, user subtree, O's follower/following entries for V, and V's report all removed; O.followerCount correctly decremented to 0.
+
+---
+
+## CRISIS-TEST-CLEANUP — automated crisis test tripped the staging watchdog (FIXED)
+
+- **Severity:** test hygiene (false crisis alert) · **Surface:** staging crisis watchdog · **Status:** FIXED 2026-10-27
+- **What happened:** the 2026-10-27 full-app-test `fulltest-backend-probe` created a crisis post to verify it's held. The crisis trigger wrote an `undeliveredCrisisPages/crisisAlert_<postId>` record; the probe deleted the POST but not that record. Staging has no real `crisisAlertRecipients`, so the record stayed unclaimed, and `crisisDeliveryWatchdog` paged "[STAGING] crisis page UNDELIVERED" ~15min later (04:17 UTC, post `ftpost_crisis_mvq5ni4e`). **Prod was clean** (undeliveredCrisisPages = 0 in that window).
+- **Fix:** (1) deleted the stray staging record; (2) `fulltest-backend-probe.mjs` teardown now waits for the trigger, then deletes `undeliveredCrisisPages/crisisAlert_<id>` + `processedTriggerEvents/crisisAlert_<id>` for every test post; (3) `fulltest-cleanup.mjs` sweeps the same records for test-post patterns. Any future automated crisis test cleans up after itself, so the staging watchdog won't false-alarm.
+- **Note:** the crisis *hold* behavior is correct — the watchdog did its job; the gap was test teardown, not the safety path.
 
 ---
 

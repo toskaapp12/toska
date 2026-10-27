@@ -85,16 +85,27 @@ try {
 } catch (e) {
   rec("probe", "harness error", "FAIL", e.message);
 } finally {
+  // Let the crisis trigger finish writing its undeliveredCrisisPages record
+  // before we delete it (otherwise it lands AFTER cleanup and the watchdog
+  // alerts ~15min later — the 2026-10-27 false alarm).
+  await sleep(4000);
   for (const id of created.posts) {
     const reps = await db.collection("posts").doc(id).collection("replies").listDocuments().catch(() => []);
     for (const r of reps) await r.delete().catch(() => {});
     const lks = await db.collection("posts").doc(id).collection("likes").listDocuments().catch(() => []);
     for (const l of lks) await l.delete().catch(() => {});
     await db.collection("posts").doc(id).delete().catch(() => {});
+    // Crisis-safety records keyed on this post id: the crisis trigger writes an
+    // undeliveredCrisisPages record (and the alert path a processedTriggerEvents
+    // claim). Staging has no real crisis recipients, so the record sits
+    // unclaimed and the crisisDeliveryWatchdog pages ~15min later. Remove BOTH
+    // for every test post so a test crisis post can never trip the watchdog.
+    await db.collection("undeliveredCrisisPages").doc(`crisisAlert_${id}`).delete().catch(() => {});
+    await db.collection("processedTriggerEvents").doc(`crisisAlert_${id}`).delete().catch(() => {});
   }
   for (const [c, d] of created.misc) await db.collection(c).doc(d).delete().catch(() => {});
   for (const u of created.users) await db.collection("users").doc(u).delete().catch(() => {});
-  console.log("cleaned up.");
+  console.log("cleaned up (incl. crisis-safety records).");
 }
 const fails = log.filter((l) => l.verdict === "FAIL");
 console.log(`\n${log.length - fails.length}/${log.length} PASS`);

@@ -34,6 +34,7 @@ final class ClientBugRegressionTests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        applyAppCheckDebugToken(app)
         app.launch()
     }
 

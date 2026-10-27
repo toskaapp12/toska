@@ -28,3 +28,19 @@ do {
   pageToken = res.pageToken;
 } while (pageToken);
 console.log("RESULT deleted " + deleted + " test accounts");
+
+// Crisis-safety sweep: delete any undeliveredCrisisPages records left by test
+// crisis posts (keyed crisisAlert_<testPostId>). Staging has no real crisis
+// recipients, so an unclaimed record trips the crisisDeliveryWatchdog ~15min
+// later (the 2026-10-27 false alarm). Also clears the matching alert claim.
+const TESTPOST = /crisisAlert_(ftpost_|ft_a_|ft_b_|probePost|fulltest|hfmt_|pwmsg_)/i;
+const recs = await db.collection("undeliveredCrisisPages").get();
+let crisisDel = 0;
+for (const d of recs.docs) {
+  if (TESTPOST.test(d.id)) {
+    await d.ref.delete().catch(() => {});
+    await db.collection("processedTriggerEvents").doc(d.id).delete().catch(() => {});
+    crisisDel++;
+  }
+}
+console.log("RESULT deleted " + crisisDel + " test crisis records (undeliveredCrisisPages)");

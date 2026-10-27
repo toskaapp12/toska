@@ -11,6 +11,18 @@ import XCTest
 // This file is a throwaway driver for a manual-QA pass, not CI material —
 // it mutates staging data (a reply, a post, a repost).
 
+// Inject the fixed STAGING App Check debug token (passed as
+// TEST_RUNNER_FIRAAppCheckDebugToken → ProcessInfo) into the app under test so
+// authenticated flows pass App Check on the simulator across reinstalls. The
+// app only consumes it via AppCheckDebugProviderFactory, which is #if DEBUG —
+// Release builds never read it. Module-level so every test class can call it.
+// Setup/repeatability: BUGS.md APPCHECK-STAGING-DEBUG.
+func applyAppCheckDebugToken(_ app: XCUIApplication) {
+    if let dbg = ProcessInfo.processInfo.environment["FIRAAppCheckDebugToken"], !dbg.isEmpty {
+        app.launchEnvironment["FIRAAppCheckDebugToken"] = dbg
+    }
+}
+
 final class WalkthroughUITests: XCTestCase {
 
     var app: XCUIApplication!
@@ -18,6 +30,7 @@ final class WalkthroughUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        applyAppCheckDebugToken(app)
         // Forward the night-theme preview hook so any test can run in the
         // dark palette: TEST_RUNNER_TOSKA_FORCE_NIGHT=1 xcodebuild test ...
         if let night = ProcessInfo.processInfo.environment["TOSKA_FORCE_NIGHT"] {

@@ -672,8 +672,12 @@ const todaysPromptDate = () => {
 let promptContext = null; // {promptDate, tag}
 
 // Post visible on read surfaces: mirrors iOS filterBlocked + expiry + flagged.
-function postVisible(d) {
-    if (d.flagged === true) return false;
+// C5 (2026-10-27 audit): `own` lets the AUTHOR open their own held post (the
+// rules' author leg already allows the read); the detail view shows the
+// pending banner. Everyone else still loses flagged posts here (and the rules
+// deny the read anyway). Expiry and block checks apply to the author too.
+function postVisible(d, { own = false } = {}) {
+    if (d.flagged === true && !own) return false;
     if (d.expiresAt?.toDate && d.expiresAt.toDate() < new Date()) return false;
     if (blocked.has(d.authorId) || blockedBy.has(d.authorId)) return false;
     if (d.originalAuthorId && (blocked.has(d.originalAuthorId) || blockedBy.has(d.originalAuthorId))) return false;
@@ -1562,7 +1566,8 @@ async function viewPost(postId) {
         const earlyReplies = fetchReplies(postId).catch(() => null);
         const ps = await getDoc(doc(db, "posts", postId));
         mount.querySelector(".spinner")?.remove();
-        if (!ps.exists() || !postVisible(ps.data())) {
+        // C5: the author can open their own held/flagged post (pending banner below).
+        if (!ps.exists() || !postVisible(ps.data(), { own: ps.data().authorId === me?.uid })) {
             mount.append(emptyState("this post has disappeared."));
             return;
         }

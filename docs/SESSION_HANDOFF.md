@@ -81,13 +81,28 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   Resolution = delivered page (claim), item deleted (delete triggers drop record + claim), post marked
   crisis-reviewed, or reply queue entry reviewed. Staging 18/19 (one over-strict expectation), prod
   6/6 on the review + deletion paths only (no crisis wording, no page payload). See BUGS.md AUDIT-C8.
-  **Next: proposals for C1, C3, C5, C2.**
+- **Four audit bugs FIXED (2026-10-28 ~23:45 UTC; prod functions via `--only`, 14 functions, set
+  75 → 75; prod hosting for the web change):**
+  - **C1** iOS reply repost: payload now carries `moderationStatus: pending_validation` (rules pin
+    added) — build 103.
+  - **C2** burst limiter: only the 6th+ post in a 5-minute window is held; a rate-limit call never
+    relabels an existing hold; a content reason UPGRADES a `rate_limit` label (owner-confirmed);
+    content-vs-content stays first-wins (documented in BUGS.md AUDIT-C2).
+  - **C3** totalLikes: plain repost copies are display mirrors — excluded from delete-time settlement
+    and the drift job; the mirror no longer touches reply-repost rows. Owner account repaired on
+    prod 78 → 2 (dry run re-checked, guarded write).
+  - **C5** web: the author can open their own held post (pending banner); iOS detail banner in
+    build 103. **Owner check pending on prod web.**
+  - Tests: rules 470, functions 122 (two stale A5 mirror tests rewritten to the shim contract);
+    staging 17/17 (`c2c3c5-verify-staging.mjs`), prod 6/6 (neutral throwaways, totals restored).
+  **Next: product decisions + wording batch, then build 103.**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner
   (PostModels.MyReply pending fields, ProfileView replyRow, PostDetailView thread banner isCrisis);
-  **follow-up: paginate the per-doc liked/saved reads (30 at a time, "load more") on iOS and web**;
-  C1 reply-repost `moderationStatus` when its fix lands.
+  C1 reply-repost `moderationStatus` (PostInteractionManager); C5 own-held-post banner in
+  PostDetailView (`ownPendingReview`);
+  **follow-up: paginate the per-doc liked/saved reads (30 at a time, "load more") on iOS and web.**
 - **Benign prod log noise seen 2026-10-28:** `adminDeleteAccount` "Invalid request" = GET probes from
   Google-range crawler IPs (rejected 400/404); `validateReply` NOT_FOUND ×3 after a slur reply is
   hard-deleted by `onReplyCreatedModerate` (pre-existing race, logged as a LOW follow-up).

@@ -18,7 +18,7 @@ const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https")
 const { defineSecret, defineString } = require("firebase-functions/params");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue, Timestamp, AggregateField } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const { getAppCheck } = require("firebase-admin/app-check");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -598,6 +598,16 @@ async function setPendingReview(postRef, reason, extraFields = {}) {
   // second call wants to add audit fields (e.g. autoHiddenReportCount)
   // without changing the pending reason.
   if (data.moderationStatus === "pending_review") {
+    // C2 (2026-10-28): one exception to first-wins — a RATE-LIMIT hold is the
+    // weakest reason (posting too fast, not a policy violation). If the burst
+    // limiter won the race against a content detector, the content reason
+    // UPGRADES the label so the author's banner and admin triage name the
+    // real problem (the audit's "hate post ended as rate_limit"). Never the
+    // other way round: applyPostRateLimit writes nothing onto an existing hold.
+    if (data.pendingReason === "rate_limit" && reason !== "rate_limit") {
+      await postRef.update({ pendingReason: reason, ...extraFields });
+      return false;
+    }
     if (Object.keys(extraFields).length > 0) {
       await postRef.update(extraFields);
     }
@@ -1536,19 +1546,54 @@ exports.onLikeDeletedUpdateCounts = onDocumentDeleted(
 // the correct total. Residual known race: a like-trigger that decremented
 // the post-leg but lost its user-leg to the deletion window under-counts by
 // one; strictly smaller than the leak this closes.
+//
+// C3 (2026-10-27 audit): a PLAIN repost copy's likeCount is a DISPLAY MIRROR of
+// the original's (mirrorCountsToCopies) — the clients retarget likes at the
+// original, so none of those likes ever credited the reposter's totalLikes.
+// Debiting the mirror on un-repost drove reposters negative (-8 on staging)
+// and detectCounterDrift summed the mirror back in (+76 on prod). Plain copies
+// are skipped here and in recomputeTotalLikes; REPLY-repost rows take likes
+// directly (both clients write likes against the repost doc), so their count
+// is real and still settles.
+function isPlainRepostCopy(d) {
+  return d.isRepost === true
+    && !(typeof d.originalReplyId === "string" && d.originalReplyId.length > 0);
+}
+
+async function settleTotalLikesOnPostDelete(eventId, data) {
+  const likeCount = typeof data.likeCount === "number" ? data.likeCount : 0;
+  const authorId = data.authorId;
+  if (likeCount <= 0 || !authorId) return false;
+  if (isPlainRepostCopy(data)) return false; // C3: mirrored, never credited
+  await claimedTransaction(eventId, "totalLikes", async (tx) => {
+    const userRef = db.collection("users").doc(authorId);
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) return; // account-deletion cascade: nothing to fix
+    tx.update(userRef, { totalLikes: FieldValue.increment(-likeCount) });
+  });
+  return true;
+}
+
+// Invariant (mirrors the like triggers exactly): totalLikes == SUM(likeCount)
+// over posts where authorId == uid, EXCLUDING plain repost copies (C3).
+async function recomputeTotalLikes(uid) {
+  const snap = await db.collection("posts")
+    .where("authorId", "==", uid)
+    .select("likeCount", "isRepost", "originalReplyId")
+    .get();
+  let total = 0;
+  for (const d of snap.docs) {
+    const data = d.data();
+    if (isPlainRepostCopy(data)) continue;
+    if (typeof data.likeCount === "number") total += data.likeCount;
+  }
+  return total;
+}
+
 exports.onPostDeletedAdjustTotalLikes = onDocumentDeleted(
   { document: "posts/{postId}", retry: true },
   async (event) => {
-    const data = (event.data && event.data.data()) || {};
-    const likeCount = typeof data.likeCount === "number" ? data.likeCount : 0;
-    const authorId = data.authorId;
-    if (likeCount <= 0 || !authorId) return;
-    await claimedTransaction(event.id, "totalLikes", async (tx) => {
-      const userRef = db.collection("users").doc(authorId);
-      const userSnap = await tx.get(userRef);
-      if (!userSnap.exists) return; // account-deletion cascade: nothing to fix
-      tx.update(userRef, { totalLikes: FieldValue.increment(-likeCount) });
-    });
+    await settleTotalLikesOnPostDelete(event.id, (event.data && event.data.data()) || {});
   }
 );
 
@@ -1833,6 +1878,11 @@ async function mirrorCountsToCopies(originalPostId) {
     const batch = db.batch();
     let dirty = 0;
     for (const c of copies.docs) {
+      // C3 (2026-10-27 audit): a REPLY-repost carries originalPostId (= the
+      // parent post) too, so this query matched it and overwrote the row's
+      // REAL counters (likes land on the repost doc itself) with the parent
+      // post's. Reply-repost rows own their counters — leave them alone.
+      if (typeof c.get("originalReplyId") === "string" && c.get("originalReplyId").length > 0) continue;
       const fix = {};
       for (const [k, v] of Object.entries(want)) {
         if ((c.get(k) ?? 0) !== v) fix[k] = v;
@@ -2950,40 +3000,67 @@ exports.validateReply = onDocumentCreated(
 // Server-side rate limiting — posts
 // ============================================================
 
+// C2 (2026-10-27 audit, owner decision 2026-10-28): hold ONLY the posts beyond
+// the burst limit — exactly the 6th and later of any 5-minute window — and
+// never relabel an existing hold.
+//   - Counting used to be "posts in the window at trigger time", so a burst of
+//     eight made every trigger see eight and hold all eight (the first five
+//     retroactively). Now a post counts only the author's posts created
+//     BEFORE it in the window: the 1st–5th see ≤4 earlier posts and stay
+//     untouched whatever order the triggers run in.
+//   - The flag fields used to be merged even when setPendingReview declined
+//     to re-hold an already-held post, so a hate / PII hold ended up labelled
+//     `flagReason: rate_limit_exceeded` (and admin triage lost the real
+//     reason). The flag fields are now written only when THIS call created
+//     the hold.
+// Reason precedence elsewhere is unchanged and documented here: the FIRST
+// trigger to hold a post names it (setPendingReview: first reason wins), so
+// a URL post can read `pii` or `abuse_spam` depending on whether validatePost
+// or onPostCreated landed first — both are takedowns of the same post, and
+// the label only affects the author's banner wording and admin triage.
+const BURST_WINDOW_MS = 5 * 60 * 1000;
+const BURST_FREE_POSTS = 5; // posts allowed per window; the next one is held
+
+async function applyPostRateLimit(postId, postData, now = Date.now()) {
+  const authorId = postData && postData.authorId;
+  if (!authorId) return "skip";
+  const own = postData.createdAt;
+  const ownMs = own && typeof own.toMillis === "function" ? own.toMillis() : now;
+  const windowStart = Timestamp.fromMillis(Math.max(0, ownMs - BURST_WINDOW_MS));
+  const earlier = await db.collection("posts")
+    .where("authorId", "==", authorId)
+    .where("createdAt", ">", windowStart)
+    .where("createdAt", "<", Timestamp.fromMillis(ownMs))
+    .orderBy("createdAt", "desc")
+    .limit(BURST_FREE_POSTS)
+    .get();
+  if (earlier.size < BURST_FREE_POSTS) return "ok";
+
+  // LOG-01: no uid↔postId pairing in logs — the post doc itself carries
+  // authorId for admin triage; the log only needs the actioned doc.
+  console.log("Rate limit exceeded — flagging post:", postId);
+  // setPendingReview, not a bare flagged:true: every other flag path pairs
+  // the flag with a pending_review hold. A flag-only write leaves
+  // moderationStatus "live", so any surface that filters solely on
+  // moderationStatus would still serve the spam. checkRepeatOffenderPosts
+  // excludes rate_limit_exceeded from the auto-restrict count, so this adds
+  // no double-jeopardy. Returns false when the post is already held — then
+  // the existing reason and flag fields are left exactly as they are.
+  const postRef = db.collection("posts").doc(postId);
+  const held = await setPendingReview(postRef, "rate_limit");
+  if (!held) return "already_held";
+  await postRef.update({
+    flagged: true,
+    flaggedAt: FieldValue.serverTimestamp(),
+    flagReason: "rate_limit_exceeded",
+  }).catch((e) => console.warn(`rateLimitPosts ${postId}: flag write failed: ${e.message}`));
+  return "held";
+}
+
 exports.rateLimitPosts = onDocumentCreated("posts/{postId}", async (event) => {
-  const postId = event.params.postId;
   const postData = event.data.data();
   if (!postData) return;
-
-  const authorId = postData.authorId;
-  if (!authorId) return;
-
-  const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-  const recentSnap = await db.collection("posts")
-    .where("authorId", "==", authorId)
-    .where("createdAt", ">", Timestamp.fromDate(fiveMinAgo))
-    .orderBy("createdAt", "desc")
-    .limit(10)
-    .get();
-
-  if (recentSnap.size > 5) {
-    // LOG-01: no uid↔postId pairing in logs — the post doc itself carries
-    // authorId for admin triage; the log only needs the actioned doc.
-    console.log("Rate limit exceeded — flagging post:", postId);
-    // setPendingReview, not a bare flagged:true: every other flag path pairs
-    // the flag with a pending_review hold. A flag-only write leaves
-    // moderationStatus "live", so any surface that filters solely on
-    // moderationStatus (the future web portal, admin "pending" queries)
-    // would still serve the spam — hiding relied entirely on clients also
-    // filtering `flagged`. checkRepeatOffenderPosts excludes
-    // rate_limit_exceeded from the auto-restrict count, so this adds no
-    // double-jeopardy.
-    await setPendingReview(db.collection("posts").doc(postId), "rate_limit", {
-      flagged: true,
-      flaggedAt: FieldValue.serverTimestamp(),
-      flagReason: "rate_limit_exceeded",
-    });
-  }
+  await applyPostRateLimit(event.params.postId, postData);
 });
 
 // Repeat-offender tracking. Previously 3 flagged posts all-time → permanent
@@ -4920,10 +4997,12 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
   // likeCount directly without touching it — a prod sweep found 5 of 13
   // users drifted, one at -111, and the demo account Apple reviews showed
   // "-1 felt". Invariant (mirrors the triggers exactly): totalLikes ==
-  // SUM(likeCount) over posts where authorId == uid, reposts INCLUDED (a
-  // like on a repost row credits the reposter; delete decrements by that
-  // row's likeCount). Server-side sum() aggregation, one round-trip per
-  // user; same guarded compare-and-set as the post phase.
+  // SUM(likeCount) over posts where authorId == uid, EXCLUDING plain repost
+  // copies (C3, 2026-10-27 audit: their likeCount is a display mirror of the
+  // original's, never credited to the reposter — summing it inflated one
+  // prod account by +76). Reply-repost rows keep their own real likes and
+  // ARE included. recomputeTotalLikes does the filtered sum; same guarded
+  // compare-and-set as the post phase.
   const USER_SAMPLE = 500;
   const userSnap = await db.collection("users")
     .orderBy("createdAt", "desc")
@@ -4935,11 +5014,7 @@ exports.detectCounterDrift = onSchedule({schedule: "every 24 hours", timeoutSeco
   for (const userDoc of userSnap.docs) {
     const stored = typeof userDoc.get("totalLikes") === "number" ? userDoc.get("totalLikes") : 0;
     try {
-      const agg = await db.collection("posts")
-        .where("authorId", "==", userDoc.id)
-        .aggregate({ total: AggregateField.sum("likeCount") })
-        .get();
-      const actual = agg.data().total || 0;
+      const actual = await recomputeTotalLikes(userDoc.id);
       if (actual === stored) continue;
       userDrifts.push({ uid: userDoc.id, totalLikes: { stored, actual } });
       const didCorrect = await db.runTransaction(async (tx) => {
@@ -6428,6 +6503,12 @@ Object.defineProperty(module.exports, "__test", {
   FieldValue,
   Timestamp,
   pruneNotificationsOlderThan,
+  // C2 / C3 (2026-10-28)
+  applyPostRateLimit,
+  settleTotalLikesOnPostDelete,
+  recomputeTotalLikes,
+  mirrorCountsToCopies,
+  isPlainRepostCopy,
   setReplyPendingReview,
   setReplyLive,
   setPendingReview,

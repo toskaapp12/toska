@@ -211,6 +211,13 @@ struct PostDetailView: View {
     // the public share LINK (the /p/{id} web page 404s midnight posts) — the
     // image-card share stays available for midnight posts, matching the feed.
     @State private var isMidnight = false
+    // C5 (2026-10-27 audit, owner 2026-10-28): the author can open their OWN
+    // held post (moderationStatus == "pending_review"); the detail shows the
+    // same banner as the profile row so it never reads as live. Derived from
+    // the live listener (authorId == me); nobody else can read a held doc.
+    @State private var ownPendingReview = false
+    @State private var ownPendingReasonLabel: String? = nil
+    @State private var ownPendingIsCrisis = false
 
     var isOwnPost: Bool {
         authorUserId == Auth.auth().currentUser?.uid
@@ -558,6 +565,13 @@ struct PostDetailView: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
+                        // C5: the author opened their own held post — same
+                        // banner as the profile row (reason + crisis support).
+                        if ownPendingReview {
+                            PendingReviewBanner(reasonLabel: ownPendingReasonLabel, isCrisis: ownPendingIsCrisis)
+                                .padding(.horizontal, 28)
+                                .padding(.top, 14)
+                        }
                         postHeaderSection
                             .padding(.horizontal, 28)
                             .padding(.top, 18)
@@ -1153,6 +1167,13 @@ struct PostDetailView: View {
                     }
                     if data["isLetter"] as? Bool == true { isLetter = true }
                     if data["isWhisper"] as? Bool == true { isWhisper = true }
+                    // C5: own held post → pending banner (see ownPendingReview).
+                    let heldAndMine = (data["moderationStatus"] as? String) == "pending_review"
+                        && (data["authorId"] as? String) == capturedUid
+                    let pendingReason = data["pendingReason"] as? String
+                    ownPendingReview = heldAndMine
+                    ownPendingReasonLabel = heldAndMine ? pendingReasonLabelFor(pendingReason) : nil
+                    ownPendingIsCrisis = heldAndMine && pendingReason == "crisis"
                     // Unconditional assignment (not set-if-true): consent
                     // revocation while the view is open must hide the share
                     // button, not just enable it. Missing field == NOT

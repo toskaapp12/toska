@@ -2157,6 +2157,34 @@ describe("repost create: rule-layer forgery check (audit P2)", () => {
     );
   });
 
+  // C1 (2026-10-27 audit): the pre-build-103 iOS reply-repost payload omitted
+  // moderationStatus, which the create rule has REQUIRED since 2026-10-07 —
+  // every reply repost from the app was denied (optimistic +1, then rollback).
+  // Pin the denial so the field can't quietly become optional again, and the
+  // build-103 shape (with the field) is the "allows a faithful reply-repost"
+  // case above.
+  it("rejects the pre-build-103 iOS reply-repost shape (no moderationStatus)", async () => {
+    await setReply("p_orig", "r1", "alice");
+    const b = env.authenticatedContext("bob").firestore();
+    await assertFails(
+      b.collection("posts").doc("bob_replyrepost_r1").set({
+        authorId: "bob",
+        authorHandle: "handle_bob",
+        text: "a reply",
+        likeCount: 0,
+        repostCount: 0,
+        replyCount: 0,
+        isShareable: false,
+        isRepost: true,
+        originalPostId: "p_orig",
+        originalReplyId: "r1",
+        originalAuthorId: "alice",
+        originalHandle: "handle_alice",
+        createdAt: serverTimestamp(),
+      })
+    );
+  });
+
   it("rejects a reply-repost with a forged originalAuthorId", async () => {
     await setReply("p_orig", "r1", "alice"); // reply really authored by alice
     const b = env.authenticatedContext("bob").firestore();

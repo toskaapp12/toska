@@ -844,7 +844,19 @@ describe("mirrorModerationState — private mirror + restrictedUsers index", () 
     return fns.mirrorModerationState.run({ id, data: change(b, a), params: { userId: uid } });
   };
 
-  it("restrict: mirrors fields to private/data and creates the index row", async () => {
+  // A5 phase 1 (2026-10-28): mirrorModerationState is now a RELOCATION shim —
+  // a legacy writer (iOS admin build ≤102) that puts the six authorization
+  // fields on the PUBLIC user doc gets them moved to private/data and cleared
+  // from the public doc. The restrictedUsers index row + audit entry are
+  // onPrivateAuthStateWritten's job (fires on the private/data write).
+  const AUTH_FIELDS = ["restricted", "restrictedAt", "restrictedUntil", "restrictedBy", "confirmedAdult", "confirmedAdultAt"];
+  const runPrivate = async (uid, b, a, id) => fns.onPrivateAuthStateWritten.run({
+    id,
+    data: { before: { exists: b !== null, data: () => b || {} }, after: { exists: a !== null, data: () => a || {}, ref: db.doc(`users/${uid}/private/data`) } },
+    params: { userId: uid, docId: "data" },
+  });
+
+  it("restrict on the PUBLIC doc: shim relocates the fields to private/data and clears the public copy; the private trigger builds the index row", async () => {
     const until = new Date(Date.now() + 48 * 3600e3);
     await run("mm1",
       { handle: "mm1", restricted: false, confirmedAdult: true },
@@ -854,22 +866,27 @@ describe("mirrorModerationState — private mirror + restrictedUsers index", () 
     assert.strictEqual(priv.get("restricted"), true);
     assert.strictEqual(priv.get("restrictedBy"), "system");
     assert.strictEqual(priv.get("confirmedAdult"), true);
+    const pub = (await db.doc("users/mm1").get()).data();
+    for (const f of AUTH_FIELDS) assert.strictEqual(pub[f], undefined, `public doc must not carry ${f}`);
+    assert.strictEqual((await db.doc("restrictedUsers/mm1").get()).exists, false, "the shim itself writes no index row");
+    // the private/data write it just made is what fires onPrivateAuthStateWritten
+    await runPrivate("mm1", { confirmedAdult: true }, priv.data(), "mm-e1p");
     const row = await db.doc("restrictedUsers/mm1").get();
     assert.strictEqual(row.exists, true);
     assert.strictEqual(row.get("handle"), "mm1");
     assert.strictEqual(row.get("restrictedBy"), "system");
+    assert.strictEqual((await db.doc("users/mm1/private/data").get()).get("restrictedBy"), undefined, "attribution stamp is scrubbed from private/data after the audit entry");
   });
 
-  it("restrictedBy scrub event does NOT erase the private copy (change-guard skips)", async () => {
-    const base = { handle: "mm1", restricted: true, confirmedAdult: true };
-    // Self-contained: restrict first (writes restrictedBy to private), then
-    // replay the auditUserRestriction scrub event (restrictedBy deleted from
-    // the main doc, nothing else changed).
-    await run("mm1", { handle: "mm1", restricted: false }, { ...base, restrictedBy: "system" }, "mm-e2a");
-    await run("mm1", { ...base, restrictedBy: "system" }, { ...base }, "mm-e2");
+  it("late redelivery of the same public-doc event re-relocates harmlessly (private copy kept, public stays clean)", async () => {
+    const base = { handle: "mm1", restricted: true, confirmedAdult: true, restrictedBy: "system" };
+    await run("mm1", { handle: "mm1", restricted: false }, base, "mm-e2a");
+    await run("mm1", { handle: "mm1", restricted: false }, base, "mm-e2"); // replay
     const priv = await db.doc("users/mm1/private/data").get();
-    assert.strictEqual(priv.get("restrictedBy"), "system", "scrub must not clear private attribution");
-    assert.strictEqual((await db.doc("restrictedUsers/mm1").get()).exists, true);
+    assert.strictEqual(priv.get("restricted"), true);
+    assert.strictEqual(priv.get("restrictedBy"), "system");
+    const pub = (await db.doc("users/mm1").get()).data();
+    for (const f of AUTH_FIELDS) assert.strictEqual(pub[f], undefined, `public doc must not carry ${f}`);
   });
 
   it("unrestrict: mirror updates and the index row is removed", async () => {
@@ -988,5 +1005,140 @@ describe("block-re-signup — bannedIdentities helpers + blocking function", () 
   it("blockBannedSignups is a no-op for empty event data (fail-open shape)", async () => {
     await fns.blockBannedSignups.run({ data: null });
     await fns.blockBannedSignups.run({ data: { providerData: [] } });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// C2 (2026-10-27 audit): burst limiter holds ONLY the 6th+ post of a
+// 5-minute window and never relabels an existing hold.
+// ─────────────────────────────────────────────────────────────────────
+describe("C2 applyPostRateLimit", () => {
+  const { applyPostRateLimit } = __test;
+  const BASE = Date.now() - 60_000;
+  const mk = async (id, offsetMs, extra = {}) => {
+    const createdAt = Timestamp.fromMillis(BASE + offsetMs);
+    await db.collection("posts").doc(id).set({ authorId: "u1", authorHandle: "h", text: "t " + id, createdAt,
+      likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, moderationStatus: "live", ...extra });
+    return { id, data: { authorId: "u1", createdAt, ...extra } };
+  };
+
+  it("a burst of 8 in 2 s holds exactly the 6th, 7th and 8th — whatever order the triggers run in", async () => {
+    const posts = [];
+    for (let i = 0; i < 8; i++) posts.push(await mk(`b${i}`, i * 250));
+    const results = {};
+    for (const i of [7, 2, 0, 5, 1, 6, 3, 4]) results[i] = await applyPostRateLimit(posts[i].id, posts[i].data);
+    for (let i = 0; i < 8; i++) {
+      const d = (await db.collection("posts").doc(`b${i}`).get()).data();
+      if (i < 5) {
+        assert.strictEqual(results[i], "ok", `post ${i}`);
+        assert.strictEqual(d.moderationStatus, "live", `post ${i} stays live`);
+        assert.strictEqual(d.flagged, undefined, `post ${i} not flagged`);
+      } else {
+        assert.strictEqual(results[i], "held", `post ${i}`);
+        assert.strictEqual(d.moderationStatus, "pending_review");
+        assert.strictEqual(d.pendingReason, "rate_limit");
+        assert.strictEqual(d.flagged, true);
+        assert.strictEqual(d.flagReason, "rate_limit_exceeded");
+      }
+    }
+  });
+
+  it("the 6th post in 5 minutes is held; a 6th post after the window is not", async () => {
+    for (let i = 0; i < 5; i++) await mk(`w${i}`, i * 1000);
+    const sixth = await mk("sixth", 10_000);
+    assert.strictEqual(await applyPostRateLimit(sixth.id, sixth.data), "held");
+    // Another author: five posts 6 minutes before the sixth → all outside its window.
+    const mk2 = async (id, offsetMs) => {
+      const createdAt = Timestamp.fromMillis(BASE + offsetMs);
+      await db.collection("posts").doc(id).set({ authorId: "u2", authorHandle: "h2", text: "t " + id, createdAt,
+        likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, moderationStatus: "live" });
+      return { id, data: { authorId: "u2", createdAt } };
+    };
+    for (let i = 0; i < 5; i++) await mk2(`old${i}`, -(6 * 60_000) + i * 1000);
+    const later = await mk2("later", 0);
+    assert.strictEqual(await applyPostRateLimit(later.id, later.data), "ok");
+  });
+
+  it("never relabels an existing hold: a hate hold inside a burst keeps pendingReason + flagReason", async () => {
+    for (let i = 0; i < 5; i++) await mk(`h${i}`, i * 100);
+    const p = await mk("hate", 1000, { moderationStatus: "pending_review", pendingReason: "hate", flagged: true,
+      flagReason: "hate_speech", pendingDetectedAt: Timestamp.now() });
+    assert.strictEqual(await applyPostRateLimit(p.id, p.data), "already_held");
+    const d = (await db.collection("posts").doc("hate").get()).data();
+    assert.strictEqual(d.pendingReason, "hate");
+    assert.strictEqual(d.flagReason, "hate_speech");
+  });
+
+  it("a post with no author is skipped", async () => {
+    assert.strictEqual(await applyPostRateLimit("x", { createdAt: Timestamp.now() }), "skip");
+  });
+
+  it("a content reason UPGRADES a rate_limit hold (limiter won the race on a threat post); a 2nd content reason still loses to the 1st", async () => {
+    const { setPendingReview } = __test;
+    const ref = db.collection("posts").doc("race");
+    await ref.set({ authorId: "u1", text: "x", moderationStatus: "pending_review", pendingReason: "rate_limit",
+      pendingDetectedAt: Timestamp.now(), flagged: true, flagReason: "rate_limit_exceeded" });
+    assert.strictEqual(await setPendingReview(ref, "abuse_threat", { flagged: true, flagReason: "targeted_threat" }), false);
+    let d = (await ref.get()).data();
+    assert.strictEqual(d.pendingReason, "abuse_threat");
+    assert.strictEqual(d.flagReason, "targeted_threat");
+    // first content reason wins over a later one (documented first-wins ordering)
+    await setPendingReview(ref, "pii", { flagReason: "personal_information" });
+    d = (await ref.get()).data();
+    assert.strictEqual(d.pendingReason, "abuse_threat");
+    // and a rate_limit call on a content hold changes nothing (applyPostRateLimit never writes extras then)
+    assert.strictEqual(await setPendingReview(ref, "rate_limit"), false);
+    assert.strictEqual((await ref.get()).get("pendingReason"), "abuse_threat");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// C3 (2026-10-27 audit): a plain repost copy's likeCount is a display mirror —
+// never debited from, nor summed into, the reposter's totalLikes.
+// ─────────────────────────────────────────────────────────────────────
+describe("C3 totalLikes vs repost mirrors", () => {
+  const { settleTotalLikesOnPostDelete, recomputeTotalLikes, mirrorCountsToCopies, isPlainRepostCopy } = __test;
+  const seedUser = (uid, totalLikes) => db.collection("users").doc(uid).set({ handle: uid, totalLikes });
+
+  it("isPlainRepostCopy: plain copy yes; reply-repost row, original, legacy no", () => {
+    assert.ok(isPlainRepostCopy({ isRepost: true, originalPostId: "p" }));
+    assert.ok(!isPlainRepostCopy({ isRepost: true, originalPostId: "p", originalReplyId: "r" }));
+    assert.ok(!isPlainRepostCopy({ isRepost: false }));
+    assert.ok(!isPlainRepostCopy({}));
+  });
+
+  it("deleting a plain repost copy does NOT debit the reposter (the -8 staging / un-repost case)", async () => {
+    await seedUser("rep", 2);
+    const r = await settleTotalLikesOnPostDelete("evt1", { authorId: "rep", isRepost: true, originalPostId: "p", likeCount: 76 });
+    assert.strictEqual(r, false);
+    assert.strictEqual((await db.collection("users").doc("rep").get()).get("totalLikes"), 2);
+  });
+
+  it("deleting an original debits its likeCount; deleting a reply-repost row debits its real likes", async () => {
+    await seedUser("a", 10);
+    assert.strictEqual(await settleTotalLikesOnPostDelete("evt2", { authorId: "a", isRepost: false, likeCount: 4 }), true);
+    assert.strictEqual(await settleTotalLikesOnPostDelete("evt3", { authorId: "a", isRepost: true, originalPostId: "p", originalReplyId: "r", likeCount: 3 }), true);
+    assert.strictEqual((await db.collection("users").doc("a").get()).get("totalLikes"), 3);
+  });
+
+  it("recomputeTotalLikes: own + reply-repost rows + legacy, excluding plain copies (prod shape 2 own + 76 mirrored)", async () => {
+    await db.collection("posts").doc("own1").set({ authorId: "u", isRepost: false, likeCount: 2 });
+    await db.collection("posts").doc("u_repost_x").set({ authorId: "u", isRepost: true, originalPostId: "x", likeCount: 50 });
+    await db.collection("posts").doc("u_repost_y").set({ authorId: "u", isRepost: true, originalPostId: "y", likeCount: 26 });
+    await db.collection("posts").doc("u_replyrepost_r").set({ authorId: "u", isRepost: true, originalPostId: "y", originalReplyId: "r", likeCount: 3 });
+    await db.collection("posts").doc("legacy").set({ authorId: "u", likeCount: 1 }); // pre-isRepost doc
+    await db.collection("posts").doc("other").set({ authorId: "v", likeCount: 99 });
+    assert.strictEqual(await recomputeTotalLikes("u"), 6);
+  });
+
+  it("mirrorCountsToCopies stamps plain copies and leaves reply-repost rows' own counters alone", async () => {
+    await db.collection("posts").doc("orig").set({ authorId: "o", isRepost: false, likeCount: 5, replyCount: 2, repostCount: 2 });
+    await db.collection("posts").doc("b_repost_orig").set({ authorId: "b", isRepost: true, originalPostId: "orig", likeCount: 0, replyCount: 0, repostCount: 0 });
+    await db.collection("posts").doc("b_replyrepost_r1").set({ authorId: "b", isRepost: true, originalPostId: "orig", originalReplyId: "r1", likeCount: 3, replyCount: 0, repostCount: 0 });
+    await mirrorCountsToCopies("orig");
+    const copy = (await db.collection("posts").doc("b_repost_orig").get()).data();
+    const rr = (await db.collection("posts").doc("b_replyrepost_r1").get()).data();
+    assert.deepStrictEqual([copy.likeCount, copy.replyCount, copy.repostCount], [5, 2, 2]);
+    assert.deepStrictEqual([rr.likeCount, rr.replyCount, rr.repostCount], [3, 0, 0]);
   });
 });

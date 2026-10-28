@@ -1058,7 +1058,13 @@ class PostInteractionManager {
                 "originalPostId": postId,
                 "originalReplyId": replyId,
                 "originalAuthorId": freshReplyAuthorId,
-                "createdAt": FieldValue.serverTimestamp()
+                "createdAt": FieldValue.serverTimestamp(),
+                // C1 (2026-10-27 audit): the posts-create rule REQUIRES
+                // moderationStatus == "pending_validation" (2026-10-07). This
+                // payload omitted it, so every reply repost was rule-denied —
+                // optimistic +1, then silent rollback. Same start-hidden model
+                // as repost() above; validatePost promotes it to "live".
+                "moderationStatus": "pending_validation"
             ]
             if let h = resolvedReplyHandle { repostData["originalHandle"] = h }
             if let g = freshReplyGifUrl, !g.isEmpty { repostData["gifUrl"] = g }

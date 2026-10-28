@@ -65,6 +65,41 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-C1 — iOS "repost a reply" denied by the rules (FIXED in code, rides build 103)
+
+- **Severity:** HIGH (feature dead on iOS) · **Surface:** `PostInteractionManager.repostReply` · **Status:** FIXED 2026-10-28 — iOS code committed, ships in build 103
+- The reply-repost payload omitted `moderationStatus`; the posts-create rule has REQUIRED `pending_validation` since 2026-10-07 (the post-repost payload and web already send it). Every reply repost from the app was permission-denied: optimistic "+1", then silent rollback. Fix: the field is added to the payload (start-hidden model; validatePost promotes to live). Reply reposts having no `/p/` share target is by design (both clients suppress the link), not part of this bug.
+- **Pin:** `firestore.test.js` "rejects the pre-build-103 iOS reply-repost shape (no moderationStatus)" + the existing faithful-reply-repost case. Staging: the build-103 shape accepted, the old shape still denied.
+
+---
+
+## AUDIT-C2 — burst limiter held the whole burst retroactively and relabelled real holds (FIXED, PROD)
+
+- **Severity:** HIGH (every post of a burst "under review"; hate/threat holds mislabelled as rate limit) · **Surface:** functions `rateLimitPosts` / `setPendingReview` · **Status:** FIXED 2026-10-28 ~23:45 UTC, staging + prod (`--only`, 14 functions, prod set 75 → 75)
+- **Was:** the limiter counted the author's posts in the 5-minute window at trigger time (`> 5`), so an 8-post burst made every trigger see 8 and hold all 8, including the first five. And because `setPendingReview` merged the extra fields even when it declined to re-hold an already-held post, a hate/PII hold ended up with `flagReason: rate_limit_exceeded`.
+- **Now (owner decision 2026-10-28):** `applyPostRateLimit` counts only the author's posts created BEFORE this one inside the window (`BURST_FREE_POSTS = 5`), so exactly the 6th and later are held regardless of trigger order. The rate-limit flag fields are written only when THIS call created the hold — an existing hold's reason is never touched. **Precedence rule (owner-confirmed):** a `rate_limit` hold is the weakest reason — if the limiter wins the race against a content detector, the content reason UPGRADES `pendingReason` (so a threat posted as the 7th of a burst reads `abuse_threat`, not `rate_limit`); never the reverse. **Documented ordering between CONTENT reasons:** first trigger wins — a URL post reads `pii` or `abuse_spam` depending on whether validatePost or onPostCreated landed first; both are takedowns of the same post and the label only affects the author's banner wording and admin triage. Not changed.
+- **Verification:** functions tests (`C2 applyPostRateLimit`, 5 cases incl. scrambled trigger order, window edge, no-relabel, upgrade); staging 8-post burst → 1–5 live, 6–8 `rate_limit`; threat as 3rd keeps `abuse_threat`/`targeted_threat`; threat as 7th now reads `abuse_threat`; prod 6-post burst (neutral text) → only the 6th held, one log line.
+
+---
+
+## AUDIT-C3 — totalLikes went negative / inflated through repost mirroring (FIXED, PROD; owner account repaired)
+
+- **Severity:** HIGH (profile "felt" stat wrong; could not self-correct — the drift job wrote the inflated sum) · **Surface:** functions `onPostDeletedAdjustTotalLikes`, `detectCounterDrift` phase 2, `mirrorCountsToCopies` · **Status:** FIXED 2026-10-28, staging + prod; prod repair applied
+- **Was:** `mirrorCountsToCopies` stamps the original's `likeCount` onto plain repost copies for display, but (a) un-repost ran `onPostDeletedAdjustTotalLikes`, debiting that mirrored count from the REPOSTER (staging: -8), and (b) `detectCounterDrift` summed the copies back into the reposter's total (prod: the owner's account read 78 with 2 real likes — 42 + 34 mirrored from two reposted demo posts). (c) The mirror query also matched REPLY-repost rows (they carry `originalPostId` = the parent post) and overwrote their real counters with the parent's.
+- **Now:** `isPlainRepostCopy()` (isRepost && no originalReplyId). Delete-time settlement skips plain copies; `recomputeTotalLikes(uid)` (used by the drift job) excludes them; the mirror leaves reply-repost rows alone. Reply-repost rows take likes directly (both clients write likes against the repost doc) and stay fully counted. Invariant: `totalLikes == Σ likeCount over the author's posts excluding plain repost copies`.
+- **Verification:** functions tests (`C3 totalLikes vs repost mirrors`, 5 cases); staging: un-repost leaves B at 0 (was -2), reply-repost like credits/debits B correctly, a later mirror pass leaves the reply-repost row at its real count, forced `detectCounterDrift` leaves B at 0 with a mirrored copy of 3; prod 6/6 (repost → like → un-repost; totals restored to 40 posts / 11 users). **Repair (owner go, 2026-10-28):** `fading_drift_774` totalLikes 78 → 2 (dry run re-checked immediately before, identical breakdown, guarded compare-and-set). No other prod user drifted; staging 0.
+
+---
+
+## AUDIT-C5 — author could not open their own held post (web FIXED, PROD; iOS banner rides build 103)
+
+- **Severity:** MED (every user whose post is held) · **Surface:** web `postVisible` / `viewPost`; iOS `PostDetailView` · **Status:** web FIXED 2026-10-28 (staging + prod hosting); iOS parity in build 103
+- **Was (web):** the profile listed held posts with "under review." but `#/post/{id}` ran `postVisible()`, which drops `flagged` posts before any ownership check → "this post has disappeared." for the author.
+- **Now (web):** `postVisible(d, { own })` skips the flagged check for the author only; expiry and block checks still apply; the detail shows the pending banner. Other users still get "this post isn't available." (rules deny the read). **iOS (owner 2026-10-28, build 103):** tapping an own held post already opened it; `PostDetailView` now derives `ownPendingReview` from the live listener (`moderationStatus == pending_review && authorId == me`) and shows the same `PendingReviewBanner` (reason label + crisis support line) above the post.
+- **Verification:** staging headless Chrome — author sees the banner + text, another signed-in user sees "isn't available"; prod hosting live, **owner check pending** (post six quick neutral posts, open the sixth from the profile, then delete it).
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

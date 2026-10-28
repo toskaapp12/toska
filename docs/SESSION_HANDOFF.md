@@ -73,6 +73,15 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   accepted); auditUserRestriction no-op. admin.html restrict/unrestrict → private/data (live on push).
   Deploy order that worked: functions → pre-check private attestation → rules → owner post/reply →
   back-fill (deletes public keys last). See BUGS.md AUDIT-A5.
+- **C8 FIXED + PROD (2026-10-28 ~23:00 UTC, 10 functions via `--only`, prod set 75 → 75):** the
+  crisis watchdog is now a retrier + rate-limited alerter instead of a 5-minute repeater. Soft-tier
+  posts are ignored (never paged by design); explicit-tier unpaged posts get an `undeliveredCrisisPages`
+  record; every record is retried (page payload stored on the record) and, while unresolved, logged
+  `crisis_page_undelivered` hourly for the first 6 h after detection, then every 6 h, no ceiling.
+  Resolution = delivered page (claim), item deleted (delete triggers drop record + claim), post marked
+  crisis-reviewed, or reply queue entry reviewed. Staging 18/19 (one over-strict expectation), prod
+  6/6 on the review + deletion paths only (no crisis wording, no page payload). See BUGS.md AUDIT-C8.
+  **Next: proposals for C1, C3, C5, C2.**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner

@@ -1636,6 +1636,8 @@ exports.onReplyDeletedScrubNotifPreview = onDocumentDeleted(
   { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
     const deleted = event.data?.data();
+    // C8: a deleted reply can't keep an undelivered crisis page alive.
+    await resolveCrisisRecord(`crisisAlertReply_${event.params.replyId}`, { dropClaim: true });
     const authorId = deleted?.authorId;
     if (!authorId) return;
     const postRef = db.collection("posts").doc(event.params.postId);
@@ -2095,6 +2097,9 @@ async function clearPostSubtree(postId, maxReplyPages = 20) {
 // empty reads and returns — harmless and idempotent.
 exports.onPostDeletedCleanupSubtree = onDocumentDeleted("posts/{postId}", async (event) => {
   const postId = event.params.postId;
+  // C8: a deleted post can't keep an undelivered crisis page alive (also drop the
+  // claim so a redelivered create event can't re-page a dead post).
+  await resolveCrisisRecord(`crisisAlert_${postId}`, { dropClaim: true });
   let capHit = false;
   try {
     capHit = await clearPostSubtree(postId, 20);
@@ -3533,13 +3538,17 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
     // (Owner decision 2026-10-23, after a crisis test sat undelivered
     // overnight while the admin's device was signed out: the email backup +
     // crisis queue are the safety net; a multi-hour retry storm is not.)
-    await db.collection("undeliveredCrisisPages").doc(claimRef.id).set({
-      logLabel,
-      reason: "no_admin_token",
-      adminCount: adminUids.length,
-      detectedAt: FieldValue.serverTimestamp(),
-    }, { merge: true }).catch((e) => console.warn(`${logLabel}: undelivered-record write failed: ${e.message}`));
-    console.warn(`${logLabel}: no FCM token for any of ${adminUids.length} admin(s) — recorded in undeliveredCrisisPages; relying on email-backup + crisis queue, NOT retrying`);
+    // C8 (2026-10-28): the record is the watchdog's retry + alert state. Keep the
+    // ORIGINAL detectedAt (the alert cadence is relative to it) and store the
+    // page payload so the watchdog can re-attempt delivery once a token exists.
+    const recRef = db.collection("undeliveredCrisisPages").doc(claimRef.id);
+    try {
+      const existing = await recRef.get();
+      const rec = { logLabel, reason: "no_admin_token", adminCount: adminUids.length, page: { title, body, dataPayload }, lastAttemptAt: FieldValue.serverTimestamp() };
+      if (!existing.exists) rec.detectedAt = FieldValue.serverTimestamp();
+      await recRef.set(rec, { merge: true });
+    } catch (e) { console.warn(`${logLabel}: undelivered-record write failed: ${e.message}`); }
+    console.warn(`${logLabel}: no FCM token for any of ${adminUids.length} admin(s) — recorded in undeliveredCrisisPages; the watchdog retries + re-alerts (hourly for 6 h, then every 6 h) until resolved`);
     return;
   }
   const resp = await getMessaging().sendEachForMulticast({
@@ -3560,6 +3569,16 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
   const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   await claimRef.set({ processedAt: FieldValue.serverTimestamp(), expiresAt })
     .catch((err) => console.warn(`${logLabel}: claim write failed:`, err.message));
+  // C8: a delivered page resolves any undelivered record (retry succeeded).
+  await db.collection("undeliveredCrisisPages").doc(claimRef.id).delete().catch(() => {});
+}
+
+// C8 (2026-10-28): resolve an undelivered-page record for a post or reply —
+// called when the item is deleted or a human reviews it. Also drops the claim
+// for a DELETED item so the watchdog never re-creates a record for it.
+async function resolveCrisisRecord(recordId, { dropClaim = false } = {}) {
+  await db.collection("undeliveredCrisisPages").doc(recordId).delete().catch(() => {});
+  if (dropClaim) await db.collection("processedTriggerEvents").doc(recordId).delete().catch(() => {});
 }
 
 // Crisis disclosures posted as REPLIES previously got no admin page at all
@@ -5911,6 +5930,7 @@ exports.auditCrisisReplyReview = onDocumentUpdated(
     const before = event.data.before.data() || {};
     const after  = event.data.after.data() || {};
     if (before.reviewed === true || after.reviewed !== true) return;
+    if (after.replyId) await resolveCrisisRecord(`crisisAlertReply_${after.replyId}`); // C8: reviewed → stop the watchdog
     await writeAuditEntry({
       action: "reply.crisis_reviewed",
       adminUid: after.reviewedBy || "unknown",
@@ -5979,6 +5999,7 @@ exports.auditPostModeration = onDocumentUpdated(
       }, `${event.id}_approve`);
     }
     if (newlyCrisisReviewed) {
+      await resolveCrisisRecord(`crisisAlert_${event.params.postId}`); // C8: reviewed → stop the watchdog
       await writeAuditEntry({
         action: "post.crisis_reviewed",
         adminUid: after.crisisReviewedBy || "unknown",
@@ -6321,85 +6342,85 @@ function resetEmailHtml(url) {
 exports.crisisDeliveryWatchdog = onSchedule(
   { schedule: "every 5 minutes", timeoutSeconds: 120 },
   async () => {
+    // C8 (2026-10-28 audit): retrier + rate-limited alerter, not a repeater.
+    //   scan A — explicit-tier crisis POSTS (15 min–24 h old) with no delivery
+    //            claim and no record get a record (reason "never_paged").
+    //            Soft-tier posts are never paged by design and are ignored
+    //            (they used to be re-logged every 5 minutes for 24 hours).
+    //   scan B — every unclaimed record: resolved (item gone / human reviewed)
+    //            → delete; else RETRY the page (a token may exist now) → on
+    //            success the claim is written and the record deleted; else log
+    //            crisis_page_undelivered on the cadence: hourly for the first
+    //            6 h after detection, then every 6 h, no ceiling, until resolved.
     const now = Date.now();
-    const cutoff = Timestamp.fromDate(new Date(now - 15 * 60 * 1000));       // >15 min old
-    const floor = Timestamp.fromDate(new Date(now - 24 * 60 * 60 * 1000));   // scan bound
-    const undelivered = new Set();
-    let scanErrors = 0;
+    const cutoff = Timestamp.fromDate(new Date(now - 15 * 60 * 1000));
+    const floor = Timestamp.fromDate(new Date(now - 24 * 60 * 60 * 1000));
+    let scanErrors = 0, alerted = 0, retriedOk = 0, resolved = 0, pending = 0;
 
-    // Each scan is isolated: if one throws (e.g. a missing index), it logs and
-    // increments scanErrors so the generic function-error policy still fires,
-    // but the OTHER scan and the heartbeat still run — a single failure must
-    // never silently blind the whole watchdog.
-
-    // (1) Persisted no-token records >15m old with still no delivery claim.
-    //     Keyed by the page's claim id → SURVIVES post deletion (a crisis post
-    //     deleted before 15m is still caught here if its page failed).
-    try {
-      const recs = await db.collection("undeliveredCrisisPages")
-        .where("detectedAt", "<", cutoff).get();
-      for (const d of recs.docs) {
-        const claim = await db.collection("processedTriggerEvents").doc(d.id).get();
-        if (!claim.exists) undelivered.add(d.id.replace(/^crisisAlert_/, ""));
-      }
-    } catch (e) {
-      scanErrors++;
-      console.error("crisisDeliveryWatchdog scan(1) undeliveredCrisisPages failed:", e);
-    }
-
-    // (2) Live concerning posts 15m–24h old with no delivery claim — catches the
-    //     transient-send-failure path (tokens existed, all sends failed, retries
-    //     exhausted) that leaves no record. Uses the
-    //     (concerningContent, createdAt) composite index.
     try {
       const posts = await db.collection("posts")
         .where("concerningContent", "==", true)
         .where("createdAt", "<", cutoff)
         .where("createdAt", ">", floor)
-        // Explicit DESC order so this reuses the existing
-        // (concerningContent ASC, createdAt DESC) index that both projects
-        // already have — without it, the range filter implies createdAt ASC
-        // and would demand a second, ASC-direction index.
         .orderBy("createdAt", "desc").get();
       for (const p of posts.docs) {
-        const claim = await db.collection("processedTriggerEvents").doc(`crisisAlert_${p.id}`).get();
-        if (!claim.exists) undelivered.add(p.id);
+        const d = p.data();
+        if (d.crisisReviewedAt) continue;                       // human already looked
+        if (!isPostExplicitCrisis(d.text || "")) continue;      // soft tier: never paged, not a delivery failure
+        const id = `crisisAlert_${p.id}`;
+        if ((await db.collection("processedTriggerEvents").doc(id).get()).exists) continue;
+        const recRef = db.collection("undeliveredCrisisPages").doc(id);
+        if (!(await recRef.get()).exists) {
+          await recRef.set({ logLabel: `crisis-alert(${p.id})`, reason: "never_paged", detectedAt: FieldValue.serverTimestamp(),
+            page: { title: "crisis post", body: "a post needs review in the crisis queue", dataPayload: { type: "admin_crisis_alert", postId: p.id } } });
+        }
       }
-    } catch (e) {
-      scanErrors++;
-      console.error("crisisDeliveryWatchdog scan(2) concerning posts failed:", e);
-    }
+    } catch (e) { scanErrors++; console.error("crisisDeliveryWatchdog scan(A) concerning posts failed:", e); }
 
-    for (const postId of undelivered) {
-      console.warn(JSON.stringify({ tag: "crisis_page_undelivered", postId }));
-    }
-    console.log(JSON.stringify({
-      tag: "crisis_watchdog_heartbeat", undelivered: undelivered.size, scanErrors,
-    }));
-    // Surface scan failures to the generic error policy AFTER the heartbeat has
-    // been emitted, so a persistent index/permission problem still pages.
-    if (scanErrors > 0) {
-      throw new Error(`crisisDeliveryWatchdog: ${scanErrors} scan(s) failed this run`);
-    }
+    try {
+      const recs = await db.collection("undeliveredCrisisPages").get();
+      for (const r of recs.docs) {
+        const rec = r.data();
+        const id = r.id;
+        const isReply = id.startsWith("crisisAlertReply_");
+        const targetId = id.replace(/^crisisAlert(Reply)?_/, "");
+        const postId = isReply ? rec.page?.dataPayload?.postId : targetId;
+        if ((await db.collection("processedTriggerEvents").doc(id).get()).exists) { await r.ref.delete(); resolved++; continue; }
+        if (postId) {
+          const post = await db.collection("posts").doc(postId).get();
+          if (!post.exists) { await r.ref.delete(); resolved++; continue; }
+          if (!isReply && post.get("crisisReviewedAt")) { await r.ref.delete(); resolved++; continue; }
+          if (isReply) {
+            const reply = await db.collection("posts").doc(postId).collection("replies").doc(targetId).get();
+            if (!reply.exists) { await r.ref.delete(); resolved++; continue; }
+            const q = await db.collection("crisisReplyQueue").doc(`${postId}_${targetId}`).get();
+            if (q.exists && q.get("reviewed") === true) { await r.ref.delete(); resolved++; continue; }
+          }
+        }
+        if (rec.page?.title) {
+          try {
+            await pageAdminsForCrisis({ claimRef: db.collection("processedTriggerEvents").doc(id), title: rec.page.title, body: rec.page.body, dataPayload: rec.page.dataPayload || {}, logLabel: `${rec.logLabel || id}-retry` });
+            if ((await db.collection("processedTriggerEvents").doc(id).get()).exists) { retriedOk++; continue; }
+          } catch (e) { console.warn(`crisisDeliveryWatchdog: retry for ${id} failed: ${e.message}`); }
+        }
+        const detectedMs = rec.detectedAt?.toMillis?.() ?? now;
+        const ageMs = now - detectedMs;
+        const intervalMs = ageMs < 6 * 3600e3 ? 3600e3 : 6 * 3600e3;
+        const lastMs = rec.lastAlertedAt?.toMillis?.() ?? 0;
+        pending++;
+        if (now - lastMs >= intervalMs) {
+          console.warn(JSON.stringify({ tag: "crisis_page_undelivered", recordId: id, targetType: isReply ? "reply" : "post", targetId, postId: postId || null, reason: rec.reason || null, ageMin: Math.round(ageMs / 60000), alertCount: (rec.alertCount || 0) + 1 }));
+          await r.ref.set({ lastAlertedAt: FieldValue.serverTimestamp(), alertCount: FieldValue.increment(1) }, { merge: true });
+          alerted++;
+        }
+      }
+    } catch (e) { scanErrors++; console.error("crisisDeliveryWatchdog scan(B) records failed:", e); }
+
+    console.log(JSON.stringify({ tag: "crisis_watchdog_heartbeat", undelivered: pending, alerted, retriedOk, resolved, scanErrors }));
+    if (scanErrors > 0) throw new Error(`crisisDeliveryWatchdog: ${scanErrors} scan(s) failed this run`);
   }
 );
 
-// ============================================================
-// Test-only exports (consumed by functions-tests/functions.test.js).
-// Firebase deploy only deploys exports that are CloudFunctions, so this
-// plain object is inert in production. Exposing the internal Admin-SDK
-// helpers + the shared db handle lets the emulator suite exercise the
-// remediation logic directly (deletion cascade, the M-1 reply hold,
-// counter dedup, rate limiting) without the flaky trigger machinery, and
-// reusing this module's `db` avoids a second firebase-admin instance.
-// ============================================================
-// Defined non-enumerable so the firebase-functions deploy-time loader
-// (7.3+) does NOT walk into it. That loader recurses through every
-// enumerable plain-object export to discover endpoints; the Admin-SDK
-// `db`/`FieldValue` handles have self-referential object graphs (esp.
-// firebase-admin 14), which blew the loader's stack ("Maximum call stack
-// size exceeded"). Non-enumerable keeps it invisible to Object.entries()
-// while tests still read it via require('./index.js').__test directly.
 Object.defineProperty(module.exports, "__test", {
   enumerable: false,
   value: {

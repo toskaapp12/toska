@@ -1622,6 +1622,28 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
   }
 );
 
+// B3 (2026-10-28 audit, option A): a reply notification's `message` preview is
+// only ever filled from a LIVE reply (enrichReplyNotification / setReplyLive) and
+// scrubbed when the reply is HELD (setReplyPendingReview) — but nothing scrubbed
+// it when a live reply was DELETED (author, admin, or the hard-delete path after
+// an edit), so the deleted text lingered in the recipient's inbox. This runs on
+// every reply delete, independent of the counter trigger's early returns: scrub
+// the sender's preview, then backfill it from their latest REMAINING live reply
+// on the post (no-op when none is left — the notification keeps its generic
+// "replied to your words" line). Idempotent under retry (scrub/backfill are
+// both no-ops on re-run).
+exports.onReplyDeletedScrubNotifPreview = onDocumentDeleted(
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
+  async (event) => {
+    const deleted = event.data?.data();
+    const authorId = deleted?.authorId;
+    if (!authorId) return;
+    const postRef = db.collection("posts").doc(event.params.postId);
+    await syncReplyNotifPreview(postRef, authorId, "scrub");
+    await syncReplyNotifPreview(postRef, authorId, "backfill");
+  }
+);
+
 // N-16 (2026-06-10 re-review): when a reply is deleted, any reply-reposts
 // (top-level posts with isRepost:true + originalReplyId == this reply) were
 // orphaned with a dangling originalReplyId — no trigger cleaned them (only

@@ -50,6 +50,19 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   no strikes from reply holds. admin.html: "mark reviewed" releases a held crisis reply; approve flips
   the queue entry (live on GitHub Pages once this push lands). iOS held-reply banner + crisis support
   line in build 103. Staging 11/11, prod 5/5 (soft/supportive/"kys" only). See BUGS.md AUDIT-3.
+- **B3 FIXED + PROD (2026-10-28 ~19:25 UTC, `onReplyDeletedScrubNotifPreview`, deployed with
+  `--only functions:<name> --force`; prod function set = index.js exports minus the parked
+  sendBrandedPasswordReset = 73, nothing deleted):** a deleted reply (author/admin/hard-delete) no
+  longer leaves its text in the recipient's reply-notification preview. Staging 12/12, prod 4/4.
+- **A5 (profile-doc exposure) approved as two phases:** Phase 1 = authorization fields
+  (confirmedAdult*, restricted*) move to users/{uid}/private/data with that doc's write rule locked,
+  rules helpers read private/data, confirmAdult + admin restrict/unrestrict write private only,
+  mirror reversed, back-fill (owner approves the prod data write after seeing fields + counts).
+  Phase 2 (after build 103 is the floor) = acceptedPolicy*, hasCompletedOnboarding. allowSharing and
+  the counters stay public-readable; showFollowerCount stays display-only (wording: "hides the
+  count from your profile display"); **Tier 2: server-maintained public follower-count mirror
+  behind the toggle.** Policy wording batch gains "what other signed-in users can see" + "post or
+  reply" for crisis holds.
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner

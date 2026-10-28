@@ -37,6 +37,13 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-B3 — reply text in the recipient's notification preview (FIXED, PROD)
+
+- **Severity:** MED (privacy) · **Surface:** functions · **Status:** FIXED 2026-10-28 (option A) — `onReplyDeletedScrubNotifPreview` on prod
+- The preview (`message`) was already filled only from a LIVE reply and scrubbed on hold, and push payloads never carry text. Gap: nothing scrubbed it when a live reply was DELETED (author, admin, or the hard-delete path after an edit), so deleted text lingered in the inbox. New trigger on every reply delete: scrub the sender's preview, then re-backfill from their latest remaining live reply (keeps the "latest reply" semantics). Staging 12/12 (held / author-delete / admin-delete / edit-to-PII / edit-to-slur-hard-delete / two-reply backfill); prod 4/4 (author + admin delete), fixtures removed. Deploy note: a new `retry:true` function needs `--force` (first staging deploy silently failed).
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

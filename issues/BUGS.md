@@ -5,6 +5,14 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-A1 — held/crisis posts and replies enumerable by any signed-in user via unconstrained queries (FIXED, PROD)
+
+- **Severity:** HIGH (privacy; contradicts P:120) · **Surface:** firestore.rules + 3 client query sites · **Status:** FIXED 2026-10-28 — rules on prod (`rules-prod-2026-10-28-a1`), web live, iOS in build 103
+- Found by the 2026-10-27 multi-user audit (`AUDIT_MULTIUSER_STAGING_2026-10-27.md` A1). `moderationVisible()`/`postVisibleToCaller()` used `.get('moderationStatus','live')`; an unconstrained list query (where flagged==true, where pendingReason=='crisis', where authorId==<other>, bare orderBy, replies with no status filter) was satisfiable via the default → other users' held content with full text + handle. Fix: default `''`; posts/replies LIST rules drop `resource == null`; GET unchanged. Tests: `held-content-enumeration.test.js` (43), legacy-defaults-to-live tests reversed.
+- **Client change:** `documentId in` + live is also denied (engine limitation), so liked/saved tabs (web `fetchRefTab`, iOS ProfileView ×2), iOS engaged tags (FeedViewModel) read per document; iOS author repost sweep (PostDetailView) pins live. **Follow-up (build 103+/web):** paginate per-doc liked/saved reads 30 at a time with "load more".
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

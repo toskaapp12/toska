@@ -5,14 +5,46 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-10-27 (through commit `49e2f89`)._
+_Last updated: 2026-10-28 (A1 fix deployed to prod)._
+
+## 2026-10-28 — multi-user audit + A1 fix (PROD)
+
+- **Audit:** an independent, observation-only multi-user functional audit ran on staging 2026-10-27
+  (`issues/AUDIT_MULTIUSER_STAGING_2026-10-27.md`, 49 findings, staging restored to its exact
+  pre-audit baseline). Owner-set fix order: Tier 1 = A1, A2, crisis replies, B3, A5, C8, then
+  C1/C3/C5/C2; product decisions; Tier 2.
+- **A1 FIXED + PROD (rules tag `rules-prod-2026-10-28-a1`):** any signed-in user could LIST other
+  users' held / crisis-held posts and replies (full text + handle + reason) with any query that did not
+  constrain `moderationStatus` — `moderationVisible()` / `postVisibleToCaller()` defaulted a missing
+  field to `'live'`, which made unconstrained list queries satisfiable. Fix: default `''`, drop the
+  `resource == null` leg from the posts and replies LIST rules (GET keeps it so missing docs still read
+  as not-found). Pinned by `firestore-tests/held-content-enumeration.test.js` (43 tests; suite 434/434);
+  two legacy "no status defaults to live" tests reversed; fixtures now carry `moderationStatus`.
+  Prod has zero status-less posts/replies.
+  - **Client fallout:** a `documentId in` query cannot satisfy the live constraint even with the filter
+    (denied in emulator and on staging), so web `fetchRefTab` (liked/saved) and iOS ProfileView
+    liked/saved + FeedViewModel engaged-tags now read per document (GET allows live, denies held →
+    skipped; ProfileView tells deleted from held before self-healing the index). iOS
+    PostDetailView author repost sweep pins live. **Web LIVE on prod; iOS rides build 103.**
+  - **Verification:** emulator 434/434; staging 73/74 (the one "fail" was a fixture promoted to live by
+    validatePost before the read); prod: owner confirmed liked/saved tabs on app.toskaapp.com, then
+    24-shape in-page console check PASS (12 deny / 12 allow); released ruleset byte-identical to
+    `firestore.rules`; two throwaway prod accounts + content removed (totals back to 40 posts /
+    16 replies); no function errors or permission denials in Cloud Logging; watchdog heartbeat nominal.
+  - **Headless prod testing is impossible by design** (App Check 403 → "couldn't verify this device");
+    do NOT register a prod App Check debug token. Prod browser checks are owner-run; the console
+    snippet lives in the audit scratch (`a1-prod-console-check.js`).
+- **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
+  repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); **follow-up: paginate the per-doc
+  liked/saved reads (30 at a time, "load more") on iOS and web**; C1 reply-repost `moderationStatus`
+  when its fix lands.
 
 ## Where things stand
 
 - **Production is healthy and launch-hardened.** A full pre-launch audit
   (`AUDIT_REPORT.md`, gitignored, local only) was run and its Phase-2 fixes
   shipped. Latest release tag: **`v1.3-b93`** (tags lag the builds; prod rules
-  pinned at `rules-prod-2026-10-25-opt2` = `main@f09ae87`).
+  pinned at **`rules-prod-2026-10-28-a1`** — supersedes `rules-prod-2026-10-25-opt2`).
 - **iOS:** build **102** on TestFlight (v1.3) is the launch candidate — owner
   hand-testing on device 2026-10-27. Build 100 was the first "clean" candidate
   (FCM-DIAG stripped); 102 adds the consent cluster, M4/M5 auth fixes, lavender

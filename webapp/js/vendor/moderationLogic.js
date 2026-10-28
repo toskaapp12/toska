@@ -144,6 +144,22 @@ const MOD_HATE = [
 // while the (narrowed) client passed them with no "under review" notice. The
 // targeted forms below catch real threats and are mirrored on the client so the
 // user is warned on exactly what the server holds.
+// A2 (2026-10-28 audit): group-dehumanizing hate. MOD_HATE above is a SLUR list
+// (hard-deletes a reply); these catch "all women are worthless trash" / "men are
+// subhuman and should be exterminated", which published live. Broader by nature,
+// so they route to a distinct flag reason ("dehumanizing") that is HELD for
+// review everywhere — never hard-deleted. Run through matchesEvasionRegex.
+const DEHUMANIZING_GROUP = "(women|men|girls|boys|females|males|gays|gay people|lesbians|trans people|trans folks|jews|jewish people|muslims|christians|catholics|hindus|blacks|black people|whites|white people|asians|mexicans|latinos|arabs|indians|chinese|africans|immigrants|migrants|refugees|foreigners|feminists|liberals|conservatives|republicans|democrats|boomers|zoomers|autistic people|disabled people|fat people|poor people|homeless people)";
+const DEHUMANIZING_WORD = "(worthless|trash|garbage|subhuman|vermin|animals|scum|parasites|filth|filthy|disgusting|a disease|a plague|cockroaches|rats)";
+const MOD_DEHUMANIZING = [
+  new RegExp("\\b(all|every|most)\\s+" + DEHUMANIZING_GROUP + "\\s+(are|is|r)\\s+(just\\s+|nothing but\\s+|literally\\s+)?" + DEHUMANIZING_WORD + "\\b", "i"),
+  new RegExp("\\b" + DEHUMANIZING_GROUP + "\\s+(are|is|r)\\s+(all\\s+)?(just\\s+|nothing but\\s+|literally\\s+)?" + DEHUMANIZING_WORD + "\\b", "i"),
+  new RegExp("\\b" + DEHUMANIZING_GROUP + "\\s+(should|need to|ought to|deserve to|must)\\s+(all\\s+)?(be\\s+)?(exterminated|wiped out|put down|gassed|eradicated|killed|erased|eliminated|slaughtered|die|hang)\\b", "i"),
+  new RegExp("\\bexterminate\\s+(all\\s+|the\\s+)?" + DEHUMANIZING_GROUP + "\\b", "i"),
+  /\bsubhumans?\b/i,
+  /\b(should|need to|ought to|deserve to|must) be exterminated\b/i,
+];
+
 const MOD_THREAT = [
   "kill you", "kill him", "kill her", "kill them",
   "shoot you", "shoot him", "shoot her", "shoot them",
@@ -171,6 +187,16 @@ const MOD_THREAT = [
   "beat you up", "beat the shit",
   "curb stomp", "slit your throat", "bash your head",
   "put a bullet", "put you in the ground",
+  // A2 (2026-10-28 audit): third-person PHYSICAL forms. "going to hurt him so
+  // badly when i see him" published live because every hurt-phrase was 2nd
+  // person. Plain "hurt him/her" stays OUT (emotional hurt is routine breakup
+  // writing); the "so bad" + physical-verb forms below are the threat shapes.
+  "going to hurt him so bad", "gonna hurt him so bad", "going to hurt her so bad", "gonna hurt her so bad",
+  "going to hurt them so bad", "gonna hurt them so bad", "want to hurt him so bad", "want to hurt her so bad",
+  "beat him up", "beat her up", "beat them up",
+  "break his legs", "break her legs", "break his jaw", "break her jaw", "break his face", "break her face",
+  "smash his face", "smash her face", "bash his head", "bash her head",
+  "make him bleed", "make her bleed", "put him in the hospital", "put her in the hospital",
 ];
 
 const MOD_SEXUAL = [
@@ -187,6 +213,22 @@ const MOD_SEXUAL = [
   /choke me/i, /f[u*]ck me daddy/i,
   /\br34\b/i, /rule ?34/i,
   /hook ?up/i, /booty ?call/i,
+];
+
+// A2 (2026-10-28 audit): explicit sexual detail that published live ("explicit
+// details about his dick"). Distinct flag reason "sexual_explicit" → HELD for
+// review on posts AND replies (never the hard-delete the slur-tier MOD_SEXUAL
+// reply path takes), and overridable at compose ("post anyway — it'll be
+// reviewed"). Guards (owner 2026-10-28): "fucked me over/up/around" and the
+// exclamation "fuck me, i miss him" are everyday breakup phrasing and must NOT
+// match; bare "sex" ("the sex was good") and bare "dick" ("he's a dick") are
+// deliberately absent. Runs through matchesEvasionRegex.
+const MOD_SEXUAL_REVIEW = [
+  /\bhis dick\b/i, /\bmy dick\b/i, /\bher pussy\b/i, /\bmy pussy\b/i,
+  /\bsuck my\b/i, /\beat me out\b/i, /\bate me out\b/i,
+  /\bfucked me\b(?!\s+(over|up|around|off)\b)/i,
+  /\bfuck me\b(?=\s+(hard|harder|now|again|like|in the|on the|daddy|baby|so good|good|right|slow|senseless|all night|tonight|till|until)\b)/i,
+  /\bcock in\b/i, /\bhis cock\b/i, /\btits out\b/i, /\bfinger(ed|ing) me\b/i,
 ];
 
 // Kept a SUPERSET of the client harassmentPhrases (ContentModeration.swift).
@@ -453,9 +495,14 @@ function matchesCrisisPhrase(rawText, list) {
     // and "s a" reach the same token. (This also FIXES the pre-existing
     // "sky's -> skys" harassment false positive the old substring path had.)
     if (pNoSpace.length <= 3) {
-      const re = new RegExp("\\b" + pNoSpace + "\\b");
-      return re.test(lowered) || re.test(normalized) || re.test(collapsed) ||
-        re.test(collapsedKeep);
+      // A2 (2026-10-28 audit): test ONLY the raw lowercased text. The
+      // normalized/de-leeted forms fold digits into letters ("54" → "sa",
+      // "5h" → "sh", "0d" → "od"), which held "54 days since" and "i have 54
+      // photos" as crisis. Punctuated/spaced initialisms ("k.m.s", "k m s",
+      // "s.a.") still match through the joiner between letters.
+      const joined = pNoSpace.split("").join("[\\s.\\-_*·]*");
+      const re = new RegExp("(?<![a-z0-9])" + joined + "(?![a-z0-9])");
+      return re.test(lowered);
     }
     if (lowered.includes(phrase) || normalized.includes(phrase)) return true;
     if (folded.includes(foldAmbiguousIL(phrase))) return true;
@@ -552,20 +599,32 @@ const SPAM_PATTERNS = [
 // The college guard on freshman/sophomore/junior stays for the same reason.
 const UNDERAGE_AGE =
   "(?:1[0-7]|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)";
+// A2 (2026-10-28 audit): "i[’']?m" so a curly apostrophe (iOS keyboard default)
+// and the bare "im" both match; bare age at a clause boundary ("i am 15 and my
+// first boyfriend…", "im 16, he was 19"); age+gender shorthand ("16f", "16 m",
+// "f16"); over-holding possible minors is the owner's stated preference.
+const UNDERAGE_BARE_AGE_RE = new RegExp(
+  "\\b(i[’']?m|i am)\\s+(only\\s+|just\\s+)?" + UNDERAGE_AGE +
+  "\\s*(?=(,|\\.|!|\\?|;|$|\\band\\b|\\bbut\\b|\\bso\\b|\\bnow\\b|\\brn\\b|\\blol\\b|\\btho\\b|\\bthough\\b|\\bbtw\\b|\\btoo\\b|\\bhere\\b|\\bhonestly\\b|\\bbtw\\b))");
+const UNDERAGE_AGE_GENDER_RE = /\b(1[0-7])\s?[fm]\b|\b[fm]\s?(1[0-7])\b/;
 const UNDERAGE_PATTERNS = [
-  /\b(i'?m|i am)\s+(a\s+)?(minor|underage)\b/,
-  /\bi'?m\s+not\s+(even\s+)?(18|eighteen)\b/,
+  /\b(i[’']?m|i am)\s+(a\s+)?(minor|underage)\b/,
+  /\bi[’']?m\s+not\s+(even\s+)?(18|eighteen)\b/,
+  UNDERAGE_BARE_AGE_RE,
+  UNDERAGE_AGE_GENDER_RE,
   new RegExp(
-    "\\b(i'?m|i am)\\s+(only\\s+|just\\s+)?" + UNDERAGE_AGE +
+    "\\b(i[’']?m|i am)\\s+(only\\s+|just\\s+)?" + UNDERAGE_AGE +
     "\\s*(years?\\s*old|yo\\b|yrs?\\s*old)"),
-  /\b(i'?m|i am)\s+in\s+(middle school|junior high|[6-9](th)?\s*grade|1[01](th)?\s*grade|(sixth|seventh|eighth|ninth|tenth|eleventh)\s*grade)\b/,
-  new RegExp("\\b(i'?m|i am)\\s+turning\\s+" + UNDERAGE_AGE + "\\b"),
+  /\b(i[’']?m|i am)\s+in\s+(middle school|junior high|[6-9](th)?\s*grade|1[01](th)?\s*grade|(sixth|seventh|eighth|ninth|tenth|eleventh)\s*grade)\b/,
+  new RegExp("\\b(i[’']?m|i am)\\s+turning\\s+" + UNDERAGE_AGE + "\\b"),
   new RegExp("\\bi\\s+just\\s+turned\\s+" + UNDERAGE_AGE + "\\b"),
   new RegExp("\\bi\\s+turn\\s+" + UNDERAGE_AGE + "\\s+(next|this|in|on)\\b"),
-  /\b(i'?m|i am)\s+an?\s+(freshman|sophomore|junior)\b(?!\s+(in|at)\s+(community\s+)?(college|university|uni)\b)/,
-  /\b(i'?m|i am)\s+an?\s+([6-9]|10|11)(th)?[\s-]*grader\b/,
+  /\b(i[’']?m|i am)\s+an?\s+(freshman|sophomore|junior)\b(?!\s+(in|at)\s+(community\s+)?(college|university|uni)\b)/,
+  /\b(i[’']?m|i am)\s+an?\s+([6-9]|10|11)(th)?[\s-]*grader\b/,
 ];
-const UNDERAGE_BORN_RE = /\b(i\s+was|i'?m|i\s+am)\s+born\s+in\s+((19|20)\d{2})\b/;
+// A2: bare "born in YEAR" (no pronoun) counts unless a possessive/determiner
+// names someone else ("my daughter born in 2012", "a dog born in 2012").
+const UNDERAGE_BORN_RE = /\b(?:(i\s+was|i[’']?m|i\s+am)\s+born\s+in|(?<!\b(my|his|her|their|our|your|the|a|an|kids?|son|daughter|dog|cat|baby|niece|nephew|sister|brother)\s)born\s+in)\s+((19|20)\d{2})\b/;
 
 function isUnderageDisclosure(rawText) {
   const t = (rawText || "").toLowerCase();
@@ -573,7 +632,7 @@ function isUnderageDisclosure(rawText) {
   // Birth year >= (currentYear - 17) guarantees age <= 17 even after this
   // year's birthday — never goes stale, never flags a possible 18-year-old.
   const born = UNDERAGE_BORN_RE.exec(t);
-  if (born && Number(born[2]) >= new Date().getFullYear() - 17) return true;
+  if (born && Number(born[3]) >= new Date().getFullYear() - 17) return true;
   return false;
 }
 
@@ -585,6 +644,7 @@ function computePostFlagReason(rawText) {
   if (isUnderageDisclosure(rawText)) return "minor_safety";
   if (SPAM_PATTERNS.some((p) => p.test(text))) return "spam_or_commercial";
   if (matchesEvasionRegex(rawText, MOD_HATE)) return "hate_speech";
+  if (matchesEvasionRegex(rawText, MOD_DEHUMANIZING)) return "dehumanizing"; // A2: held, never deleted
   // 2026-05-31: added MOD_HARASSMENT for posts. Previously only replies
   // checked it (computeReplyFlagReason at line 2350), so a user could
   // publish a top-level post with "kys" / "drink bleach" and have it
@@ -597,6 +657,7 @@ function computePostFlagReason(rawText) {
   if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
   if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
   if (matchesEvasionRegex(rawText, MOD_SEXUAL)) return "sexual_content";
+  if (matchesEvasionRegex(rawText, MOD_SEXUAL_REVIEW)) return "sexual_explicit"; // A2: held, overridable at compose
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";
   return null;
@@ -609,18 +670,24 @@ function isPostConcerning(rawText) {
 function computeReplyFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
   if (isUnderageDisclosure(rawText)) return "minor_safety";
+  // A2 (2026-10-28 audit): replies never ran the spam check, so "buy my crypto
+  // course, link in bio" replies went live. Held (abuse_spam) via applyReplyModeration.
+  if (SPAM_PATTERNS.some((p) => p.test(text))) return "spam_or_commercial";
   if (matchesEvasionRegex(rawText, MOD_HATE)) return "hate_speech";
+  if (matchesEvasionRegex(rawText, MOD_DEHUMANIZING)) return "dehumanizing";
   // Threat BEFORE harassment, same as computePostFlagReason: identical text
   // must triage to the same (more severe) category on both surfaces.
   if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
   if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
   if (matchesEvasionRegex(rawText, MOD_SEXUAL)) return "sexual_content";
+  if (matchesEvasionRegex(rawText, MOD_SEXUAL_REVIEW)) return "sexual_explicit";
   if (containsPII(rawText || "")) return "personal_information";
   if (containsURL(rawText || "")) return "contains_link";
   return null;
 }
 
 module.exports = {
+  MOD_DEHUMANIZING, MOD_SEXUAL_REVIEW,
   socialPatterns,
   hasPhoneNumber,
   emailPattern,

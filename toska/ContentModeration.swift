@@ -211,10 +211,14 @@ private func crisisPhraseMatch(_ text: String, _ list: [String]) -> Bool {
         // standalone word-boundary tokens — a bare "sa" fires inside
         // "salsa/visa/usa", "kys" inside "sky's"->"skys". Mirror of the server.
         if pNoSpace.count <= 3 {
-            let pattern = "\\b\(pNoSpace)\\b"
-            for form in [lowered, normalized, collapsed, collapsedKeep] {
-                if form.range(of: pattern, options: .regularExpression) != nil { return true }
-            }
+            // A2 (2026-10-28 audit, mirror of moderationLogic.js): test ONLY the
+            // raw lowercased text. The normalized/de-leeted forms fold digits into
+            // letters ("54" → "sa", "5h" → "sh", "0d" → "od"), which flagged
+            // "54 days since" as crisis. Punctuated/spaced initialisms ("k.m.s",
+            // "k m s", "s.a.") still match through the joiner between letters.
+            let joined = pNoSpace.map { String($0) }.joined(separator: "[\\s.\\-_*·]*")
+            let pattern = "(?<![a-z0-9])\(joined)(?![a-z0-9])"
+            if lowered.range(of: pattern, options: .regularExpression) != nil { return true }
             continue
         }
         if lowered.contains(phrase) || normalized.contains(phrase) { return true }
@@ -1101,6 +1105,10 @@ enum ContentViolationType {
     case slur
     case threat
     case sexual
+    /// A2 (2026-10-28): explicit sexual detail (mirror of server MOD_SEXUAL_REVIEW).
+    /// Same message as .sexual, but overridable ("post anyway") — the server
+    /// HOLDS it for review rather than hard-deleting.
+    case sexualReview
     case spam
     case harassment
     case link
@@ -1218,14 +1226,27 @@ func contentViolation(in text: String) -> ContentViolationType? {
     // "cocoon"/"raccoon"/"tycoon", "g[o0][o0]k" matched "gobbledygook" — all
     // routing routine writing to .slur (blocks compose; server hard-deletes the
     // reply). The (?!... armor) exclusion spares "a chink in the/his armor".
+    // A2: shared with the server's DEHUMANIZING_GROUP / DEHUMANIZING_WORD (moderationLogic.js).
+    let dehumanizingGroup = "(women|men|girls|boys|females|males|gays|gay people|lesbians|trans people|trans folks|jews|jewish people|muslims|christians|catholics|hindus|blacks|black people|whites|white people|asians|mexicans|latinos|arabs|indians|chinese|africans|immigrants|migrants|refugees|foreigners|feminists|liberals|conservatives|republicans|democrats|boomers|zoomers|autistic people|disabled people|fat people|poor people|homeless people)"
+    let dehumanizingWord = "(worthless|trash|garbage|subhuman|vermin|animals|scum|parasites|filth|filthy|disgusting|a disease|a plague|cockroaches|rats)"
     let slurPatterns = [
         "n[i1!*]gg", "f[a@*]gg", "r[e3]t[a@]rd", "tr[a@]nny", "d[yi1]ke",
         "\\bch[i1]nks?\\b(?!\\s+in\\s+\\w+\\s+armou?r)", "\\bsp[i1]ck?s?\\b", "\\bk[i1]kes?\\b", "\\bw[e3]tb[a@]cks?\\b", "\\bg[o0][o0]ks?\\b",
         "\\bc[o0][o0]ns?\\b", "towelhead", "raghead", "beaner", "zipperhead",
+        // A2 (2026-10-28 audit): group-dehumanizing hate (mirror of server
+        // MOD_DEHUMANIZING — keep the group/word lists identical). "all women are
+        // worthless trash", "men are subhuman and should be exterminated" published
+        // live. Hard-blocked at compose like slurs; the server HOLDS (never deletes).
+        "\\b(all|every|most)\\s+" + dehumanizingGroup + "\\s+(are|is|r)\\s+(just\\s+|nothing but\\s+|literally\\s+)?" + dehumanizingWord + "\\b",
+        "\\b" + dehumanizingGroup + "\\s+(are|is|r)\\s+(all\\s+)?(just\\s+|nothing but\\s+|literally\\s+)?" + dehumanizingWord + "\\b",
+        "\\b" + dehumanizingGroup + "\\s+(should|need to|ought to|deserve to|must)\\s+(all\\s+)?(be\\s+)?(exterminated|wiped out|put down|gassed|eradicated|killed|erased|eliminated|slaughtered|die|hang)\\b",
+        "\\bexterminate\\s+(all\\s+|the\\s+)?" + dehumanizingGroup + "\\b",
+        "\\bsubhumans?\\b",
+        "\\b(should|need to|ought to|deserve to|must) be exterminated\\b",
     ]
     for form in forms {
         for pattern in slurPatterns {
-            if form.range(of: pattern, options: .regularExpression) != nil { return .slur }
+            if form.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil { return .slur }
         }
     }
 
@@ -1257,6 +1278,14 @@ func contentViolation(in text: String) -> ContentViolationType? {
         "beat you up", "beat the shit",
         "curb stomp", "slit your throat", "bash your head",
         "put a bullet", "put you in the ground",
+        // A2 (2026-10-28 audit): third-person PHYSICAL forms (mirror of server
+        // MOD_THREAT). Plain "hurt him/her" stays out — emotional hurt is routine.
+        "going to hurt him so bad", "gonna hurt him so bad", "going to hurt her so bad", "gonna hurt her so bad",
+        "going to hurt them so bad", "gonna hurt them so bad", "want to hurt him so bad", "want to hurt her so bad",
+        "beat him up", "beat her up", "beat them up",
+        "break his legs", "break her legs", "break his jaw", "break her jaw", "break his face", "break her face",
+        "smash his face", "smash her face", "bash his head", "bash her head",
+        "make him bleed", "make her bleed", "put him in the hospital", "put her in the hospital",
     ]
     // Route through crisisPhraseMatch (2026-07-19 audit) so threat detection has
     // the SAME de-leet/de-confusable/de-space normalization the server applies via
@@ -1315,6 +1344,22 @@ func contentViolation(in text: String) -> ContentViolationType? {
             if form.range(of: pattern, options: .regularExpression) != nil { return .sexual }
         }
     }
+    // A2 (2026-10-28 audit): explicit sexual detail → .sexualReview (overridable;
+    // server HOLDS, never deletes). Mirror of server MOD_SEXUAL_REVIEW incl. the
+    // guards: "fucked me over/up/around/off" and the exclamation "fuck me, i miss
+    // him" must NOT match; bare "sex"/"dick" are deliberately absent.
+    let sexualReviewPatterns = [
+        "\\bhis dick\\b", "\\bmy dick\\b", "\\bher pussy\\b", "\\bmy pussy\\b",
+        "\\bsuck my\\b", "\\beat me out\\b", "\\bate me out\\b",
+        "\\bfucked me\\b(?!\\s+(over|up|around|off)\\b)",
+        "\\bfuck me\\b(?=\\s+(hard|harder|now|again|like|in the|on the|daddy|baby|so good|good|right|slow|senseless|all night|tonight|till|until)\\b)",
+        "\\bcock in\\b", "\\bhis cock\\b", "\\btits out\\b", "\\bfinger(ed|ing) me\\b",
+    ]
+    for form in forms {
+        for pattern in sexualReviewPatterns {
+            if form.range(of: pattern, options: .regularExpression) != nil { return .sexualReview }
+        }
+    }
 
     // --- Spam ---
     let spamPhrases = [
@@ -1357,7 +1402,7 @@ func contentViolationMessage(for type: ContentViolationType) -> String {
         return "this contains language that could hurt people. toska is a space for everyone."
     case .threat:
         return "this sounds like it could be threatening toward someone. toska is for expressing feelings, not directing harm."
-    case .sexual:
+    case .sexual, .sexualReview:
         return "this contains sexual content that isn't appropriate for toska."
     case .spam:
         return "this looks like it might be spam or promotional content."

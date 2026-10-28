@@ -34,10 +34,23 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   - **Headless prod testing is impossible by design** (App Check 403 → "couldn't verify this device");
     do NOT register a prod App Check debug token. Prod browser checks are owner-run; the console
     snippet lives in the audit scratch (`a1-prod-console-check.js`).
+- **A2 FIXED + PROD (functions + hosting, 2026-10-28 ~16:40 UTC):** moderation gaps from the audit —
+  group-dehumanizing hate (new `dehumanizing` reason, HELD never deleted), explicit sexual detail
+  (`sexual_explicit`, HELD, overridable at compose, with "fucked me over/up" + exclamation guards),
+  third-person physical threats, underage phrasings (bare age, curly apostrophe, "16f", bare "born in
+  YEAR"), spam now checked on replies, and the "54"→"sa" crisis false positive (short algospeak tokens
+  match raw text only). Corpus 141/141 + reply cases + crisis-tier 29/29; detector-parity 100/100;
+  staging sweep 39/39; prod sweep 34/34 with immediate cleanup. See BUGS.md AUDIT-A2. Accepted miss:
+  "dumped in 9th grade" (pinned). iOS mirror (ContentModeration.swift `.sexualReview`, dehumanizing
+  patterns, threat additions, short-token fix) rides build 103.
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
-  repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); **follow-up: paginate the per-doc
+  repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
+  (ContentModeration.swift, ComposeView `.sexualReview` override); **follow-up: paginate the per-doc
   liked/saved reads (30 at a time, "load more") on iOS and web**; C1 reply-repost `moderationStatus`
   when its fix lands.
+- **Benign prod log noise seen 2026-10-28:** `adminDeleteAccount` "Invalid request" = GET probes from
+  Google-range crawler IPs (rejected 400/404); `validateReply` NOT_FOUND ×3 after a slur reply is
+  hard-deleted by `onReplyCreatedModerate` (pre-existing race, logged as a LOW follow-up).
 
 ## Where things stand
 

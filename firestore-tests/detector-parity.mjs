@@ -40,6 +40,19 @@ function serverCrisis(t) {
 // 2026-06-30 fix closed (1/!/| → i or l) plus benign digit/punctuation lines
 // that must NOT over-detect from the ambiguous-glyph expansion.
 const CRISIS_CORPUS = [
+  // A2 (2026-10-28 audit): short algospeak tokens match raw text only — digits
+  // must not fold into sa/sh/od; real initialisms (spaced/punctuated) still hold.
+  ["54 days since she left", "none"],
+  ["i have 54 photos of us", "none"],
+  ["it has been 5h since he texted", "none"],
+  ["room 0d at the hotel", "none"],
+  ["ugh kms", "soft"],
+  ["k.m.s honestly", "soft"],
+  ["k m s", "soft"],
+  ["i relapsed into sh again", "soft"],
+  ["s.a. survivor here", "soft"],
+  ["i want to unalive myself", "explicit"],
+  ["thinking about sewer slide tonight", "explicit"],
   ["i want to kill myself", "explicit"],
   ["i want to ki11 myself", "explicit"],   // 1 -> l
   ["i want to k!ll myself", "explicit"],   // ! -> i

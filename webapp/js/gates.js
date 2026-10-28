@@ -43,8 +43,12 @@ const VIOLATION_COPY = {
     targeted_threat: "this sounds like it could be threatening toward someone. if that's not what you meant, a small edit will fix it.",
     spam_or_commercial: "this looks like it might be spam or promotional content.",
     contains_link: "toska doesn't allow links — keep it about the words.",
+    // A2 (2026-10-28): dehumanizing-group hate shares the hate copy and hard-blocks;
+    // explicit sexual detail shares the sexual copy but is overridable (server HOLDS it).
+    dehumanizing: "this contains language that could hurt people. toska is a space for everyone.",
+    sexual_explicit: "this contains sexual content that isn't appropriate for toska.",
 };
-const HARD_BLOCK = new Set(["hate_speech", "sexual_content", "harassment"]);
+const HARD_BLOCK = new Set(["hate_speech", "dehumanizing", "sexual_content", "harassment"]);
 
 function violationDialog(reason) {
     return new Promise((resolve) => {

@@ -1194,7 +1194,9 @@ struct ComposeView: View {
         // was already hard-blocked), and letting the user override their own
         // client-detected threat risks it shipping live if the server threat
         // classifier doesn't independently catch it.
-        case .spam, .link: return true
+        // A2 (2026-10-28): .sexualReview is HELD server-side (never deleted) and
+        // its patterns are broader than the hard-block sexual tier → overridable.
+        case .spam, .link, .sexualReview: return true
         default: return false
         }
     }

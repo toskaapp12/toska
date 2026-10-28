@@ -13,6 +13,18 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-A2 — moderation gaps: dehumanizing hate, explicit sexual detail, 3rd-person threats, underage phrasings, reply spam; "54"→"sa" crisis false positive (FIXED, PROD)
+
+- **Severity:** HIGH (contradicts I:323-327 / T:96 / T:84) · **Surface:** functions moderationLogic.js + index.js, web vendor + gates.js, iOS ContentModeration.swift · **Status:** FIXED 2026-10-28 — functions + hosting on prod; iOS in build 103
+- **Found by** the 2026-10-27 audit (A2): "all women are worthless trash", "all men are subhuman garbage and should be exterminated", "explicit details about his dick", "going to hurt him so badly", "i am 15 and…", "16f", bare "born in 2012" all published LIVE as posts and replies; replies were never spam-checked; a clean post containing "54" was HELD as crisis because the ≤3-char algospeak tokens (sa/sh/dv/od/kms) were tested against the de-leeted text ("54"→"sa", "5h"→"sh", "0d"→"od").
+- **Fix:** `MOD_DEHUMANIZING` (flag `dehumanizing` → pendingReason `abuse_hate`, HELD everywhere, never hard-deleted; slurs keep the reply hard-delete); 3rd-person physical threat phrases (plain "hurt him/her" deliberately NOT included); `MOD_SEXUAL_REVIEW` (flag `sexual_explicit` → `abuse_sexual`, HELD, overridable at compose; guards: "fucked me over/up/around/off", exclamation "fuck me, …", bare "sex"/"dick" absent); underage: curly apostrophe, bare age at a clause boundary, age+gender ("16f", "16 m", "f16"), bare "born in YEAR" (not after my/his/her/daughter/dog…); replies now run `SPAM_PATTERNS` (held `abuse_spam`); `applyReplyModeration` holds the three new reasons (an unknown reason used to fall into the delete branch); short crisis tokens match raw text only, with a joiner so "k.m.s" / "k m s" / "s.a." still hold.
+- **Accepted miss (owner):** "being dumped in 9th grade…" — no present-tense first-person marker; pinned null in the corpus. "immigrants should all be deported" stays live (political speech).
+- **Pins:** moderation-corpus 141/141 (+ new REPLY_CASES), crisis-tier 29/29, crisis-parity exact, detector-parity 100/100 (Swift matcher compiled), moderation suite 154, functions tests 24. **Staging sweep 39/39; prod sweep 34/34** (Admin-SDK writes under throwaway authors, backdated 2y, deleted 76 s after the first write; no crisis wording on prod).
+- **Parity caveats:** iOS reply/edit composers are edit-only for every violation type (pre-existing design), so `.sexualReview` there has no "reply anyway"; iOS has no underage detector (server holds; author sees the banner).
+- **Follow-up (LOW):** `validateReply` (retry:true) logs NOT_FOUND and retries when `onReplyCreatedModerate` hard-deletes a slur reply first (3 error lines per deleted reply). Treat NOT_FOUND as done.
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

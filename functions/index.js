@@ -3107,6 +3107,8 @@ function flagReasonToPendingReason(flagReason) {
     case "contains_link": return "abuse_link";
     case "spam_or_commercial": return "abuse_spam";
     case "minor_safety": return "minor_safety";
+    case "dehumanizing": return "abuse_hate";      // A2 (2026-10-28): group-dehumanizing hate → HELD, never deleted
+    case "sexual_explicit": return "abuse_sexual"; // A2: explicit sexual detail → HELD, never deleted
     default: return "abuse";
   }
 }
@@ -3577,7 +3579,12 @@ async function applyReplyModeration(postId, replyId, flagReason) {
     // mirrors the admin.html label keys ("pii" / "abuse_link").
     await setReplyPendingReview(replyRef, flagReason === "contains_link" ? "abuse_link" : "pii");
     console.log(`Reply ${replyId} on post ${postId} held for review: ${flagReason}`);
-  } else if (flagReason === "harassment" || flagReason === "targeted_threat") {
+  } else if (flagReason === "harassment" || flagReason === "targeted_threat"
+    || flagReason === "dehumanizing" || flagReason === "sexual_explicit" || flagReason === "spam_or_commercial") {
+    // A2 (2026-10-28 audit): dehumanizing / sexual_explicit / spam replies are
+    // HELD, never hard-deleted — broader lists than the slur tier, and a wrong
+    // delete is irreversible. (Before A2 an unknown reason fell into the delete
+    // branch below, and replies were never spam-checked at all.)
     // HOLD (recoverable) instead of hard-delete. MOD_HARASSMENT/MOD_THREAT
     // lists substring-match supportive NEGATED reach-outs — "please don't kill
     // yourself, call 988, you matter" contains "kill yourself" — which are the

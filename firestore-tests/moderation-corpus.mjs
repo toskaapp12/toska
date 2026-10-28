@@ -13,7 +13,7 @@
 //
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { computePostFlagReason, isPostExplicitCrisis, isPostConcerning } =
+const { computePostFlagReason, computeReplyFlagReason, isPostExplicitCrisis, isPostConcerning } =
   require("../functions/moderationLogic.js");
 
 // [text, expectedReason | null]
@@ -139,9 +139,74 @@ const CASES = [
   // 2026-07-27 algospeak — harassment-lane FP guards (kys word-boundary fix)
   ["the sky is the limit for us", null],      // "sky's"->"skys" no longer trips kys
   ["i love these grippy socks in winter", null], // no harassment/hate from grippy sock
+
+  // ── A2 (2026-10-28 multi-user audit): phrasings that published LIVE on staging ──
+  // group-dehumanizing hate → "dehumanizing" (HELD everywhere, never deleted)
+  ["all women are worthless trash and deserve nothing", "dehumanizing"],
+  ["all men are subhuman garbage and should be exterminated", "dehumanizing"],
+  ["men are literally vermin", "dehumanizing"],
+  ["immigrants should all be gassed", "dehumanizing"],
+  ["immigrants should all be deported", null],   // political speech, not dehumanizing — stays live
+  ["exterminate the jews", "dehumanizing"],
+  ["he is subhuman", "dehumanizing"],
+  // explicit sexual detail → "sexual_explicit" (HELD, overridable at compose)
+  ["the sex was the only good part, explicit details about his dick", "sexual_explicit"],
+  ["she fucked me hard every night and now nothing", "sexual_explicit"],
+  ["he used to eat me out and now he won't even text", "sexual_explicit"],
+  ["fuck me daddy she said", "sexual_content"],   // pre-existing hard tier still wins
+  // third-person physical threat → "targeted_threat"
+  ["i am going to hurt him so badly when i see him next", "targeted_threat"],
+  ["im gonna beat him up when i see him", "targeted_threat"],
+  ["i will break his jaw", "targeted_threat"],
+  // underage: bare age at a clause boundary, curly apostrophe, age+gender, bare born-in
+  ["i am 15 and my first boyfriend just broke up with me before homecoming", "minor_safety"],
+  ["im 16, he was 19", "minor_safety"],
+  ["i’m 16 and this is my first breakup", "minor_safety"],   // curly apostrophe (iOS keyboard)
+  ["16f here and he was 19", "minor_safety"],
+  ["f16 and heartbroken", "minor_safety"],
+  ["16 m and she left", "minor_safety"],
+  ["born in 2012 and already heartbroken, is that normal", "minor_safety"],
+  [`born in ${new Date().getFullYear() - 13} and he left me`, "minor_safety"],
+  // ACCEPTED MISS (owner 2026-10-28): no present-tense first-person marker; adding
+  // it would hold adults reminiscing. Pinned as null so a future change is deliberate.
+  ["being dumped in 9th grade is the worst thing that happened to me", null],
+  // ── A2 must-stay-LIVE controls (owner 2026-10-28) ──
+  ["he fucked me over so badly", null],
+  ["this breakup fucked me up", null],
+  ["she really fucked me around for months", null],
+  ["fuck me, i miss him so much", null],          // exclamation, not sexual
+  ["he's such a dick honestly", null],
+  ["he is a dick but i still love him", null],
+  ["the sex was good but nothing else was", null],
+  ["54 days since she left", null],
+  ["i have 54 photos of us", null],
+  ["it is going to hurt him when he finds out", null],   // emotional hurt
+  ["i don't want to hurt her but i have to go", null],
+  ["my daughter born in 2012 keeps asking about him", null],
+  ["my dog born in 2013 misses him too", null],
+  ["im 15 minutes late to everything now", null],
+  ["i am 15 years into this and still lost", null],       // "years into" guard via "years old" only
+  ["the men in my family never talk about feelings", null],
+  ["all women are not the same, she was different", null],
+  ["women are strong and i was not", null],
+  ["i was born in 1995", null],
+];
+
+// A2: replies run computeReplyFlagReason (now spam-checked; same reasons otherwise)
+const REPLY_CASES = [
+  ["buy my crypto course now, link in bio, cashapp me and get rich", "spam_or_commercial"],
+  ["all men are subhuman garbage and should be exterminated", "dehumanizing"],
+  ["explicit details about his dick", "sexual_explicit"],
+  ["you dirty spic", "hate_speech"],               // slur tier: still hard-deleted by applyReplyModeration
+  ["you are not alone in this at all", null],
+  ["he fucked me over too, i get it", null],
 ];
 
 let failed = 0;
+for (const [text, expected] of REPLY_CASES) {
+  const got = computeReplyFlagReason(text) ?? null;
+  if (got !== expected) { failed++; console.error(`✗ REPLY FAIL [${text}] => ${got} (expected ${expected})`); }
+}
 for (const [text, expected] of CASES) {
   const got = computePostFlagReason(text);
   const norm = got === null || got === undefined ? null : got;
@@ -178,6 +243,25 @@ const CRISIS_CASES = [
   ["we killed it at karaoke last night", false, false],
   ["that was a brilliant skilllful move", false, false],
   ["i am sooooo done with him", false, false],
+  // ── A2 (2026-10-28 audit): digits must never fold into the ≤3-char algospeak tokens ──
+  ["54 days since she left", false, false],          // "54" → "sa" was held as crisis
+  ["i have 54 photos of us", false, false],
+  ["post 54: the playlist still feels like theirs", false, false],
+  ["it has been 5h since he texted", false, false],  // "5h" → "sh"
+  ["room 0d at the hotel", false, false],            // "0d" → "od"
+  ["we were together 4 years and 5 months", false, false],
+  // …while real algospeak / initialisms still hold (soft tier) or page (explicit)
+  ["ugh kms", false, true],
+  ["k.m.s honestly", false, true],
+  ["k m s", false, true],
+  ["i relapsed into sh again", false, true],
+  ["i am a sa survivor", false, true],
+  ["s.a. survivor here", false, true],
+  ["i want to unalive myself", true, true],
+  ["thinking about sewer slide tonight", true, true],
+  ["thinking about sewerslide tonight", true, true],
+  ["usa visa salsa", false, false],                  // "sa" inside words must not fire
+  ["shhh it's okay", false, false],                  // "sh" inside a longer token
 ];
 let crisisFailed = 0;
 for (const [text, wantExplicit, wantConcerning] of CRISIS_CASES) {

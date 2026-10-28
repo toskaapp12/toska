@@ -188,6 +188,12 @@ struct MyReply: Identifiable {
     let parentHandle: String
     let parentPostId: String
     let createdAt: Date
+    // Item 3 (2026-10-28): explicit-tier crisis replies are now HELD like posts.
+    // The author's replies tab shows the same "under review" banner (with the
+    // crisis support line when pendingReason == "crisis") as held posts do.
+    var pendingReview: Bool = false
+    var pendingReasonLabel: String? = nil
+    var pendingReasonIsCrisis: Bool = false
 }
 
 /// Used in ProfileView's saved tab for saved replies. Bookmark target is

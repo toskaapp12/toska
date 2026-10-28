@@ -667,6 +667,35 @@ function isPostConcerning(rawText) {
   return matchesCrisisPhrase(rawText, MOD_CONCERNING);
 }
 
+// Item 3 (2026-10-28 audit follow-up): crisis REPLIES. Explicit-tier crisis
+// text in a reply is HELD for review (pending_review / "crisis") like a post —
+// UNLESS it reads as a supportive reach-out to the poster, which stays live and
+// queued for admin review as before. Soft-tier replies ("i can't do this
+// anymore either") are often empathy and stay live + queued (owner decision).
+// The supportive guard is deliberately NARROW: it needs BOTH a negation AND a
+// help signal, so "don't kill yourself" alone (no help signal) and "i want to
+// kill myself, call me" (no negation) are still held.
+// Negation must be tied to the self-harm verb ("don't kill yourself", "never do
+// it", "please do not hurt yourself") — a stray "don't" elsewhere does not count.
+const SUPPORT_NEGATION_RE = /\b(please\s+)?(don'?t|do\s+not|never|dont)\s+(ever\s+)?(kill|hurt|harm|unalive|end|hang|do|go through with|take)\s+(yourself|urself|it|this|that|your|those|the|all)/;
+// Any hard directed-abuse token disqualifies the supportive reading outright.
+const SUPPORT_DISQUALIFY_RE = /\b(kys|go die|you should die|hope you die|neck yourself|drink bleach|go hang yourself|go kill yourself|you should kill yourself|just die|nobody likes you|no one will miss you)\b/;
+const SUPPORT_HELP_RE = /\b(988|741741|crisis\s+line|crisis\s+text\s+line|lifeline|samaritans|hotline|helpline|call\s+(someone|a\s+friend|them|the|your|me|988)|text\s+(home|someone|me|741741|the)|reach\s+out|talk\s+to\s+(someone|a|your|me)|you\s+matter|you'?re\s+not\s+alone|youre\s+not\s+alone|not\s+alone|here\s+for\s+you|please\s+stay|stay\s+with\s+us|get\s+help|seek\s+help)\b/;
+function isSupportiveReachOut(rawText) {
+  const t = aggressiveNormalizeForNameMatch(rawText || "");
+  const lower = (rawText || "").toLowerCase();
+  if (SUPPORT_DISQUALIFY_RE.test(lower) || SUPPORT_DISQUALIFY_RE.test(t)) return false;
+  return (SUPPORT_NEGATION_RE.test(lower) || SUPPORT_NEGATION_RE.test(t))
+    && (SUPPORT_HELP_RE.test(lower) || SUPPORT_HELP_RE.test(t));
+}
+// True when a reply's crisis text should HOLD the reply (explicit tier, not a
+// supportive reach-out). Directed abuse ("go kill yourself", "kys") is routed by
+// computeReplyFlagReason → harassment BEFORE this is consulted (see index.js),
+// so it is never treated as the author's own crisis.
+function shouldHoldCrisisReply(rawText) {
+  return isPostExplicitCrisis(rawText) && !isSupportiveReachOut(rawText);
+}
+
 function computeReplyFlagReason(rawText) {
   const text = (rawText || "").toLowerCase();
   if (isUnderageDisclosure(rawText)) return "minor_safety";
@@ -677,8 +706,15 @@ function computeReplyFlagReason(rawText) {
   if (matchesEvasionRegex(rawText, MOD_DEHUMANIZING)) return "dehumanizing";
   // Threat BEFORE harassment, same as computePostFlagReason: identical text
   // must triage to the same (more severe) category on both surfaces.
-  if (matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
-  if (matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
+  // Item 3 (2026-10-28): a supportive reach-out ("please don't kill yourself,
+  // call 988, you matter") substring-matches "kill you"/"kill yourself" and was
+  // held as a threat/harassment. With the narrow isSupportiveReachOut guard
+  // (negation tied to the self-harm verb + a help signal + no hard directed-
+  // abuse token) those replies skip the two directed-abuse lanes and stay live
+  // + crisis-queued for admin review.
+  const supportive = isSupportiveReachOut(rawText);
+  if (!supportive && matchesCrisisPhrase(rawText, MOD_THREAT)) return "targeted_threat";
+  if (!supportive && matchesCrisisPhrase(rawText, MOD_HARASSMENT)) return "harassment";
   if (matchesEvasionRegex(rawText, MOD_SEXUAL)) return "sexual_content";
   if (matchesEvasionRegex(rawText, MOD_SEXUAL_REVIEW)) return "sexual_explicit";
   if (containsPII(rawText || "")) return "personal_information";
@@ -687,7 +723,7 @@ function computeReplyFlagReason(rawText) {
 }
 
 module.exports = {
-  MOD_DEHUMANIZING, MOD_SEXUAL_REVIEW,
+  MOD_DEHUMANIZING, MOD_SEXUAL_REVIEW, isSupportiveReachOut, shouldHoldCrisisReply,
   socialPatterns,
   hasPhoneNumber,
   emailPattern,

@@ -9,6 +9,7 @@ const {
   isPostConcerning,
   computePostFlagReason,
   computeReplyFlagReason,
+  shouldHoldCrisisReply,
   MOD_EXPLICIT_CRISIS,
   MOD_CONCERNING,
 } = require("./moderationLogic");
@@ -2905,7 +2906,14 @@ exports.validateReply = onDocumentCreated(
     // that onReplyCreatedModerate enforces (mirror of validatePost/isPostClean),
     // so we never briefly surface a reply onReplyCreatedModerate is about to
     // hold/delete — and so clean replies carry a queryable moderationStatus.
-    if (!computeReplyFlagReason(text)) {
+    const replyFlag = computeReplyFlagReason(text);
+    // Item 3 (2026-10-28): an explicit-tier crisis reply must not be promoted to
+    // live by this trigger either (it races onReplyCreatedModerate's hold).
+    // setReplyPendingReview is idempotent and setReplyLive refuses to promote a
+    // pending_review reply, so the two triggers are order-independent.
+    if (!replyFlag && shouldHoldCrisisReply(text)) {
+      await setReplyPendingReview(replyRef, "crisis");
+    } else if (!replyFlag) {
       await setReplyLive(replyRef);
     }
   }
@@ -3615,12 +3623,18 @@ exports.onReplyCreatedModerate = onDocumentCreated(
   async (event) => {
     const data = event.data.data();
     if (!data) return;
-    // Crisis/concerning text in a reply: queue it for human review but do NOT
-    // hide it — in a peer-support thread a reach-out shouldn't be censored,
-    // and onReplyCreatedAlertAdmins pages a human on explicit crisis. The
-    // author sees crisis resources client-side at send time. This runs
-    // independently of the abuse/PII flag below.
-    if (isPostConcerning(data.text)) {
+    const replyRef = db.collection("posts").doc(event.params.postId).collection("replies").doc(event.params.replyId);
+    const flagReason = computeReplyFlagReason(data.text);
+    // Item 3 (2026-10-28 audit follow-up, owner decision): directed abuse ("go
+    // kill yourself", "kys", slurs) is the abuse lane — never the author's own
+    // crisis — so it gets no crisis queue entry and no crisis hold. Everything
+    // else that reads as concerning is queued for admin review (as before);
+    // EXPLICIT-tier text is additionally HELD (pending_review / "crisis") unless
+    // it reads as a supportive reach-out (negation tied to the self-harm verb +
+    // a help signal; see isSupportiveReachOut). Soft-tier text ("i can't do this
+    // anymore either") stays LIVE + queued — in replies it is usually empathy.
+    const directedAbuse = ["harassment", "targeted_threat", "hate_speech", "dehumanizing", "sexual_content"].includes(flagReason);
+    if (!directedAbuse && isPostConcerning(data.text)) {
       // 2026-07-17 privacy audit (C-1, reply surface): crisis replies stay
       // LIVE by design (a peer reach-out shouldn't vanish from its thread),
       // so the crisis marker must NOT be written onto the reply doc — a live
@@ -3642,8 +3656,11 @@ exports.onReplyCreatedModerate = onDocumentCreated(
           reviewed: false,
           detectedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
+      if (shouldHoldCrisisReply(data.text)) {
+        await setReplyPendingReview(replyRef, "crisis");
+        console.log(`Reply ${event.params.replyId} on post ${event.params.postId} HELD — explicit crisis (item 3)`);
+      }
     }
-    const flagReason = computeReplyFlagReason(data.text);
     if (flagReason) {
       await applyReplyModeration(event.params.postId, event.params.replyId, flagReason);
     }
@@ -3713,6 +3730,14 @@ exports.onReplyUpdated = onDocumentUpdated(
           dataPayload: { type: "admin_crisis_alert", postId: event.params.postId, replyId: event.params.replyId },
           logLabel: `crisis-alert-reply-edit(${event.params.replyId})`,
         });
+      }
+      // Item 3 (2026-10-28): an edit that introduces explicit crisis text HOLDS
+      // the reply (unless it reads as a supportive reach-out) — same as create.
+      // Directed abuse introduced by the edit is handled further down.
+      const editFlag = computeReplyFlagReason(after.text);
+      const editDirectedAbuse = ["harassment", "targeted_threat", "hate_speech", "dehumanizing", "sexual_content"].includes(editFlag);
+      if (!editDirectedAbuse && shouldHoldCrisisReply(after.text)) {
+        await setReplyPendingReview(replyRef, "crisis");
       }
     }
 

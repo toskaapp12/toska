@@ -984,6 +984,15 @@
                     crisisReviewedAt: deleteField(),
                     crisisReviewedBy: deleteField(),
                 });
+                // Item 3 (2026-10-28): a crisis-held reply also has a crisisReplyQueue
+                // entry at the deterministic id {postId}_{replyId}; approving here
+                // marks it reviewed so the crisis tab doesn't show a stale row.
+                try {
+                    const postId = replyRef.parent.parent.id;
+                    await updateDoc(doc(db, "crisisReplyQueue", `${postId}_${replyRef.id}`), {
+                        reviewed: true, reviewedAt: serverTimestamp(), reviewedBy: uid,
+                    });
+                } catch { /* not a crisis reply — no queue entry */ }
                 document.getElementById(`pendingreply-${cardKey}`)?.remove();
                 refreshCounts();
             } catch (e) {
@@ -1162,7 +1171,7 @@
 
                         const reviewedBtn = el("button", "btn-dismiss");
                         reviewedBtn.textContent = "mark reviewed";
-                        reviewedBtn.addEventListener("click", () => markReplyCrisisReviewed(d.entryId));
+                        reviewedBtn.addEventListener("click", () => markReplyCrisisReviewed(d.entryId, d.replyRef));
 
                         const deleteBtn = el("button", "btn-remove");
                         deleteBtn.textContent = "delete reply";
@@ -1217,10 +1226,36 @@
         // thread (a peer reach-out isn't hidden). reviewedBy can live on the
         // queue doc because only admins can read it; auditCrisisReplyReview
         // records the adminAuditLog entry off the reviewed flip.
-        async function markReplyCrisisReviewed(entryId) {
+        async function markReplyCrisisReviewed(entryId, replyRef) {
             if (!confirm("mark reviewed? this removes the item from the crisis queue (no undo in this UI).")) return;
             try {
                 const uid = auth.currentUser?.uid || "";
+                // Item 3 (2026-10-28): explicit-tier crisis replies are now HELD
+                // (pending_review / "crisis"). Reviewing releases the reply back
+                // into its thread with the same marker scrub as approvePendingReply
+                // — otherwise a reviewed reply would stay hidden forever. Soft-tier
+                // replies were never held, so this is a no-op for them.
+                if (replyRef) {
+                    try {
+                        const rs = await getDoc(replyRef);
+                        if (rs.exists() && rs.data().moderationStatus === "pending_review" && rs.data().pendingReason === "crisis") {
+                            await updateDoc(replyRef, {
+                                moderationStatus: "live",
+                                pendingApprovedAt: serverTimestamp(),
+                                pendingApprovedBy: uid,
+                                pendingReason: deleteField(),
+                                pendingDetectedAt: deleteField(),
+                                concerningContent: deleteField(),
+                                concerningDetectedAt: deleteField(),
+                                flagged: deleteField(),
+                                flagReason: deleteField(),
+                                flaggedAt: deleteField(),
+                                crisisReviewedAt: deleteField(),
+                                crisisReviewedBy: deleteField(),
+                            });
+                        }
+                    } catch (e) { console.warn("release held crisis reply failed", e?.message); }
+                }
                 await updateDoc(doc(db, "crisisReplyQueue", entryId), {
                     reviewed: true,
                     reviewedAt: serverTimestamp(),

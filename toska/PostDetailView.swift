@@ -26,6 +26,7 @@ struct ThreadedReply: Identifiable, Hashable {
     // is the user-facing category ("may contain names or contact info").
     var isPending: Bool = false
     var pendingReasonLabel: String? = nil
+    var pendingReasonIsCrisis: Bool = false // Item 3 (2026-10-28): crisis holds show the support line
     // Per-user interaction state — stamped during fetchReplies by
     // intersecting the snapshot's reply ids with the current user's
     // likedReplies / savedReplies / own reposts. Mutable so the toggle
@@ -1578,6 +1579,7 @@ struct PostDetailView: View {
             children: [],
             isPending: isPending,
             pendingReasonLabel: isPending ? pendingReasonLabelFor(data["pendingReason"] as? String) : nil,
+            pendingReasonIsCrisis: isPending && (data["pendingReason"] as? String) == "crisis",
             isLiked: false,
             isSaved: false,
             isReposted: false,
@@ -2466,7 +2468,7 @@ struct SwipeToReplyRow: View {
                 // banner (it's hidden from everyone else). The interaction row
                 // is suppressed below since a hidden reply can't be engaged with.
                 if item.reply.isPending {
-                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel)
+                    PendingReviewBanner(reasonLabel: item.reply.pendingReasonLabel, isCrisis: item.reply.pendingReasonIsCrisis)
                         .padding(.top, 8)
                 }
 

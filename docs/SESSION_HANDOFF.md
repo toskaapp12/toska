@@ -43,11 +43,19 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   staging sweep 39/39; prod sweep 34/34 with immediate cleanup. See BUGS.md AUDIT-A2. Accepted miss:
   "dumped in 9th grade" (pinned). iOS mirror (ContentModeration.swift `.sexualReview`, dehumanizing
   patterns, threat additions, short-token fix) rides build 103.
+- **Item 3 FIXED + PROD (four reply functions, 2026-10-28 ~17:40 UTC):** explicit-tier crisis replies
+  are HELD (`pending_review`/`crisis`); soft-tier stay live + queued; supportive reach-outs (negation
+  tied to the self-harm verb + help signal, no directed-abuse token) stay live and no longer trip the
+  threat lane; directed abuse ("kys", "go kill yourself") is the abuse lane with no crisis queue entry;
+  no strikes from reply holds. admin.html: "mark reviewed" releases a held crisis reply; approve flips
+  the queue entry (live on GitHub Pages once this push lands). iOS held-reply banner + crisis support
+  line in build 103. Staging 11/11, prod 5/5 (soft/supportive/"kys" only). See BUGS.md AUDIT-3.
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
-  (ContentModeration.swift, ComposeView `.sexualReview` override); **follow-up: paginate the per-doc
-  liked/saved reads (30 at a time, "load more") on iOS and web**; C1 reply-repost `moderationStatus`
-  when its fix lands.
+  (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner
+  (PostModels.MyReply pending fields, ProfileView replyRow, PostDetailView thread banner isCrisis);
+  **follow-up: paginate the per-doc liked/saved reads (30 at a time, "load more") on iOS and web**;
+  C1 reply-repost `moderationStatus` when its fix lands.
 - **Benign prod log noise seen 2026-10-28:** `adminDeleteAccount` "Invalid request" = GET probes from
   Google-range crawler IPs (rejected 400/404); `validateReply` NOT_FOUND ×3 after a slur reply is
   hard-deleted by `onReplyCreatedModerate` (pre-existing race, logged as a LOW follow-up).

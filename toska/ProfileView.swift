@@ -161,7 +161,7 @@ struct ProfileView: View {
             EditReplyView(postId: editReplyPostId, replyId: editReplyId, replyText: $editReplyText) {
                 if let idx = myReplies.firstIndex(where: { $0.id == editReplyId }) {
                     let old = myReplies[idx]
-                    myReplies[idx] = MyReply(id: old.id, replyText: editReplyText, replyTime: old.replyTime, parentText: old.parentText, parentHandle: old.parentHandle, parentPostId: old.parentPostId, createdAt: old.createdAt)
+                    myReplies[idx] = MyReply(id: old.id, replyText: editReplyText, replyTime: old.replyTime, parentText: old.parentText, parentHandle: old.parentHandle, parentPostId: old.parentPostId, createdAt: old.createdAt, pendingReview: old.pendingReview, pendingReasonLabel: old.pendingReasonLabel, pendingReasonIsCrisis: old.pendingReasonIsCrisis)
                 }
             }
             .navigationBarHidden(true)
@@ -485,6 +485,12 @@ struct ProfileView: View {
                     .font(ToskaFont.serif(15))
                     .foregroundColor(ToskaColor.body)
                     .lineSpacing(4.5)
+                // Item 3 (2026-10-28): same banner as held posts, with the crisis
+                // support line + resources when the hold reason is "crisis".
+                if reply.pendingReview {
+                    PendingReviewBanner(reasonLabel: reply.pendingReasonLabel, isCrisis: reply.pendingReasonIsCrisis)
+                        .padding(.top, 4)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 28).padding(.vertical, 18)
@@ -1147,12 +1153,18 @@ struct ProfileView: View {
                     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                     let replyTime = ToskaFormatters.timeAgo(from: createdAt)
                     let replyDocId = doc.documentID
+                    // Item 3 (2026-10-28): held replies (incl. explicit-crisis holds)
+                    // render with the same banner as held posts.
+                    let isPending = (data["moderationStatus"] as? String) == "pending_review"
+                    let pendingReason = data["pendingReason"] as? String
+                    let reasonLabel = isPending ? pendingReasonLabelFor(pendingReason) : nil
+                    let isCrisisHold = isPending && pendingReason == "crisis"
 
                     if let parentText = data["parentPostText"] as? String {
                         let parentHandle = data["parentPostHandle"] as? String ?? "anonymous"
                         let parentPostId = doc.reference.parent.parent?.documentID ?? ""
                         group.addTask {
-                            MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                            MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
                         }
                     } else {
                         guard let parentRef = doc.reference.parent.parent else { continue }
@@ -1162,7 +1174,7 @@ struct ProfileView: View {
                             let parentData = parentSnap?.data()
                             let parentText = parentData?["text"] as? String ?? "deleted post"
                             let parentHandle = parentData?["authorHandle"] as? String ?? "anonymous"
-                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt)
+                            return MyReply(id: replyDocId, replyText: replyText, replyTime: replyTime, parentText: parentText, parentHandle: parentHandle, parentPostId: parentPostId, createdAt: createdAt, pendingReview: isPending, pendingReasonLabel: reasonLabel, pendingReasonIsCrisis: isCrisisHold)
                         }
                     }
                 }

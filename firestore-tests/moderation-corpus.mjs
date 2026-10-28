@@ -13,7 +13,7 @@
 //
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { computePostFlagReason, computeReplyFlagReason, isPostExplicitCrisis, isPostConcerning } =
+const { computePostFlagReason, computeReplyFlagReason, isPostExplicitCrisis, isPostConcerning, shouldHoldCrisisReply } =
   require("../functions/moderationLogic.js");
 
 // [text, expectedReason | null]
@@ -202,7 +202,40 @@ const REPLY_CASES = [
   ["he fucked me over too, i get it", null],
 ];
 
+// Item 3 (2026-10-28): crisis replies. [text, expectedReplyFlag, expectHoldForCrisis]
+// Explicit-tier disclosures are HELD unless they read as a supportive reach-out
+// (negation AND help signal). Soft-tier stays live+queued (hold=false). Directed
+// abuse routes to harassment (held as abuse) and is never the author's own crisis.
+const CRISIS_REPLY_CASES = [
+  ["i want to kill myself too", null, true],
+  ["honestly i want to die too and i have a plan", null, true],
+  ["i want to unalive myself", null, true],
+  ["thinking about sewer slide tonight", null, true],
+  ["don't kill yourself", "targeted_threat", false],              // negation but NO help signal → not supportive → "kill you" threat lane (held as abuse)
+  ["i want to kill myself, call me", "personal_information", true], // help signal but NO negation → held (crisis wins; "call me" also trips PII)
+  ["please don't kill yourself, call 988, you matter", null, false],   // supportive → live (no crisis-list phrase → not queued; was held as a THREAT before item 3)
+  ["please don't kill yourself. i wanted to kill myself last year too, call 988, you matter", null, false], // crisis phrase + supportive → live + queued
+  ["don't unalive yourself, text HOME to 741741, you're not alone", null, false],
+  ["never kill yourself over him. reach out to someone tonight", null, false],
+  ["please do not do this, the crisis line is 988, talk to someone", null, false],
+  ["i can't do this anymore either", null, false],                // soft tier → live + queued
+  ["nobody cares about me either", null, false],
+  ["ugh kms", null, false],                                       // "kill myself" shorthand = SELF-directed soft tier → live + queued
+  ["go kill yourself", "targeted_threat", false],                 // "kill you" substring → threat lane (abuse, held); never the author's crisis
+  ["kys", "harassment", false],
+  ["you should kill yourself", "targeted_threat", false],
+  ["you should die", "harassment", false],
+  ["please don't talk to me again, you matter to no one, kys", "harassment", false], // disqualifier token beats the supportive shape
+  ["don't do this. you should die", "harassment", false],
+  ["you are not alone in this at all", null, false],
+];
+
 let failed = 0;
+for (const [text, expectedFlag, expectHold] of CRISIS_REPLY_CASES) {
+  const flag = computeReplyFlagReason(text) ?? null;
+  const hold = shouldHoldCrisisReply(text) && !(flag === "harassment" || flag === "targeted_threat" || flag === "hate_speech" || flag === "dehumanizing" || flag === "sexual_content");
+  if (flag !== expectedFlag || hold !== expectHold) { failed++; console.error(`✗ CRISIS-REPLY FAIL [${text}] => flag:${flag} hold:${hold} (expected ${expectedFlag}/${expectHold})`); }
+}
 for (const [text, expected] of REPLY_CASES) {
   const got = computeReplyFlagReason(text) ?? null;
   if (got !== expected) { failed++; console.error(`✗ REPLY FAIL [${text}] => ${got} (expected ${expected})`); }

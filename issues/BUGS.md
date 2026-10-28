@@ -25,6 +25,18 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-3 — explicit-tier crisis replies now HELD for review; supportive reach-outs stay live (FIXED, PROD)
+
+- **Severity:** MED (safety / parity with posts) · **Surface:** functions (onReplyCreatedModerate, validateReply, onReplyUpdated), docs/admin.html, iOS ProfileView/PostDetailView/PostModels · **Status:** FIXED 2026-10-28 — four reply functions on prod; admin.html live on push; iOS banner in build 103
+- **Before:** every concerning reply stayed LIVE and was only queued (`crisisReplyQueue`); explicit crisis also paged. Supportive reach-outs ("please don't kill yourself, call 988, you matter") were being HELD as `targeted_threat` because "kill you" is a substring of "kill yourself".
+- **Now (owner decisions 2026-10-28):** EXPLICIT-tier crisis replies are held (`pending_review` / `crisis`) like posts; SOFT-tier replies stay live + queued (often empathy: "i can't do this anymore either"); a narrow supportive guard (`isSupportiveReachOut`: negation tied to the self-harm verb AND a help signal AND no hard directed-abuse token) keeps reach-outs live and skips the threat/harassment lanes; directed abuse ("go kill yourself", "kys", "you should kill yourself") routes to the abuse lane (held as abuse) with no crisis queue entry — never the author's own crisis; "don't kill yourself" alone (no help signal) is held as abuse_threat and incurs NO strike (reply holds never write `flagged`; `checkRepeatOffenderPosts` counts posts only). Edits introducing explicit crisis hold too. `validateReply` no longer promotes such replies (idempotent, order-independent with the hold).
+- **Admin (docs/admin.html):** crisis-tab "mark reviewed" on a reply also releases a crisis-held reply (same marker scrub as approve); approving a crisis-held reply in the pending-replies tab also marks its deterministic `crisisReplyQueue/{postId}_{replyId}` entry reviewed. iOS admin has no held-reply queue (unchanged).
+- **Author-facing (iOS build 103):** profile replies tab now carries the same "under review" banner as posts, with the crisis support line + resources when the reason is crisis; the thread banner passes the crisis flag. Web already showed "under review — crisis language".
+- **Pins/verification:** corpus `CRISIS_REPLY_CASES` (20) 141/141; staging 11/11 (explicit holds, soft live+queued, supportive live, crisis-phrase+supportive live+queued, directed abuse → abuse lane, slur deleted, author-only read, replyCount exact, preview never carries held text, admin release, edit-to-crisis hold); prod 5/5 with soft/supportive/"kys" only, fixtures removed in 70 s.
+- **Wording follow-up:** privacy P:120 "post" → "post or reply" (policy batch).
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

@@ -2112,9 +2112,14 @@ async function fetchRefTab(sub) {
         orderBy("createdAt", "desc"), limit(50)));
     const ids = refs.docs.map(d => d.id);
     if (!ids.length) return [];
-    const snaps = await Promise.all(chunk(ids, 30).map(c =>
-        getDocs(query(collection(db, "posts"), where(documentId(), "in", c)))));
-    const byId = new Map(snaps.flatMap(s => s.docs).map(d => [d.id, d]));
+    // A1 (2026-10-27): the posts LIST rule no longer defaults a missing
+    // moderationStatus to live, and a `documentId in` query cannot satisfy the
+    // live constraint even when the filter is added (denied in the emulator
+    // and on staging). Read each saved/liked post individually instead: the
+    // GET rule allows live posts and denies held ones per document, so a
+    // held post simply drops out of the tab (it was filtered below anyway).
+    const docs = await Promise.all(ids.map(id => getDoc(doc(db, "posts", id)).catch(() => null)));
+    const byId = new Map(docs.filter(d => d && d.exists()).map(d => [d.id, d]));
     return ids.filter(id => byId.has(id))
         .map(id => [id, byId.get(id).data()])
         .filter(([, d]) => (d.moderationStatus ?? "live") === "live" && postVisible(d));

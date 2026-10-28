@@ -305,11 +305,16 @@ describe("M-1: held reply (moderationStatus pending_review) visibility", () => {
     const db = env.authenticatedContext("third").firestore();
     await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r1").get());
   });
-  it("a legacy reply (no moderationStatus) is readable by a third party", async () => {
+  // A1 (2026-10-27 audit): REVERSED — a status-less reply no longer defaults
+  // to live (the default let unconstrained list queries enumerate held content).
+  // Its author and admins can still read it; prod has no status-less replies.
+  it("a legacy reply (no moderationStatus) is NOT readable by a third party", async () => {
     await seedPost("p", "author");
     await seedReplyDoc("p", "r1b", "replyauthor");
     const db = env.authenticatedContext("third").firestore();
-    await assertSucceeds(db.collection("posts").doc("p").collection("replies").doc("r1b").get());
+    await assertFails(db.collection("posts").doc("p").collection("replies").doc("r1b").get());
+    const own = env.authenticatedContext("replyauthor").firestore();
+    await assertSucceeds(own.collection("posts").doc("p").collection("replies").doc("r1b").get());
   });
   it("a held reply is NOT readable by a third party", async () => {
     await seedPost("p", "author");

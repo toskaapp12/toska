@@ -824,22 +824,17 @@ struct ProfileView: View {
             await withTaskGroup(of: (found: [SavedPost], requested: [String], ok: Bool).self) { group in
                 for chunk in chunks {
                     group.addTask {
-                        guard let postSnap = try? await db.collection("posts")
-                            .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else {
-                            // One moderation-held post permission-denies the
-                            // ENTIRE `in` chunk — without a fallback, up to 29
-                            // valid saves vanished from the tab for as long as
-                            // that one post stayed held. Per-doc reads let the
-                            // held post fail alone. ok:false still skips the
-                            // reverse-index cleanup: a denied doc is a HELD
-                            // post, not a deleted one.
-                            return (found: await fetchProfilePostsIndividually(db: db, ids: chunk), requested: chunk, ok: false)
-                        }
-                        let results: [SavedPost] = postSnap.documents.compactMap { doc in
-                            profileSavedPost(id: doc.documentID, data: doc.data())
-                        }
-                        return (found: results, requested: chunk, ok: true)
+                        // A1 (2026-10-27): the posts LIST rule no longer defaults a
+                        // missing moderationStatus to live, and a `documentID in`
+                        // query cannot satisfy the live constraint even with the
+                        // filter added (denied in the emulator and on staging). Read
+                        // each post individually: the GET rule allows live posts and
+                        // denies held ones per document. `deleted` holds ids whose
+                        // read SUCCEEDED but found no doc — those (and only those)
+                        // feed the reverse-index self-heal below; a denied read is a
+                        // HELD post, not a deleted one, and is kept.
+                        let r = await fetchProfilePostsIndividuallyDetailed(db: db, ids: chunk)
+                        return (found: r.found, requested: r.found.map { $0.id } + r.deleted, ok: true)
                     }
                 }
                 for await chunkResult in group {
@@ -1091,18 +1086,17 @@ struct ProfileView: View {
             await withTaskGroup(of: (found: [SavedPost], requested: [String], ok: Bool).self) { group in
                 for chunk in chunks {
                     group.addTask {
-                        guard let postSnap = try? await db.collection("posts")
-                            .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else {
-                            // Same held-post chunk-denial fallback as
-                            // loadSavedPosts — render the valid likes, skip
-                            // cleanup (ok:false).
-                            return (found: await fetchProfilePostsIndividually(db: db, ids: chunk), requested: chunk, ok: false)
-                        }
-                        let results: [SavedPost] = postSnap.documents.compactMap { doc in
-                            profileSavedPost(id: doc.documentID, data: doc.data())
-                        }
-                        return (found: results, requested: chunk, ok: true)
+                        // A1 (2026-10-27): the posts LIST rule no longer defaults a
+                        // missing moderationStatus to live, and a `documentID in`
+                        // query cannot satisfy the live constraint even with the
+                        // filter added (denied in the emulator and on staging). Read
+                        // each post individually: the GET rule allows live posts and
+                        // denies held ones per document. `deleted` holds ids whose
+                        // read SUCCEEDED but found no doc — those (and only those)
+                        // feed the reverse-index self-heal below; a denied read is a
+                        // HELD post, not a deleted one, and is kept.
+                        let r = await fetchProfilePostsIndividuallyDetailed(db: db, ids: chunk)
+                        return (found: r.found, requested: r.found.map { $0.id } + r.deleted, ok: true)
                     }
                 }
                 for await chunkResult in group {
@@ -2054,15 +2048,24 @@ fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost?
 // fails alone (its read rule checks resource data), valid posts still load.
 // Deleted posts read as exists == false (the posts read rule allows
 // resource == null) and are skipped — but cleanup is the caller's call.
-fileprivate func fetchProfilePostsIndividually(db: Firestore, ids: [String]) async -> [SavedPost] {
-    var results: [SavedPost] = []
+/// A1 (2026-10-27): per-document reads that tell a DELETED post (read ok, no
+/// doc → safe to drop the reverse-index entry) from a HELD one (read denied →
+/// keep the entry; the post may come back after review).
+fileprivate func fetchProfilePostsIndividuallyDetailed(db: Firestore, ids: [String]) async -> (found: [SavedPost], deleted: [String]) {
+    var found: [SavedPost] = []
+    var deleted: [String] = []
     for id in ids {
-        guard let doc = try? await db.collection("posts").document(id).getDocument(),
-              doc.exists, let data = doc.data() else { continue }
-        if let post = profileSavedPost(id: id, data: data) { results.append(post) }
+        do {
+            let doc = try await db.collection("posts").document(id).getDocument()
+            guard doc.exists, let data = doc.data() else { deleted.append(id); continue }
+            if let post = profileSavedPost(id: id, data: data) { found.append(post) }
+        } catch {
+            continue // permission-denied = held by moderation; leave the index entry alone
+        }
     }
-    return results
+    return (found, deleted)
 }
+
 
 // Maps the server-side pendingReason taxonomy onto short author-facing
 // labels. Stays generic enough not to give an evasion-tuner a precise

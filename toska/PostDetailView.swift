@@ -1452,7 +1452,11 @@ struct PostDetailView: View {
 
             // T-6: bounded best-effort; onPostDeletedCleanupReposts /
             // onPostDeletedCleanupSubtree (Admin SDK) clean up any remainder.
+            // A1 (2026-10-27): the posts LIST rule requires moderationStatus
+            // (or authorId==me) in the query; this author-side sweep now pins
+            // live. Held/pending copies are removed by the server cascade.
             let repostSnap = try? await db.collection("posts")
+                .whereField("moderationStatus", isEqualTo: "live")
                 .whereField("isRepost", isEqualTo: true)
                 .whereField("originalPostId", isEqualTo: postId)
                 .limit(to: 500)

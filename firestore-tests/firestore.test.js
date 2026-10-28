@@ -89,8 +89,15 @@ async function setPost(postId, authorId, extra = {}) {
         likeCount: 0,
         repostCount: 0,
         replyCount: 0,
+        // A1 (2026-10-27): rules no longer default a missing moderationStatus
+        // to live, so fixtures must carry the field the real clients always
+        // write. Pass `moderationStatus: null` to seed a status-less legacy doc.
+        moderationStatus: "live",
         ...extra,
       });
+    if (extra.moderationStatus === null) {
+      await ctx.firestore().collection("posts").doc(postId).update({ moderationStatus: deleteField() });
+    }
   });
 }
 
@@ -2769,7 +2776,7 @@ describe("2026-07-17 re-audit: pendingDeletions create is schema-locked", () => 
   });
 });
 
-async function setReply(postId, replyId, authorId) {
+async function setReply(postId, replyId, authorId, extra = {}) {
   await env.withSecurityRulesDisabled(async (ctx) => {
     await ctx
       .firestore()
@@ -2781,7 +2788,12 @@ async function setReply(postId, replyId, authorId) {
         parentPostText: "the held parent post body",
         createdAt: new Date(),
         likeCount: 0,
+        moderationStatus: "live", // A1: see setPost
+        ...extra,
       });
+    if (extra.moderationStatus === null) {
+      await ctx.firestore().collection("posts").doc(postId).collection("replies").doc(replyId).update({ moderationStatus: deleteField() });
+    }
   });
 }
 
@@ -2837,13 +2849,21 @@ describe("pending-review: post subcollections inherit parent visibility", () => 
     );
   });
 
-  it("defaults a post with no moderationStatus field to live (legacy)", async () => {
-    await setPost("legacy", "alice"); // no moderationStatus
+  // A1 (2026-10-27 audit): REVERSED. A status-less legacy parent post is no
+  // longer treated as live — a missing field must never read as visible,
+  // because the same default let any unconstrained LIST query enumerate other
+  // users' held posts. Prod has no status-less posts or replies.
+  it("a post with NO moderationStatus field is NOT visible to third parties (legacy no longer defaults to live)", async () => {
+    await setPost("legacy", "alice", { moderationStatus: null }); // no moderationStatus
     await setReply("legacy", "r1", "carol");
     const bob = env.authenticatedContext("bob").firestore();
-    await assertSucceeds(
+    await assertFails(
       bob.collection("posts").doc("legacy").collection("replies").doc("r1").get()
     );
+    await assertFails(bob.collection("posts").doc("legacy").get());
+    // the author and admins still can
+    const alice = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(alice.collection("posts").doc("legacy").get());
   });
 
   it("blocks a non-author from enumerating likers on a held post", async () => {

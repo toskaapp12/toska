@@ -52,7 +52,9 @@ service cloud.firestore {
           (!exists(/databases/$(database)/documents/posts/$(postId))
             && (callerOwnsDoc || isAdmin()))
           || (exists(/databases/$(database)/documents/posts/$(postId))
-            && (get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', 'live') == 'live'
+            // A1 (2026-10-27 audit): default '' not 'live' — a missing field
+            // must never read as live. Prod has no status-less posts.
+            && (get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', '') == 'live'
               || get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
               || isAdmin()))
         );
@@ -151,9 +153,17 @@ service cloud.firestore {
     // when it is live, or it's the caller's own doc, or the caller is an admin.
     // `data` is whichever doc snapshot the call site reads — resource.data for
     // a direct read, or a get(...).data for an inherited (sibling) doc.
-    // `.get('moderationStatus', 'live')` defaults legacy docs to live.
+    // A1 (2026-10-27 staging audit): the default MUST be '' — not 'live'.
+    // With a 'live' default, any LIST query that did not constrain
+    // moderationStatus (where flagged==true, where pendingReason=='crisis',
+    // where authorId==<other>, a bare orderBy…) was satisfiable, because
+    // the engine treats an unconstrained field as possibly absent and took
+    // the default. That let any signed-in user enumerate other users' held
+    // and crisis-held posts/replies with full text. A status-less legacy doc
+    // is now visible only to its author and admins (prod has none; the
+    // backfill set every post). Pinned by held-content-enumeration.test.js.
     function moderationVisible(data) {
-      return data.get('moderationStatus', 'live') == 'live'
+      return data.get('moderationStatus', '') == 'live'
         || data.authorId == request.auth.uid
         || isAdmin();
     }
@@ -1139,8 +1149,12 @@ service cloud.firestore {
       // for anyone who has ever been blocked. Block-hiding in lists is handled
       // client-side (BlockedUsersCache.isHiddenAuthor on iOS, blockedBy set on
       // web).
-      allow list: if isAuth()
-        && (resource == null || moderationVisible(resource.data));
+      // A1 (2026-10-27): no `resource == null` leg on LIST — a list never
+      // reads a missing doc, and the leg only widened what a query could
+      // satisfy. Clients must constrain moderationStatus=='live' or
+      // authorId==me (all shipped queries do; see held-content-enumeration
+      // tests for the shapes that are now denied).
+      allow list: if isAuth() && moderationVisible(resource.data);
       // get (direct open / deep-link / notification tap / share-sheet) ALSO
       // denies a post whose author has blocked the caller — the server-enforced
       // half of the block, so it holds regardless of client. resource==null
@@ -1595,9 +1609,16 @@ service cloud.firestore {
         // deleted post's text for anyone holding the post id. resource==null
         // short-circuits the authorId deref (null reads stay allowed, and
         // under a missing parent they carry no data to leak).
-        allow read: if postVisibleToCaller(postId,
+        // A1 (2026-10-27): split get/list. GET keeps the null guards above;
+        // LIST drops them so an unconstrained replies query (no status
+        // filter, where pendingReason==…, where authorId==<other>) can no
+        // longer return other users' held replies.
+        allow get: if postVisibleToCaller(postId,
             resource == null || resource.data.authorId == request.auth.uid)
           && (resource == null || moderationVisible(resource.data));
+        allow list: if postVisibleToCaller(postId,
+            resource.data.authorId == request.auth.uid)
+          && moderationVisible(resource.data);
         // Block enforcement: the post author can't be replied to by a user
         // they've blocked. Without this check, blocked users could keep
         // engaging server-side; the client filter (BlockedUsersCache) only

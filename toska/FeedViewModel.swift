@@ -1114,25 +1114,24 @@ class FeedViewModel: ObservableObject {
                 self.engagedTags = [:]
                 return
             }
-            let chunks = stride(from: 0, to: postIds.count, by: 30).map {
-                Array(postIds[$0..<min($0 + 30, postIds.count)])
-            }
-
+            // A1 (2026-10-27): the posts LIST rule no longer defaults a missing
+            // moderationStatus to live, and a `documentID in` query cannot
+            // satisfy the live constraint even with the filter added (denied in
+            // the emulator and on staging). Read each engaged post individually
+            // — the GET rule allows live posts and denies held ones per doc —
+            // capped at 40 reads per feed load (this only seeds tag affinity).
             var newTags: [String: Int] = [:]
-            await withTaskGroup(of: [String].self) { group in
-                for chunk in chunks {
+            await withTaskGroup(of: String?.self) { group in
+                for postId in postIds.prefix(40) {
                     group.addTask {
-                        guard !Task.isCancelled else { return [] }
-                        guard let postSnap = try? await db.collection("posts")
-                            .whereField(FieldPath.documentID(), in: chunk)
-                            .getDocumentsAsync() else { return [] }
-                        return postSnap.documents.compactMap { $0.data()["tag"] as? String }
+                        guard !Task.isCancelled else { return nil }
+                        guard let snap = try? await db.collection("posts").document(postId).getDocumentAsync(),
+                              snap.exists else { return nil }
+                        return snap.data()?["tag"] as? String
                     }
                 }
-                for await tags in group {
-                    for tag in tags {
-                        newTags[tag, default: 0] += 1
-                    }
+                for await tag in group {
+                    if let tag { newTags[tag, default: 0] += 1 }
                 }
             }
             guard !Task.isCancelled else { return }

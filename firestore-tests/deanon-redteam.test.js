@@ -42,11 +42,12 @@ beforeEach(async () => {
     });
     await db.collection("users").doc(ATTACKER).set({
       handle: "attacker_h", createdAt: new Date(),
-      // Realistic attacker: fully onboarded (publishing surfaces gate on
-      // confirmedAdult, and the allow-assertions below must fail only on the
-      // contract under test, never on an unrelated missing-field denial).
-      confirmedAdult: true,
     });
+    // Realistic attacker: fully onboarded (publishing surfaces gate on
+    // confirmedAdult, and the allow-assertions below must fail only on the
+    // contract under test, never on an unrelated missing-field denial).
+    // A5 phase 1: the attestation lives in private/data.
+    await db.doc(`users/${ATTACKER}/private/data`).set({ confirmedAdult: true });
     await db.collection("posts").doc("vpost").set({
       authorId: VICTIM, authorHandle: "quiet_moon_882", text: "i still check your location",
       likeCount: 5, replyCount: 0, repostCount: 0, isRepost: false,

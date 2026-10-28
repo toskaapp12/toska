@@ -105,9 +105,26 @@ service cloud.firestore {
     // and reject/remove the main-doc fields) remains, gated on build 72 no
     // longer being a live client.
     function notRestricted() {
-      return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        || !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restricted', false)
-        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('restrictedUntil', request.time) < request.time;
+      // A5 phase 1 (2026-10-28): restriction state lives in users/{uid}/private/data
+      // (owner-read, server/admin-write) — the public user doc no longer carries it.
+      // `let` binds the path once so the long segment list is counted once.
+      let p = /databases/$(database)/documents/users/$(request.auth.uid)/private/data;
+      return !exists(p)
+        || !get(p).data.get('restricted', false)
+        || get(p).data.get('restrictedUntil', request.time) < request.time;
+    }
+
+    // A5 phase 1: the two publishing gates (posts/replies create) sit in the rule
+    // that runs at the 1000-expression ceiling, so this is ONE get() used TWICE
+    // and nothing else. A user with no private/data is not attested → cannot
+    // publish. The restrictedUntil time leg is deliberately NOT evaluated here
+    // (it cost the ceiling): a scheduled job (clearExpiredRestrictions, every 10
+    // min) flips `restricted` back to false once restrictedUntil has passed, so
+    // a timed restriction lifts within ~10 minutes of expiry. notRestricted()
+    // (used by the smaller update rules) keeps the exact time leg.
+    function canPublish() {
+      let d = get(/databases/$(database)/documents/users/$(request.auth.uid)/private/data).data;
+      return d.get('confirmedAdult', false) == true && d.get('restricted', false) != true;
     }
 
     // Server-side enforcement of the adult-confirmation gate. iOS displays
@@ -135,8 +152,10 @@ service cloud.firestore {
     // confirmedAdult=true set by recordPolicyAcceptance. Legitimate
     // production users are not blocked by this rule.
     function hasConfirmedAdult() {
-      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('confirmedAdult', false) == true;
+      // A5 phase 1 (2026-10-28): attestation lives in private/data (written only by
+      // the confirmAdult callable); a value on the public doc no longer counts.
+      let p = /databases/$(database)/documents/users/$(request.auth.uid)/private/data;
+      return exists(p) && get(p).data.get('confirmedAdult', false) == true;
     }
 
     // The caller (request.auth.uid) is not blocked by targetUid — i.e. there
@@ -581,10 +600,10 @@ service cloud.firestore {
       // was too broad and blocked those expired users (regressed a rules test);
       // the original `.get('restrictedUntil', request.time) > request.time`
       // wrongly ALLOWED admin restrictions (unset default collapsed to false).
-      allow delete: if isOwner(userId)
-        && !(resource.data.get('restricted', false) == true
-             && (!('restrictedUntil' in resource.data)
-                 || resource.data.restrictedUntil > request.time));
+      // A5 phase 1 (2026-10-28): restriction state lives in private/data →
+      // reuse notRestricted() (active restriction blocks the self-delete escape;
+      // an expired timed restriction does not; an admin restriction has no until).
+      allow delete: if isOwner(userId) && notRestricted();
 
       match /following/{followedId} {
         // Reads are owner-only — exposing the full follow graph to any
@@ -993,7 +1012,30 @@ service cloud.firestore {
       // user document. Update FeedViewModel.fetchUserPreferences and
       // AppleSignInHelper/SplashView to write to users/{uid}/private/data instead.
       match /private/{docId} {
-        allow read, write: if isOwner(userId);
+        // A5 phase 1 (2026-10-28): private/data is the home of the authorization
+        // fields (confirmedAdult*, restricted*) — server-written (confirmAdult
+        // callable, repeat-offender restriction, relocation shim) and, for the
+        // four restricted* keys only, admin-written. The OWNER can read it and
+        // keep writing prefs/mood/fcmToken there, but can never touch those six
+        // keys (previously `write` was wide open — audit B4).
+        allow read: if isOwner(userId);
+        allow create: if (isOwner(userId)
+            && !request.resource.data.keys().hasAny(['confirmedAdult', 'confirmedAdultAt',
+                 'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']))
+          || (isAdmin() && docId == 'data'
+            && request.resource.data.keys().hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil'])
+            && (!('restrictedBy' in request.resource.data.keys())
+                || request.resource.data.restrictedBy == request.auth.uid));
+        allow update: if (isOwner(userId)
+            && !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['confirmedAdult', 'confirmedAdultAt',
+                         'restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil']))
+          || (isAdmin() && docId == 'data'
+            && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['restricted', 'restrictedAt', 'restrictedBy', 'restrictedUntil'])
+            && (!('restrictedBy' in request.resource.data.diff(resource.data).affectedKeys())
+                || request.resource.data.restrictedBy == request.auth.uid));
+        allow delete: if isOwner(userId);
       }
 
       // Drafts — pre-publish "the conversation you can't bring yourself
@@ -1164,8 +1206,7 @@ service cloud.firestore {
         && (resource == null || moderationVisible(resource.data))
         && (resource == null || notBlockedBy(resource.data.authorId));
       allow create: if isAuth()
-        && notRestricted()
-        && hasConfirmedAdult()
+        && canPublish() // A5: one get() for restricted + confirmedAdult (expression-ceiling rule)
         && request.resource.data.authorId == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() <= 2000
@@ -1632,8 +1673,7 @@ service cloud.firestore {
         // or pre-inflate likeCount; without the createdAt pin replies could
         // be backdated to predate moderation restrictions.
         allow create: if isAuth()
-          && notRestricted()
-          && hasConfirmedAdult()
+          && canPublish() // A5: one get() for restricted + confirmedAdult
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0

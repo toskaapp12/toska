@@ -22,14 +22,15 @@ const RULES_PATH = path.join(__dirname, "..", "firestore.rules");
 
 let env;
 
+// A5 phase 1 (2026-10-28): confirmedAdult / restricted* are routed to private/data.
+const AUTH_FIELDS = ['confirmedAdult', 'confirmedAdultAt', 'restricted', 'restrictedAt', 'restrictedUntil', 'restrictedBy'];
 async function seedUser(uid, fields = {}) {
   await env.withSecurityRulesDisabled(async (ctx) => {
-    await ctx.firestore().collection("users").doc(uid).set({
-      handle: `handle_${uid}`,
-      followerCount: 0, followingCount: 0, totalLikes: 0,
-      confirmedAdult: true,
-      ...fields,
-    });
+    const all = { confirmedAdult: true, ...fields };
+    const pub = {}, priv = {};
+    for (const [k, v] of Object.entries(all)) (AUTH_FIELDS.includes(k) ? priv : pub)[k] = v;
+    await ctx.firestore().collection("users").doc(uid).set({ handle: `handle_${uid}`, followerCount: 0, followingCount: 0, totalLikes: 0, ...pub });
+    await ctx.firestore().collection("users").doc(uid).collection("private").doc("data").set(priv, { merge: true });
   });
 }
 async function seedPost(postId, authorId, extra = {}) {

@@ -63,6 +63,16 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   count from your profile display"); **Tier 2: server-maintained public follower-count mirror
   behind the toggle.** Policy wording batch gains "what other signed-in users can see" + "post or
   reply" for crisis holds.
+- **A5 phase 1 DONE + PROD (2026-10-28 ~21:00 UTC; rules tag `rules-prod-2026-10-28-a5`):** the six
+  authorization fields (confirmedAdult*, restricted*) now live only in users/{uid}/private/data;
+  public user docs carry none of them (back-fill 11/11). Rules: `canPublish()` single-get gate for
+  post/reply create (ceiling-safe), `notRestricted()` time leg for edits/self-delete; private/data
+  write rule locks the six keys (owner) with an admin leg for restricted*. Functions: confirmAdult +
+  repeat-offender → private/data; mirrorModerationState = relocation shim; onPrivateAuthStateWritten
+  (row + audit); clearExpiredRestrictions every 10 min (timed restrictions lift ≤10 min late —
+  accepted); auditUserRestriction no-op. admin.html restrict/unrestrict → private/data (live on push).
+  Deploy order that worked: functions → pre-check private attestation → rules → owner post/reply →
+  back-fill (deletes public keys last). See BUGS.md AUDIT-A5.
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner
@@ -78,7 +88,7 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
 - **Production is healthy and launch-hardened.** A full pre-launch audit
   (`AUDIT_REPORT.md`, gitignored, local only) was run and its Phase-2 fixes
   shipped. Latest release tag: **`v1.3-b93`** (tags lag the builds; prod rules
-  pinned at **`rules-prod-2026-10-28-a1`** — supersedes `rules-prod-2026-10-25-opt2`).
+  pinned at **`rules-prod-2026-10-28-a5`** — supersedes `rules-prod-2026-10-28-a1`).
 - **iOS:** build **102** on TestFlight (v1.3) is the launch candidate — owner
   hand-testing on device 2026-10-27. Build 100 was the first "clean" candidate
   (FCM-DIAG stripped); 102 adds the consent cluster, M4/M5 auth fixes, lavender

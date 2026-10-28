@@ -44,6 +44,17 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-A5 (phase 1) — authorization fields moved off the public user doc (FIXED, PROD)
+
+- **Severity:** MED (privacy: restriction status + age attestation readable by any signed-in user) · **Surface:** rules, functions, admin.html, back-fill · **Status:** PHASE 1 DONE 2026-10-28 — prod rules tag `rules-prod-2026-10-28-a5`; functions deployed; back-fill applied (11/11). Phase 2 after build 103 is the floor.
+- **Now:** `confirmedAdult`, `confirmedAdultAt`, `restricted`, `restrictedAt`, `restrictedUntil`, `restrictedBy` live ONLY in `users/{uid}/private/data` (owner-read; server-write; admin-write for the four restricted* keys with `restrictedBy == self`; owner can never touch the six keys — a full overwrite that would drop them is denied, so clients must merge, which every iOS/web write does). Rules: `canPublish()` (ONE `get` on private/data, checks `confirmedAdult` + `restricted`) gates post/reply create — the create rule sits at the 1000-expression ceiling, so the `restrictedUntil` time leg is NOT evaluated there; `notRestricted()` (exact time leg, reads private/data) still gates edits and the self-delete escape. `confirmAdult` and the repeat-offender restriction write private/data. `mirrorModerationState` is now a relocation shim (main-doc writes of the six fields — iOS AdminModerationView until build 103 — are moved to private/data and cleared from the public doc within seconds); `onPrivateAuthStateWritten` maintains `restrictedUsers` + the audit entry; `auditUserRestriction` is a no-op (removed in phase 2). admin.html restrict/unrestrict write private/data.
+- **NEW `clearExpiredRestrictions` (every 10 min):** flips `restricted:false` once `restrictedUntil` has passed (closes C14/F6 — the flag used to stay forever). **Consequence (owner-accepted): an expired timed restriction can last up to ~10 extra minutes before CREATE is allowed again; edits honour the exact time.**
+- **Verification:** emulator 469/469 with 0 ceiling hits (`private-auth-fields.test.js` +37; fixtures route the six fields to private/data; two legacy expectations updated); staging 28/29 (the one "fail" = same-value owner write, a no-op); prod: functions 73→75 (nothing deleted), pre-check 11/11 attested in private/data, rules released byte-identical, owner posted + replied from the app, back-fill dry-run then apply (11 users: 2 keys deleted from each public doc; private copies pre-existed), post-check 11/11 public docs clean, 11/11 private complete, 0 restrictedUsers rows.
+- **Still public on users/{uid} (by decision):** handle, createdAt, totalLikes, followerCount/followingCount (hide toggle is DISPLAY-ONLY → FAQ/privacy wording), showFollowerCount, allowSharing (needed by share-card consent + repost rule), acceptedPolicy*/hasCompletedOnboarding (phase 2).
+- **Tier 2:** server-maintained public follower-count mirror behind the hide toggle. **Phase 2:** acceptedPolicyVersion/At + hasCompletedOnboarding → private/data; drop the admin main-doc leg; delete auditUserRestriction.
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

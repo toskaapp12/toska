@@ -3034,7 +3034,7 @@ async function checkRepeatOffenderPosts(authorId) {
       // extending auto-restriction. Admin restrictions (restrictedBy != "system")
       // are untouched here either way; this branch only fires when the
       // existing restriction was itself system-set.
-      const userSnap = await db.collection("users").doc(authorId).get();
+      const userSnap = await db.collection("users").doc(authorId).collection("private").doc("data").get(); // A5: restriction state lives in private/data
       const userData = userSnap.exists ? userSnap.data() : {};
       const alreadyRestricted = userData.restricted === true
         && userData.restrictedBy === "system"
@@ -3046,7 +3046,7 @@ async function checkRepeatOffenderPosts(authorId) {
         return;
       }
       const restrictedUntil = Timestamp.fromDate(new Date(Date.now() + 48 * 60 * 60 * 1000));
-      await db.collection("users").doc(authorId).update({
+      await db.collection("users").doc(authorId).collection("private").doc("data").set({
         restricted: true,
         restrictedAt: FieldValue.serverTimestamp(),
         restrictedUntil,
@@ -3055,7 +3055,7 @@ async function checkRepeatOffenderPosts(authorId) {
         // restrictions set restrictedBy to the admin's uid and omit
         // restrictedUntil (no auto-expiry).
         restrictedBy: "system",
-      });
+      }, { merge: true });
       console.log(`User ${authorId} auto-restricted (${recentFlagged.length} recent flags) until ${restrictedUntil.toDate()}`);
     }
   } catch (err) {
@@ -5562,10 +5562,15 @@ exports.confirmAdult = onCall(
     }
 
     try {
-      await db.collection("users").doc(uid).update({
+      // A5 phase 1 (2026-10-28): the attestation lives in users/{uid}/private/data
+      // (owner-readable, server/admin-writable) — never on the public user doc,
+      // which any signed-in user can read. Still requires the user doc to exist.
+      const userSnap = await db.collection("users").doc(uid).get();
+      if (!userSnap.exists) throw new HttpsError("failed-precondition", "user doc missing");
+      await db.collection("users").doc(uid).collection("private").doc("data").set({
         confirmedAdult: true,
         confirmedAdultAt: FieldValue.serverTimestamp(),
-      });
+      }, { merge: true });
       return { ok: true };
     } catch (err) {
       // NOT_FOUND (code 5): user doc doesn't exist yet because the
@@ -5795,113 +5800,111 @@ async function writeAuditEntry(entry, dedupeId) {
 
 exports.auditUserRestriction = onDocumentUpdated(
   { document: "users/{userId}", retry: true },
+  async () => {
+    // A5 phase 1 (2026-10-28): DEPRECATED no-op. Restriction audits are written
+    // by onPrivateAuthStateWritten from users/{uid}/private/data. Kept exported
+    // (no-op) so this deploy deletes no function; remove in phase 2.
+    return;
+  }
+);
+exports.mirrorModerationState = onDocumentWritten(
+  { document: "users/{userId}", retry: true },
   async (event) => {
-    const before = event.data.before.data() || {};
-    const after  = event.data.after.data() || {};
+    // A5 phase 1 (2026-10-28): the public user doc must NOT carry the
+    // authorization fields. This trigger is now a RELOCATION shim for writers
+    // that still target the main doc (iOS AdminModerationView until build 103,
+    // and any legacy doc): copy the six fields into users/{uid}/private/data
+    // and delete them from the main doc. The restrictedUsers row and the audit
+    // entry are maintained by onPrivateAuthStateWritten from private/data.
+    const userId = event.params.userId;
+    if (!event.data?.after?.exists) {
+      await db.collection("restrictedUsers").doc(userId).delete().catch((err) => console.warn(`mirrorModerationState(${userId}): row cleanup failed:`, err.message));
+      return;
+    }
+    const after = event.data.after.data() || {};
+    const FIELDS = ["restricted", "restrictedAt", "restrictedUntil", "restrictedBy", "confirmedAdult", "confirmedAdultAt"];
+    const present = FIELDS.filter((f) => after[f] !== undefined);
+    if (!present.length) return;
+    const liveParent = await db.doc(`users/${userId}`).get();
+    if (!liveParent.exists) return; // late redelivery after deletion — nothing to relocate
+    const payload = {}; const del = {};
+    for (const f of present) { payload[f] = after[f]; del[f] = FieldValue.delete(); }
+    await db.doc(`users/${userId}/private/data`).set(payload, { merge: true });
+    await db.doc(`users/${userId}`).update(del);
+    console.log(`mirrorModerationState(${userId}): relocated ${present.join(",")} to private/data`);
+  }
+);
 
-    if (before.restricted !== after.restricted) {
-      const action = after.restricted === true ? "user.restrict" : "user.unrestrict";
+// A5 phase 1 (2026-10-28): canPublish() in the rules no longer evaluates the
+// restrictedUntil time leg (expression ceiling), so timed (system) restrictions
+// are lifted here instead — every 10 minutes, any restrictedUsers row whose
+// restrictedUntil has passed gets private/data.restricted flipped to false.
+// This also closes audit C14 / F6 (a system restriction used to leave
+// restricted:true behind forever after it expired).
+exports.clearExpiredRestrictions = onSchedule("every 10 minutes", async () => {
+  const now = Timestamp.now();
+  const rows = await db.collection("restrictedUsers").where("restrictedUntil", "<=", now).limit(200).get();
+  let cleared = 0;
+  for (const row of rows.docs) {
+    const uid = row.id;
+    const privRef = db.doc(`users/${uid}/private/data`);
+    const priv = await privRef.get();
+    if (priv.exists && priv.get("restricted") === true) {
+      await privRef.set({ restricted: false, restrictedAt: FieldValue.serverTimestamp(), restrictedBy: "system-expiry", restrictedUntil: FieldValue.delete() }, { merge: true });
+    } else {
+      await row.ref.delete().catch(() => {}); // stale row
+    }
+    cleared++;
+  }
+  if (cleared) console.log(`clearExpiredRestrictions: processed ${cleared} expired restriction(s)`);
+});
+
+// A5 phase 1 (2026-10-28): source of truth for restriction + attestation is
+// users/{uid}/private/data. Maintain the admin-only restrictedUsers index and
+// the adminAuditLog entry from here (previously from the public doc).
+exports.onPrivateAuthStateWritten = onDocumentWritten(
+  { document: "users/{userId}/private/{docId}", retry: true },
+  async (event) => {
+    if (event.params.docId !== "data") return;
+    const userId = event.params.userId;
+    const rowRef = db.collection("restrictedUsers").doc(userId);
+    const before = event.data?.before?.exists ? event.data.before.data() : {};
+    const after = event.data?.after?.exists ? event.data.after.data() : {};
+    if (!event.data?.after?.exists) {
+      await rowRef.delete().catch(() => {});
+      return;
+    }
+    const key = (v) => (v && typeof v.toMillis === "function") ? `t:${v.toMillis()}` : JSON.stringify(v === undefined ? null : v);
+    const flipped = (before.restricted === true) !== (after.restricted === true);
+    const rowChanged = flipped || key(before.restrictedAt) !== key(after.restrictedAt) || key(before.restrictedUntil) !== key(after.restrictedUntil);
+    if (flipped) {
+      const parent = await db.doc(`users/${userId}`).get();
       await writeAuditEntry({
-        action,
+        action: after.restricted === true ? "user.restrict" : "user.unrestrict",
         adminUid: after.restrictedBy || before.restrictedBy || "unknown",
         targetType: "user",
-        targetId: event.params.userId,
-        targetHandle: after.handle || before.handle || null,
+        targetId: userId,
+        targetHandle: parent.exists ? (parent.get("handle") || null) : null,
         before: { restricted: before.restricted ?? false },
         after:  { restricted: after.restricted ?? false },
       }, event.id);
     }
-
-    // M-1 (2026-07-17): restrictedBy is an admin uid on the MAIN user doc,
-    // which other authenticated users can read (public-projection rule leg).
-    // It exists to attribute the audit entry above — scrub it now. The scrub
-    // runs OUTSIDE the restricted-changed gate (2026-07-17 review):
-    // restrictUserDirect (docs/admin.html) writes restrictedBy
-    // unconditionally, so restricting an already-restricted user produces an
-    // update where `restricted` never flips — the old early-return skipped
-    // the scrub and the admin uid stranded on the readable doc. No loop
-    // either way: the scrub's own event has restrictedBy == null. The
-    // `restricted` flag itself stays (firestore.rules' notRestricted() reads
-    // it) and the scrub doesn't flip it.
-    if (after.restrictedBy != null) {
-      try {
-        await event.data.after.ref.update({ restrictedBy: FieldValue.delete() });
-      } catch (err) {
-        if (err.code !== 5) throw err;
+    if (rowChanged) {
+      if (after.restricted === true) {
+        const parent = await db.doc(`users/${userId}`).get();
+        const row = { handle: parent.exists ? (parent.get("handle") ?? null) : null, restrictedAt: after.restrictedAt ?? null, restrictedUntil: after.restrictedUntil ?? null };
+        if (after.restrictedBy != null) row.restrictedBy = after.restrictedBy;
+        await rowRef.set(row, { merge: true });
+      } else {
+        await rowRef.delete().catch(() => {});
       }
     }
-  }
-);
-
-// 2026-07-28 A.5 #9 migration (phase 2 — dual-write): mirror the moderation /
-// adult-gate state from the world-readable users/{uid} doc into
-// users/{uid}/private/data, and maintain the admin-only restrictedUsers/{uid}
-// dashboard index (firestore.rules match block of the same name). Every
-// writer (confirmAdult callable, system auto-restrict, admin.html / iOS admin
-// restrict+unrestrict) writes the MAIN doc, so this single trigger keeps both
-// mirrors current without touching any writer; the eventual phase-4 rules
-// flip then only changes readers. restrictedBy is mirrored only when PRESENT:
-// auditUserRestriction scrubs it from the main doc right after attribution
-// (M-1), and that scrub must not erase the private copy — the scrub event
-// changes no other mirrored field, so the change-guard skips it entirely
-// (no ping-pong writes). The guard also makes this a cheap no-op on the
-// high-frequency counter-bump updates every user doc receives.
-exports.mirrorModerationState = onDocumentWritten(
-  { document: "users/{userId}", retry: true },
-  async (event) => {
-    const userId = event.params.userId;
-    const rowRef = db.collection("restrictedUsers").doc(userId);
-    if (!event.data?.after?.exists) {
-      // User doc deleted → drop the index row. (users/{uid}/private/* is
-      // removed by the onUserDocDeleted cascade; this row lives outside the
-      // user tree, so it's cleaned here — keeps the deletion-cascade probe's
-      // "no residue" sweep honest.)
-      await rowRef.delete().catch((err) => console.warn(`mirrorModerationState(${userId}): row cleanup failed:`, err.message));
-      return;
-    }
-    const after = event.data.after.data() || {};
-    const before = event.data.before?.exists ? event.data.before.data() : {};
-    const MIRRORED = ["restricted", "restrictedAt", "restrictedUntil", "confirmedAdult", "confirmedAdultAt"];
-    const key = (v) => (v && typeof v.toMillis === "function") ? `t:${v.toMillis()}` : JSON.stringify(v === undefined ? null : v);
-    const changed = MIRRORED.some((f) => key(before[f]) !== key(after[f]))
-      || (after.restrictedBy != null && key(before.restrictedBy) !== key(after.restrictedBy));
-    if (!changed) return;
-    // Late-redelivery resurrection guard (2026-08-05): Eventarc can redeliver
-    // an old UPDATE event after the user doc was deleted and the deletion
-    // cascade drained users/{uid}/private. The merge-set below would then
-    // re-CREATE private/data (and, if restricted, the restrictedUsers row)
-    // under a deleted uid — restricted/confirmedAdult residue with no
-    // remaining GC path, since the cascade fires once and never re-runs.
-    // Re-read the live parent doc and skip the mirror when it's gone; the
-    // delete event's own branch above owns the row cleanup. Placed after the
-    // change-guard so the extra read isn't paid on every counter-bump write.
-    const liveParent = await db.doc(`users/${userId}`).get();
-    if (!liveParent.exists) {
-      console.log(`mirrorModerationState(${userId}): user doc gone (late redelivery) — skipping mirror`);
-      return;
-    }
-    const mirror = {};
-    for (const f of MIRRORED) mirror[f] = after[f] === undefined ? FieldValue.delete() : after[f];
-    if (after.restrictedBy != null) mirror.restrictedBy = after.restrictedBy;
-    await db.doc(`users/${userId}/private/data`).set(mirror, { merge: true });
-    if (after.restricted === true) {
-      const row = {
-        handle: after.handle ?? null,
-        restrictedAt: after.restrictedAt ?? null,
-        restrictedUntil: after.restrictedUntil ?? null,
-      };
-      if (after.restrictedBy != null) row.restrictedBy = after.restrictedBy;
-      await rowRef.set(row, { merge: true });
-    } else {
-      await rowRef.delete();
+    // restrictedBy is a per-action stamp (audited above) — don't keep it on the doc.
+    if (after.restrictedBy != null && flipped) {
+      try { await event.data.after.ref.update({ restrictedBy: FieldValue.delete() }); } catch (err) { if (err.code !== 5) throw err; }
     }
   }
 );
-
-// Audit crisis-reply reviews. Replaces the old on-doc crisisReviewedBy stamp
-// (which sat on a world-readable live reply — C-1 2026-07-17): the review now
-// flips `reviewed` on the admin-only crisisReplyQueue entry, so the actor uid
-// can live right on the queue doc and the audit keys on the flip.
 exports.auditCrisisReplyReview = onDocumentUpdated(
   { document: "crisisReplyQueue/{entryId}", retry: true },
   async (event) => {

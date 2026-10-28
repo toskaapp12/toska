@@ -28,24 +28,22 @@ const RULES_PATH = path.join(__dirname, "..", "firestore.rules");
 
 let env;
 
+// A5 phase 1 (2026-10-28): the six authorization fields live in
+// users/{uid}/private/data, not on the public doc. The helper keeps its old
+// signature — pass confirmedAdult / restricted* in `fields` as before and they
+// are routed to private/data; everything else lands on the public doc.
+const AUTH_FIELDS = ['confirmedAdult', 'confirmedAdultAt', 'restricted', 'restrictedAt', 'restrictedUntil', 'restrictedBy'];
 async function setUserDoc(uid, fields = {}) {
   // Default helper seeds confirmedAdult=true so tests focused on other
   // rules don't have to repeat the field. Adult-gate tests pass an
-  // explicit fields = { confirmedAdult: false } to exercise the new
-  // hasConfirmedAdult() check.
+  // explicit fields = { confirmedAdult: false } to exercise the
+  // hasConfirmedAdult() / canPublish() check.
   await env.withSecurityRulesDisabled(async (ctx) => {
-    await ctx
-      .firestore()
-      .collection("users")
-      .doc(uid)
-      .set({
-        handle: `handle_${uid}`,
-        followerCount: 0,
-        followingCount: 0,
-        totalLikes: 0,
-        confirmedAdult: true,
-        ...fields,
-      });
+    const all = { confirmedAdult: true, ...fields };
+    const pub = {}, priv = {};
+    for (const [k, v] of Object.entries(all)) (AUTH_FIELDS.includes(k) ? priv : pub)[k] = v;
+    await ctx.firestore().collection("users").doc(uid).set({ handle: `handle_${uid}`, followerCount: 0, followingCount: 0, totalLikes: 0, ...pub });
+    await ctx.firestore().collection("users").doc(uid).collection("private").doc("data").set(priv, { merge: true });
   });
 }
 
@@ -1558,11 +1556,18 @@ describe("private subcollection: owner-only", () => {
     await setUserDoc("bob");
   });
 
-  it("allows the owner to write their private/data doc", async () => {
+  it("allows the owner to write their private/data doc (merge — a full overwrite would drop the server-owned auth fields and is denied)", async () => {
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("users").doc("alice")
         .collection("private").doc("data")
+        .set({ email: "alice@example.com", selectedMood: "ok" }, { merge: true })
+    );
+  });
+  it("A5: DENIES an owner full overwrite of private/data that would remove confirmedAdult", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    await assertFails(
+      a.collection("users").doc("alice").collection("private").doc("data")
         .set({ email: "alice@example.com", selectedMood: "ok" })
     );
   });
@@ -1805,7 +1810,12 @@ describe("follow mirrors: create + delete", () => {
 });
 
 describe("notRestricted(): time-expiry leg", () => {
-  it("allows a post create when restrictedUntil is in the past", async () => {
+  // A5 phase 1 (2026-10-28): post/reply CREATE now goes through canPublish(), which
+  // does NOT evaluate restrictedUntil (the create rule sits at the 1000-expression
+  // ceiling). A timed restriction is lifted by clearExpiredRestrictions (every 10
+  // min, flips restricted:false). So an expired-but-not-yet-swept restriction still
+  // denies CREATE; the time leg still applies to UPDATE (notRestricted()).
+  it("DENIES a post create when restrictedUntil is in the past but the sweeper has not cleared `restricted` yet", async () => {
     // System auto-restrictions set restrictedUntil = now + 48h. Once
     // that timestamp is in the past, notRestricted() returns true again
     // even if `restricted: true` is still on the doc — the time-expiry
@@ -1817,7 +1827,7 @@ describe("notRestricted(): time-expiry leg", () => {
       restrictedUntil: new Date(Date.now() - 60 * 1000), // 1 minute ago
     });
     const a = env.authenticatedContext("alice").firestore();
-    await assertSucceeds(
+    await assertFails(
       a.collection("posts").doc("p1").set({
         moderationStatus: "pending_validation",
         authorId: "alice",
@@ -3863,8 +3873,8 @@ describe("reposts: gifUrl exact-copy pin (2026-09-22)", () => {
       });
       await db.collection("users").doc("bob").set({
         handle: "handle_bob", createdAt: new Date(), allowSharing: true,
-        confirmedAdult: true,
       });
+      await db.doc("users/bob/private/data").set({ confirmedAdult: true }); // A5: attestation lives in private/data
       await db.collection("posts").doc("gp1").set({
         authorId: "alice", authorHandle: "handle_alice", text: "gif feelings",
         gifUrl: GIF, createdAt: new Date(),

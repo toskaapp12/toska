@@ -24,7 +24,8 @@ async function seed() {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     for (const uid of ["alice", "bob", "modmin"]) {
-      await db.collection("users").doc(uid).set({ handle: `handle_${uid}`, followerCount: 0, followingCount: 0, totalLikes: 0, confirmedAdult: true });
+      await db.collection("users").doc(uid).set({ handle: `handle_${uid}`, followerCount: 0, followingCount: 0, totalLikes: 0 });
+      await db.doc(`users/${uid}/private/data`).set({ confirmedAdult: true }); // A5
     }
     await db.collection("admins").doc("modmin").set({ role: "admin" });
     await db.collection("posts").doc("live_alice").set(base("alice", { moderationStatus: "live" }));

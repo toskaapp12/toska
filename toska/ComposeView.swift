@@ -459,6 +459,30 @@ struct ComposeView: View {
                     .background(ToskaColor.promptBg)
                 }
 
+                // Mode banners + first-name nudge (moved ABOVE the editor, build 106 /
+                // owner 2026-10-29: below the text they sat under the keyboard while
+                // typing). Explainer copy for the active mode, in the prompt-band tint
+                // (the chips carry the on/off state); × dismisses.
+                // prompt-band tint (the chips carry the on/off state).
+                if isLetter {
+                    composeModeBanner(icon: "envelope.open",
+                                      text: "writing a letter · up to 2,000 characters") { isLetter = false }
+                }
+                if isWhisper {
+                    composeModeBanner(icon: "eye.slash",
+                                      text: "whisper · disappears in 1 hour") { isWhisper = false }
+                }
+                if expiresAtMidnight {
+                    composeModeBanner(icon: "moon.stars",
+                                      text: "this post disappears at midnight") { expiresAtMidnight = false }
+                }
+                // First-name nudge (owner 2026-10-29): soft, dismissible, never
+                // blocks. Mirrors the web composer's inline note.
+                if !nameNudgeDismissed && likelyFirstName(text) {
+                    composeModeBanner(icon: "person.crop.circle",
+                                      text: "you can leave their name out if you'd like — first names are okay.") { nameNudgeDismissed = true }
+                }
+
                 Rectangle().fill(LateNightTheme.divider).frame(height: 1)
 
                 // MARK: - Compose area
@@ -598,27 +622,6 @@ struct ComposeView: View {
                             .padding(.top, 4)
                         }
                     }
-                }
-
-                // Mode banners — explainer copy for the active mode, in the
-                // prompt-band tint (the chips carry the on/off state).
-                if isLetter {
-                    composeModeBanner(icon: "envelope.open",
-                                      text: "writing a letter · up to 2,000 characters") { isLetter = false }
-                }
-                if isWhisper {
-                    composeModeBanner(icon: "eye.slash",
-                                      text: "whisper · disappears in 1 hour") { isWhisper = false }
-                }
-                if expiresAtMidnight {
-                    composeModeBanner(icon: "moon.stars",
-                                      text: "this post disappears at midnight") { expiresAtMidnight = false }
-                }
-                // First-name nudge (owner 2026-10-29): soft, dismissible, never
-                // blocks. Mirrors the web composer's inline note.
-                if !nameNudgeDismissed && likelyFirstName(text) {
-                    composeModeBanner(icon: "person.crop.circle",
-                                      text: "you can leave their name out if you'd like — first names are okay.") { nameNudgeDismissed = true }
                 }
 
                 // Footer note (design 2026-09-16) — hairline + the promise.

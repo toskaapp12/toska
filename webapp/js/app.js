@@ -1437,13 +1437,16 @@ function viewCompose() {
     mount.replaceChildren(...[
         el("a", { class: "back", href: "#/" }, "← feed"),
         prompt ? el("p", { class: "note", style: "padding:0 6px;" }, `responding to today's prompt — "${prompt.text}"`) : null,
+        // Order (owner, build-105 round 2026-10-29): chips, mode note and the
+        // first-name nudge ABOVE the text box so they stay visible with a
+        // mobile keyboard up — mirrors the iOS composer.
         el("div", { class: "compose-card" },
-            ta,
-            gifBox,
             tagRow,
             toggleRow,
             noteBox,
             nudgeBox,
+            ta,
+            gifBox,
             el("div", { class: "compose-meta" },
                 el("div", { style: "display:flex; gap:8px; align-items:center;" }, count),
                 share),

@@ -136,6 +136,12 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   staging; iOS sheet in build 104; Terms §6 + support page updated (no version bump). See BUGS.md
   REMOVAL-NOTICES. Prod: `--only` the five functions (`--force` for the new one, 75 → 76), hosting,
   push.
+- **Build 104 SHIPPED (2026-10-29 15:52 UTC):** CLI archive + upload (ASC key), state VALID, Internal
+  TestFlight group. Carries on top of 103: first-name compose nudge (`likelyFirstName` mirror),
+  hold-dialog copy ("full name or contact detail … try he/she/they"), removal-notice rendering
+  (`NotificationItem.removal`, row + `RemovalNoticeSheet` with `CrisisLines.resources` for safety).
+  **Owner hand-test:** type "Sarah broke up with me" in compose → inline nudge, × dismisses, post goes
+  through; a full-name post shows the new dialog copy; a removal notice row opens the statement sheet.
   **Next: Tier 2 (A3, A4, C4, C7, C9–C14, B4, tag counts incl. held, follower-count mirror).**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror

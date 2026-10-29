@@ -144,6 +144,14 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-TIER2-STATUS — what the 2026-10-27 audit's Tier 2 items became (owner triage 2026-10-29)
+
+- **Closed by earlier work:** **B4** (own `private/data` writes) — A5 phase 1 locked the six authorization keys against owner writes and made them the source of truth, so a restricted user can no longer hide their banner or self-attest; other keys in private/data stay owner-writable but nothing trusts them. **C8** closed 2026-10-28. **C12** (1-char replies) closed by the product decisions (rules `trim().size() >= 2` + validateReply). **C14** (auto-restriction never clears) closed by A5's `clearExpiredRestrictions`. **C11** (pii vs abuse_link label race) documented as first-wins in AUDIT-C2, not changed. The `undeliveredCrisisPages` residue in A4 closed by C8.
+- **In progress (pre-launch):** **A4** deletion residue (proposal below), then **A3** sharing-off propagation.
+- **POST-LAUNCH (owner decision 2026-10-29):** **C7** milestone notifications skip under like bursts (equality on a live count; fix = threshold crossing via before/after); **C9** self-block reachable (rule + iOS row); **C10** second reply / re-follow by the same person never notifies (deterministic notif ids); **C13** explicit-crisis edit re-pages and bulk approve publishes crisis text unseen; **D2** `meta/tagCounts` include held posts (Explore shows the stored number); **follower-count mirror** (server-maintained public count behind the hide toggle, so the toggle becomes real privacy rather than display-only).
+
+---
+
 ## REMOVAL-NOTICES — tell the author when their post/reply is removed (LIVE, PROD 2026-10-29; iOS in build 104)
 
 - **Decision (owner, 2026-10-29):** in-app notification only (no push), calm voice, reason category chosen by the admin, never who reported; gentler safety variant leading with region-aware crisis resources; nothing for deleted accounts or spam; EU DSA Art. 17 statement of reasons (what / why / how found / who decided / redress); automated removals get the same notice saying "our automated screening"; pruned with other notifications.

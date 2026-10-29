@@ -5,6 +5,7 @@
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v4.0 wording update (2026-10-29, no version change): §7 — turning sharing off clears share pages and the website within a few minutes (was "up to an hour").
 > - v4.0 addition (2026-10-29, no version change — a new user benefit, no new obligation): §6 describes the in-app removal notice (what, why, how, who, how to ask again), per the EU Digital Services Act statement-of-reasons practice.
 > - v4.0 wording clarification (2026-10-29, no version change): §5 now says "full names" and that a first name on its own is not treated as identifying; the letters bullet says "full name". No change in practice — bare first names were always allowed.
 > - v4.0 (2026-10-28): Accuracy round from the October 2026 multi-user audit, co-versioned with Privacy Policy v4.0 for joint re-acceptance. Spelled out what a restricted account can and cannot do (§4); holds apply to posts and replies, and a held post cannot receive replies (§5); blocking also stops saves, and reporting stays available in both directions (§6); share pages exist for any post you share while sharing is on, website and search-engine featuring stays hand-picked, and turning sharing off can take up to an hour to clear everywhere (§7); a midnight post's expiry is calculated on your device from your local midnight (§8); reports and moderation records are kept after deletion (§10). No change to the legal terms in §11–§18.
@@ -62,7 +63,7 @@ Two narrower, **optional** uses are controlled by your "allow sharing" setting (
 - **Share cards:** other users may render one of your posts as a shareable image. The card carries the words and feeling tag only — never your handle or any account identifier.
 - **Share pages and website featuring:** while sharing is on, any live post of yours that you or another user shares has a share page on toskaapp.com; separately, we hand-pick which posts appear on the toskaapp.com site itself and in search engines. Both show the words and feeling tag only, without your handle or any identifier.
 
-Turning "allow sharing" off ends both uses, including for existing posts — share cards stop immediately; share pages and the website can take up to an hour to clear everywhere. Deleting a post ends all uses of it. We claim **no other rights** — no advertising use of your content, no sale of your content, no use of your words to promote anything outside the two mechanisms above, and **no use of your content to train AI models (ours or anyone's)**.
+Turning "allow sharing" off ends both uses, including for existing posts — share cards stop immediately; share pages and the website clear within a few minutes. Deleting a post ends all uses of it. We claim **no other rights** — no advertising use of your content, no sale of your content, no use of your words to promote anything outside the two mechanisms above, and **no use of your content to train AI models (ours or anyone's)**.
 
 The license for a piece of content ends when you delete it or delete your account, except for (a) copies in reports/moderation records where content was reported (kept for safety and legal-defense purposes), and (b) short-lived backups (§12).
 

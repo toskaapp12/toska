@@ -152,6 +152,26 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## AUDIT-A3 — sharing-off propagation (STAGING verified 5/5; prod pending go)
+
+- **Severity:** MED (policy accuracy: "ends both, including for existing posts" vs up to an hour of public exposure) · **Surface:** hosting cache headers (`firebase.json`), `publicFeed` memo + header, `sharePage` / `shareCardImage` / `postsSitemap` headers, policy wording · **Status:** staging deployed + measured; **prod pending**
+- **Was:** share page + card image `max-age=300, s-maxage=600`, sitemap `3600/3600`, public feed `600/600` + 10-min in-instance memo → after sharing off, a post could keep serving for up to an hour (sitemap) and the feed for up to 20 min. There is no CDN purge for hosting rewrites, so cache lifetime is the only lever.
+- **Now (owner decision 2026-10-29):** share page + card image `max-age=60, s-maxage=120`; sitemap `300/300`; public feed memo 2 min + `120/120`. Privacy §4 / Terms §7 / in-app iOS policy body: "share pages and the website clear within a few minutes" (was "up to an hour"), changelog lines, no version bump.
+- **Measured on staging (warm CDN, polling every 15 s after `allowSharing → false`):** share page 122 s, card image 122 s, public feed 122 s, sitemap 304 s — each exactly at its new cap. Cost: a few more function invocations per minute on three low-traffic endpoints.
+- **Prod plan:** hosting (headers) + `--only functions:publicFeed,sharePage,postsSitemap,shareCardImage` (77 → 77), push (policy pages). iOS wording rides the next build.
+
+---
+
+## AUDIT-A4 — account deletion left identifying residue (STAGING verified 8/8; prod pending go)
+
+- **Severity:** MED (privacy: a deleted user's uid/handle/text survived in admin audit rows and in other users' saved/liked reply snapshots) · **Surface:** functions (`auditPostDeletion`, account cascade, new `onReplyDeletedScrubSnapshots`), `firestore.indexes.json` · **Status:** code committed 7bf2101; staging deployed + verified; **prod pending**
+- **Was:** `auditPostDeletion` wrote a `post.delete` row (authorId + handle) for EVERY post deletion — author self-deletes, whisper/midnight expiry, the account cascade (staging: 830 such rows; prod: 97). Other users' `likedReplies` / `savedReplies` snapshots (reply text, handle, uid) outlived both the reply and the account. The `undeliveredCrisisPages` residue was already closed by C8; reports against the user are retained by policy.
+- **Now:** audit rows only when the dashboard stamp (`deletedBy`) is present — the admin log stays an accountability record and nothing else names the user. `onReplyDeletedScrubSnapshots` removes other users' snapshots of a deleted reply (collection-group by `postId`, filtered to the reply id). The account cascade gains `cleanupReplySnapshotsForUid` (collection-group by `authorId`). Four collection-group single-field indexes added (likedReplies/savedReplies × authorId/postId).
+- **One-off scrub:** delete existing `post.delete` rows whose actor is "author" — staging applied (832 rows → 0); **prod dry run: 97 of 102 rows (47 of them the owner's own self-deletes), awaiting go.**
+- **Verification:** functions 143 (+4); staging 8/8 (`a4-verify-staging.mjs`): snapshots removed on single reply delete (others untouched), self-delete leaves no row, the REAL self-delete path (pendingDeletions + auth delete) cascades and removes the snapshots, no audit row names the deleted uid/handle. Prod plan: indexes → 3 functions via `--only --force` (76 → 77) → throwaway cascade check → audit scrub `--apply` → logs.
+
+---
+
 ## REMOVAL-NOTICES — tell the author when their post/reply is removed (LIVE, PROD 2026-10-29; iOS in build 104)
 
 - **Decision (owner, 2026-10-29):** in-app notification only (no push), calm voice, reason category chosen by the admin, never who reported; gentler safety variant leading with region-aware crisis resources; nothing for deleted accounts or spam; EU DSA Art. 17 statement of reasons (what / why / how found / who decided / redress); automated removals get the same notice saying "our automated screening"; pruned with other notifications.

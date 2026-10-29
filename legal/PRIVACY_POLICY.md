@@ -5,6 +5,7 @@
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v4.0 wording update (2026-10-29, no version change): §4 — turning sharing off now clears share pages and the website within a few minutes (was "up to an hour"); the caches behind those pages were shortened.
 > - v4.0 (2026-10-28): Co-versioned with Terms of Service v4.0 for joint re-acceptance. Accuracy disclosures from the October 2026 multi-user audit, no new data collection: added "what other signed-in users can see" (§2); a midnight post's expiry instant is computed on your device from your local midnight (§1, §6); the "hide follower count" setting hides the count from your profile display only (§2); notification toggles control push delivery only (§1); share pages exist for any post you share while sharing is on, and we hand-pick only what appears on the site and in search engines (§4); turning sharing off can take up to an hour to clear everywhere (§4); crisis holds apply to posts and replies (§2); reports and moderation records are kept after content and account deletion (§6, §7).
 > - v3.0 (2026-08-06): Co-versioned with Terms of Service v3.0 for joint re-acceptance. Minimum age raised from 17 to 18 (§11); data practices otherwise unchanged.
 > - v2.0 (2026-07-19): Co-versioned with Terms of Service v2.0 for joint re-acceptance. No reduction in your privacy: added an explicit Global Privacy Control / Do-Not-Track statement (§8), clarified that we honor opt-out preference signals, and confirmed our breach-notification and data-minimization commitments. Data practices are otherwise unchanged from v1.0.
@@ -52,7 +53,7 @@ If your **allow sharing** setting is on (default **off** — opt-in; change it i
 - other users can render a post of yours as a **share-card image** — words and feeling tag only, never your handle or any identifier;
 - a share page on **toskaapp.com** exists for any live post of yours that you or another user shares while sharing is on, and — separately — we hand-pick which posts appear on the site itself and in search engines (only hand-picked posts are indexable) — same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.
 
-Turning it off ends both, including for existing posts — share cards stop immediately; share pages and the website can take up to an hour to clear everywhere. Deleting a post removes it everywhere, including the website — the website's cache can take up to about ten minutes to catch up. Letters and expiring posts are never shareable regardless of this setting.
+Turning it off ends both, including for existing posts — share cards stop immediately; share pages, the website and search-engine listings we control clear within a few minutes. Deleting a post removes it everywhere, including the website — the website's cache can take up to about ten minutes to catch up. Letters and expiring posts are never shareable regardless of this setting.
 
 ## 5. Third parties that process your data
 

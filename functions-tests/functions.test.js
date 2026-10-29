@@ -1357,3 +1357,35 @@ describe("A4 deletion residue", () => {
     assert.strictEqual((await db.doc("users/d/savedReplies/x3").get()).exists, true);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Owner decision 2026-10-29: whisper + midnight both set (tampered client) →
+// validatePost normalizes to a whisper with expiresAt ≤ 1 h.
+// ─────────────────────────────────────────────────────────────────────
+describe("validatePost: whisper + midnight normalization", () => {
+  const base = { authorId: "u", authorHandle: "h", text: "a quiet line for tonight only, nothing more", createdAt: new Date(), likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, isShareable: false, moderationStatus: "pending_validation" };
+  it("both flags with a far expiresAt → whisper only, expiresAt pinned to ≤ 1 h", async () => {
+    await db.doc("users/u").set({ handle: "h" }); await db.doc("users/u/private/data").set({ confirmedAdult: true });
+    const far = Timestamp.fromMillis(Date.now() + 20 * 3600e3);
+    await db.doc("posts/both").set({ ...base, isWhisper: true, isMidnightPost: true, expiresAt: far });
+    await fns.validatePost.run({ id: "wm1", data: await snapOf("posts/both"), params: { postId: "both" } });
+    const d = (await db.doc("posts/both").get()).data();
+    assert.strictEqual(d.isWhisper, true); assert.strictEqual(d.isMidnightPost, undefined);
+    assert.ok(d.expiresAt.toMillis() <= Date.now() + 3600e3 + 5000, "expiresAt capped at 1 h");
+  });
+  it("both flags with an expiresAt already under 1 h → kept as is (whisper only)", async () => {
+    const soon = Timestamp.fromMillis(Date.now() + 1800e3);
+    await db.doc("posts/both2").set({ ...base, isWhisper: true, isMidnightPost: true, expiresAt: soon });
+    await fns.validatePost.run({ id: "wm2", data: await snapOf("posts/both2"), params: { postId: "both2" } });
+    const d = (await db.doc("posts/both2").get()).data();
+    assert.strictEqual(d.isMidnightPost, undefined); assert.strictEqual(d.expiresAt.toMillis(), soon.toMillis());
+  });
+  it("a plain midnight post is untouched", async () => {
+    const mid = Timestamp.fromMillis(Date.now() + 10 * 3600e3);
+    await db.doc("posts/mid").set({ ...base, isMidnightPost: true, expiresAt: mid });
+    await fns.validatePost.run({ id: "wm3", data: await snapOf("posts/mid"), params: { postId: "mid" } });
+    const d = (await db.doc("posts/mid").get()).data();
+    assert.strictEqual(d.isMidnightPost, true); assert.strictEqual(d.isWhisper, undefined); assert.strictEqual(d.expiresAt.toMillis(), mid.toMillis());
+  });
+});

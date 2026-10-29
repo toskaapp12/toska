@@ -2549,6 +2549,18 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
       await db.collection("posts").doc(postId).update({ isShareable: false });
     }
   }
+  // Owner decision (2026-10-29): whisper and midnight are mutually exclusive
+  // on both clients (and neither client writes both), but the create rule —
+  // at its expression ceiling — only type-checks the flags, so a tampered
+  // client could write both with an arbitrary expiresAt. Normalize to the
+  // SHORTER life: keep whisper, drop the midnight flag, pin expiresAt to ≤ 1 h.
+  if (postData.isWhisper === true && postData.isMidnightPost === true) {
+    const cap = Date.now() + 3600e3;
+    const exp = postData.expiresAt && typeof postData.expiresAt.toMillis === "function" ? postData.expiresAt.toMillis() : null;
+    const expiresAt = typeof exp === "number" && exp <= cap ? postData.expiresAt : Timestamp.fromMillis(cap);
+    console.warn(`validatePost ${postId}: both isWhisper and isMidnightPost set — normalizing to whisper`);
+    await db.collection("posts").doc(postId).update({ isMidnightPost: FieldValue.delete(), expiresAt });
+  }
 
   // Reposts now run through their own validation path. Previously this
   // trigger early-returned on isRepost === true, which let a tampered

@@ -95,7 +95,22 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
     build 103. **Owner check pending on prod web.**
   - Tests: rules 470, functions 122 (two stale A5 mirror tests rewritten to the shim contract);
     staging 17/17 (`c2c3c5-verify-staging.mjs`), prod 6/6 (neutral throwaways, totals restored).
-  **Next: product decisions + wording batch, then build 103.**
+- **Product decisions DONE + PROD (2026-10-29 ~03:40 UTC):** 18+ gate on likes/reply-likes/follows/
+  saves/reports; blocked users can't save the blocker's posts (reporting stays); no replies on held
+  posts + 2-char minimum (rules + validateReply backstop; composer hidden on web, iOS build 103);
+  plus-alias ban normalization; restricted users = wording only. Rules 497 / functions 127; staging
+  19/19; prod ruleset byte-identical + validateReply 3/3. See BUGS.md AUDIT-PD.
+- **Policy v4.0 LIVE (2026-10-29):** Terms + Privacy v4.0 on the site, support + FAQ updated, web
+  `POLICY_VERSION = 5` live (re-acceptance gate verified on staging 5/5), iOS `currentPolicyVersion = 5`
+  + label + in-app body in build 103; App Store privacy label unchanged (note added). See BUGS.md
+  POLICY-4.0.
+- **C5 owner check:** the "held" post was never held (bare first name → no server flag); the profile
+  row's "under review." was the `pending_validation` window → now reads "checking your post…" (web).
+  Owner re-check pending after accepting v4.0. **Four owner posts from that check are still live on
+  prod** ("test 1/2/3", "Sarah broke up with me last week.") — owner said deleted; ask before removing.
+- **Owner's `allowSharing` flipped to false 03:22:13Z** — a client write (web profile checkbox or iOS
+  Settings save), nothing server-side; see BUGS.md OBS-SHARING-FLIP. Not changed.
+  **Next: build 103 (all batched iOS changes), then Tier 2.**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner

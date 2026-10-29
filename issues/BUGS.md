@@ -96,7 +96,37 @@ Format: severity · surface · status. "Pre-existing" = present before the
 - **Severity:** MED (every user whose post is held) · **Surface:** web `postVisible` / `viewPost`; iOS `PostDetailView` · **Status:** web FIXED 2026-10-28 (staging + prod hosting); iOS parity in build 103
 - **Was (web):** the profile listed held posts with "under review." but `#/post/{id}` ran `postVisible()`, which drops `flagged` posts before any ownership check → "this post has disappeared." for the author.
 - **Now (web):** `postVisible(d, { own })` skips the flagged check for the author only; expiry and block checks still apply; the detail shows the pending banner. Other users still get "this post isn't available." (rules deny the read). **iOS (owner 2026-10-28, build 103):** tapping an own held post already opened it; `PostDetailView` now derives `ownPendingReview` from the live listener (`moderationStatus == pending_review && authorId == me`) and shows the same `PendingReviewBanner` (reason label + crisis support line) above the post.
-- **Verification:** staging headless Chrome — author sees the banner + text, another signed-in user sees "isn't available"; prod hosting live, **owner check pending** (post six quick neutral posts, open the sixth from the profile, then delete it).
+- **Verification:** staging headless Chrome — author sees the banner + text, another signed-in user sees "isn't available"; prod hosting live. **Owner check (2026-10-29 ~03:23 UTC):** opened the post from the profile fine, but saw NO banner and a live-looking detail. Root cause: the post ("Sarah broke up with me last week.") was never held — the server detector returns no flag for a bare first name (the web compose gate warns, but the server decides) — the profile row said "under review." because it rendered during the few-second `pending_validation` window before validatePost promoted it, and by the time the detail opened the post was live (it still is). Staging re-check with an admin-held post opened from the profile row: banner shown, composer hidden. **Fix shipped with the v4.0 hosting release:** `pending_validation` now reads "checking your post — this usually takes a few seconds" instead of "under review" (profile rows + detail). Owner re-check pending after accepting v4.0.
+
+---
+
+## AUDIT-PD — product decisions after the multi-user audit (FIXED, PROD)
+
+- **Severity:** policy · **Surface:** rules, validateReply, bannedIdentities, web/iOS composer · **Status:** DONE 2026-10-29 ~03:40 UTC — prod rules released (byte-identical to `firestore.rules`, ruleset `9d012ef6…`), 4 functions via `--only` (set 75 → 75), hosting
+- **18+ gate on every interaction (audit §2.6 #5):** `hasConfirmedAdult()` now gates post likes, reply likes, `following` + `followers` rows, saves and reports (was publishing-only). In-app flows always attest before these are reachable; this closes the SDK path. Two legacy pins reversed ("allows likes/saves … when confirmedAdult is false", report fixture).
+- **Blocked users can't save the blocker's posts (§2.6 #2):** saved create reads the post and denies when its `authorId` — or a repost row's `originalAuthorId` — has blocked the caller; a missing post keeps the old behaviour. Reporting stays allowed both ways.
+- **No replies on held posts (C6) + 2-char minimum (C12):** replies create requires the parent's `moderationStatus == 'live'` (held, pending_validation, missing → denied, author included) and `text.trim().size() >= 2`; `validateReply` deletes under-2-char replies and any reply that still lands on a held post. Web + iOS (build 103) hide the composer on an own held post.
+- **Plus-alias bans (B7):** `extractIdentities` also emits `local@domain` for `local+tag@domain` (primary + provider emails), so ban rows are written for both forms and `blockBannedSignups` matches any alias of a banned mailbox. Rows already hashed raw keep matching as before.
+- **Restricted users (§2.6 #1):** code already matched the decision (like/save/block/report/delete-own allowed; post/reply/repost denied) — wording only (Terms §4 v4.0).
+- **Tests/verification:** `product-decisions.test.js` (+27 rules cases; suite 497, 0 ceiling hits), functions +5 (127); staging 19/19 (`pd-verify-staging.mjs`); prod: ruleset byte-check PASS, validateReply 3/3 with neutral throwaways (totals restored), no errors/denials in logs. Rule-level prod checks for the gate/blocked-save are not runnable headlessly (App Check) — covered by the byte-identical ruleset + emulator suite.
+- **Not changed (documented):** content-vs-content hold precedence stays first-wins (see AUDIT-C2).
+
+---
+
+## POLICY-4.0 — Terms + Privacy v4.0, policy version 5 (LIVE on web + site; iOS in build 103)
+
+- **Status:** published 2026-10-29 — toskaapp.com/privacy + /terms "Version 4.0 · Effective October 28, 2026", support page + FAQ updated; web `POLICY_VERSION = 5` live (every existing web account gets the "our terms have changed" gate at next sign-in); iOS `currentPolicyVersion = 5` + label + in-app policy body ride build 103.
+- **Why a bump (owner):** several items are real privacy disclosures — moderation records kept after deletion, "what other signed-in users can see", the on-device midnight-expiry note — and with no real users yet re-acceptance costs nothing.
+- **Content:** what other signed-in users can see (Privacy §2); notification toggles are push-only (§1); midnight expiry computed on-device from local midnight (§1, §6; Terms §8); share pages exist for any shared post while sharing is on, featuring on the site/Google stays hand-picked (§4; Terms §7); sharing-off up to an hour to clear everywhere; crisis holds on posts and replies (§2); reports + moderation records survive content and account deletion (§6, §7; Terms §10; support + FAQ); restricted = no post or reply (Terms §4); holds cover posts and replies, held posts take no replies (§5); blocking also stops saves, reporting stays (§6); follower-count toggle is display-only (§2 + FAQ). In-app iOS body also fixed a stale "sharing on by default".
+- **Verification:** staging web gate 5/5 (v4 account gated → accept stamps 5 + timestamp → routes; fresh signup stamps 5); prod web smoke: modules load, served `POLICY_VERSION` 5, no script errors. iOS re-accept cover reads/writes the same `acceptedPolicyVersion` field (ContentView gate, recordPolicyAcceptance) — build 103.
+- **App Store privacy label:** unchanged (no new data type/purpose); dated re-check note in `legal/APP_STORE_PRIVACY_LABELS.md`. **A5 phase 2 note:** when acceptedPolicy* moves to private/data, both gates must follow.
+
+---
+
+## OBS-SHARING-FLIP — owner's `allowSharing` went true → false on prod, 2026-10-29 03:22:13 UTC (OBSERVATION, no change made)
+
+- **Facts:** user doc updateTime 03:22:13Z; `onAllowSharingChanged(…): allowSharing=false — updated 13 posts` at 03:22:18Z; it sits between the owner's own web posts "test 2" (03:22:10Z) and "test 3" (03:22:40Z). No server code writes `allowSharing` (checked: functions, back-fill, shim, repair scripts). The only writers are the web profile checkbox (`onchange` only — never programmatic) and the iOS Settings save batch (build 102 writes the whole settings block incl. `allowSharing` on ANY toggle change, from the value it loaded). Firestore data-access audit logs are not enabled on prod, so the client can't be attributed further.
+- **Owner to confirm** which of the two it was; nothing was reset by the tooling. If attribution matters later: enable Firestore data-access (DATA_WRITE) audit logs on prod (cost: log volume).
 
 ---
 

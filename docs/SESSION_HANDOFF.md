@@ -110,7 +110,16 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   prod** ("test 1/2/3", "Sarah broke up with me last week.") — owner said deleted; ask before removing.
 - **Owner's `allowSharing` flipped to false 03:22:13Z** — a client write (web profile checkbox or iOS
   Settings save), nothing server-side; see BUGS.md OBS-SHARING-FLIP. Not changed.
-  **Next: build 103 (all batched iOS changes), then Tier 2.**
+- **Build 103 SHIPPED (2026-10-29 04:02 UTC):** archived + uploaded via CLI (ASC key, automatic
+  signing; `scratchpad/ExportOptions103.plist` shape: app-store-connect / destination upload), ASC
+  state VALID, assigned to the Internal TestFlight group. Carries: B102-1 own-post white card; A1
+  per-doc liked/saved + engaged tags + repost-sweep filter; A2 detector mirror; item 3 held-reply
+  banner; A5 AdminModerationView → private/data; C1 reply-repost `moderationStatus`; C5 own-held-post
+  banner + C6 reply bar hidden on held post; policy v4.0 (`currentPolicyVersion = 5`, label, in-app
+  body). **Owner hand-test on device:** re-acceptance cover appears once (v4.0 label), reply repost
+  works, own held post opens with banner and no reply bar, liked/saved tabs load, white own-post card.
+  Not yet in 103: liked/saved "load more" pagination (still a follow-up).
+  **Next: Tier 2 (A3, A4, C4, C7, C9–C14, B4, tag counts incl. held, follower-count mirror).**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner

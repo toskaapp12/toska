@@ -21,7 +21,7 @@ const {
   isPostConcerning,
   isPostExplicitCrisis,
 } = require("./moderationLogic");
-const { containsNameOrIdentifyingInfo } = require("./moderation");
+const { containsNameOrIdentifyingInfo, likelyFirstName } = require("./moderation");
 
 // Where these pages canonically live. The Firebase Hosting site also answers
 // on toska-4ebf4.web.app (and app.toskaapp.com once the owner wires DNS) —
@@ -120,11 +120,16 @@ function evaluateSharePage(post, nowMs, authorAllowSharing) {
   // containsNameOrIdentifyingInfo: prod carries name-shaped tester posts
   // (found live during the 2026-07-13 rollout verification) — a careless
   // webFeatured flag must not be able to hand one to crawlers.
+  // likelyFirstName (owner decision 2026-10-29): a bare first name is allowed
+  // in the app and the share page still renders for a shared post, but it is
+  // never INDEXABLE (sitemap / search engines) — featuring stays hand-picked
+  // and name-free.
   const sensitive =
     computePostFlagReason(post.text) !== null ||
     isPostExplicitCrisis(post.text) ||
     isPostConcerning(post.text) ||
-    containsNameOrIdentifyingInfo(post.text);
+    containsNameOrIdentifyingInfo(post.text) ||
+    likelyFirstName(post.text);
   return { outcome: "render", indexable: post.webFeatured === true && !sensitive };
 }
 

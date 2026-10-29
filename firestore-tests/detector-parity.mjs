@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { containsNameOrIdentifyingInfo: serverDetect } = require("../functions/moderation.js");
+const { containsNameOrIdentifyingInfo: serverDetect, likelyFirstName: serverFirst } = require("../functions/moderation.js");
 // Crisis matcher parity (added 2026-06-30): the crisis phrase lists + matcher
 // exist in BOTH moderationLogic.js (matchesCrisisPhrase / isPostExplicitCrisis /
 // isPostConcerning) and ContentModeration.swift (crisisPhraseMatch / crisisLevel),
@@ -168,6 +168,31 @@ const CORPUS = [
   ["we worked at the same place", "allow"],         // generic venting, no anchor
 ];
 
+// likelyFirstName corpus (owner decision 2026-10-29): [text, "nudge"|"none"].
+// A SOFT signal — none of the "nudge" lines may be a HOLD on either layer
+// (asserted below), and every "none" line must stay quiet on both.
+const FIRST_CORPUS = [
+  ["Sarah broke up with me last week.", "nudge"],
+  ["Sarah's laugh", "nudge"],
+  ["I miss John", "nudge"],
+  ["my ex sam did this", "nudge"],
+  ["this girl emma", "nudge"],
+  // NOT in this corpus on purpose: "Dear John" (two Capitalized words → the
+  // full-name HOLD shape today; logged as a known FP) and fullwidth "Ｓａｒａｈ"
+  // (an OBFUSCATED first name is a HOLD by design, N-17) — both are holds, so
+  // the nudge never gets a chance to show.
+  ["thinking of Jess tonight", "nudge"],
+  ["Grace is what I need", "none"],              // ambiguous word
+  ["Will you come back", "none"],
+  ["hope it gets better", "none"],
+  ["May was the worst month", "none"],
+  ["sam i am", "none"],                          // lowercase, no prefix
+  ["the Jam at Central Park", "none"],
+  ["I am fine", "none"],
+  ["Christmas was hard", "none"],
+  ["EMMA", "none"],                              // all-caps shouting, not a Capitalized name
+  ["i miss her so much", "none"],
+];
 // ── Extract the Swift detector + its helpers from FeedView.swift ──
 const swiftSrc = readFileSync(join(import.meta.dirname, "../toska/ContentModeration.swift"), "utf8").split("\n");
 // Start the extraction at the crisis phrase lists (line ~33) rather than the
@@ -185,6 +210,7 @@ const detectorSrc = swiftSrc.slice(startIdx, endIdx + 1).join("\n");
 
 const corpusSwift = CORPUS.map(([t]) => `  ${JSON.stringify(t)},`).join("\n");
 const crisisSwift = CRISIS_CORPUS.map(([t]) => `  ${JSON.stringify(t)},`).join("\n");
+const firstSwift = FIRST_CORPUS.map(([t]) => `  ${JSON.stringify(t)},`).join("\n");
 const harness = `import Foundation
 ${detectorSrc}
 func crisisVerdict(_ t: String) -> String {
@@ -206,6 +232,12 @@ ${crisisSwift}
 for t in crisisCorpus {
   print("CRISIS\\t" + crisisVerdict(t) + "\\t" + t)
 }
+let firstCorpus = [
+${firstSwift}
+]
+for t in firstCorpus {
+  print("FIRST\\t" + (likelyFirstName(t) ? "nudge" : "none") + "\\t" + (containsNameOrIdentifyingInfo(t) ? "hold" : "allow") + "\\t" + t)
+}
 `;
 
 const dir = mkdtempSync(join(tmpdir(), "toska-parity-"));
@@ -221,10 +253,13 @@ try {
 const clientOut = execFileSync(binFile, { encoding: "utf8" }).trim().split("\n");
 const clientVerdict = new Map();
 const clientCrisis = new Map();
+const clientFirst = new Map();
 for (const line of clientOut) {
   const parts = line.split("\t");
   if (parts[0] === "CRISIS") {
     clientCrisis.set(parts.slice(2).join("\t"), parts[1]);
+  } else if (parts[0] === "FIRST") {
+    clientFirst.set(parts.slice(3).join("\t"), { first: parts[1], hold: parts[2] });
   } else {
     clientVerdict.set(parts.slice(1).join("\t"), parts[0]);
   }
@@ -252,9 +287,19 @@ for (const [text, expected] of CRISIS_CORPUS) {
     console.log(`✗ CRISIS server=${server} client=${client} expected=${expected}  | ${text}`);
   }
 }
-const total = CORPUS.length + CRISIS_CORPUS.length;
+for (const [text, expected] of FIRST_CORPUS) {
+  const server = serverFirst(text) ? "nudge" : "none";
+  const c = clientFirst.get(text) || {};
+  const serverHold = serverDetect(text) ? "hold" : "allow";
+  const ok = server === expected && c.first === expected && serverHold === "allow" && c.hold === "allow";
+  if (!ok) {
+    mismatches++;
+    console.log(`✗ FIRST server=${server} client=${c.first} expected=${expected} hold(server/client)=${serverHold}/${c.hold}  | ${text}`);
+  }
+}
+const total = CORPUS.length + CRISIS_CORPUS.length + FIRST_CORPUS.length;
 if (mismatches === 0) {
-  console.log(`✓ detector parity: ${total}/${total} cases (name + crisis) — client and server agree and match expected`);
+  console.log(`✓ detector parity: ${total}/${total} cases (name + crisis + first-name nudge) — client and server agree and match expected`);
   process.exit(0);
 } else {
   console.error(`\n${mismatches} parity mismatch(es) — the Swift and JS detectors have drifted. Re-sync ContentModeration.swift with moderation.js / moderationLogic.js.`);

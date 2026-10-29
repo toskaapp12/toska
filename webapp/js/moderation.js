@@ -37,4 +37,5 @@ export const {
 export const {
     containsNameOrIdentifyingInfo,
     containsURL,
+    likelyFirstName, // soft first-name nudge signal (owner decision 2026-10-29)
 } = registry["./moderation"];

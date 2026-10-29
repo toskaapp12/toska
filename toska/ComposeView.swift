@@ -91,6 +91,10 @@ struct ComposeView: View {
     private static let composeDraftIsLetterKey = "toska_composeDraftIsLetter"
     private static let composeDraftGifUrlKey   = "toska_composeDraftGifUrl"
     @State private var text = ""
+    // Owner decision 2026-10-29: soft, non-blocking first-name nudge. Bare
+    // first names are allowed; this just offers the choice. Dismissed once per
+    // compose session; never touches the post button.
+    @State private var nameNudgeDismissed = false
     @State private var selectedTag: String? = nil
     @State private var showTagPicker = false
     @State private var isPosting = false
@@ -610,6 +614,12 @@ struct ComposeView: View {
                     composeModeBanner(icon: "moon.stars",
                                       text: "this post disappears at midnight") { expiresAtMidnight = false }
                 }
+                // First-name nudge (owner 2026-10-29): soft, dismissible, never
+                // blocks. Mirrors the web composer's inline note.
+                if !nameNudgeDismissed && likelyFirstName(text) {
+                    composeModeBanner(icon: "person.crop.circle",
+                                      text: "you can leave their name out if you'd like — first names are okay.") { nameNudgeDismissed = true }
+                }
 
                 // Footer note (design 2026-09-16) — hairline + the promise.
                 VStack(alignment: .leading, spacing: 0) {
@@ -725,7 +735,11 @@ struct ComposeView: View {
                         .font(ToskaFont.serifItalic(18))
                         .foregroundColor(LateNightTheme.handleText)
 
-                    Text("your post might include a name or identifying info.\n\nkeep names out — yours and theirs. posts share one handle, so small details like places or workplaces can add up.")
+                    // Owner wording 2026-10-29: this sheet fires only for the HOLD
+                    // class (full names, contact details, locators) — say so, and
+                    // never imply first names are blocked (they're allowed; the
+                    // soft nudge below the composer covers them).
+                    Text("this looks like a full name or a contact detail.\n\nfirst names on their own are fine — full names, handles, numbers and places that add up aren't. posts share one handle, so small details can identify someone.\n\ntry “he”, “she”, or “they” instead.")
                         .font(ToskaFont.sans(12))
                         .foregroundColor(LateNightTheme.secondaryText)
                         .multilineTextAlignment(.center)

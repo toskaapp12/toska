@@ -1198,3 +1198,30 @@ describe("product decisions 2026-10-28 — ban aliases + reply backstops", () =>
     assert.strictEqual((await replyRef("ph", "r").get()).exists, false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Owner decision 2026-10-29: never feature a post that mentions a likely
+// first name. onPostUpdated strips webFeatured; publicFeed/sitemap/share-page
+// re-check at render (sharePage.test.js covers the evaluate gate).
+// ─────────────────────────────────────────────────────────────────────
+describe("first-name featuring guard (onPostUpdated)", () => {
+  const { likelyFirstName } = require("../functions/moderation");
+  const change = (b, a) => ({ before: { exists: true, data: () => b }, after: { exists: true, data: () => a } });
+  const base = { authorId: "u", authorHandle: "h", createdAt: new Date(), likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, isShareable: true, moderationStatus: "live" };
+  it("likelyFirstName: nudge cases are never holds", () => {
+    assert.strictEqual(likelyFirstName("Sarah broke up with me last week."), true);
+    assert.strictEqual(likelyFirstName("Grace is what I need"), false);
+  });
+  it("strips webFeatured from a featured post whose text mentions a likely first name", async () => {
+    const after = { ...base, text: "Sarah broke up with me last week and the kitchen is so quiet now", webFeatured: true };
+    await db.doc("posts/pf1").set(after);
+    await fns.onPostUpdated.run({ id: "pf-e1", data: change({ ...base, text: "quiet kitchen", webFeatured: true }, after), params: { postId: "pf1" } });
+    assert.strictEqual((await db.doc("posts/pf1").get()).get("webFeatured"), undefined);
+  });
+  it("leaves webFeatured alone when there is no likely first name", async () => {
+    const after = { ...base, text: "the kitchen is so quiet now and i keep making two coffees", webFeatured: true };
+    await db.doc("posts/pf2").set(after);
+    await fns.onPostUpdated.run({ id: "pf-e2", data: change({ ...base, text: "the kitchen is so quiet now and i keep making two coffees", webFeatured: true, likeCount: 1 }, after), params: { postId: "pf2" } });
+    assert.strictEqual((await db.doc("posts/pf2").get()).get("webFeatured"), true);
+  });
+});

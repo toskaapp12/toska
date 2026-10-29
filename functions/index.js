@@ -1,5 +1,5 @@
 const { onDocumentDeleted, onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { containsNameOrIdentifyingInfo, aggressiveNormalizeForNameMatch, containsURL } = require("./moderation");
+const { containsNameOrIdentifyingInfo, aggressiveNormalizeForNameMatch, containsURL, likelyFirstName } = require("./moderation");
 // Pure moderation classifiers + phrase-list constants (no Firestore) live in
 // ./moderationLogic — extracted from this file as a functional no-op refactor.
 // The Cloud Function triggers below compose these.
@@ -3356,6 +3356,18 @@ exports.onPostUpdated = onDocumentUpdated(
     await cascadeModerationToCopies("post", postId, before, after);
   }
 
+  // Owner decision (2026-10-29): a post that mentions a likely first name is
+  // never featured on the public website, sitemap or site feed — even with
+  // sharing on. webFeatured is only ever written by the Admin SDK / seed
+  // script, so this trigger is the server-side guard: strip it on sight.
+  // (publicFeed / sitemap / share-page indexability re-check at render too.)
+  if (after.webFeatured === true && likelyFirstName(after.text)) {
+    try {
+      await db.collection("posts").doc(postId).update({ webFeatured: FieldValue.delete() });
+      console.log(`onPostUpdated(${postId}): webFeatured stripped — text mentions a likely first name`);
+    } catch (err) { if (err.code !== 5) throw err; }
+  }
+
   // Admin-release token stamp (2026-09-18 tech review): setPostLive only
   // stamps searchTokens on the pending_validation→live promotion — a post
   // HELD for review and later released to live by an admin arrives here
@@ -5334,6 +5346,7 @@ exports.publicFeed = onRequest(
         // the marketing site. Flag via: posts/{id}.webFeatured = true.
         if (d.webFeatured !== true) continue;
         if (typeof d.text !== "string" || d.text.length < 40 || d.text.length > 500) continue;
+        if (likelyFirstName(d.text)) continue; // owner decision 2026-10-29: never feature a likely first name
         const ageH = d.createdAt?.toMillis ? Math.max(1, Math.round((now - d.createdAt.toMillis()) / 3600e3)) : null;
         posts.push({
           text: d.text,

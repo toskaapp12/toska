@@ -71,11 +71,14 @@ function anonymityDialog() {
         const { card, close } = modal({ dismissable: false });
         card.append(
             el("h3", {}, "keep it anonymous"),
+            // Owner wording 2026-10-29: this dialog fires only for the HOLD class
+            // (full names, contact details, locators) — say so, and don't imply
+            // first names are blocked (they're allowed; see the soft nudge).
             el("p", { class: "modal-body" },
-                "your post might include a name or identifying info.",
+                "this looks like a full name or a contact detail.",
                 el("br"), el("br"),
-                "keep names out — yours and theirs. posts share one handle, so small details like places or workplaces can add up."),
-            el("p", { class: "modal-hint" }, "try “he”, “she”, “they”, or just “you”"),
+                "first names on their own are fine — full names, handles, numbers and places that add up aren't. posts share one handle, so small details can identify someone."),
+            el("p", { class: "modal-hint" }, "try “he”, “she”, or “they” instead."),
             el("div", { class: "modal-actions" },
                 el("button", { class: "btn", onclick: () => { close(); resolve("edit"); } }, "edit my post"),
                 el("button", { class: "btn quiet", onclick: () => { close(); resolve("override"); } }, "post anyway")),

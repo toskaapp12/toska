@@ -427,6 +427,40 @@
         //   text        → card-text body (skipped when falsy/empty)
         //   meta        → array passed to metaRow()
         //   actions     → array of button nodes (nulls skipped)
+        // "possible name" badge (owner decision 2026-10-29) — DISPLAY ONLY, no
+        // holds. Lights up when the text has (a) a likely first name (mirror of
+        // moderation.js likelyFirstName: Capitalized token in the given-names
+        // list, not an ambiguous word; or a lowercase name right after a
+        // relationship prefix) or (b) ANY Capitalized word that is not at the
+        // start of a sentence — so names the 208-entry list misses still get a
+        // second look before a post is featured.
+        const ADMIN_FIRST_NAMES = new Set(["aaliyah", "aaron", "abby", "abigail", "adam", "aiden", "alex", "alexander", "alice", "amanda", "amelia", "amy", "andrea", "andrew", "angela", "ann", "anthony", "ashley", "audrey", "avery", "barbara", "becky", "ben", "benjamin", "beth", "betty", "brandon", "brenda", "brett", "brian", "cameron", "carol", "caroline", "carolyn", "casey", "catherine", "charles", "charlie", "charlotte", "cheryl", "chloe", "chris", "christina", "christine", "christopher", "claire", "cynthia", "dakota", "dan", "david", "deborah", "debra", "dennis", "diane", "donald", "donna", "dorothy", "douglas", "edward", "eleanor", "elena", "eli", "elizabeth", "emilia", "emily", "emma", "eric", "ethan", "evan", "evelyn", "everly", "finley", "frances", "gary", "genesis", "george", "gloria", "greg", "gregory", "hannah", "harold", "harper", "hazel", "heather", "helen", "henry", "ian", "isabella", "jackson", "jacob", "jacqueline", "jake", "james", "jamie", "jane", "janet", "janice", "jason", "jean", "jeff", "jeffrey", "jennifer", "jerry", "jess", "jessica", "jim", "joan", "john", "jonathan", "jose", "joseph", "joshua", "joyce", "judith", "julie", "justin", "karen", "kate", "katherine", "kathleen", "kathryn", "kelly", "kennedy", "kenneth", "kevin", "kimberly", "kinsley", "kurt", "kyle", "larry", "laura", "lauren", "layla", "leo", "linda", "lisa", "liz", "logan", "lynn", "madison", "margaret", "maria", "martha", "mateo", "matthew", "megan", "melissa", "michael", "michelle", "mike", "nancy", "naomi", "nathan", "nicholas", "nicole", "nora", "oliver", "olivia", "owen", "paisley", "pamela", "patricia", "patrick", "paul", "penelope", "pete", "peter", "quinn", "rachel", "raymond", "rebecca", "richard", "riley", "robert", "ronald", "ruth", "ryan", "sam", "samantha", "samuel", "sandra", "sara", "sarah", "scott", "sebastian", "sharon", "shirley", "skylar", "skyler", "sophia", "stephanie", "stephen", "steven", "susan", "taylor", "teresa", "thomas", "tim", "timothy", "todd", "tom", "tony", "troy", "tyler", "victoria", "virginia", "zachary", "zoey"]);
+        const ADMIN_AMBIGUOUS = new Set(["amber", "angel", "art", "autumn", "brook", "candy", "chance", "chase", "cherry", "cliff", "dale", "dawn", "destiny", "eve", "faith", "frank", "ginger", "glen", "grace", "harmony", "heath", "holly", "hope", "hunter", "iris", "ivy", "joy", "lance", "lily", "mark", "may", "melody", "miles", "misty", "norm", "olive", "pat", "pearl", "ray", "rex", "rod", "rose", "ruby", "sage", "sandy", "serenity", "skip", "stormy", "summer", "sunny", "trinity", "violet", "wade", "will", "winter"]);
+        const ADMIN_SAFE_CAPS = new Set(["american", "apple", "april", "august", "chinese", "christmas", "december", "easter", "english", "february", "firebase", "french", "friday", "giphy", "god", "google", "halloween", "i", "id", "ill", "im", "ive", "january", "japanese", "july", "june", "macbook", "march", "monday", "november", "october", "saturday", "september", "spanish", "sunday", "thursday", "toska", "tuesday", "valentines", "wednesday"]);
+        const ADMIN_PREFIXES = ["my ex ", "my friend ", "my bf ", "my gf ", "my boyfriend ", "my girlfriend ", "my sister ", "my brother ", "my mom ", "my dad ", "my mother ", "my father ", "my coworker ", "my boss ", "my roommate ", "my neighbor ", "this girl ", "this guy ", "this boy ", "this man ", "this woman "];
+        function possibleNameReason(text) {
+            if (typeof text !== "string" || !text) return null;
+            const t = text.normalize("NFKC");
+            for (const m of t.matchAll(/\b([A-Z][a-z]+)\b/g)) {
+                const w = m[1].toLowerCase();
+                if (ADMIN_FIRST_NAMES.has(w) && !ADMIN_AMBIGUOUS.has(w) && !ADMIN_SAFE_CAPS.has(w)) return "likely first name: " + m[1];
+            }
+            const lower = t.toLowerCase();
+            for (const pre of ADMIN_PREFIXES) {
+                const i = lower.indexOf(pre);
+                if (i === -1) continue;
+                const tok = lower.slice(i + pre.length).split(/[^a-z]+/).filter(Boolean)[0];
+                if (tok && ADMIN_FIRST_NAMES.has(tok) && !ADMIN_AMBIGUOUS.has(tok)) return "likely first name after \"" + pre.trim() + "\": " + tok;
+            }
+            // Any Capitalized word not at a sentence start (text start, or after . ! ? or a newline).
+            for (const m of t.matchAll(/(^|[^.!?\n]\s+)([A-Z][a-z]{2,})\b/g)) {
+                if (m[1] === "") continue; // sentence start
+                const w = m[2].toLowerCase();
+                if (w === "i" || ADMIN_SAFE_CAPS.has(w)) continue;
+                return "capitalized mid-sentence: " + m[2];
+            }
+            return null;
+        }
         function renderCard(opts) {
             const card = el("div", "card" + (opts.extraClass ? " " + opts.extraClass : ""));
             if (opts.id) card.id = opts.id;
@@ -460,6 +494,13 @@
                 const textDiv = el("div", "card-text");
                 textDiv.textContent = opts.text;
                 card.appendChild(textDiv);
+                const why = possibleNameReason(opts.text);
+                if (why) {
+                    const badge = el("div", "card-reason");
+                    badge.textContent = "possible name — " + why + " (display only; check before featuring)";
+                    badge.style.color = "#8a5a00";
+                    card.appendChild(badge);
+                }
             }
 
             // Secondary, visually-muted line under the main text (e.g. the

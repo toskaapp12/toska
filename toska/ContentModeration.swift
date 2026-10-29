@@ -524,53 +524,104 @@ private let commonLastNames: Set<String> = [
     "jefferson", "lincoln", "kennedy", "obama",
 ]
 
+// Hoisted to file scope (2026-10-29) so likelyFirstName below can share them
+// with containsNameOrIdentifyingInfo. Contents unchanged — mirror of moderation.js.
+private let commonNames: Set<String> = [
+    "james", "john", "robert", "michael", "david", "richard", "joseph", "thomas", "charles",
+    "christopher", "matthew", "anthony", "donald", "steven", "andrew", "joshua",
+    "kenneth", "kevin", "brian", "george", "timothy", "ronald", "edward", "jason", "jeffrey", "ryan",
+    "jacob", "gary", "nicholas", "eric", "jonathan", "stephen", "larry", "justin", "scott", "brandon",
+    "benjamin", "samuel", "raymond", "gregory", "alexander", "patrick", "dennis", "jerry",
+    "tyler", "aaron", "jose", "adam", "nathan", "henry", "peter", "zachary", "douglas", "harold",
+    "patricia", "jennifer", "linda", "barbara", "elizabeth", "susan", "jessica", "sarah", "karen",
+    "lisa", "nancy", "betty", "margaret", "sandra", "ashley", "dorothy", "kimberly", "emily", "donna",
+    "michelle", "carol", "amanda", "melissa", "deborah", "stephanie", "rebecca", "sharon", "laura", "cynthia",
+    "kathleen", "amy", "angela", "shirley", "brenda", "pamela", "emma", "nicole", "helen",
+    "samantha", "katherine", "christine", "debra", "rachel", "carolyn", "janet", "catherine", "maria", "heather",
+    "diane", "ruth", "julie", "olivia", "joyce", "virginia", "victoria", "kelly", "lauren", "christina",
+    "joan", "evelyn", "judith", "megan", "andrea", "cheryl", "hannah", "jacqueline", "martha", "gloria",
+    "teresa", "sara", "madison", "frances", "kathryn", "janice", "jean", "abigail", "alice",
+    "alex", "chris", "taylor", "casey", "riley", "jamie", "quinn", "avery",
+    "cameron", "dakota", "skyler", "charlie", "finley", "harper", "logan",
+    "ethan", "aiden", "jackson", "sebastian", "mateo", "owen", "oliver",
+    "sophia", "isabella", "charlotte", "amelia", "chloe", "penelope", "layla",
+    "nora", "zoey", "eleanor", "hazel", "audrey",
+    "claire", "skylar", "paisley", "everly", "caroline",
+    "genesis", "emilia", "kennedy", "kinsley", "naomi", "aaliyah", "elena",
+    // Common nicknames — added 2026-05-01 sprint after the test suite
+    // surfaced an evasion-vector miss for "M1k3" (de-leets to "mike",
+    // which had no entry in the full-name list). Filtered out:
+    //   - jordan (country, high FP risk)
+    //   - max, drew, sue (common verbs/intensifiers)
+    //   - bob, rob, nick (also verbs in common usage)
+    // Mirror set lives in functions/moderation.js — keep in sync.
+    "mike", "tom", "jim", "tim", "dan", "sam", "ben", "tony", "jake",
+    "leo", "ian", "kyle", "evan", "greg", "jeff", "kurt", "paul",
+    "pete", "eli", "brett", "todd", "troy",
+    "liz", "beth", "kate", "ann", "jane", "lynn", "abby", "becky", "jess",
+]
+private let ambiguousWords: Set<String> = [
+            // Common English words that happen to also be names
+            "will", "grace", "angel", "mark", "frank", "art", "may",
+            "joy", "hope", "faith", "chance", "chase", "hunter",
+            "summer", "autumn", "winter", "dawn", "eve",
+            "rose", "lily", "iris", "ivy", "pearl", "ruby", "amber",
+            "brook", "cliff", "dale", "glen", "heath", "lance", "miles",
+            "norm", "pat", "ray", "rex", "rod", "skip", "wade",
+            "violet", "olive", "sage", "holly", "ginger",
+            "sandy", "misty", "stormy", "sunny", "cherry", "candy",
+            "destiny", "trinity", "harmony", "melody", "serenity",
+        ]
+
+// "my ex [Name]", "my friend [Name]", "my sister [Name]" etc.
+private let relationshipPrefixes = ["my ex ", "my friend ", "my bf ", "my gf ",
+    "my boyfriend ", "my girlfriend ", "my sister ", "my brother ",
+    "my mom ", "my dad ", "my mother ", "my father ",
+    "my coworker ", "my boss ", "my roommate ", "my neighbor ",
+    "this girl ", "this guy ", "this boy ", "this man ", "this woman "]
+
+// ── likelyFirstName (owner decision 2026-10-29) ──────────────────────────────
+// A SOFT signal, never a hold: "does this text mention a likely first name?"
+// Drives the non-blocking compose nudge. Bare first names stay ALLOWED (N-17).
+// Rule (mirror of moderation.js likelyFirstName, pinned by detector-parity):
+// a token whose folded lowercase form is in commonNames and not in
+// ambiguousWords / safeCapitalizedWords, and that is Capitalized in the
+// original text, or lowercase but directly after a relationship prefix.
+func likelyFirstName(_ raw: String) -> Bool {
+    if raw.isEmpty { return false }
+    let text = raw.count > 2000 ? String(raw.prefix(2000)) : raw
+    let canon = foldLetterformsKeepCase(text)
+    let safeCapitalizedWords: Set<String> = ["i", "im", "ive", "ill", "id", "god", "christmas", "easter", "halloween", "valentines"]
+    // Capitalized tokens: first letter uppercase, rest lowercase ASCII letters, length >= 2.
+    var current = ""
+    var tokens: [String] = []
+    for ch in canon {
+        if ch.isLetter { current.append(ch) } else { if !current.isEmpty { tokens.append(current); current = "" } }
+    }
+    if !current.isEmpty { tokens.append(current) }
+    for tok in tokens {
+        guard tok.count >= 2, let first = tok.first, first.isUppercase, first.isASCII else { continue }
+        let rest = tok.dropFirst()
+        guard rest.allSatisfy({ $0.isLowercase && $0.isASCII }) else { continue }
+        let w = tok.lowercased()
+        if !commonNames.contains(w) { continue }
+        if ambiguousWords.contains(w) || safeCapitalizedWords.contains(w) { continue }
+        return true
+    }
+    let lowered = canon.lowercased()
+    for prefix in relationshipPrefixes {
+        var searchStart = lowered.startIndex
+        while let r = lowered.range(of: prefix, range: searchStart..<lowered.endIndex) {
+            let after = lowered[r.upperBound...]
+            let tok = after.split(whereSeparator: { !($0.isLetter && $0.isASCII) }).first.map(String.init) ?? ""
+            if !tok.isEmpty && commonNames.contains(tok) && !ambiguousWords.contains(tok) { return true }
+            searchStart = r.upperBound
+        }
+    }
+    return false
+}
+
 func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
-    let commonNames: Set<String> = [
-        "james", "john", "robert", "michael", "david", "richard", "joseph", "thomas", "charles",
-        "christopher", "matthew", "anthony", "donald", "steven", "andrew", "joshua",
-        "kenneth", "kevin", "brian", "george", "timothy", "ronald", "edward", "jason", "jeffrey", "ryan",
-        "jacob", "gary", "nicholas", "eric", "jonathan", "stephen", "larry", "justin", "scott", "brandon",
-        "benjamin", "samuel", "raymond", "gregory", "alexander", "patrick", "dennis", "jerry",
-        "tyler", "aaron", "jose", "adam", "nathan", "henry", "peter", "zachary", "douglas", "harold",
-        "patricia", "jennifer", "linda", "barbara", "elizabeth", "susan", "jessica", "sarah", "karen",
-        "lisa", "nancy", "betty", "margaret", "sandra", "ashley", "dorothy", "kimberly", "emily", "donna",
-        "michelle", "carol", "amanda", "melissa", "deborah", "stephanie", "rebecca", "sharon", "laura", "cynthia",
-        "kathleen", "amy", "angela", "shirley", "brenda", "pamela", "emma", "nicole", "helen",
-        "samantha", "katherine", "christine", "debra", "rachel", "carolyn", "janet", "catherine", "maria", "heather",
-        "diane", "ruth", "julie", "olivia", "joyce", "virginia", "victoria", "kelly", "lauren", "christina",
-        "joan", "evelyn", "judith", "megan", "andrea", "cheryl", "hannah", "jacqueline", "martha", "gloria",
-        "teresa", "sara", "madison", "frances", "kathryn", "janice", "jean", "abigail", "alice",
-        "alex", "chris", "taylor", "casey", "riley", "jamie", "quinn", "avery",
-        "cameron", "dakota", "skyler", "charlie", "finley", "harper", "logan",
-        "ethan", "aiden", "jackson", "sebastian", "mateo", "owen", "oliver",
-        "sophia", "isabella", "charlotte", "amelia", "chloe", "penelope", "layla",
-        "nora", "zoey", "eleanor", "hazel", "audrey",
-        "claire", "skylar", "paisley", "everly", "caroline",
-        "genesis", "emilia", "kennedy", "kinsley", "naomi", "aaliyah", "elena",
-        // Common nicknames — added 2026-05-01 sprint after the test suite
-        // surfaced an evasion-vector miss for "M1k3" (de-leets to "mike",
-        // which had no entry in the full-name list). Filtered out:
-        //   - jordan (country, high FP risk)
-        //   - max, drew, sue (common verbs/intensifiers)
-        //   - bob, rob, nick (also verbs in common usage)
-        // Mirror set lives in functions/moderation.js — keep in sync.
-        "mike", "tom", "jim", "tim", "dan", "sam", "ben", "tony", "jake",
-        "leo", "ian", "kyle", "evan", "greg", "jeff", "kurt", "paul",
-        "pete", "eli", "brett", "todd", "troy",
-        "liz", "beth", "kate", "ann", "jane", "lynn", "abby", "becky", "jess",
-    ]
-    let ambiguousWords: Set<String> = [
-                // Common English words that happen to also be names
-                "will", "grace", "angel", "mark", "frank", "art", "may",
-                "joy", "hope", "faith", "chance", "chase", "hunter",
-                "summer", "autumn", "winter", "dawn", "eve",
-                "rose", "lily", "iris", "ivy", "pearl", "ruby", "amber",
-                "brook", "cliff", "dale", "glen", "heath", "lance", "miles",
-                "norm", "pat", "ray", "rex", "rod", "skip", "wade",
-                "violet", "olive", "sage", "holly", "ginger",
-                "sandy", "misty", "stormy", "sunny", "cherry", "candy",
-                "destiny", "trinity", "harmony", "melody", "serenity",
-            ]
     let identifyingPatterns = [
         "instagram", "insta", "snapchat", "snap", "tiktok", "twitter",
         "facebook", "linkedin", "phone number", "my number", "text me",
@@ -624,12 +675,6 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         }
     }
 
-    // "my ex [Name]", "my friend [Name]", "my sister [Name]" etc.
-    let relationshipPrefixes = ["my ex ", "my friend ", "my bf ", "my gf ",
-        "my boyfriend ", "my girlfriend ", "my sister ", "my brother ",
-        "my mom ", "my dad ", "my mother ", "my father ",
-        "my coworker ", "my boss ", "my roommate ", "my neighbor ",
-        "this girl ", "this guy ", "this boy ", "this man ", "this woman "]
     // N-17 (2026-06-11): "my ex Sarah" (prefix + bare FIRST name) is allowed; a
     // prefix + LAST name ("my ex Johnson") still flags; a prefix + FULL name is
     // caught by looksLikeFullName below. Mirror of moderation.js.

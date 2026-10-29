@@ -814,8 +814,45 @@ function containsNameOrIdentifyingInfo(text) {
   return false;
 }
 
+
+// ── likelyFirstName (owner decision 2026-10-29) ──────────────────────────────
+// A SOFT signal, never a hold: "does this text mention a likely first name?"
+// Drives (a) the non-blocking compose nudge on iOS + web, (b) the website
+// featuring exclusion (publicFeed / sitemap / share-page indexability /
+// webFeatured guard), (c) the admin "possible name" badge. Bare first names
+// stay ALLOWED in the app (N-17 launch tuning) — this only says "a first name
+// is here". Rule: a token whose canonicalized lowercase form is in COMMON_NAMES
+// and not in AMBIGUOUS_WORDS / SAFE_CAPITALIZED_WORDS, and that is either
+// Capitalized (or a Capitalized possessive, "Sarah's") in the original text,
+// or lowercase but directly after a relationship prefix ("my ex sam").
+// Mirror: ContentModeration.swift likelyFirstName — pinned by detector-parity.
+function likelyFirstName(text) {
+  if (typeof text !== "string" || text.length === 0) return false;
+  if (text.length > DETECTOR_MAX_LEN) text = text.slice(0, DETECTOR_MAX_LEN);
+  const canon = foldLetterformsKeepCase(text);
+  const capRe = /\b([A-Z][a-z]+)\b/g;
+  for (const m of canon.matchAll(capRe)) {
+    const w = m[1].toLowerCase();
+    if (w.length < 2) continue;
+    if (!COMMON_NAMES.has(w)) continue;
+    if (AMBIGUOUS_WORDS.has(w) || SAFE_CAPITALIZED_WORDS.has(w)) continue;
+    return true;
+  }
+  const lowered = canon.toLowerCase();
+  for (const prefix of RELATIONSHIP_PREFIXES) {
+    let idx = lowered.indexOf(prefix);
+    while (idx !== -1) {
+      const tok = lowered.slice(idx + prefix.length).split(/[^a-z]+/).filter((t) => t.length > 0)[0];
+      if (tok && COMMON_NAMES.has(tok) && !AMBIGUOUS_WORDS.has(tok)) return true;
+      idx = lowered.indexOf(prefix, idx + prefix.length);
+    }
+  }
+  return false;
+}
+
 module.exports = {
   containsNameOrIdentifyingInfo,
+  likelyFirstName,
   containsURL,
   canonicalize,
   aggressiveNormalizeForNameMatch,

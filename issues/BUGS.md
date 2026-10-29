@@ -130,6 +130,19 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## FIRSTNAME — bare first names: allowed, soft nudge, never featured (STAGING verified; prod pending go)
+
+- **Decision (owner, 2026-10-29):** keep allowing bare first names (no server hold — N-17 stands); add a soft, non-blocking compose nudge on iOS + web; never feature a post with a likely first name on the public website / sitemap / site feed (in-app feed untouched) even with sharing on; admin "possible name" badge; wording must not imply first names are blocked. No policy-version bump (clarifications only).
+- **Detector:** `likelyFirstName(text)` in `functions/moderation.js` (vendored verbatim to web) + `ContentModeration.swift` (the given-names / ambiguous / relationship-prefix lists hoisted to file scope and shared). Rule: a Capitalized token (or Capitalized possessive) whose folded lowercase form is in the 208-entry given-names list and not in the ambiguous-words / safe-capitalized lists; or a lowercase listed name directly after a relationship prefix ("my ex sam"). **Pinned by `detector-parity.mjs`** (new FIRST corpus, 116/116): every "nudge" line is asserted NOT to be a hold on either layer.
+- **Nudge:** "you can leave their name out if you'd like — first names are okay." Posts only (not replies). Web: inline note under the composer (`.name-nudge`), 400 ms debounce, × dismisses for the compose session, post button never affected. iOS: `composeModeBanner` row under the mode banners, same dismiss semantics — **build 104**.
+- **Featuring exclusion (server-side; `webFeatured` is Admin-SDK/seed-only):** `onPostUpdated` strips `webFeatured` when the text has a likely first name; `publicFeed` skips such posts; `evaluateSharePage` marks them non-indexable (share page still renders for a shared post, per Privacy v4.0) so the sitemap drops them; `seedLaunchContent` refuses to feature them. **Prod dry run (2026-10-29):** 11 featured posts, 0 would drop.
+- **Admin badge:** `docs/admin.html` shows "possible name — …" under a post's text when (a) likelyFirstName hits (list generated from moderation.js at edit time — regenerate if the list changes) or (b) any Capitalized word sits mid-sentence (so names the list misses get a look before featuring). Display only.
+- **Wording:** hold dialog (web `gates.js` + iOS ComposeView) now says it's a full name / contact detail and that first names on their own are fine, hint "try “he”, “she”, or “they” instead."; App Store description (`APP_STORE_METADATA.md` — **owner updates ASC**): "we screen posts for full names, contact details and other identifying information before they go live; first names on their own are allowed."; Terms §5 "full names" + "A first name on its own is not treated as identifying" + letters bullet "full name" (md + html, changelog line, no version change).
+- **Verification:** functions 130, sharePage unit 21, parity 116/116, iOS compiles; staging 12/12 (`firstname-verify-staging.mjs`): nudge wording/dismiss/post-through, guard strips, clean post kept, publicFeed + sitemap exclude, share page 200+noindex vs index.
+- **Known FP logged (LOW):** "Dear John" is a HOLD today (two Capitalized words = full-name shape); "Dear" could join the title-words guard. Not changed in this round.
+
+---
+
 ## B102-1 — own-post lavender tint blends into the prompt card (build 102 hand test)
 
 - **Severity:** LOW (visual) · **Surface:** iOS feed + post detail, web · **Status:** FIXED 2026-10-27 — **web on STAGING** (prod pending owner OK); **iOS code committed, rides build 103** (batched with the other build-102 findings)

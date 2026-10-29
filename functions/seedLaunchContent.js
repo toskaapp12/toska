@@ -40,7 +40,9 @@ async function seed() {
       likeCount: p.likes, repostCount: 0, replyCount: 0,
       isRepost: false, isShareable: true, moderationStatus: "live",
     };
-    if (p.featured) doc.webFeatured = true;
+    // Owner decision 2026-10-29: never feature a post that mentions a likely first name.
+    if (p.featured && !require("./moderation").likelyFirstName(p.text)) doc.webFeatured = true;
+    else if (p.featured) console.log("  (not featuring", p.id, "— mentions a likely first name)");
     await db.collection("posts").doc(p.id).set(doc);
     console.log("  post", p.id, p.handle, p.tag);
   }

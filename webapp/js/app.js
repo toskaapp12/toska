@@ -22,6 +22,7 @@ import {
     POST_TAGS, REPORT_REASONS,
 } from "./writes.js";
 import { runGates } from "./gates.js";
+import { likelyFirstName } from "./moderation.js"; // soft compose nudge (owner 2026-10-29)
 
 const app = initializeApp(FIREBASE_CONFIG);
 
@@ -1345,11 +1346,23 @@ function viewCompose() {
     // draft restore + debounced save (guarded on auth by draftKey)
     ta.value = loadDraft("compose");
     const persistDraft = debounce(() => saveDraft("compose", ta.value), 400);
+    // First-name nudge (owner decision 2026-10-29): soft, inline, dismissible,
+    // never blocks posting. Bare first names are allowed; this offers the choice.
+    const nudgeBox = el("div");
+    let nudgeDismissed = false;
+    const renderNudge = () => {
+        const show = !nudgeDismissed && likelyFirstName(ta.value);
+        nudgeBox.replaceChildren(show ? el("p", { class: "note mode-note name-nudge" },
+            "you can leave their name out if you'd like — first names are okay. ",
+            el("button", { class: "tab", "aria-label": "dismiss", onclick: () => { nudgeDismissed = true; renderNudge(); } }, "×")) : "");
+    };
+    const nudgeDebounced = debounce(renderNudge, 400);
     ta.addEventListener("input", () => {
         const n = ta.value.length;
         count.textContent = `${n} / ${limit()}`;
         count.classList.toggle("over", n > limit());
         persistDraft();
+        nudgeDebounced();
     });
     if (ta.value) queueMicrotask(() => ta.dispatchEvent(new Event("input")));
     const mkToggle = (label, get, set) => {
@@ -1430,6 +1443,7 @@ function viewCompose() {
             tagRow,
             toggleRow,
             noteBox,
+            nudgeBox,
             el("div", { class: "compose-meta" },
                 el("div", { style: "display:flex; gap:8px; align-items:center;" }, count),
                 share),

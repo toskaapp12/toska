@@ -148,6 +148,12 @@ test("sensitive text is never indexable, even when featured", () => {
   const vn = evaluateSharePage(named, NOW, true);
   assert.equal(vn.outcome, "render");
   assert.equal(vn.indexable, false);
+  // Owner decision 2026-10-29: a bare FIRST name is allowed in the app and the
+  // share page still renders, but the post is never indexable / featurable.
+  const first = livePost({ webFeatured: true, text: "Sarah broke up with me last week and i still hear her laugh in the kitchen" });
+  const vf = evaluateSharePage(first, NOW, true);
+  assert.equal(vf.outcome, "render", "first-name text still renders as a shared post");
+  assert.equal(vf.indexable, false, "…but is never indexable");
 });
 
 test("escapeHtml neutralises injection", () => {

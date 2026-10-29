@@ -119,6 +119,13 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   body). **Owner hand-test on device:** re-acceptance cover appears once (v4.0 label), reply repost
   works, own held post opens with banner and no reply bar, liked/saved tabs load, white own-post card.
   Not yet in 103: liked/saved "load more" pagination (still a follow-up).
+- **First-name decision (2026-10-29) — STAGING verified 12/12, PROD pending owner go:** bare first names
+  stay allowed; soft compose nudge (web live on staging; iOS in build 104); `likelyFirstName` shared
+  detector pinned by parity (116/116); featuring exclusion server-side (onPostUpdated strip +
+  publicFeed / sitemap / share-page noindex; prod dry run 11 featured, 0 drop); admin "possible name"
+  badge (display only); wording fixes (hold dialog, store description → owner updates ASC, Terms §5,
+  no version bump). See BUGS.md FIRSTNAME. Prod plan: `--only functions:onPostUpdated,publicFeed,
+  sharePage,postsSitemap` (75 → 75) + hosting; push publishes terms.html + admin.html.
   **Next: Tier 2 (A3, A4, C4, C7, C9–C14, B4, tag counts incl. held, follower-count mirror).**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror

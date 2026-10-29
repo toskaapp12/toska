@@ -753,7 +753,14 @@ function emptyState(msg) {
     return el("div", { class: "empty" }, el("span", { class: "glyph" }, "☾"), msg);
 }
 
-function pendingBanner(reasonLabel) {
+// status "pending_validation" (owner report 2026-10-28): a post sits in this
+// state for the few seconds between create and validatePost's promotion. It
+// used to read "under review" — then the detail opened as a normal live post,
+// which looked like the banner had failed. Say what's actually happening.
+function pendingBanner(reasonLabel, status) {
+    if (status === "pending_validation") {
+        return el("div", { class: "pending-banner" }, "checking your post — this usually takes a few seconds. only you can see it until then.");
+    }
     return el("div", { class: "pending-banner" },
         `under review${reasonLabel ? " — " + reasonLabel : ""}. only you can see this right now.`);
 }
@@ -1576,7 +1583,7 @@ async function viewPost(postId) {
         const mine = (d.isRepost ? d.originalAuthorId : d.authorId) === me?.uid; // 2026-10-26 own-post tint
         const body = el("div", { class: "post-row" + (mine ? " mine" : ""), style: "cursor:default; border-bottom:none;" },
             d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle} reposted`) : null,
-            (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner() : null,
+            (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner(undefined, d.moderationStatus) : null,
             el("div", { class: "post-text", style: "font-size:17px; line-height:1.68;" }, d.text ?? ""),
             gifImg(d.gifUrl, "max-width:100%; border-radius:10px; margin-top:10px;"),
             el("div", { class: "post-meta" },
@@ -1792,7 +1799,12 @@ async function viewPost(postId) {
             el("div", { class: "reply-composer" }, rta, rGifBtn, send));
         const onReplyTo = (r) => { replyingTo = { id: r.id, handle: r.authorHandle ?? "anonymous" }; renderStrip(); rta.focus(); };
 
-        mount.append(body, actions, composer,
+        // Product decision (2026-10-28, audit C6): no replies on a held post —
+        // the rules deny the create, so don't offer the composer (only the
+        // author can be here, via the C5 own-held-post path).
+        const canReply = (d.moderationStatus ?? "live") === "live";
+        mount.append(body, actions,
+            canReply ? composer : el("div", { class: "muted", style: "padding:10px 0 2px; font-size:13px;" }, "replies open once this post is live."),
             el("h3", { style: "margin:18px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
         // Interaction-state reads fire after the body is on screen (§ perf):
         // three exists() doc reads that shouldn't contend with first paint.
@@ -2079,7 +2091,7 @@ function renderPostDocs(list, rows, opts = {}) {
     prefetchGifs(rows.map(([, d]) => d)); // warm this tab's GIFs (2026-10-26)
     for (const [id, d] of rows) {
         const row = postRow(id, d);
-        if (opts.showPending && (d.moderationStatus ?? "live") !== "live") row.prepend(pendingBanner());
+        if (opts.showPending && (d.moderationStatus ?? "live") !== "live") row.prepend(pendingBanner(undefined, d.moderationStatus));
         list.append(row);
     }
 }

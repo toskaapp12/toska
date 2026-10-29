@@ -32,4 +32,9 @@ export const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
 // signup consent links to the CURRENT terms/privacy pages, so stamping the
 // current number is correct — lagging behind made every web signup redundantly
 // re-accept the same policy on their first iOS launch.
-export const POLICY_VERSION = 4;
+// v5 (2026-10-28): Terms/Privacy v4.0 — accuracy disclosures from the
+// multi-user audit (what other users can see, on-device midnight expiry,
+// retained moderation records, share-page/featuring wording, …). Owner
+// decision: real privacy disclosures → re-acceptance. Lockstep with iOS
+// currentPolicyVersion (= 5).
+export const POLICY_VERSION = 5;

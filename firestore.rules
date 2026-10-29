@@ -627,6 +627,7 @@ service cloud.firestore {
         // block-denied, so it's omitted) and still trip onFollowCreatedUpdateCounts
         // to inflate the victim's followerCount — a block bypass + count desync.
         allow create: if isOwner(userId) && followedId != userId
+          && hasConfirmedAdult() // Product decision (2026-10-28): 18+ gates follows
           && notBlockedBy(followedId)
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
           // createdAt pinned to server time (2026-08-05) — every other create
@@ -679,6 +680,7 @@ service cloud.firestore {
         // own user doc per follow — fine at v1.0 volume.
         allow create: if isAuth() && request.auth.uid == followerId
           && request.auth.uid != userId
+          && hasConfirmedAdult() // Product decision (2026-10-28): 18+ gates follows
           && request.resource.data.keys().hasOnly(['handle', 'createdAt'])
           && notBlockedBy(userId)
           // createdAt pin (2026-08-05): this doc lives in the VICTIM's tree
@@ -915,11 +917,19 @@ service cloud.firestore {
       // readers and detected by the consistency probe.
       match /saved/{postId} {
         allow read, delete: if isOwner(userId);
+        // Product decisions (2026-10-28): 18+ attestation gates saves; a user
+        // the post's author (or the ORIGINAL author of a repost row) has
+        // blocked cannot save their words. Reporting stays allowed. A missing
+        // post keeps the old behaviour (nothing to block against).
         allow create: if isOwner(userId)
+          && hasConfirmedAdult()
           && request.resource.data.keys().hasOnly(['createdAt', 'postId'])
           && request.resource.data.createdAt == request.time
           && (!('postId' in request.resource.data.keys())
-              || request.resource.data.postId == postId);
+              || request.resource.data.postId == postId)
+          && (!exists(/databases/$(database)/documents/posts/$(postId))
+              || (notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId)
+                  && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.get('originalAuthorId', request.auth.uid))));
       }
 
       match /liked/{postId} {
@@ -1674,9 +1684,13 @@ service cloud.firestore {
         // be backdated to predate moderation restrictions.
         allow create: if isAuth()
           && canPublish() // A5: one get() for restricted + confirmedAdult
+          // Product decisions (2026-10-28): no replies on a held / not-yet-
+          // validated / missing post (audit C6) — the parent must be LIVE;
+          // and the 2-character client minimum is enforced here too (C12).
+          && get(/databases/$(database)/documents/posts/$(postId)).data.get('moderationStatus', '') == 'live'
           && request.resource.data.authorId == request.auth.uid
           && request.resource.data.text is string
-          && request.resource.data.text.size() > 0
+          && request.resource.data.text.trim().size() >= 2
           && request.resource.data.text.size() <= 500
           && request.resource.data.keys().hasOnly([
                'authorId', 'authorHandle', 'text', 'likeCount', 'createdAt',
@@ -1827,6 +1841,9 @@ service cloud.firestore {
           // X-parity (owner 2026-09-22): self-like on your own reply is
           // ALLOWED — mirrors the post-like rule's flip.
           allow create: if isAuth() && request.auth.uid == likeUserId
+            // Product decision (2026-10-28): the 18+ attestation gates every
+            // interaction, not just publishing — likes, follows, saves, reports.
+            && hasConfirmedAdult()
             && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)).data.authorId)
             && request.resource.data.keys().hasOnly(['createdAt'])
             && request.resource.data.createdAt == request.time;
@@ -1864,6 +1881,8 @@ service cloud.firestore {
         // X-parity (owner 2026-09-22): self-like ("felt" your own post) is
         // ALLOWED — X model; your own felt counts like anyone's.
         allow create: if isAuth() && request.auth.uid == likeUserId
+          // Product decision (2026-10-28): 18+ attestation gates likes too.
+          && hasConfirmedAdult()
           && request.resource.data.keys().hasOnly(['createdAt'])
           && request.resource.data.createdAt == request.time
           && notBlockedBy(get(/databases/$(database)/documents/posts/$(postId)).data.authorId);
@@ -2000,6 +2019,7 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow read: if isAdmin();
       allow create: if isAuth()
+        && hasConfirmedAdult() // Product decision (2026-10-28): 18+ gates reports
         && request.resource.data.reportedBy == request.auth.uid
         && request.resource.data.reason is string
         && request.resource.data.reason.size() <= 50

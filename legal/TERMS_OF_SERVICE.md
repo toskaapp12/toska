@@ -1,10 +1,11 @@
 # toska — Terms of Service
 
-**Version 3.0 — Effective August 6, 2026**
+**Version 4.0 — Effective October 28, 2026**
 **Operator: SALTE DEVELOPMENT LLC ("toska," "we," "us")**
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v4.0 (2026-10-28): Accuracy round from the October 2026 multi-user audit, co-versioned with Privacy Policy v4.0 for joint re-acceptance. Spelled out what a restricted account can and cannot do (§4); holds apply to posts and replies, and a held post cannot receive replies (§5); blocking also stops saves, and reporting stays available in both directions (§6); share pages exist for any post you share while sharing is on, website and search-engine featuring stays hand-picked, and turning sharing off can take up to an hour to clear everywhere (§7); a midnight post's expiry is calculated on your device from your local midnight (§8); reports and moderation records are kept after deletion (§10). No change to the legal terms in §11–§18.
 > - v3.0 (2026-08-06): **Minimum age raised from 17 to 18** (§2), with the in-app age gate and the underage-content detector moved in step (the App Store age rating is updated separately in App Store Connect). toska is now an adults-only service: everyone using it is at or above the age of majority in nearly every US state, which removes the contract-capacity and parental-consent questions that a 17+ floor created. Material change requiring re-acceptance under §15.
 > - v2.0 (2026-07-19): Security & legal hardening release. Added binding individual arbitration with a class-action and jury-trial waiver, a 30-day arbitration opt-out, a small-claims carve-out, an intellectual-property injunctive-relief carve-out, and a fee-shifting/consumer-cost-protection provision so the clause isn't cost-prohibitive (§14); strengthened the warranty disclaimer and added an express not-responsible-for-other-users'-content/conduct and force-majeure clause (§11); hardened the limitation of liability (aggregate cap, essential-purpose survival, assumption of risk) and expanded indemnification, adding a release of claims between users (§13); added a one-year limitations period (§14), a no-reliance/entire-agreement and prohibited-use clause (§17), and a DMCA counter-notice process (§18). These are material changes requiring re-acceptance under §15. **This reverses the prior "no arbitration" position in v1.0.**
 > - v1.0 (2026-07-17): First versioned release. Supersedes the undated web terms of June 16, 2026.
@@ -25,7 +26,7 @@ You're responsible for your account and for all activity under it, and for keepi
 
 ## 4. Zero tolerance for objectionable content and abusive users
 
-There is **no tolerance on toska for objectionable content or abusive behavior**. We may remove content, restrict accounts, or terminate accounts — with or without notice, and in our sole discretion — for violations of §5. We review every report and aim to act within 24 hours. This section exists because we mean it, and because Apple's guidelines for user-generated-content apps require it; the app provides in-app reporting, user blocking, and content removal, and we use them.
+There is **no tolerance on toska for objectionable content or abusive behavior**. We may remove content, restrict accounts, or terminate accounts — with or without notice, and in our sole discretion — for violations of §5. A restricted account can still read, like, save, block, report, and delete its own content, but cannot post or reply until the restriction ends. We review every report and aim to act within 24 hours. This section exists because we mean it, and because Apple's guidelines for user-generated-content apps require it; the app provides in-app reporting, user blocking, and content removal, and we use them.
 
 ## 5. What you may not post or do
 
@@ -42,11 +43,11 @@ toska is for honest emotional expression. You may not:
 - attempt to identify, deanonymize, or "out" another user;
 - interfere with the service, probe or test its security, circumvent App Check or rate limits, reverse-engineer the app except to the limited extent mandatory law permits, or access data or accounts you're not authorized to access.
 
-Automated systems screen content at posting time and may hold content for human review before or after it appears. Human moderators make final calls. We may take any enforcement action in our sole discretion, and enforcement (or non-enforcement) in one case does not limit our discretion in another.
+Automated systems screen content at posting time and may hold a post or reply for human review before or after it appears; while a post is held, it cannot receive replies. Human moderators make final calls. We may take any enforcement action in our sole discretion, and enforcement (or non-enforcement) in one case does not limit our discretion in another.
 
 ## 6. Reporting, blocking, enforcement
 
-You can report any post, reply, or user in-app, and block any user (the blocked person is not notified). Blocking hides each of you from the other's profile and stops all interaction between you — replies, likes, reposts, follows, and notifications — in both directions. One honest limit: it does not remove your posts from the public feed, so someone you've blocked can still read what you post there. We may remove content, hold it for review, restrict an account's ability to post, or terminate an account, at our discretion. Serious threats of harm may be referred to law enforcement.
+You can report any post, reply, or user in-app, and block any user (the blocked person is not notified). Blocking hides each of you from the other's profile and stops all interaction between you — replies, likes, reposts, saves, follows, and notifications — in both directions; reporting stays available to both of you. One honest limit: it does not remove your posts from the public feed, so someone you've blocked can still read what you post there. We may remove content, hold it for review, restrict an account's ability to post, or terminate an account, at our discretion. Serious threats of harm may be referred to law enforcement.
 
 ## 7. Your content and the license you give us
 
@@ -55,9 +56,9 @@ You own what you write. So we can run the app, you grant us a non-exclusive, wor
 Two narrower, **optional** uses are controlled by your "allow sharing" setting (off for new accounts; change it any time in the toska app (Settings → Privacy) or on the web, from your profile):
 
 - **Share cards:** other users may render one of your posts as a shareable image. The card carries the words and feeling tag only — never your handle or any account identifier.
-- **Website featuring:** we may hand-pick a small number of posts to display on toskaapp.com and its share pages, again without your handle or any identifier.
+- **Share pages and website featuring:** while sharing is on, any live post of yours that you or another user shares has a share page on toskaapp.com; separately, we hand-pick which posts appear on the toskaapp.com site itself and in search engines. Both show the words and feeling tag only, without your handle or any identifier.
 
-Turning "allow sharing" off ends both uses, including for existing posts. Deleting a post ends all uses of it. We claim **no other rights** — no advertising use of your content, no sale of your content, no use of your words to promote anything outside the two mechanisms above, and **no use of your content to train AI models (ours or anyone's)**.
+Turning "allow sharing" off ends both uses, including for existing posts — share cards stop immediately; share pages and the website can take up to an hour to clear everywhere. Deleting a post ends all uses of it. We claim **no other rights** — no advertising use of your content, no sale of your content, no use of your words to promote anything outside the two mechanisms above, and **no use of your content to train AI models (ours or anyone's)**.
 
 The license for a piece of content ends when you delete it or delete your account, except for (a) copies in reports/moderation records where content was reported (kept for safety and legal-defense purposes), and (b) short-lived backups (§12).
 
@@ -65,7 +66,7 @@ The license for a piece of content ends when you delete it or delete your accoun
 
 Whisper posts and midnight posts are ephemeral by design, and we want to be precise about the mechanics:
 
-- The moment a post expires (1 hour after posting for whispers; your local midnight for midnight posts), it stops appearing in every feed and surface in the app.
+- The moment a post expires (1 hour after posting for whispers; your local midnight for midnight posts, calculated on your device when you post), it stops appearing in every feed and surface in the app.
 - The post is then **permanently deleted from our live database**, usually within about ten minutes of expiring, by an automated cleanup that runs every ten minutes (with a database time-to-live policy as backstop, which can take longer if a cleanup run fails).
 - Like all data, deleted posts can persist briefly in standard database backups (§12) before those backups expire.
 - Practical honesty: anything shown on screens can be screenshotted by other users before it expires. Expiration limits how long we keep and show a post; it cannot un-show it to people who already saw it.
@@ -76,7 +77,7 @@ toska is not therapy, medical care, or a crisis service, and nothing in the app 
 
 ## 10. Account deletion
 
-You can delete your account any time in Settings. Deletion removes your profile, posts, replies, likes, saves, drafts, notifications, and personal data through an automated cascade that begins immediately (see the Privacy Policy for exact scope and the backup window). Deletion is permanent. We may also suspend or terminate your account, and your right to use toska ends immediately, if you violate these terms or if we discontinue the service.
+You can delete your account any time in Settings. Deletion removes your profile, posts, replies, likes, saves, drafts, notifications, and personal data through an automated cascade that begins immediately (see the Privacy Policy for exact scope and the backup window). Deletion is permanent. Reports and moderation records are kept after deletion, as described in the Privacy Policy (§6 there). We may also suspend or terminate your account, and your right to use toska ends immediately, if you violate these terms or if we discontinue the service.
 
 ## 11. Availability; disclaimers of warranty; other users
 

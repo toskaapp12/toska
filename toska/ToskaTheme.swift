@@ -1084,7 +1084,15 @@ func crisisCheckLevelRespectingSetting(for text: String) -> CrisisLevel? {
 // small-claims + IP carve-outs), hardened warranty/liability/indemnification
 // + release between users + 1-year limitations period; Privacy co-versioned to
 // v2.0 (GPC/DNT statement). Material change → re-acceptance required.
-let currentPolicyVersion = 4
+// v5 (2026-10-28): accuracy round from the multi-user audit — Terms/Privacy
+// v4.0 (restricted accounts can't post or reply; holds cover posts and replies
+// and a held post takes no replies; blocking also stops saves; share pages
+// exist for any shared post while sharing is on, featuring stays hand-picked,
+// sharing-off clears within an hour; midnight expiry is computed on-device;
+// reports + moderation records survive deletion; "what other signed-in users
+// can see"; follower-count toggle is display-only; notification toggles are
+// push-only). Real privacy disclosures → re-acceptance (owner decision).
+let currentPolicyVersion = 5
 /// Human-facing label for the SAME agreement `currentPolicyVersion` gates.
 /// They are different numbers on purpose: `currentPolicyVersion` is an
 /// internal counter that only has to increase to force re-acceptance, while
@@ -1093,7 +1101,7 @@ let currentPolicyVersion = 4
 /// meant the screen a user accepts disagreed with the documents on
 /// toskaapp.com they were accepting. Update this string whenever the
 /// published documents get a new version or date.
-let currentPolicyLabel = "version 3.0 · effective august 6, 2026"
+let currentPolicyLabel = "version 4.0 · effective october 28, 2026"
 
 let toskaSupportEmail = "salte@saltedevelopments.com"
 
@@ -1128,21 +1136,21 @@ toska is for your own feelings, your own story. you can say anything about your 
   • use toska to buy, sell, or solicit illegal goods or services
 
 3. how we moderate
-toska has zero tolerance for objectionable content and abusive behavior. content that violates these rules and users who post it are not welcome here. we review every report we receive and aim to act on violations within 24 hours. action may mean removing the post, warning the user, or terminating the account. we don't publicly discuss moderation decisions.
+toska has zero tolerance for objectionable content and abusive behavior. content that violates these rules and users who post it are not welcome here. automated checks run when you post and may hold a post or reply for a human to look at; while a post is held it can't receive replies. we review every report we receive and aim to act on violations within 24 hours. action may mean removing the post or reply, restricting the account (you can still read, like, save, block, and report, but not post or reply until the restriction ends), warning the user, or terminating the account. we don't publicly discuss moderation decisions. reports and our moderation records are kept after content or an account is deleted, for safety.
 
 4. safety resources
 toska is not a substitute for professional help. if you are in crisis, please reach out to a local crisis line — the in-app safety check-in shows the right number for where you are. if you or someone else is in immediate danger, please call \(CrisisLines.emergencyNumber).
 
 5. blocking and reporting
-you can block any user at any time from their profile or from a post. blocked users will no longer see each other's content. you can report any post, reply, or user — reports go to our moderation team. the "report" action is the fastest way to flag something you've seen.
+you can block any user at any time from their profile or from a post. blocking stops replies, likes, reposts, saves, follows, and notifications between you in both directions; reporting stays open to both of you. you can report any post, reply, or user — reports go to our moderation team. the "report" action is the fastest way to flag something you've seen.
 
 6. your content
-you keep ownership of anything you post. by posting, you grant toska a limited license to display your content within the app. two extra uses are controlled by your "allow sharing" setting (on by default, off any time in settings → privacy): other users can turn a post of yours into a share-card image, and we may hand-pick a few posts for toskaapp.com — both always show the words and feeling only, never your handle. we don't sell your content, we don't use it in ads, and we don't train AI on it or let anyone else.
+you keep ownership of anything you post. by posting, you grant toska a limited license to display your content within the app. two extra uses are controlled by your "allow sharing" setting (off by default, on or off any time in settings → privacy): other users can turn a post of yours into a share-card image, and any live post of yours that gets shared has a share page on toskaapp.com — separately, we hand-pick which posts appear on the site itself and in search engines. both always show the words and feeling only, never your handle. turning sharing off stops share cards right away; share pages and the website can take up to an hour to clear. we don't sell your content, we don't use it in ads, and we don't train AI on it or let anyone else.
 
-whisper and midnight posts stop being shown the moment they expire and are permanently deleted from our live database within about an hour after that (short-lived backups age out within ~60 days). expiration can't un-show a post to people who already saw it, and screenshots exist — please share accordingly.
+whisper and midnight posts (midnight is your local midnight, worked out on your device when you post) stop being shown the moment they expire and are permanently deleted from our live database within about an hour after that (short-lived backups age out within ~60 days). expiration can't un-show a post to people who already saw it, and screenshots exist — please share accordingly.
 
 7. anonymity and data
-toska keeps your real identity separate from your posts. we store the minimum needed to run the service: an anonymous handle, the content you post, and basic account metadata. we never share your identity publicly. we may share account information with law enforcement when legally required (for example, in response to a valid warrant).
+toska keeps your real identity separate from your posts. we store the minimum needed to run the service: an anonymous handle, the content you post, and basic account metadata. we never share your identity publicly. other signed-in users can see your handle, your live posts and replies, your reposts, your felt total and your follower and following counts (the "hide follower count" setting hides the count from your profile display; it doesn't make the number private), and that you liked or reposted something — nothing else, and never anything held for review. the notification toggles in settings control push only; your in-app notifications list still shows every type. we may share account information with law enforcement when legally required (for example, in response to a valid warrant).
 
 we use firebase (a service by google) as the backend that stores your posts, handles sign-in, and delivers push notifications. firebase also collects anonymous crash reports and app-usage stats (which screens get opened, how often) so we can fix bugs and understand where the app is rough. firebase never receives your real name or any identifying info because we don't collect those either. you can turn off the anonymous usage stats in settings → privacy.
 

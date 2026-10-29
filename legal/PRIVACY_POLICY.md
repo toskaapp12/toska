@@ -1,10 +1,11 @@
 # toska — Privacy Policy
 
-**Version 3.0 — Effective August 6, 2026**
+**Version 4.0 — Effective October 28, 2026**
 **Operator / data controller: SALTE DEVELOPMENT LLC**
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v4.0 (2026-10-28): Co-versioned with Terms of Service v4.0 for joint re-acceptance. Accuracy disclosures from the October 2026 multi-user audit, no new data collection: added "what other signed-in users can see" (§2); a midnight post's expiry instant is computed on your device from your local midnight (§1, §6); the "hide follower count" setting hides the count from your profile display only (§2); notification toggles control push delivery only (§1); share pages exist for any post you share while sharing is on, and we hand-pick only what appears on the site and in search engines (§4); turning sharing off can take up to an hour to clear everywhere (§4); crisis holds apply to posts and replies (§2); reports and moderation records are kept after content and account deletion (§6, §7).
 > - v3.0 (2026-08-06): Co-versioned with Terms of Service v3.0 for joint re-acceptance. Minimum age raised from 17 to 18 (§11); data practices otherwise unchanged.
 > - v2.0 (2026-07-19): Co-versioned with Terms of Service v2.0 for joint re-acceptance. No reduction in your privacy: added an explicit Global Privacy Control / Do-Not-Track statement (§8), clarified that we honor opt-out preference signals, and confirmed our breach-notification and data-minimization commitments. Data practices are otherwise unchanged from v1.0.
 > - v1.0 (2026-07-17): First versioned release. Supersedes the web policy dated April 17, 2026. Substantive corrections from that text: removed references to "messages" (direct messages were removed from the app in May 2026 and no message data is collected), corrected the Giphy description (searches are proxied through our server), added the full data inventory (drafts, mood/stage, usage-streak days, prompt responses), stated exact retention windows, and added the "what anonymous actually means" section.
@@ -24,20 +25,21 @@ Everything below is collected only because a feature needs it. We collect **no**
 | Likes, saves, reposts, follows, blocks | Core features; blocks also filter what you see | Database (your lists are private to you; like/repost existence is visible on content) |
 | Feeling tag, breakup stage, mood (if you set them) | Personalizing your feed and prompts | Stage/mood in your private, owner-only profile area |
 | Days you opened the app (date only) | Your streak on your own profile | Database (only you can read it) |
-| Push notification token | Delivering notifications you opted into | Your private, owner-only profile area |
+| Push notification token | Delivering push notifications you opted into (the notification toggles in Settings control push delivery only — your in-app notifications list still shows every type) | Your private, owner-only profile area |
 | Reports you submit (including the reported text) | Moderation and safety | Restricted database area readable only by moderators |
 | Crash reports | Fixing bugs | Firebase Crashlytics — **not linked** to your account (we never attach your user ID), and error text is scrubbed for identifiers before sending |
 | Performance data (app start time, screen render time, network request timing) | Finding and fixing slowness — **opt out any time** in Settings → Privacy, the same toggle as usage analytics | Firebase Performance Monitoring — no content, handle, or account identifier |
 | Usage analytics (event names only) | Understanding feature use — **opt out any time** in Settings → Privacy | Firebase Analytics — event vocabulary is fixed and never includes what you wrote, your handle, your ID, or search terms |
 
-Timestamps on content are server-assigned and used for ordering and expiration — we don't collect device clocks, time zones, device models, or OS-version analytics of our own.
+Timestamps on content are server-assigned and used for ordering and expiration — we don't collect device clocks, time zones, device models, or OS-version analytics of our own. One precise exception: a midnight post's expiry time is calculated on your device from your local midnight, so the stored expiry instant reflects the time zone your device was in when you posted; it is used only to expire that post and is deleted with it.
 
 ## 2. What "anonymous" actually means here — the honest version
 
 - **To other users:** you are a random handle. Nothing in the app shows any other user your email, name, or account identifiers, and our database rules — not just the interface — prevent other users from reading your private data (email, mood, stage, settings, drafts, blocks, notification token).
 - **To us (the operator):** toska is *pseudonymous*, not anonymous. Your posts are stored against your account ID, and your account ID is connected to your email. That means we — a very small team — *can* technically connect content to an email address, and will do so only for moderation, safety, or valid legal process. We cannot honestly claim otherwise, and we won't.
 - **One persistent handle:** all your posts appear under the same handle, so other users can see that the same (pseudonymous) person wrote them. Whisper and midnight posts are *ephemeral*, not extra-anonymous — they show your handle like any post until they expire.
-- **Crisis signals:** if our systems detect crisis language in your post, the post is held for human review and crisis resources are shown to you. The review marker is visible only to moderators — since July 2026 our database rules structurally prevent moderation and crisis flags from ever being readable by other users, and content restored after review is scrubbed of all such markers.
+- **What other signed-in users can see:** your handle; your live posts, replies, reflections, and prompt responses (anything held for review is visible only to you and moderators); your reposts; your total felt count and your follower and following counts — the **hide follower count** setting hides the count from your profile display, it does not make the number private; whether a post of yours is shareable; and the fact that you liked or reposted a piece of content, on that content. Nothing else: not your email, mood, stage, settings, drafts, blocks, saved items, liked list, notification token, or any moderation or restriction status.
+- **Crisis signals:** if our systems detect crisis language in a post or reply of yours, it may be held for human review and crisis resources are shown to you. The review marker is visible only to moderators — since July 2026 our database rules structurally prevent moderation and crisis flags from ever being readable by other users, and content restored after review is scrubbed of all such markers.
 
 ## 3. How we use data
 
@@ -48,9 +50,9 @@ To run the app (feeds, threads, notifications), personalize your feed, detect an
 If your **allow sharing** setting is on (default **off** — opt-in; change it in the toska app (Settings → Privacy) or on the web, from your profile):
 
 - other users can render a post of yours as a **share-card image** — words and feeling tag only, never your handle or any identifier;
-- a small number of posts, hand-picked by us, may appear on **toskaapp.com** and its share pages — same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.
+- a share page on **toskaapp.com** exists for any live post of yours that you or another user shares while sharing is on, and — separately — we hand-pick which posts appear on the site itself and in search engines (only hand-picked posts are indexable) — same rule: words, tag, felt-count, and an approximate age (e.g. "3h ago") only, no handle, no identifier, no profile link.
 
-Turning it off ends both, including for existing posts. Deleting a post removes it everywhere, including the website — the website's cache can take up to about ten minutes to catch up. Letters and expiring posts are never shareable regardless of this setting.
+Turning it off ends both, including for existing posts — share cards stop immediately; share pages and the website can take up to an hour to clear everywhere. Deleting a post removes it everywhere, including the website — the website's cache can take up to about ten minutes to catch up. Letters and expiring posts are never shareable regardless of this setting.
 
 ## 5. Third parties that process your data
 
@@ -67,10 +69,10 @@ No other third party receives user data. There are no ad networks, no data broke
 |---|---|
 | Posts, replies, profile | You delete them or delete your account |
 | Whisper posts | 1 hour after posting, then hard-deleted from the live database — usually within ~10 minutes — by a cleanup that runs every ten minutes (a database time-to-live policy is the backstop if a run fails) |
-| Midnight posts | Your local midnight, then hard-deleted the same way |
+| Midnight posts | Your local midnight (calculated on your device when you post), then hard-deleted the same way |
 | Notifications in your inbox | Pruned after 90 days |
 | Drafts | Until you delete them or your account |
-| Reports and moderation records | Retained after content deletion for safety, abuse-pattern, and legal-defense purposes |
+| Reports and moderation records | Retained after content deletion — and after account deletion — for safety, abuse-pattern, and legal-defense purposes. This includes reports you filed, reports others filed about your content (with the reported text), and our moderation decisions on it |
 | Admin action log | Retained (internal accountability record; contains no post content beyond what moderation required) |
 | Re-registration block list | If we remove an account for serious violations (including underage use), we retain a **one-way cryptographic hash** of its sign-in identifiers (email address and Apple/Google account identifier) to prevent the removed account from re-registering. The hashes cannot be reversed to reveal the identifier; no plaintext identifier is retained. *(Added 2026-07-29.)* |
 | Backups | Point-in-time 7 days; daily backups 7 days; weekly backups 8 weeks — deleted data ages out of all backups within **~60 days** |
@@ -78,6 +80,8 @@ No other third party receives user data. There are no ad networks, no data broke
 ## 7. Account deletion — exactly what it deletes
 
 Deleting your account (Settings → delete account) starts an automated server-side cascade that removes: your profile and handle, private profile data (mood, stage, settings, push token), posts, replies, likes and their effect on counts, saves, reposts, follows/followers, blocks, drafts, streak days, notifications you received, notifications you triggered in other users' inboxes, and your Firebase Auth account (which is where your email lives). Sign-in-with-Apple tokens are revoked with Apple. The cascade retries hourly until complete if any step fails. What survives: reports about content and reports you filed that we already acted on (for safety); the admin action log — note that the deletion itself writes entries there, one per removed post, each recording the account identifier and handle as a permanent moderation record; the one-way hash that blocks re-registration if the account was removed for a serious violation (§6); and backup copies until they age out (§6). We aim for the live-database cascade to complete within minutes, not days.
+
+Not deleted by the cascade: reports (ones you filed and ones filed about your content) and moderation records, and — if the account was removed for serious violations — the one-way re-registration hash (§6).
 
 You can also delete or edit any individual post or reply anywhere it appears, and export your data (§8).
 

@@ -1142,3 +1142,59 @@ describe("C3 totalLikes vs repost mirrors", () => {
     assert.deepStrictEqual([rr.likeCount, rr.replyCount, rr.repostCount], [3, 0, 0]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Product decisions (2026-10-28): plus-alias ban normalization; replies on a
+// held post + 2-character minimum (server backstops for the rules).
+// ─────────────────────────────────────────────────────────────────────
+describe("product decisions 2026-10-28 — ban aliases + reply backstops", () => {
+  const { extractIdentities, normalizeEmailAlias } = require("../functions/bannedIdentities");
+
+  it("normalizeEmailAlias strips only the plus-tag of the local part", () => {
+    assert.strictEqual(normalizeEmailAlias("bad.actor+promo@example.com"), "bad.actor@example.com");
+    assert.strictEqual(normalizeEmailAlias("bad.actor@example.com"), "bad.actor@example.com");
+    assert.strictEqual(normalizeEmailAlias("+lead@example.com"), "+lead@example.com"); // empty local part: untouched
+    assert.strictEqual(normalizeEmailAlias("a+b+c@example.com"), "a@example.com");
+    assert.strictEqual(normalizeEmailAlias(""), "");
+  });
+
+  it("extractIdentities emits the raw AND the normalized email (deduped), for the primary and provider emails", () => {
+    const ids = extractIdentities({ email: " Bad.Actor+2@Example.com ", providerData: [{ providerId: "google.com", uid: "g1", email: "bad.actor+2@example.com" }] });
+    const emails = ids.filter((i) => i.kind === "email").map((i) => i.value).sort();
+    assert.deepStrictEqual(emails, ["bad.actor+2@example.com", "bad.actor@example.com"]);
+    assert.ok(ids.some((i) => i.kind === "google.com" && i.value === "g1"));
+    const plain = extractIdentities({ email: "clean@example.com", providerData: [] });
+    assert.deepStrictEqual(plain.map((i) => i.value), ["clean@example.com"]);
+  });
+
+  it("blockBannedSignups: a ban recorded under 'x+1@' rejects a sign-up as 'x@' and as 'x+2@'", async () => {
+    const PEPPER = process.env.BANNED_ID_PEPPER || "test-pepper"; process.env.BANNED_ID_PEPPER = PEPPER;
+    const { identityHash } = require("../functions/bannedIdentities");
+    for (const id of extractIdentities({ email: "x+1@example.com", providerData: [] })) {
+      await db.collection("bannedIdentities").doc(identityHash(PEPPER, id.kind, id.value)).set({ kind: "email" });
+    }
+    for (const email of ["x@example.com", "x+2@example.com", "X+1@example.com"]) {
+      let rejected = null;
+      try { await fns.blockBannedSignups.run({ data: { email, providerData: [] } }); } catch (e) { rejected = e; }
+      assert.ok(rejected, `${email} must be rejected`);
+    }
+    await fns.blockBannedSignups.run({ data: { email: "y@example.com", providerData: [] } }); // unrelated mailbox passes
+  });
+
+  it("validateReply deletes a reply shorter than 2 characters after trimming; keeps a 2-char one", async () => {
+    await db.doc("posts/pp").set({ authorId: "a", text: "parent", moderationStatus: "live", createdAt: new Date() });
+    await replyRef("pp", "short").set({ authorId: "u", text: "  a  ", createdAt: new Date() });
+    await fns.validateReply.run({ id: "pd1", data: await snapOf("posts/pp/replies/short"), params: { postId: "pp", replyId: "short" } });
+    assert.strictEqual((await replyRef("pp", "short").get()).exists, false);
+    await replyRef("pp", "ok").set({ authorId: "u", text: "ok", createdAt: new Date() });
+    await fns.validateReply.run({ id: "pd2", data: await snapOf("posts/pp/replies/ok"), params: { postId: "pp", replyId: "ok" } });
+    assert.strictEqual((await replyRef("pp", "ok").get()).get("moderationStatus"), "live");
+  });
+
+  it("validateReply deletes a reply that landed on a HELD post (rules backstop)", async () => {
+    await db.doc("posts/ph").set({ authorId: "a", text: "parent", moderationStatus: "pending_review", pendingReason: "pii", createdAt: new Date() });
+    await replyRef("ph", "r").set({ authorId: "u", text: "kind words", createdAt: new Date() });
+    await fns.validateReply.run({ id: "pd3", data: await snapOf("posts/ph/replies/r"), params: { postId: "ph", replyId: "r" } });
+    assert.strictEqual((await replyRef("ph", "r").get()).exists, false);
+  });
+});

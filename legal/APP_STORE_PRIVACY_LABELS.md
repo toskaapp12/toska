@@ -22,6 +22,10 @@
 
 Name; phone number; physical address; **precise or coarse location**; contacts; photos or videos; audio; health & fitness; financial info; browsing history; search history (in-app GIF searches are proxied server-side and never logged against identity); sensitive info; purchases; advertising data; device ID (no IDFA/IDFV collection); "Other Usage Data" beyond product interaction.
 
+## Re-check 2026-10-28 (Privacy Policy v4.0 / Terms v4.0)
+
+The v4.0 wording round added disclosures only — no new data type is collected and no purpose changed, so **the label answers above are unchanged**: the midnight-expiry note describes a timestamp the app already stored (User Content, linked); retained reports/moderation records are already covered by User Content (reports); "what other users can see" describes visibility, not collection; the notification/share-page/follower-count items are behaviour clarifications. Privacy policy URL unchanged (`https://www.toskaapp.com/privacy`, now serving v4.0).
+
 ## Notes that matter for review
 
 1. **Privacy policy URL in ASC metadata** (App Privacy section + per-locale field) must point at the published policy: `https://www.toskaapp.com/privacy`. Already set per the 2026-07-16 metadata audit — keep it in sync when the policy version bumps.

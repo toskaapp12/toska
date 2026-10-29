@@ -2918,8 +2918,10 @@ exports.validateReply = onDocumentCreated(
     // Blank / over-length stay HARD deletes — those aren't recoverable content
     // (a blank reply is nothing; >500 chars is a tampered client past the UI
     // cap). Counter decrements are handled by onReplyDeletedUpdateCount.
-    if (typeof text !== "string" || text.trim().length === 0) {
-      console.warn(`Deleting reply ${replyId} — missing or blank text`);
+    // Product decision (2026-10-28, audit C12): the 2-character client minimum
+    // is enforced server-side (the rules check trim().size() >= 2 as well).
+    if (typeof text !== "string" || text.trim().length < 2) {
+      console.warn(`Deleting reply ${replyId} — missing, blank or under 2 characters`);
       await replyRef.delete();
       return;
     }
@@ -2928,6 +2930,18 @@ exports.validateReply = onDocumentCreated(
       console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
       await replyRef.delete();
       return;
+    }
+
+    // Product decision (2026-10-28, audit C6): no replies on a HELD post. The
+    // create rule requires a live parent; this is the backstop for anything
+    // that slipped through (a parent held between the rule read and this run).
+    {
+      const parentGate = await db.collection("posts").doc(postId).get();
+      if (parentGate.exists && parentGate.get("moderationStatus") === "pending_review") {
+        console.warn(`Deleting reply ${replyId} — parent post ${postId} is held`);
+        await replyRef.delete();
+        return;
+      }
     }
 
     // 2026-10-07 review: parentPostText/parentPostHandle are CLIENT-supplied

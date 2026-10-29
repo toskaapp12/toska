@@ -227,7 +227,10 @@ struct PostDetailView: View {
 
     var body: some View {
         mainContent
-            .safeAreaInset(edge: .bottom, spacing: 0) { replyBarView }
+            // Product decision (2026-10-28, audit C6): no replies on a held
+            // post — the rules deny the create, so the bar is hidden on the
+            // author's own held post (nobody else can open one).
+            .safeAreaInset(edge: .bottom, spacing: 0) { if !ownPendingReview { replyBarView } }
             .hidesAppTabBar()
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(false)

@@ -24,10 +24,29 @@ function identityHash(pepper, kind, value) {
 //   - email: normalized lowercase. Covers email/password signups.
 //   - google.com / apple.com provider uid: the durable identity even when the
 //     email is a relay (Sign in with Apple) or later rotated.
+// "local+anything@domain" → "local@domain" (lower-cased input expected). Only
+// the plus-tag is stripped — dots and provider-specific quirks are left alone.
+function normalizeEmailAlias(email) {
+  if (!email) return "";
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return email;
+  const local = email.slice(0, at);
+  const plus = local.indexOf("+");
+  if (plus <= 0) return email;
+  return `${local.slice(0, plus)}${email.slice(at)}`;
+}
+
 function extractIdentities(user) {
   const ids = [];
   const email = (user.email || "").trim().toLowerCase();
   if (email) ids.push({ kind: "email", value: email });
+  // Product decision (2026-10-28, audit B7): plus-aliases are the same
+  // mailbox — "bad.actor+2@example.com" is banned as "bad.actor@example.com".
+  // The normalized form is emitted as an EXTRA identity, so a ban row is
+  // written for both and a later sign-up under any alias matches. Existing
+  // rows (hashed raw) keep matching exactly as before.
+  const norm = normalizeEmailAlias(email);
+  if (norm && norm !== email) ids.push({ kind: "email", value: norm });
   for (const p of user.providerData || []) {
     if (!p) continue;
     if ((p.providerId === "google.com" || p.providerId === "apple.com") && p.uid) {
@@ -35,6 +54,8 @@ function extractIdentities(user) {
     }
     const pEmail = (p.email || "").trim().toLowerCase();
     if (pEmail && pEmail !== email) ids.push({ kind: "email", value: pEmail });
+    const pNorm = normalizeEmailAlias(pEmail);
+    if (pNorm && pNorm !== pEmail) ids.push({ kind: "email", value: pNorm });
   }
   const seen = new Set();
   return ids.filter((i) => {
@@ -45,4 +66,4 @@ function extractIdentities(user) {
   });
 }
 
-module.exports = { identityHash, extractIdentities };
+module.exports = { identityHash, extractIdentities, normalizeEmailAlias };

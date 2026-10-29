@@ -797,6 +797,7 @@ describe("Finding 4: reports text capped at 4000 chars", () => {
   // use serverTimestamp() — a client-side new Date() never matches the
   // emulator's evaluation time exactly and would always fail.
   it("allows report with normal-sized text", async () => {
+    await setUserDoc("alice"); // product decision 2026-10-28: reports need the 18+ attestation
     const a = env.authenticatedContext("alice").firestore();
     await assertSucceeds(
       a.collection("reports").add({
@@ -941,24 +942,22 @@ describe("Finding 7: server-side confirmedAdult gate on publishing surfaces", ()
     );
   });
 
-  it("allows likes/saves/follows even when confirmedAdult is false", async () => {
-    // The gate is publishing-only — consumption + relationship actions
-    // don't need it. A user who hasn't accepted the adult terms can still
-    // browse + like, just can't publish content.
+  it("DENIES likes/saves when confirmedAdult is false (product decision 2026-10-28: the 18+ gate covers every interaction)", async () => {
+    // Reversed 2026-10-28 (multi-user audit §2.6 item 5): the attestation used
+    // to be publishing-only, so a fresh unattested account could like, save,
+    // follow and report. Owner decision: it gates those too. Browsing is
+    // unchanged. Full matrix in product-decisions.test.js.
     await setUserDoc("alice");
     await setUserDoc("bob", { confirmedAdult: false });
     await setPost("p1", "alice");
 
     const b = env.authenticatedContext("bob").firestore();
-    // Must use serverTimestamp() — the post-like create rule pins
-    // createdAt == request.time (T-10 schema lock), like every other like/save
-    // write in this file and the real client (PostInteractionManager).
-    await assertSucceeds(
+    await assertFails(
       b.collection("posts").doc("p1").collection("likes").doc("bob").set({
         createdAt: serverTimestamp(),
       })
     );
-    await assertSucceeds(
+    await assertFails(
       b.collection("users").doc("bob").collection("saved").doc("p1").set({
         createdAt: serverTimestamp(),
       })

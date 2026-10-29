@@ -148,13 +148,14 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   reordered to match (staging). Assigned to Internal.
 - **Tier 2 triage (owner 2026-10-29):** B4/C8/C11/C12/C14 closed by earlier work; C7, C9, C10, C13, D2
   tag counts, follower-count mirror → POST-LAUNCH (BUGS.md AUDIT-TIER2-STATUS).
-- **A4 deletion residue — STAGING 8/8, code committed 7bf2101, PROD pending go:** audit rows only
+- **A4 deletion residue — PROD 2026-10-29 (77 functions, cascade check 5/5, 97 audit rows scrubbed);
+  staging 8/8; code 7bf2101:** audit rows only
   for admin removals; others' liked/saved reply snapshots scrubbed on reply delete (new
   `onReplyDeletedScrubSnapshots`) and in the account cascade; 4 CG indexes. Prod plan: indexes →
   3 functions `--only --force` (76 → 77) → throwaway cascade check (`a4-check-prod.mjs`) → audit-row
   scrub `--apply` (97 rows, dry run shown) → logs. See BUGS.md AUDIT-A4.
-- **A3 sharing-off propagation — STAGING 5/5 measured (page/card/feed 122 s, sitemap 304 s), PROD
-  pending go:** cache caps cut (page/card 60/120, sitemap 300/300, feed 2-min memo + 120/120); policy
+- **A3 sharing-off propagation — PROD 2026-10-29 (hosting headers + 4 functions, pages published);
+  staging 5/5 measured (page/card/feed 122 s, sitemap 304 s):** cache caps cut (page/card 60/120, sitemap 300/300, feed 2-min memo + 120/120); policy
   wording "within a few minutes". Prod plan: hosting + 4 functions `--only`, push. See BUGS.md AUDIT-A3.
   **Next after A4/A3 prod: launch prep; post-launch list in BUGS.md.**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +

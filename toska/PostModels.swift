@@ -177,6 +177,27 @@ struct NotificationItem: Identifiable, Equatable {
     var othersCount: Int = 0
     var quote: String? = nil
     var replyText: String? = nil
+    // Removal notice (owner decision 2026-10-29): the statement of reasons the
+    // author can open from the row. nil for every other notification type.
+    var removal: RemovalNoticeInfo? = nil
+}
+
+/// Statement of reasons carried by a `type == "removal"` notification
+/// (written server-side by sendRemovalNotice; see functions/index.js).
+struct RemovalNoticeInfo: Equatable {
+    let targetType: String      // "post" | "reply"
+    let reasonCode: String
+    let source: String          // "admin" | "automated"
+    let safety: Bool            // render the region-aware crisis lines
+    let message: String
+    let what: String
+    let why: String
+    let guideline: String
+    let how: String
+    let who: String
+    let redress: String
+    let guidelinesUrl: String
+    let supportEmail: String
 }
 
 /// Used in ProfileView and OtherProfileView for reply tabs

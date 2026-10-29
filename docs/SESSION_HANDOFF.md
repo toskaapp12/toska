@@ -127,6 +127,14 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   badge (display only); wording fixes (hold dialog, store description → owner updates ASC, Terms §5,
   no version bump). See BUGS.md FIRSTNAME. Prod plan: `--only functions:onPostUpdated,publicFeed,
   sharePage,postsSitemap` (75 → 75) + hosting; push publishes terms.html + admin.html.
+- **Removal notices (2026-10-29) — STAGING verified 14/14, PROD pending owner go:** authors get an
+  in-app `type: "removal"` notification (statement of reasons, DSA Art. 17) on admin removals (new
+  dashboard reason picker + stamps; new `auditReplyDeletion`) and automated hard deletes (slurs,
+  too-long, reply-on-held-post); spam / deleted accounts / self-deletes silent; pii/threat previews
+  masked, safety variant with region-aware resources on the clients; web row + details live on
+  staging; iOS sheet in build 104; Terms §6 + support page updated (no version bump). See BUGS.md
+  REMOVAL-NOTICES. Prod: `--only` the five functions (`--force` for the new one, 75 → 76), hosting,
+  push.
   **Next: Tier 2 (A3, A4, C4, C7, C9–C14, B4, tag counts incl. held, follower-count mirror).**
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror

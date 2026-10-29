@@ -5,6 +5,7 @@
 **Contact: salte@saltedevelopments.com**
 
 > Changelog
+> - v4.0 addition (2026-10-29, no version change — a new user benefit, no new obligation): §6 describes the in-app removal notice (what, why, how, who, how to ask again), per the EU Digital Services Act statement-of-reasons practice.
 > - v4.0 wording clarification (2026-10-29, no version change): §5 now says "full names" and that a first name on its own is not treated as identifying; the letters bullet says "full name". No change in practice — bare first names were always allowed.
 > - v4.0 (2026-10-28): Accuracy round from the October 2026 multi-user audit, co-versioned with Privacy Policy v4.0 for joint re-acceptance. Spelled out what a restricted account can and cannot do (§4); holds apply to posts and replies, and a held post cannot receive replies (§5); blocking also stops saves, and reporting stays available in both directions (§6); share pages exist for any post you share while sharing is on, website and search-engine featuring stays hand-picked, and turning sharing off can take up to an hour to clear everywhere (§7); a midnight post's expiry is calculated on your device from your local midnight (§8); reports and moderation records are kept after deletion (§10). No change to the legal terms in §11–§18.
 > - v3.0 (2026-08-06): **Minimum age raised from 17 to 18** (§2), with the in-app age gate and the underage-content detector moved in step (the App Store age rating is updated separately in App Store Connect). toska is now an adults-only service: everyone using it is at or above the age of majority in nearly every US state, which removes the contract-capacity and parental-consent questions that a 17+ floor created. Material change requiring re-acceptance under §15.
@@ -49,6 +50,8 @@ Automated systems screen content at posting time and may hold a post or reply fo
 ## 6. Reporting, blocking, enforcement
 
 You can report any post, reply, or user in-app, and block any user (the blocked person is not notified). Blocking hides each of you from the other's profile and stops all interaction between you — replies, likes, reposts, saves, follows, and notifications — in both directions; reporting stays available to both of you. One honest limit: it does not remove your posts from the public feed, so someone you've blocked can still read what you post there. We may remove content, hold it for review, restrict an account's ability to post, or terminate an account, at our discretion. Serious threats of harm may be referred to law enforcement.
+
+**If we remove a post or reply of yours,** we tell you in the app: a notification names what was removed, why (the guideline it went against), whether it was found by a report or by our own review or automated screening, and whether a person or an automated system made the call. We never say who reported it. If you think we got it wrong, email salte@saltedevelopments.com and a person will look again. We don't send a notice for spam removals or when the account has already been deleted.
 
 ## 7. Your content and the license you give us
 

@@ -2929,6 +2929,8 @@ exports.validateReply = onDocumentCreated(
     if (text.length > 500) {
       console.warn(`Deleting reply ${replyId} — text too long (${text.length} chars)`);
       await replyRef.delete();
+      await sendRemovalNotice({ authorId: replyData.authorId, targetType: "reply", postId, replyId, reasonCode: "too_long", source: "automated", via: "screening", text, createdAt: replyData.createdAt })
+        .catch((e) => console.warn(`removal notice (too_long ${replyId}) failed: ${e.message}`));
       return;
     }
 
@@ -2940,6 +2942,8 @@ exports.validateReply = onDocumentCreated(
       if (parentGate.exists && parentGate.get("moderationStatus") === "pending_review") {
         console.warn(`Deleting reply ${replyId} — parent post ${postId} is held`);
         await replyRef.delete();
+        await sendRemovalNotice({ authorId: replyData.authorId, targetType: "reply", postId, replyId, reasonCode: "held_parent", source: "automated", via: "screening", text, createdAt: replyData.createdAt })
+          .catch((e) => console.warn(`removal notice (held_parent ${replyId}) failed: ${e.message}`));
         return;
       }
     }
@@ -3754,8 +3758,17 @@ async function applyReplyModeration(postId, replyId, flagReason) {
     // hate / sexual: low false-positive, genuinely removable — keep the hard
     // delete. Counter decrement is handled by onReplyDeletedUpdateCount on the
     // subsequent delete trigger.
+    // Removal notice for the automated hard delete (DSA: automated removals
+    // get a statement of reasons too; spam stays silent). Read the doc first —
+    // the notice needs the author, text and date.
+    const gone = (await replyRef.get()).data() || {};
     await replyRef.delete();
     console.log(`Reply ${replyId} on post ${postId} deleted: ${flagReason}`);
+    await sendRemovalNotice({
+      authorId: gone.authorId, targetType: "reply", postId, replyId,
+      reasonCode: flagReasonToRemovalCode(flagReason), source: "automated", via: "screening",
+      text: gone.text, createdAt: gone.createdAt,
+    }).catch((e) => console.warn(`removal notice (auto reply ${replyId}) failed: ${e.message}`));
   }
 }
 
@@ -6202,6 +6215,122 @@ exports.auditReplyModeration = onDocumentUpdated(
   }
 );
 
+
+// ============================================================
+// Removal notices (owner decision 2026-10-29; EU DSA Art. 17 statement of
+// reasons). When content is removed — by an admin from the dashboard or by
+// automated screening — the AUTHOR gets an in-app notification (no push):
+// a calm one-line message plus a statement of reasons (what, why, how, who,
+// redress). Never says who reported it. Nothing is sent when the author's
+// account is gone (deletion cascade / ban), for spam, or for author
+// self-deletes. Pruned with every other notification by pruneOldNotifications.
+// ============================================================
+const REMOVAL_CODES = new Set(["pii", "hurtful", "threat", "sexual", "spam", "safety", "other", "too_long", "held_parent"]);
+const REMOVAL_WHY = {
+  pii: "it included a full name or a contact detail",
+  hurtful: "it included language that hurts people",
+  threat: "it read as a threat",
+  sexual: "it was sexually explicit",
+  other: "it went against our guidelines",
+  too_long: "it was over the length limit",
+  held_parent: "the post it answered is under review",
+};
+const REMOVAL_GUIDELINE = {
+  pii: "no full names or contact details (terms §5)",
+  hurtful: "no harassment or hate (terms §5)",
+  threat: "no threats (terms §5)",
+  sexual: "no sexually explicit content (terms §5)",
+  other: "our posting guidelines (terms §5)",
+  too_long: "posting limits",
+  held_parent: "replies pause while a post is under review (terms §5)",
+  safety: "our safety practice (terms §9)",
+};
+// Map the automated flag reasons that end in a hard delete to a notice code.
+function flagReasonToRemovalCode(flagReason) {
+  switch (flagReason) {
+    case "personal_information": return "pii";
+    case "hate_speech": case "harassment": case "dehumanizing": return "hurtful";
+    case "targeted_threat": return "threat";
+    case "sexual": case "sexual_explicit": case "sexual_review": return "sexual";
+    case "spam_or_commercial": case "abuse_link": return "spam";
+    default: return "other";
+  }
+}
+// Preview for the statement: never quote identifiers or crisis text back.
+//   pii / threat  → the beginning with names, numbers, emails, handles masked
+//   safety        → no preview (date only)
+//   everything else → the author's own words, first ~80 chars
+function maskIdentifiers(text) {
+  let t = String(text || "");
+  t = t.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "…");
+  t = t.replace(/@[a-zA-Z0-9_.]+/g, "…");
+  t = t.replace(/\b\d+\s+[A-Za-z]+\s+(street|st|avenue|ave|boulevard|blvd|drive|dr|lane|ln|road|rd|way|place|pl|court|ct|circle|cir|terrace|trail|parkway|pkwy)\b/gi, "…");
+  t = t.replace(/\d[\d\s().-]*\d/g, "…"); // any run of 2+ digits (phones, unit numbers, years)
+  t = t.replace(/\b((?:Ma?c)?[A-Z][a-z]+)\s+((?:Ma?c)?[A-Z][a-z]+)\b/g, "…");
+  t = t.replace(/\b([A-Z][a-z]+)(?:'s)?\b/g, (m, w) => (likelyFirstName(w) || containsNameOrIdentifyingInfo(w)) ? "…" : m);
+  return t.replace(/(…\s*){2,}/g, "… ");
+}
+function removalPreview(code, text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t || code === "safety") return null;
+  if (code === "pii" || code === "threat") {
+    const masked = maskIdentifiers(t);
+    return masked.length > 60 ? masked.slice(0, 60).trimEnd() + "…" : masked;
+  }
+  return t.length > 80 ? t.slice(0, 80).trimEnd() + "…" : t;
+}
+function removalDateLabel(createdAt) {
+  const d = createdAt && typeof createdAt.toDate === "function" ? createdAt.toDate() : (createdAt instanceof Date ? createdAt : new Date());
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toLowerCase();
+}
+async function sendRemovalNotice({ authorId, targetType, postId, replyId = null, reasonCode, source, via, text, createdAt }) {
+  if (!authorId || !REMOVAL_CODES.has(reasonCode)) return false;
+  if (reasonCode === "spam") return false; // DSA deceptive/high-volume exemption; owner: spam stays silent
+  const author = await db.collection("users").doc(authorId).get();
+  if (!author.exists) return false; // account gone (deletion cascade / ban): nobody to tell
+  const noun = targetType === "reply" ? "replies" : "posts";
+  const safety = reasonCode === "safety";
+  const date = removalDateLabel(createdAt);
+  const message = safety
+    ? `we took one of your ${noun} down for now. it sounded like you might be going through something very hard, and we wanted to reach out first. you're not alone.`
+    : `we removed one of your ${noun} because ${REMOVAL_WHY[reasonCode]}. you're still welcome here.`;
+  const preview = removalPreview(reasonCode, text);
+  const what = preview ? `your ${targetType} from ${date}, beginning "${preview}"` : `your ${targetType} from ${date}`;
+  const how = source === "automated"
+    ? "our automated screening found it"
+    : (via === "report" ? "someone reported it (we never say who)" : "we found it during our own review");
+  const who = source === "automated"
+    ? "our automated screening made this call. a person on our team will look again if you ask."
+    : "a person on our team made this call.";
+  const id = `removal_${targetType}_${replyId || postId}`;
+  await db.collection("users").doc(authorId).collection("notifications").doc(id).set({
+    type: "removal",
+    fromUserId: "toska",
+    fromHandle: "toska",
+    targetType,
+    postId: postId || "",
+    replyId: replyId || null,
+    reasonCode,
+    source,                 // "admin" | "automated"
+    safety,                 // clients render region-aware crisis resources
+    message,
+    preview,
+    removedDate: date,
+    statement: {
+      what,
+      why: safety ? "it read as if you might be in danger, and we wanted to check in rather than leave it up" : REMOVAL_WHY[reasonCode],
+      guideline: REMOVAL_GUIDELINE[reasonCode],
+      how,
+      who,
+      redress: "think this was a mistake? email salte@saltedevelopments.com and we'll look again.",
+    },
+    guidelinesUrl: "https://www.toskaapp.com/terms",
+    supportEmail: "salte@saltedevelopments.com",
+    isRead: false,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return true;
+}
 // Audit post deletions. The admin dashboard's removePost/deletePost
 // (docs/admin.html) update the post with deletedBy/deletedAt immediately
 // before the delete, so this onDocumentDeleted reads the doc's last state to
@@ -6221,9 +6350,47 @@ exports.auditPostDeletion = onDocumentDeleted(
         authorId: data.authorId || null,
         moderationStatus: data.moderationStatus || null,
         flagged: data.flagged ?? null,
+        removalReason: data.removalReason || null,
       },
       after: null,
     }, event.id);
+    // Removal notice (2026-10-29): only for ADMIN removals (deletedBy stamped
+    // by the dashboard). Author self-deletes and cascades carry no stamp.
+    if (data.deletedBy && data.deletedBy !== "system" && data.authorId) {
+      await sendRemovalNotice({
+        authorId: data.authorId, targetType: "post", postId: event.params.postId,
+        reasonCode: REMOVAL_CODES.has(data.removalReason) ? data.removalReason : "other",
+        source: "admin", via: data.removalVia === "report" ? "report" : "review",
+        text: data.text, createdAt: data.createdAt,
+      }).catch((e) => console.warn(`removal notice (post ${event.params.postId}) failed: ${e.message}`));
+    }
+  }
+);
+
+// Reply deletions: same audit + notice. The dashboard stamps deletedBy /
+// removalReason / removalVia on the reply before deleting (2026-10-29).
+exports.auditReplyDeletion = onDocumentDeleted(
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
+  async (event) => {
+    const data = event.data?.data() || {};
+    if (!data.deletedBy || data.deletedBy === "system") return; // author / cascade / automated: handled elsewhere
+    await writeAuditEntry({
+      action: "reply.delete",
+      adminUid: data.deletedBy,
+      targetType: "reply",
+      targetId: event.params.replyId,
+      targetHandle: data.authorHandle || null,
+      before: { authorId: data.authorId || null, postId: event.params.postId, moderationStatus: data.moderationStatus || null, removalReason: data.removalReason || null },
+      after: null,
+    }, event.id);
+    if (data.authorId) {
+      await sendRemovalNotice({
+        authorId: data.authorId, targetType: "reply", postId: event.params.postId, replyId: event.params.replyId,
+        reasonCode: REMOVAL_CODES.has(data.removalReason) ? data.removalReason : "other",
+        source: "admin", via: data.removalVia === "report" ? "report" : "review",
+        text: data.text, createdAt: data.createdAt,
+      }).catch((e) => console.warn(`removal notice (reply ${event.params.replyId}) failed: ${e.message}`));
+    }
   }
 );
 
@@ -6530,6 +6697,11 @@ Object.defineProperty(module.exports, "__test", {
   FieldValue,
   Timestamp,
   pruneNotificationsOlderThan,
+  // removal notices (2026-10-29)
+  sendRemovalNotice,
+  removalPreview,
+  maskIdentifiers,
+  flagReasonToRemovalCode,
   // C2 / C3 (2026-10-28)
   applyPostRateLimit,
   settleTotalLikesOnPostDelete,

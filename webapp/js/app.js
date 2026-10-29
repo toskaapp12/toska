@@ -21,7 +21,7 @@ import {
     editPost, editReply, deletePost, deleteReply,
     POST_TAGS, REPORT_REASONS,
 } from "./writes.js";
-import { runGates } from "./gates.js";
+import { runGates, crisisLines } from "./gates.js";
 import { likelyFirstName } from "./moderation.js"; // soft compose nudge (owner 2026-10-29)
 
 const app = initializeApp(FIREBASE_CONFIG);
@@ -1527,7 +1527,29 @@ const NOTIF_ACTION = {
     like: "felt this", reply: "replied to your words",
     follow: "followed you", repost: "shared your words",
     save: "kept your words close",
+    removal: "removed one of your posts", // overridden by n.message (removal notices, 2026-10-29)
 };
+// Removal notice row (owner decision 2026-10-29; DSA statement of reasons).
+// Not a link — the post is gone. The one-line message shows in the row; the
+// statement (what / why / how / who / redress) expands on tap. Safety notices
+// show the app's region-aware crisis lines, not the server's text.
+function removalRow(n) {
+    const details = el("div", { class: "note", style: "margin-top:8px; display:none;" });
+    const st = n.statement || {};
+    const lines = [st.what, st.why ? `why: ${st.why}` : null, st.guideline ? `guideline: ${st.guideline}` : null, st.how, st.who].filter(Boolean);
+    for (const t of lines) details.append(el("div", { style: "margin:3px 0;" }, t));
+    if (n.safety) {
+        for (const [, label] of crisisLines()) details.append(el("div", { style: "margin:6px 0 2px; font-weight:500;" }, label));
+    }
+    details.append(el("div", { style: "margin-top:8px;" }, st.redress || "think this was a mistake? email salte@saltedevelopments.com and we'll look again."));
+    details.append(el("div", { style: "margin-top:4px;" }, el("a", { class: "plain", href: n.guidelinesUrl || "https://www.toskaapp.com/terms", target: "_blank", rel: "noopener" }, "our guidelines")));
+    const toggle = el("button", { class: "tab", style: "margin-top:6px;" }, "details");
+    toggle.onclick = () => { const open = details.style.display !== "none"; details.style.display = open ? "none" : "block"; toggle.textContent = open ? "details" : "hide"; };
+    return el("div", { class: "post-row notif-row removal-row", style: n.isRead === false ? "border-left: 3px solid var(--plum);" : "" },
+        el("div", { class: "post-meta" }, el("span", { class: "handle" }, "toska"), el("span", {}, relTime(n.createdAt))),
+        el("div", { class: "post-text", style: "font-size:15.5px;" }, n.message || NOTIF_ACTION.removal),
+        toggle, details);
+}
 async function viewNotifications() {
     setChrome(false);
     // Opening the tab is "seen": drop the badge now instead of after the
@@ -1543,6 +1565,7 @@ async function viewNotifications() {
             .filter(n => !blocked.has(n.fromUserId) && !blockedBy.has(n.fromUserId));
         if (!rows.length) { list.append(emptyState("nothing yet. when someone feels your words, it lands here.")); return; }
         for (const n of rows) {
+            if (n.type === "removal") { list.append(removalRow(n)); continue; }
             const action = NOTIF_ACTION[n.type] ?? (n.message || n.type);
             const preview = n.type === "reply" && n.message?.trim() ? n.message.trim() : null;
             list.append(el("a", {

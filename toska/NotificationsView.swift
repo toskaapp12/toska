@@ -24,6 +24,7 @@ struct NotificationsView: View {
     @State private var selectedFollowUser: NotifFollowUser? = nil
     @State private var lastFetchTime: Date? = nil
     @State private var showDeletedPostAlert = false
+    @State private var removalSheet: NotificationItem? = nil // removal notice statement (2026-10-29)
     // Shown when a follow notification's actor no longer exists, instead of
     // navigating to an empty/broken profile.
     @State private var showDeletedUserAlert = false
@@ -356,6 +357,10 @@ struct NotificationsView: View {
         // legacy message notification no longer routes anywhere; the
         // notification row stays inert until the row-level handler is
         // also pruned. See notifRow for where the route is suppressed.
+        .sheet(item: $removalSheet) { notif in
+            RemovalNoticeSheet(notif: notif)
+                .presentationDetents([.medium, .large])
+        }
         .alert("post deleted", isPresented: $showDeletedPostAlert) {
             Button("ok") {}
         } message: {
@@ -488,6 +493,11 @@ struct NotificationsView: View {
         }
 
     func handleNotifTap(_ notif: NotificationItem) {
+        // Removal notice: the post is gone — open the statement of reasons.
+        if notif.type == "removal" {
+            removalSheet = notif
+            return
+        }
         if notif.type == "follow" && !notif.fromUserId.isEmpty {
             Firestore.firestore().collection("users").document(notif.fromUserId).getDocument { snapshot, error in
                 Task { @MainActor in
@@ -575,6 +585,7 @@ struct NotificationsView: View {
         case "repost": return Color.toskaMovingOnGreen
         case "save": return Color.toskaAccentTan
         case "milestone": return Color.toskaAccentGold
+        case "removal": return Color.toskaPlaceholderGray
         default: return Color.toskaPlaceholderGray
         }
     }
@@ -587,6 +598,7 @@ struct NotificationsView: View {
         case "repost": return "arrow.2.squarepath"
         case "save": return "bookmark.fill"
         case "milestone": return "star.fill"
+        case "removal": return "eye.slash.fill"
         default: return "bell.fill"
         }
     }
@@ -708,9 +720,31 @@ struct NotificationsView: View {
                             actor = "your words"
                             action = message.isEmpty ? "reached people who needed them"
                                 : message.replacingOccurrences(of: "your words ", with: "")
+                        case "removal":
+                            // Removal notice (2026-10-29): "toska" + the calm one-liner.
+                            actor = "toska"
+                            action = message.isEmpty ? "removed one of your posts" : message
                         default: action = message
                         }
                         let displayText = "\(actor) \(action)"
+                        var removalInfo: RemovalNoticeInfo? = nil
+                        if type == "removal" {
+                            let st = data["statement"] as? [String: Any] ?? [:]
+                            removalInfo = RemovalNoticeInfo(
+                                targetType: data["targetType"] as? String ?? "post",
+                                reasonCode: data["reasonCode"] as? String ?? "other",
+                                source: data["source"] as? String ?? "admin",
+                                safety: data["safety"] as? Bool ?? false,
+                                message: message,
+                                what: st["what"] as? String ?? "",
+                                why: st["why"] as? String ?? "",
+                                guideline: st["guideline"] as? String ?? "",
+                                how: st["how"] as? String ?? "",
+                                who: st["who"] as? String ?? "",
+                                redress: st["redress"] as? String ?? "think this was a mistake? email salte@saltedevelopments.com and we'll look again.",
+                                guidelinesUrl: data["guidelinesUrl"] as? String ?? "https://www.toskaapp.com/terms",
+                                supportEmail: data["supportEmail"] as? String ?? "salte@saltedevelopments.com")
+                        }
 
                         return NotificationItem(
                             id: doc.documentID,
@@ -726,7 +760,8 @@ struct NotificationsView: View {
                             actionText: action,
                             othersCount: 0,
                             quote: nil,
-                            replyText: replyBody
+                            replyText: replyBody,
+                            removal: removalInfo
                         )
                     }
 
@@ -844,5 +879,80 @@ struct NotificationsView: View {
             .cornerRadius(16)
             .padding(.horizontal, 32)
         }
+    }
+}
+
+
+// MARK: - Removal notice sheet (owner decision 2026-10-29; DSA statement of reasons)
+//
+// Opened from a `type == "removal"` notification row. Calm voice, plain
+// words: what was removed, why, how it came to us, who decided, how to ask
+// again. Safety notices lead with the app's region-aware crisis lines
+// (CrisisLines.resources) rather than rules.
+struct RemovalNoticeSheet: View {
+    let notif: NotificationItem
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        let r = notif.removal
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(r?.safety == true ? "we took one down for now" : "about a removal")
+                    .font(ToskaFont.serifItalic(22))
+                    .foregroundColor(ToskaColor.text)
+                Text(r?.message ?? notif.actionText)
+                    .font(ToskaFont.sans(15))
+                    .foregroundColor(ToskaColor.text)
+                    .lineSpacing(3)
+                if r?.safety == true {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("if you're struggling, you're not alone — support is here:")
+                            .font(ToskaFont.sans(13)).foregroundColor(ToskaColor.text2)
+                        ForEach(CrisisLines.resources.prefix(3), id: \.url) { res in
+                            if let url = URL(string: res.url) {
+                                Link(destination: url) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: res.icon).font(.system(size: 12))
+                                        Text(res.label).font(ToskaFont.sans(14, weight: .semibold)).underline()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                if let r = r {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !r.what.isEmpty { Text(r.what) }
+                        if !r.why.isEmpty { Text("why: \(r.why)") }
+                        if !r.guideline.isEmpty { Text("guideline: \(r.guideline)") }
+                        if !r.how.isEmpty { Text(r.how) }
+                        if !r.who.isEmpty { Text(r.who) }
+                    }
+                    .font(ToskaFont.sans(13))
+                    .foregroundColor(ToskaColor.text2)
+                    .lineSpacing(2)
+                    Text(r.redress)
+                        .font(ToskaFont.sans(13))
+                        .foregroundColor(ToskaColor.text)
+                        .padding(.top, 4)
+                    if let url = URL(string: r.guidelinesUrl) {
+                        Link("our guidelines", destination: url)
+                            .font(ToskaFont.sans(13, weight: .semibold))
+                    }
+                }
+                Button { dismiss() } label: {
+                    Text("okay")
+                        .font(ToskaFont.sans(14, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(ToskaColor.accent, in: Capsule())
+                        .foregroundColor(ToskaColor.onAccent)
+                }
+                .padding(.top, 8)
+            }
+            .padding(24)
+        }
+        .background(LateNightTheme.feedBackground)
     }
 }

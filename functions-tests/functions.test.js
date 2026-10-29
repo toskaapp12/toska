@@ -1225,3 +1225,94 @@ describe("first-name featuring guard (onPostUpdated)", () => {
     assert.strictEqual((await db.doc("posts/pf2").get()).get("webFeatured"), true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Removal notices (owner decision 2026-10-29; DSA statement of reasons).
+// ─────────────────────────────────────────────────────────────────────
+describe("removal notices — sendRemovalNotice + delete/moderation hooks", () => {
+  const { sendRemovalNotice, removalPreview, flagReasonToRemovalCode } = __test;
+  const notif = (uid, id) => db.doc(`users/${uid}/notifications/${id}`).get();
+  const seedUser = (uid) => db.doc(`users/${uid}`).set({ handle: `h_${uid}`, createdAt: new Date() });
+  const deleted = (data) => ({ data: { exists: true, data: () => data } });
+
+  it("preview: pii/threat masked, safety omitted, others verbatim (≤80)", () => {
+    assert.strictEqual(removalPreview("pii", "Sarah Johnson broke up with me, text me at 555-123-4567"), "… broke up with me, text me at …");
+    assert.strictEqual(removalPreview("threat", "Mike I will find you"), "… I will find you");
+    assert.strictEqual(removalPreview("safety", "i want to end it tonight"), null);
+    assert.strictEqual(removalPreview("hurtful", "you are all pathetic"), "you are all pathetic");
+    assert.ok(removalPreview("other", "x".repeat(200)).length <= 81);
+  });
+  it("flagReason → notice code mapping", () => {
+    assert.strictEqual(flagReasonToRemovalCode("hate_speech"), "hurtful");
+    assert.strictEqual(flagReasonToRemovalCode("targeted_threat"), "threat");
+    assert.strictEqual(flagReasonToRemovalCode("spam_or_commercial"), "spam");
+    assert.strictEqual(flagReasonToRemovalCode("weird"), "other");
+  });
+  it("admin post removal (report) → notice with statement, person-made-the-call, masked preview", async () => {
+    await seedUser("ra");
+    await fns.auditPostDeletion.run({ id: "rn1", params: { postId: "p1" }, ...deleted({ authorId: "ra", authorHandle: "h_ra", text: "Sarah Johnson broke up with me last week", createdAt: new Date(), deletedBy: "modmin", removalReason: "pii", removalVia: "report" }) });
+    const n = (await notif("ra", "removal_post_p1")).data();
+    assert.ok(n, "notice written");
+    assert.strictEqual(n.type, "removal"); assert.strictEqual(n.reasonCode, "pii"); assert.strictEqual(n.source, "admin"); assert.strictEqual(n.safety, false);
+    assert.match(n.message, /^we removed one of your posts because it included a full name or a contact detail\. you're still welcome here\.$/);
+    assert.ok(!n.preview.includes("Sarah"), "name masked in preview");
+    assert.match(n.statement.how, /someone reported it/); assert.match(n.statement.who, /a person on our team made this call/);
+    assert.match(n.statement.redress, /email salte@saltedevelopments\.com/);
+    assert.strictEqual(n.isRead, false); assert.strictEqual(n.fromUserId, "toska");
+  });
+  it("safety removal → gentle message, no preview, no rules language", async () => {
+    await seedUser("rb");
+    await fns.auditPostDeletion.run({ id: "rn2", params: { postId: "p2" }, ...deleted({ authorId: "rb", text: "i want to end it tonight", createdAt: new Date(), deletedBy: "modmin", removalReason: "safety", removalVia: "review" }) });
+    const n = (await notif("rb", "removal_post_p2")).data();
+    assert.strictEqual(n.safety, true); assert.strictEqual(n.preview, null);
+    assert.match(n.message, /we took one of your posts down for now/); assert.ok(!/guideline|removed one of your posts because/.test(n.message));
+    assert.match(n.statement.how, /our own review/);
+  });
+  it("author self-delete (no deletedBy) → no notice; spam → no notice; author account gone → no notice", async () => {
+    await seedUser("rc");
+    await fns.auditPostDeletion.run({ id: "rn3", params: { postId: "p3" }, ...deleted({ authorId: "rc", text: "x", createdAt: new Date() }) });
+    assert.strictEqual((await notif("rc", "removal_post_p3")).exists, false);
+    await fns.auditPostDeletion.run({ id: "rn4", params: { postId: "p4" }, ...deleted({ authorId: "rc", text: "buy now", createdAt: new Date(), deletedBy: "modmin", removalReason: "spam" }) });
+    assert.strictEqual((await notif("rc", "removal_post_p4")).exists, false);
+    await fns.auditPostDeletion.run({ id: "rn5", params: { postId: "p5" }, ...deleted({ authorId: "ghost", text: "x", createdAt: new Date(), deletedBy: "modmin", removalReason: "other" }) });
+    assert.strictEqual((await notif("ghost", "removal_post_p5")).exists, false);
+  });
+  it("admin reply removal → audit + notice (reply noun)", async () => {
+    await seedUser("rd");
+    await fns.auditReplyDeletion.run({ id: "rn6", params: { postId: "pp", replyId: "r1" }, ...deleted({ authorId: "rd", text: "you are pathetic and everyone knows it", createdAt: new Date(), deletedBy: "modmin", removalReason: "hurtful", removalVia: "report" }) });
+    const n = (await notif("rd", "removal_reply_r1")).data();
+    assert.ok(n); assert.strictEqual(n.targetType, "reply"); assert.match(n.message, /one of your replies because it included language that hurts people/);
+    const audit = (await db.collection("adminAuditLog").where("action", "==", "reply.delete").get()).docs.find((d) => d.get("targetId") === "r1");
+    assert.ok(audit, "reply.delete audit entry");
+  });
+  it("automated hard delete (slur reply) → notice says automated screening", async () => {
+    await seedUser("re");
+    await db.doc("posts/pa").set({ authorId: "x", text: "parent", moderationStatus: "live", createdAt: new Date() });
+    await replyRef("pa", "slur").set({ authorId: "re", text: "you n1gger", createdAt: new Date(), moderationStatus: "pending_validation" });
+    await fns.onReplyCreatedModerate.run({ id: "rn7", data: await snapOf("posts/pa/replies/slur"), params: { postId: "pa", replyId: "slur" } });
+    assert.strictEqual((await replyRef("pa", "slur").get()).exists, false, "reply hard-deleted");
+    const n = (await notif("re", "removal_reply_slur")).data();
+    assert.ok(n, "automated notice written"); assert.strictEqual(n.source, "automated"); assert.strictEqual(n.reasonCode, "hurtful");
+    assert.match(n.statement.who, /automated screening made this call/); assert.match(n.statement.how, /automated screening/);
+  });
+  it("validateReply: reply on a held post → held_parent notice (automated); under-2-char → no notice", async () => {
+    await seedUser("rf");
+    await db.doc("posts/ph2").set({ authorId: "x", text: "parent", moderationStatus: "pending_review", pendingReason: "pii", createdAt: new Date() });
+    await replyRef("ph2", "r").set({ authorId: "rf", text: "kind words", createdAt: new Date() });
+    await fns.validateReply.run({ id: "rn8", data: await snapOf("posts/ph2/replies/r"), params: { postId: "ph2", replyId: "r" } });
+    const n = (await notif("rf", "removal_reply_r")).data();
+    assert.ok(n); assert.strictEqual(n.reasonCode, "held_parent"); assert.match(n.message, /because the post it answered is under review/);
+    await db.doc("posts/pl").set({ authorId: "x", text: "parent", moderationStatus: "live", createdAt: new Date() });
+    await replyRef("pl", "short").set({ authorId: "rf", text: " a ", createdAt: new Date() });
+    await fns.validateReply.run({ id: "rn9", data: await snapOf("posts/pl/replies/short"), params: { postId: "pl", replyId: "short" } });
+    assert.strictEqual((await notif("rf", "removal_reply_short")).exists, false, "nothing meaningful removed → no notice");
+  });
+  it("prune: a removal notice older than the cutoff is pruned like any other", async () => {
+    const old = Timestamp.fromDate(new Date(Date.now() - 100 * 24 * 3600e3));
+    await db.doc("users/rg/notifications/removal_post_old").set({ type: "removal", createdAt: old, isRead: true });
+    await db.doc("users/rg/notifications/removal_post_new").set({ type: "removal", createdAt: Timestamp.now(), isRead: false });
+    await pruneNotificationsOlderThan(Timestamp.fromDate(new Date(Date.now() - 90 * 24 * 3600e3)));
+    assert.strictEqual((await db.doc("users/rg/notifications/removal_post_old").get()).exists, false);
+    assert.strictEqual((await db.doc("users/rg/notifications/removal_post_new").get()).exists, true);
+  });
+});

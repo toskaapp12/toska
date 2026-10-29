@@ -87,7 +87,7 @@ function anonymityDialog() {
 }
 
 // Region-aware crisis lines (mirror of CrisisLines.resources).
-function crisisLines() {
+export function crisisLines() {
     const region = (navigator.language ?? "").split("-")[1]?.toUpperCase() ?? "";
     if (["US", "CA"].includes(region)) return [["988", "call or text 988 — suicide & crisis lifeline"]];
     if (["GB", "IE"].includes(region)) return [["116 123", "call 116 123 — samaritans, free, any time"]];

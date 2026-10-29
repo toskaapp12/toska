@@ -127,7 +127,8 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   badge (display only); wording fixes (hold dialog, store description → owner updates ASC, Terms §5,
   no version bump). See BUGS.md FIRSTNAME. Prod plan: `--only functions:onPostUpdated,publicFeed,
   sharePage,postsSitemap` (75 → 75) + hosting; push publishes terms.html + admin.html.
-- **Removal notices (2026-10-29) — STAGING verified 14/14, PROD pending owner go:** authors get an
+- **Removal notices (2026-10-29) — PROD (functions 75 → 76, hosting, pages published; prod check
+  5/5); staging 14/14:** authors get an
   in-app `type: "removal"` notification (statement of reasons, DSA Art. 17) on admin removals (new
   dashboard reason picker + stamps; new `auditReplyDeletion`) and automated hard deletes (slurs,
   too-long, reply-on-held-post); spam / deleted accounts / self-deletes silent; pii/threat previews

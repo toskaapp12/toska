@@ -119,7 +119,8 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   body). **Owner hand-test on device:** re-acceptance cover appears once (v4.0 label), reply repost
   works, own held post opens with banner and no reply bar, liked/saved tabs load, white own-post card.
   Not yet in 103: liked/saved "load more" pagination (still a follow-up).
-- **First-name decision (2026-10-29) — STAGING verified 12/12, PROD pending owner go:** bare first names
+- **First-name decision (2026-10-29) — PROD (functions 75 → 75, hosting, pages published; featured
+  check 11/11 kept + indexable + in sitemap); staging 12/12:** bare first names
   stay allowed; soft compose nudge (web live on staging; iOS in build 104); `likelyFirstName` shared
   detector pinned by parity (116/116); featuring exclusion server-side (onPostUpdated strip +
   publicFeed / sitemap / share-page noindex; prod dry run 11 featured, 0 drop); admin "possible name"

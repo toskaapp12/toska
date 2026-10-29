@@ -1316,3 +1316,44 @@ describe("removal notices — sendRemovalNotice + delete/moderation hooks", () =
     assert.strictEqual((await db.doc("users/rg/notifications/removal_post_new").get()).exists, true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// A4 (2026-10-27 audit): deletion residue — no audit rows for non-admin
+// deletes; others' liked/saved reply snapshots removed on reply deletion and
+// on account deletion.
+// ─────────────────────────────────────────────────────────────────────
+describe("A4 deletion residue", () => {
+  const { cleanupReplySnapshotsForUid } = __test;
+  const deleted = (data) => ({ data: { exists: true, data: () => data } });
+  const auditRows = async (targetId) => (await db.collection("adminAuditLog").where("action", "==", "post.delete").get()).docs.filter((d) => d.get("targetId") === targetId);
+  it("auditPostDeletion: no row for an author self-delete / expiry / cascade (no deletedBy)", async () => {
+    await fns.auditPostDeletion.run({ id: "a4-1", params: { postId: "selfdel" }, ...deleted({ authorId: "u", authorHandle: "h_u", text: "x", moderationStatus: "live" }) });
+    assert.strictEqual((await auditRows("selfdel")).length, 0);
+  });
+  it("auditPostDeletion: a row for an admin removal (deletedBy stamped)", async () => {
+    await db.doc("users/u2").set({ handle: "h_u2" });
+    await fns.auditPostDeletion.run({ id: "a4-2", params: { postId: "admdel" }, ...deleted({ authorId: "u2", authorHandle: "h_u2", text: "x", deletedBy: "modmin", removalReason: "other" }) });
+    assert.strictEqual((await auditRows("admdel")).length, 1);
+  });
+  it("onReplyDeletedScrubSnapshots removes other users' liked/saved snapshots of that reply only", async () => {
+    await db.doc("users/c/likedReplies/r1").set({ postId: "p", replyText: "gone", replyHandle: "h_a", authorId: "a", createdAt: new Date() });
+    await db.doc("users/c/savedReplies/r1").set({ postId: "p", replyText: "gone", replyHandle: "h_a", authorId: "a", createdAt: new Date() });
+    await db.doc("users/c/likedReplies/r2").set({ postId: "p", replyText: "stays", replyHandle: "h_a", authorId: "a", createdAt: new Date() });
+    await db.doc("users/d/savedReplies/r1").set({ postId: "other", replyText: "different post", replyHandle: "h_z", createdAt: new Date() });
+    await fns.onReplyDeletedScrubSnapshots.run({ id: "a4-3", params: { postId: "p", replyId: "r1" }, ...deleted({ authorId: "a", text: "gone" }) });
+    assert.strictEqual((await db.doc("users/c/likedReplies/r1").get()).exists, false);
+    assert.strictEqual((await db.doc("users/c/savedReplies/r1").get()).exists, false);
+    assert.strictEqual((await db.doc("users/c/likedReplies/r2").get()).exists, true, "other reply untouched");
+    assert.strictEqual((await db.doc("users/d/savedReplies/r1").get()).exists, true, "same id under a different post untouched");
+  });
+  it("cleanupReplySnapshotsForUid removes every snapshot authored by uid across users, leaves others", async () => {
+    await db.doc("users/c/likedReplies/x1").set({ postId: "p1", replyText: "t", replyHandle: "h", authorId: "gone", createdAt: new Date() });
+    await db.doc("users/d/savedReplies/x2").set({ postId: "p2", replyText: "t", replyHandle: "h", authorId: "gone", createdAt: new Date() });
+    await db.doc("users/d/savedReplies/x3").set({ postId: "p3", replyText: "t", replyHandle: "h", authorId: "stays", createdAt: new Date() });
+    const r = await cleanupReplySnapshotsForUid("gone", 10);
+    assert.strictEqual(r.totalDeleted, 2); assert.strictEqual(r.capHit, false);
+    assert.strictEqual((await db.doc("users/c/likedReplies/x1").get()).exists, false);
+    assert.strictEqual((await db.doc("users/d/savedReplies/x2").get()).exists, false);
+    assert.strictEqual((await db.doc("users/d/savedReplies/x3").get()).exists, true);
+  });
+});

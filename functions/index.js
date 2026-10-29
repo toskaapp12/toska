@@ -402,6 +402,21 @@ async function cleanupBlockedByForUid(uid, maxIterations) {
 // bounded set of point-deletes rather than a query (the collection has no
 // uid field to query on). `report_target` is included because a deleted user
 // can be the TARGET of that bucket, not just its caller.
+// A4 (2026-10-29 audit): other users' liked/saved REPLY snapshots carry the
+// reply author's text, handle and uid (MED-P3-1 stamps authorId). Remove them
+// when the author's account is deleted. Collection-group single-field indexes
+// on authorId (firestore.indexes.json).
+async function cleanupReplySnapshotsForUid(uid, maxIterations) {
+  let totalDeleted = 0, capHit = false;
+  for (const sub of ["likedReplies", "savedReplies"]) {
+    const r = await paginatedBatchDelete((pageSize) => db.collectionGroup(sub)
+      .where("authorId", "==", uid)
+      .limit(pageSize), maxIterations);
+    totalDeleted += r.totalDeleted; capHit = capHit || r.capHit;
+  }
+  return { totalDeleted, capHit };
+}
+
 async function cleanupRateLimitsForUid(uid) {
   let totalDeleted = 0;
   for (const endpoint of RATE_LIMIT_ALLOWED_ENDPOINTS) {
@@ -1108,6 +1123,7 @@ exports.onUserDocDeleted = onDocumentDeleted("users/{userId}", async (event) => 
     await runWithResume(uid, "convos", cleanupUserConversationsForUid, "DM conversations");
     await runWithResume(uid, "notifications", cleanupNotificationsForUid, "orphaned notifications");
     await runWithResume(uid, "replies", cleanupRepliesForUid, "cross-user replies");
+    await runWithResume(uid, "replySnapshots", cleanupReplySnapshotsForUid, "others' liked/saved snapshots of uid's replies"); // A4
     await runWithResume(uid, "reposts", cleanupRepostsForUid, "third-party reposts");
     await runWithResume(uid, "reflections", cleanupReflectionsForUid, "cross-user reflections");
     await runWithResume(uid, "circleMessages", cleanupCircleMessagesForUid, "feeling-circle messages");
@@ -1677,6 +1693,28 @@ exports.onReplyDeletedUpdateCount = onDocumentDeleted(
 // on the post (no-op when none is left — the notification keeps its generic
 // "replied to your words" line). Idempotent under retry (scrub/backfill are
 // both no-ops on re-run).
+// A4 (2026-10-29 audit): when a reply is deleted (author, admin, moderation),
+// other users' liked/saved snapshots of it (text + handle + uid) go too.
+// Snapshot docs are keyed by replyId and carry postId, so one collection-group
+// query per subcollection finds them (CG index on postId).
+exports.onReplyDeletedScrubSnapshots = onDocumentDeleted(
+  { document: "posts/{postId}/replies/{replyId}", retry: true },
+  async (event) => {
+    const { postId, replyId } = event.params;
+    let n = 0;
+    for (const sub of ["likedReplies", "savedReplies"]) {
+      const snap = await db.collectionGroup(sub).where("postId", "==", postId).limit(500).get();
+      const hits = snap.docs.filter((d) => d.id === replyId);
+      if (!hits.length) continue;
+      const batch = db.batch();
+      for (const d of hits) batch.delete(d.ref);
+      await batch.commit();
+      n += hits.length;
+    }
+    if (n) console.log(`onReplyDeletedScrubSnapshots(${replyId}): removed ${n} liked/saved snapshot(s)`);
+  }
+);
+
 exports.onReplyDeletedScrubNotifPreview = onDocumentDeleted(
   { document: "posts/{postId}/replies/{replyId}", retry: true },
   async (event) => {
@@ -5311,8 +5349,8 @@ exports.publicFeed = onRequest(
       return;
     }
     try {
-      if (publicFeedMemo.body && Date.now() - publicFeedMemo.at < 600e3) {
-        res.set("Cache-Control", "public, max-age=600, s-maxage=600");
+      if (publicFeedMemo.body && Date.now() - publicFeedMemo.at < 120e3) { // A3 (2026-10-29): 2-min memo so sharing-off clears within minutes
+        res.set("Cache-Control", "public, max-age=120, s-maxage=120"); // A3
         res.json(publicFeedMemo.body);
         return;
       }
@@ -5370,7 +5408,7 @@ exports.publicFeed = onRequest(
         if (posts.length >= 12) break;
       }
       publicFeedMemo = { at: Date.now(), body: { posts } };
-      res.set("Cache-Control", "public, max-age=600, s-maxage=600");
+      res.set("Cache-Control", "public, max-age=120, s-maxage=120"); // A3
       res.json({ posts });
     } catch (err) {
       console.error("publicFeed:", err);
@@ -5405,7 +5443,7 @@ exports.sharePage = onRequest(async (req, res) => {
   res.set("Content-Security-Policy",
     "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'");
   const notFound = () => {
-    res.set("Cache-Control", "public, max-age=60, s-maxage=300");
+    res.set("Cache-Control", "public, max-age=60, s-maxage=120"); // A3
     res.status(404).send(share.renderNotFoundHtml());
   };
   try {
@@ -5429,7 +5467,7 @@ exports.sharePage = onRequest(async (req, res) => {
     }
     const repostTarget = share.repostShapeTarget(postId);
     if (repostTarget) {
-      res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+      res.set("Cache-Control", "public, max-age=60, s-maxage=120"); // A3
       res.redirect(301, `/p/${repostTarget}`);
       return;
     }
@@ -5441,7 +5479,7 @@ exports.sharePage = onRequest(async (req, res) => {
       // deterministic shape (shouldn't exist; rules pin the id format).
       // The repost→original edge never changes; if the original is (or later
       // becomes) unshareable, the target itself 404s.
-      res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+      res.set("Cache-Control", "public, max-age=60, s-maxage=120"); // A3
       res.redirect(301, `/p/${verdict.to}`);
       return;
     }
@@ -5452,7 +5490,7 @@ exports.sharePage = onRequest(async (req, res) => {
     const post = snap.data();
     // Takedown latency bound: a post moderated/unshared after caching stays
     // visible at most s-maxage (10 min) on the CDN edge.
-    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.set("Cache-Control", "public, max-age=60, s-maxage=120"); // A3
     res.status(200).send(share.renderPostHtml(postId, post, {
       indexable: verdict.indexable,
       createdAtMs: post.createdAt?.toMillis?.(),
@@ -5476,7 +5514,7 @@ exports.shareCardImage = onRequest({ memory: "512MiB" }, async (req, res) => {
   }
   res.set("X-Content-Type-Options", "nosniff");
   const notFound = () => {
-    res.set("Cache-Control", "public, max-age=60, s-maxage=300");
+    res.set("Cache-Control", "public, max-age=60, s-maxage=120"); // A3
     res.status(404).send("not found");
   };
   try {
@@ -5510,7 +5548,7 @@ exports.shareCardImage = onRequest({ memory: "512MiB" }, async (req, res) => {
       likeCount: typeof post.likeCount === "number" ? post.likeCount : 0,
     });
     res.set("Content-Type", "image/png");
-    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.set("Cache-Control", "public, max-age=60, s-maxage=120"); // A3
     res.status(200).send(png);
   } catch (err) {
     console.error("shareCardImage:", err);
@@ -5553,7 +5591,7 @@ exports.postsSitemap = onRequest(async (req, res) => {
       }
     }
     res.set("Content-Type", "application/xml; charset=utf-8");
-    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    res.set("Cache-Control", "public, max-age=300, s-maxage=300"); // A3: sitemap 5 min
     res.status(200).send(share.renderSitemapXml(entries));
   } catch (err) {
     console.error("postsSitemap:", err);
@@ -6340,9 +6378,13 @@ exports.auditPostDeletion = onDocumentDeleted(
   { document: "posts/{postId}", retry: true },
   async (event) => {
     const data = event.data?.data() || {};
+    // A4 (2026-10-29 audit): the admin action log is an ACCOUNTABILITY record.
+    // Author self-deletes, whisper/midnight expiry and the account-deletion
+    // cascade carry no dashboard stamp and must leave no row naming the user.
+    if (!data.deletedBy) return;
     await writeAuditEntry({
       action: "post.delete",
-      adminUid: data.deletedBy || "author",
+      adminUid: data.deletedBy,
       targetType: "post",
       targetId: event.params.postId,
       targetHandle: data.authorHandle || null,
@@ -6697,6 +6739,8 @@ Object.defineProperty(module.exports, "__test", {
   FieldValue,
   Timestamp,
   pruneNotificationsOlderThan,
+  // A4 (2026-10-29)
+  cleanupReplySnapshotsForUid,
   // removal notices (2026-10-29)
   sendRemovalNotice,
   removalPreview,

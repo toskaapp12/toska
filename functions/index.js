@@ -2605,6 +2605,14 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // delete here ends up net-zero on the original's repostCount regardless
   // of which trigger lands first.
   if (postData.isRepost === true) {
+    // 2026-10-30 follow-up (#9): no reposts in an account's first hour — a fresh sockpuppet ring's
+    // cheapest amplifier. Deleted silently (not a moderation action, no notice); the client's
+    // listener drops the optimistic copy.
+    if (await accountYoungerThan(postData.authorId, NEW_ACCOUNT_LIMITS.repostLockoutMs)) {
+      console.warn(`Deleting repost ${postId} — account younger than 1 h`);
+      await db.collection("posts").doc(postId).delete();
+      return;
+    }
     // Reply-repost path: when originalReplyId is set, this post is a
     // repost of a REPLY, not of a top-level post. The rule layer (firestore.
     // rules) defers full text/authorId validation to this function for
@@ -3117,20 +3125,64 @@ exports.validateReply = onDocumentCreated(
 const BURST_WINDOW_MS = 5 * 60 * 1000;
 const BURST_FREE_POSTS = 5; // posts allowed per window; the next one is held
 
+// 2026-10-30 bad-actor audit follow-up (#9, owner-approved): accounts younger than 24 h get tighter
+// limits — 3 posts / 5 min (vs 5), 5 replies / 5 min (vs 10), 10 notifications / 5 min (vs 20),
+// 3 reports / h (vs 5 under 7 days, 20 established), and no reposts in the first hour. "Younger
+// than" needs a readable users/{uid}.createdAt; a missing doc or field keeps the established limits
+// for posting (every real account has one; test fixtures often don't) — reports stay strict.
+const NEW_ACCOUNT_LIMIT_AGE_MS = 24 * 60 * 60 * 1000;
+const NEW_ACCOUNT_LIMITS = { posts: 3, replies: 5, notifications: 10, reportsPerHour: 3, repostLockoutMs: 60 * 60 * 1000 };
+const ESTABLISHED_LIMITS = { replies: 10, notifications: 20 };
+async function accountAgeMs(uid) {
+  if (typeof uid !== "string" || !uid) return null;
+  try {
+    const snap = await db.collection("users").doc(uid).get();
+    const created = snap.exists ? snap.get("createdAt")?.toMillis?.() : null;
+    return typeof created === "number" ? Date.now() - created : null;
+  } catch (err) {
+    console.warn(`account age read failed for limiter (treating as established): ${err.message}`);
+    return null;
+  }
+}
+async function accountYoungerThan(uid, ms) { const age = await accountAgeMs(uid); return typeof age === "number" && age < ms; }
+
+// Deterministic limiter ordering (owner-approved 2026-10-30): a burst that arrives in the same
+// second used to delete whichever docs' triggers happened to run after the count crossed the cap, so
+// a genuine report could be the one dropped. Now every trigger counts only the docs that sort
+// strictly BEFORE its own by (createdAt, path) inside the window, and deletes its own doc only when
+// that count already reaches the cap — the earliest `cap` docs always survive, the latest are dropped,
+// whatever order the triggers run in.
+async function countEarlierInWindow(baseQuery, ownMs, ownPath, cap) {
+  const snap = await baseQuery
+    .where("createdAt", "<=", Timestamp.fromMillis(ownMs))
+    .orderBy("createdAt", "desc")
+    .limit(cap + 10)
+    .get();
+  let n = 0;
+  snap.forEach((d) => {
+    if (d.ref.path === ownPath) return;
+    const ms = d.get("createdAt")?.toMillis?.();
+    if (typeof ms !== "number") return;
+    if (ms < ownMs || (ms === ownMs && d.ref.path < ownPath)) n++;
+  });
+  return n;
+}
+
 async function applyPostRateLimit(postId, postData, now = Date.now()) {
   const authorId = postData && postData.authorId;
   if (!authorId) return "skip";
   const own = postData.createdAt;
   const ownMs = own && typeof own.toMillis === "function" ? own.toMillis() : now;
   const windowStart = Timestamp.fromMillis(Math.max(0, ownMs - BURST_WINDOW_MS));
+  const freePosts = (await accountYoungerThan(authorId, NEW_ACCOUNT_LIMIT_AGE_MS)) ? NEW_ACCOUNT_LIMITS.posts : BURST_FREE_POSTS;
   const earlier = await db.collection("posts")
     .where("authorId", "==", authorId)
     .where("createdAt", ">", windowStart)
     .where("createdAt", "<", Timestamp.fromMillis(ownMs))
     .orderBy("createdAt", "desc")
-    .limit(BURST_FREE_POSTS)
+    .limit(freePosts)
     .get();
-  if (earlier.size < BURST_FREE_POSTS) return "ok";
+  if (earlier.size < freePosts) return "ok";
 
   // LOG-01: no uid↔postId pairing in logs — the post doc itself carries
   // authorId for admin triage; the log only needs the actioned doc.
@@ -4053,15 +4105,14 @@ exports.rateLimitReplies = onDocumentCreated(
     const authorId = replyData.authorId;
     if (!authorId) return;
 
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const recentSnap = await db.collectionGroup("replies")
-      .where("authorId", "==", authorId)
-      .where("createdAt", ">", Timestamp.fromDate(fiveMinAgo))
-      .orderBy("createdAt", "desc")
-      .limit(15)
-      .get();
+    const ownMs = replyData.createdAt?.toMillis?.() ?? Date.now();
+    const since = Timestamp.fromMillis(ownMs - 5 * 60 * 1000);
+    const cap = (await accountYoungerThan(authorId, NEW_ACCOUNT_LIMIT_AGE_MS)) ? NEW_ACCOUNT_LIMITS.replies : ESTABLISHED_LIMITS.replies;
+    const earlier = await countEarlierInWindow(
+      db.collectionGroup("replies").where("authorId", "==", authorId).where("createdAt", ">", since),
+      ownMs, `posts/${postId}/replies/${replyId}`, cap);
 
-    if (recentSnap.size > 10) {
+    if (earlier >= cap) {
       console.log("Reply rate limit exceeded for user:", authorId);
       // Counter decrement handled by onReplyDeletedUpdateCount.
       await db.collection("posts").doc(postId).collection("replies").doc(replyId).delete();
@@ -4441,15 +4492,14 @@ exports.rateLimitNotifications = onDocumentCreated(
     const fromUserId = notifData.fromUserId;
     if (!fromUserId) return;
 
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const recentSnap = await db.collectionGroup("notifications")
-      .where("fromUserId", "==", fromUserId)
-      .where("createdAt", ">", Timestamp.fromDate(fiveMinAgo))
-      .orderBy("createdAt", "desc")
-      .limit(25)
-      .get();
+    const ownMs = notifData.createdAt?.toMillis?.() ?? Date.now();
+    const since = Timestamp.fromMillis(ownMs - 5 * 60 * 1000);
+    const cap = (await accountYoungerThan(fromUserId, NEW_ACCOUNT_LIMIT_AGE_MS)) ? NEW_ACCOUNT_LIMITS.notifications : ESTABLISHED_LIMITS.notifications;
+    const earlier = await countEarlierInWindow(
+      db.collectionGroup("notifications").where("fromUserId", "==", fromUserId).where("createdAt", ">", since),
+      ownMs, `users/${userId}/notifications/${notifId}`, cap);
 
-    if (recentSnap.size > 20) {
+    if (earlier >= cap) {
       console.log("Notification rate limit exceeded for sender:", fromUserId);
       await db.collection("users").doc(userId).collection("notifications").doc(notifId).delete();
       console.log("Spam notification deleted:", notifId);
@@ -4590,8 +4640,11 @@ async function reporterCapFor(uid) {
   try {
     const snap = await db.collection("users").doc(uid).get();
     const created = snap.exists ? snap.get("createdAt")?.toMillis?.() : null;
-    if (typeof created === "number" && Date.now() - created >= REPORT_NEW_ACCOUNT_AGE_MS) return REPORT_CAP_ESTABLISHED;
-    return REPORT_CAP_NEW_ACCOUNT;
+    if (typeof created !== "number") return REPORT_CAP_NEW_ACCOUNT;
+    const age = Date.now() - created;
+    if (age < NEW_ACCOUNT_LIMIT_AGE_MS) return NEW_ACCOUNT_LIMITS.reportsPerHour; // < 24 h → 3/h
+    if (age < REPORT_NEW_ACCOUNT_AGE_MS) return REPORT_CAP_NEW_ACCOUNT;          // < 7 d → 5/h
+    return REPORT_CAP_ESTABLISHED;
   } catch (err) {
     console.warn(`reporter age read failed, using the established cap: ${err.message}`);
     return REPORT_CAP_ESTABLISHED;
@@ -4607,36 +4660,32 @@ exports.rateLimitReports = onDocumentCreated(
     if (!reportedBy) return;
     if (reportedBy.startsWith("system_")) return; // automated reports (handle screen) are not rate-limited
 
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const since = Timestamp.fromDate(oneHourAgo);
+    const ownMs = reportData.createdAt?.toMillis?.() ?? Date.now();
+    const since = Timestamp.fromMillis(ownMs - 60 * 60 * 1000);
+    const ownPath = `reports/${event.params.reportId}`;
 
-    // Tier 1: per-reporter cap. 2026-10-30 bad-actor audit (#5): accounts younger than 7 days (or
-    // with no readable createdAt) get 5/h instead of 20/h — a fresh sockpuppet can no longer file
-    // 20 reports an hour into the admin queue.
+    // Tier 1: per-reporter cap. 2026-10-30 bad-actor audit (#5 + follow-up): 3/h under 24 h, 5/h
+    // under 7 days (or with no readable createdAt), 20/h established. Deterministic by createdAt —
+    // the earliest reports in the window always survive (see countEarlierInWindow).
     const perReporterCap = await reporterCapFor(reportedBy);
-    const recentSnap = await db.collection("reports")
-      .where("reportedBy", "==", reportedBy)
-      .where("createdAt", ">", since)
-      .orderBy("createdAt", "desc")
-      .limit(25)
-      .get();
-    if (recentSnap.size > perReporterCap) {
+    const earlierByReporter = await countEarlierInWindow(
+      db.collection("reports").where("reportedBy", "==", reportedBy).where("createdAt", ">", since),
+      ownMs, ownPath, perReporterCap);
+    if (earlierByReporter >= perReporterCap) {
       console.log("Report rate limit exceeded for reporter:", reportedBy);
       await db.collection("reports").doc(event.params.reportId).delete();
       return;
     }
 
-    // Tier 2: per-target cap. Skip when reportedUserId is absent (older
+    // Tier 2: per-target cap (10/h). Skip when reportedUserId is absent (older
     // clients, edge cases) — the per-reporter cap still applies.
     const reportedUserId = reportData.reportedUserId;
     if (!reportedUserId) return;
-    const recentByTargetSnap = await db.collection("reports")
-      .where("reportedUserId", "==", reportedUserId)
-      .where("createdAt", ">", since)
-      .orderBy("createdAt", "desc")
-      .limit(15)
-      .get();
-    if (recentByTargetSnap.size > 10) {
+    const PER_TARGET_CAP = 10;
+    const earlierByTarget = await countEarlierInWindow(
+      db.collection("reports").where("reportedUserId", "==", reportedUserId).where("createdAt", ">", since),
+      ownMs, ownPath, PER_TARGET_CAP);
+    if (earlierByTarget >= PER_TARGET_CAP) {
       // LOG-01: reporter uid dropped — pairing reporter↔target in logs
       // outlives its use; the deleted report carried it for the moment it mattered.
       console.log("Report rate limit exceeded for target:", reportedUserId);
@@ -6958,6 +7007,9 @@ Object.defineProperty(module.exports, "__test", {
   FieldValue,
   Timestamp,
   // bad-actor audit fixes (2026-10-30)
+  accountYoungerThan,
+  countEarlierInWindow,
+  NEW_ACCOUNT_LIMITS,
   crisisPageThrottled,
   stampCrisisPage,
   reporterCountsTowardAutoHide,

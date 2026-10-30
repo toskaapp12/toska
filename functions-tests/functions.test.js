@@ -1579,3 +1579,87 @@ describe("bad-actor audit 2026-10-30 — server fixes", () => {
     });
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bad-actor audit follow-ups (owner 2026-10-30): new-account limits + deterministic limiter ordering
+// ─────────────────────────────────────────────────────────────────────
+describe("follow-up: new-account limits + deterministic limiter ordering", () => {
+  const { accountYoungerThan, countEarlierInWindow, NEW_ACCOUNT_LIMITS, reporterCapFor, applyPostRateLimit } = __test;
+  const hoursAgo = (h) => Timestamp.fromMillis(Date.now() - h * 3600e3);
+  const mkUser = (uid, ageHours) => db.doc(`users/${uid}`).set({ handle: `h_${uid}`, createdAt: hoursAgo(ageHours) });
+  const BASE = Date.now() - 60_000;
+  const scrambled = (n) => { const a = [...Array(n).keys()]; for (let i = a.length - 1; i > 0; i--) { const j = (i * 7919 + 13) % (i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  it("accountYoungerThan reads createdAt; missing doc/field is NOT young (posting limits fail open)", async () => {
+    await mkUser("fresh", 1); await mkUser("vet", 48);
+    assert.strictEqual(await accountYoungerThan("fresh", 24 * 3600e3), true);
+    assert.strictEqual(await accountYoungerThan("vet", 24 * 3600e3), false);
+    assert.strictEqual(await accountYoungerThan("ghost", 24 * 3600e3), false);
+  });
+  it("reporterCapFor: 3/h under 24 h, 5/h under 7 d or unreadable, 20/h established", async () => {
+    await mkUser("fresh", 1); await mkUser("week", 72); await mkUser("vet", 24 * 30);
+    assert.strictEqual(await reporterCapFor("fresh"), 3); assert.strictEqual(await reporterCapFor("week"), 5);
+    assert.strictEqual(await reporterCapFor("vet"), 20); assert.strictEqual(await reporterCapFor("ghost"), 5);
+  });
+  it("posts: a new account's 4th post in 5 min is held; an established account's 4th is fine", async () => {
+    await mkUser("fresh", 1); await mkUser("vet", 48);
+    const mk = async (uid, i) => { const createdAt = Timestamp.fromMillis(BASE + i * 1000); await db.doc(`posts/${uid}_${i}`).set({ authorId: uid, authorHandle: "h", text: "t", createdAt, likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, moderationStatus: "live" }); return { id: `${uid}_${i}`, data: { authorId: uid, createdAt } }; };
+    const f = []; for (let i = 0; i < 4; i++) f.push(await mk("fresh", i));
+    const v = []; for (let i = 0; i < 4; i++) v.push(await mk("vet", i));
+    assert.strictEqual(await applyPostRateLimit(f[3].id, f[3].data), "held");
+    assert.strictEqual(await applyPostRateLimit(f[2].id, f[2].data), "ok");
+    assert.strictEqual(await applyPostRateLimit(v[3].id, v[3].data), "ok");
+  });
+  it("reports: 7 from a 3-day-old account (cap 5) in scrambled trigger order → exactly the 2 LATEST are deleted", async () => {
+    await mkUser("week", 72);
+    for (let i = 0; i < 7; i++) await db.doc(`reports/w${i}`).set({ reportedBy: "week", reason: "other", type: "user", status: "pending", createdAt: Timestamp.fromMillis(BASE + i * 1000), reportedUserId: `t${i}` });
+    for (const i of scrambled(7)) await fns.rateLimitReports.run({ id: `e${i}`, data: await snapOf(`reports/w${i}`), params: { reportId: `w${i}` } });
+    const alive = []; for (let i = 0; i < 7; i++) alive.push((await db.doc(`reports/w${i}`).get()).exists);
+    assert.deepStrictEqual(alive, [true, true, true, true, true, false, false]);
+  });
+  it("reports: same-millisecond burst still resolves deterministically (path tie-break)", async () => {
+    await mkUser("fresh", 1); // cap 3
+    const t = Timestamp.fromMillis(BASE);
+    for (const id of ["a", "b", "c", "d", "e"]) await db.doc(`reports/${id}`).set({ reportedBy: "fresh", reason: "other", type: "user", status: "pending", createdAt: t, reportedUserId: `t_${id}` });
+    for (const id of ["e", "b", "d", "a", "c"]) await fns.rateLimitReports.run({ id: `e_${id}`, data: await snapOf(`reports/${id}`), params: { reportId: id } });
+    const alive = {}; for (const id of ["a", "b", "c", "d", "e"]) alive[id] = (await db.doc(`reports/${id}`).get()).exists;
+    assert.deepStrictEqual(alive, { a: true, b: true, c: true, d: false, e: false });
+  });
+  it("reports: per-target cap keeps the 10 earliest against a target", async () => {
+    for (let i = 0; i < 12; i++) { await mkUser(`r${i}`, 24 * 30); await db.doc(`reports/t${i}`).set({ reportedBy: `r${i}`, reason: "other", type: "user", status: "pending", createdAt: Timestamp.fromMillis(BASE + i * 1000), reportedUserId: "victim" }); }
+    for (const i of scrambled(12)) await fns.rateLimitReports.run({ id: `e${i}`, data: await snapOf(`reports/t${i}`), params: { reportId: `t${i}` } });
+    const alive = []; for (let i = 0; i < 12; i++) alive.push((await db.doc(`reports/t${i}`).get()).exists);
+    assert.deepStrictEqual(alive, [...Array(10).fill(true), false, false]);
+  });
+  it("replies: new account cap 5, established 10, latest dropped in scrambled order", async () => {
+    await mkUser("fresh", 1); await mkUser("vet", 48);
+    await db.doc("posts/host").set({ authorId: "host", authorHandle: "h", text: "host", createdAt: Timestamp.now(), moderationStatus: "live" });
+    const mk = async (uid, i) => db.doc(`posts/host/replies/${uid}_${i}`).set({ authorId: uid, authorHandle: "h", text: `r${i}`, createdAt: Timestamp.fromMillis(BASE + i * 1000), moderationStatus: "live" });
+    for (let i = 0; i < 7; i++) await mk("fresh", i);
+    for (let i = 0; i < 12; i++) await mk("vet", i);
+    for (const i of scrambled(7)) await fns.rateLimitReplies.run({ id: `f${i}`, data: await snapOf(`posts/host/replies/fresh_${i}`), params: { postId: "host", replyId: `fresh_${i}` } });
+    for (const i of scrambled(12)) await fns.rateLimitReplies.run({ id: `v${i}`, data: await snapOf(`posts/host/replies/vet_${i}`), params: { postId: "host", replyId: `vet_${i}` } });
+    const f = []; for (let i = 0; i < 7; i++) f.push((await db.doc(`posts/host/replies/fresh_${i}`).get()).exists);
+    const v = []; for (let i = 0; i < 12; i++) v.push((await db.doc(`posts/host/replies/vet_${i}`).get()).exists);
+    assert.deepStrictEqual(f, [true, true, true, true, true, false, false]);
+    assert.deepStrictEqual(v, [...Array(10).fill(true), false, false]);
+  });
+  it("notifications: new account cap 10 (12 sent → the 2 latest deleted)", async () => {
+    await mkUser("fresh", 1);
+    for (let i = 0; i < 12; i++) await db.doc(`users/victim/notifications/n${i}`).set({ type: "like", fromUserId: "fresh", fromHandle: "h", postId: `p${i}`, isRead: false, createdAt: Timestamp.fromMillis(BASE + i * 1000) });
+    for (const i of scrambled(12)) await fns.rateLimitNotifications.run({ id: `n${i}`, data: await snapOf(`users/victim/notifications/n${i}`), params: { userId: "victim", notifId: `n${i}` } });
+    const alive = []; for (let i = 0; i < 12; i++) alive.push((await db.doc(`users/victim/notifications/n${i}`).get()).exists);
+    assert.deepStrictEqual(alive, [...Array(10).fill(true), false, false]);
+  });
+  it("reposts: deleted in the account's first hour, kept after", async () => {
+    await mkUser("fresh", 0.2); await mkUser("vet", 3); await db.doc("users/fresh/private/data").set({ confirmedAdult: true }); await db.doc("users/vet/private/data").set({ confirmedAdult: true });
+    await db.doc("posts/orig").set({ authorId: "orig", authorHandle: "o", text: "original words", createdAt: Timestamp.now(), likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, moderationStatus: "live", isShareable: false });
+    const repost = (uid) => ({ authorId: uid, authorHandle: "h", text: "original words", originalPostId: "orig", originalAuthorId: "orig", isRepost: true, createdAt: Timestamp.now(), likeCount: 0, repostCount: 0, replyCount: 0, isShareable: false, moderationStatus: "pending_validation" });
+    await db.doc("posts/fresh_repost_orig").set(repost("fresh")); await db.doc("posts/vet_repost_orig").set(repost("vet"));
+    await fns.validatePost.run({ id: "rp1", data: await snapOf("posts/fresh_repost_orig"), params: { postId: "fresh_repost_orig" } });
+    await fns.validatePost.run({ id: "rp2", data: await snapOf("posts/vet_repost_orig"), params: { postId: "vet_repost_orig" } });
+    assert.strictEqual((await db.doc("posts/fresh_repost_orig").get()).exists, false);
+    assert.strictEqual((await db.doc("posts/vet_repost_orig").get()).exists, true);
+  });
+});

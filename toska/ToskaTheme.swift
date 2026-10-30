@@ -1337,6 +1337,9 @@ struct PolicyAcceptanceView: View {
                     Text("terms and content policy")
                         .font(ToskaFont.serifItalic(22))
                         .foregroundColor(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                        .multilineTextAlignment(.center)
                     Text(currentPolicyLabel)
                         .font(ToskaFont.sans(11))
                         .foregroundColor(.white.opacity(0.3))
@@ -1392,6 +1395,7 @@ struct PolicyAcceptanceView: View {
                                     .foregroundColor(.white.opacity(0.7))
                                     .multilineTextAlignment(.leading)
                                     .lineSpacing(2)
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Spacer()
                             }
                         }
@@ -1403,6 +1407,8 @@ struct PolicyAcceptanceView: View {
                             Text("i agree and continue")
                                 .font(ToskaFont.sans(13, weight: .medium))
                                 .foregroundColor(agreed ? Color.toskaNearBlack : .white.opacity(0.3))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.8)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(agreed ? Color.white : Color.white.opacity(0.08))
@@ -1422,6 +1428,10 @@ struct PolicyAcceptanceView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
+            // Launch review 2026-10-30: this view is presented as a fullScreenCover, outside the root
+            // view's Dynamic Type cap, so it re-applies the same cap (a3) — at larger settings the title,
+            // checkbox label and button truncated with ellipses on an iPhone SE.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
         }
     }
 }

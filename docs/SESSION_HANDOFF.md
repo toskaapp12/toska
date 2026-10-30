@@ -205,6 +205,21 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   mirror (#1/#6) + generator-shaped fallback handle. **Owner hand-test on 108:** compose
   "sarah johnson broke up with me" → hold dialog; "summer rain on the window" → posts;
   "quiet_ghost_12 lied" → hold dialog.
+- **PROD 2026-10-30 ~19:00 UTC — bad-actor fixes shipped (owner go):** rules `1ef1570c…` byte-identical,
+  25 functions via `--only --force` (77 → 78, `onReportCreatedSnapshot` added, nothing removed), hosting
+  (served vendor detector has the new rules), push (Pages republished admin.html), no function errors,
+  watchdog heartbeat nominal; prod Auth sign-up quota **20 per IP per hour** (owner: carriers/campuses
+  share IPs). **~19:47 UTC follow-up:** `rateLimitPosts, rateLimitReplies, rateLimitNotifications,
+  rateLimitReports, validatePost` (78 → 78) — new-account limits + deterministic limiter ordering
+  (BUGS.md BADACTOR-2026-10-30 "Follow-ups"), staging 5/5 first, commit 7c55947 pushed.
+- **Launch-readiness review (2026-10-30, read-only):** `LAUNCH_READINESS_2026-10-30.md` (scorecard) +
+  `DRAFT_INCIDENT_RESPONSE_PLAN.md` + `DRAFT_CHILD_SAFETY_PROCESS.md` + `DRAFT_RELEASE_PLAN.md`, all at
+  the repo root (gitignored, owner review). **Top pre-submission items:** (1) `blockBannedSignups` cold
+  start 13–14 s vs Auth's 7 s blocking deadline → first sign-up on a cold instance fails
+  (`minInstances: 1` or codebase split — owner decision); (2) iPad/visionOS in the device family +
+  landscape enabled, untested; (3) iOS feed listeners `limit(to: 500)` — the one real scaling cost
+  (page at 40); (4) demo account + on-call + screenshots (owner); (5) contrast tokens below AA for
+  timestamps, fixed-size fonts vs Dynamic Type, web inputs without labels.
 - **Owner next (ASC):** version 1.2 "Cancel Release" → rename to 1.3 → attach build 107 → submit
   (steps in the 2026-10-29 session report; "Cancel Release" discards the July build 82 approval,
   live 1.0 unaffected).

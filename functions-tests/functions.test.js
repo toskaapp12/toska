@@ -1372,14 +1372,14 @@ describe("validatePost: whisper + midnight normalization", () => {
     await fns.validatePost.run({ id: "wm1", data: await snapOf("posts/both"), params: { postId: "both" } });
     const d = (await db.doc("posts/both").get()).data();
     assert.strictEqual(d.isWhisper, true); assert.strictEqual(d.isMidnightPost, undefined);
-    assert.ok(d.expiresAt.toMillis() <= Date.now() + 3600e3 + 5000, "expiresAt capped at 1 h");
+    assert.ok(Math.abs(d.expiresAt.toMillis() - (d.createdAt.toMillis() + 3600e3)) < 2000, "expiresAt = createdAt + 60 min exactly");
   });
-  it("both flags with an expiresAt already under 1 h → kept as is (whisper only)", async () => {
+  it("both flags with an expiresAt under 1 h → whisper only, expiresAt forced to exactly 60 min (audit #4)", async () => {
     const soon = Timestamp.fromMillis(Date.now() + 1800e3);
     await db.doc("posts/both2").set({ ...base, isWhisper: true, isMidnightPost: true, expiresAt: soon });
     await fns.validatePost.run({ id: "wm2", data: await snapOf("posts/both2"), params: { postId: "both2" } });
     const d = (await db.doc("posts/both2").get()).data();
-    assert.strictEqual(d.isMidnightPost, undefined); assert.strictEqual(d.expiresAt.toMillis(), soon.toMillis());
+    assert.strictEqual(d.isMidnightPost, undefined); assert.ok(Math.abs(d.expiresAt.toMillis() - (d.createdAt.toMillis() + 3600e3)) < 2000, "shorter expiry forced to 60 min");
   });
   it("a plain midnight post is untouched", async () => {
     const mid = Timestamp.fromMillis(Date.now() + 10 * 3600e3);
@@ -1387,5 +1387,195 @@ describe("validatePost: whisper + midnight normalization", () => {
     await fns.validatePost.run({ id: "wm3", data: await snapOf("posts/mid"), params: { postId: "mid" } });
     const d = (await db.doc("posts/mid").get()).data();
     assert.strictEqual(d.isMidnightPost, true); assert.strictEqual(d.isWhisper, undefined); assert.strictEqual(d.expiresAt.toMillis(), mid.toMillis());
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Bad-actor audit 2026-10-30 — server-side fixes (#2 #3 #4 #5 #8 #9)
+// ─────────────────────────────────────────────────────────────────────
+describe("bad-actor audit 2026-10-30 — server fixes", () => {
+  const { crisisPageThrottled, stampCrisisPage, reporterCountsTowardAutoHide, reserveAutoHide, reporterCapFor, normalizeEphemeralExpiry, watchNewAccountLiveSpike } = __test;
+  const daysAgo = (d) => Timestamp.fromMillis(Date.now() - d * 86400e3);
+  const basePost = (authorId, extra = {}) => ({ authorId, authorHandle: "h", text: "a plain post with nothing to hold", createdAt: Timestamp.now(), likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, moderationStatus: "live", ...extra });
+  const reportDoc = (id, data) => db.doc(`reports/${id}`).set({ reportedBy: "r", reason: "harassment", type: "post", status: "pending", createdAt: Timestamp.now(), ...data });
+  const runAutoHide = async (id) => fns.onReportCreatedAutoHide.run({ id: `e_${id}`, data: await snapOf(`reports/${id}`), params: { reportId: id } });
+  const mkUser = (uid, ageDays) => db.doc(`users/${uid}`).set({ handle: `h_${uid}`, createdAt: daysAgo(ageDays) });
+
+  describe("#3 crisis paging", () => {
+    it("crisis phrasing in a report's free text flags the report and pages nobody", async () => {
+      await db.doc("system/crisisAlertRecipients").set({ uids: ["notoken_admin"] });
+      await reportDoc("rc1", { text: "i want to kill myself tonight and i have the pills ready", postId: "p1" });
+      await fns.notifyAdminsOfNewReport.run({ id: "e_rc1", data: await snapOf("reports/rc1"), params: { reportId: "rc1" } });
+      assert.strictEqual((await db.doc("reports/rc1").get()).get("reporterTextCrisis"), true);
+      assert.strictEqual((await db.collection("undeliveredCrisisPages").get()).size, 0);
+      assert.strictEqual((await db.doc("processedTriggerEvents/crisisreport_rc1").get()).exists, false);
+      await db.doc("system/crisisAlertRecipients").delete();
+    });
+    it("one push per author per hour: the second page is suppressed with a throttled claim; other authors unaffected", async () => {
+      assert.strictEqual(await crisisPageThrottled("authorA"), false);
+      await stampCrisisPage("authorA");
+      assert.strictEqual(await crisisPageThrottled("authorA"), true);
+      assert.strictEqual(await crisisPageThrottled("authorB"), false);
+      await db.doc("system/crisisAlertRecipients").set({ uids: ["notoken_admin"] });
+      const claimRef = db.doc("processedTriggerEvents/crisisAlert_tp2");
+      await pageAdminsForCrisis({ claimRef, title: "t", body: "b", dataPayload: {}, logLabel: "test-throttled", authorId: "authorA" });
+      assert.strictEqual((await claimRef.get()).get("throttled"), true);
+      assert.strictEqual((await db.doc("undeliveredCrisisPages/crisisAlert_tp2").get()).exists, false);
+      const claimB = db.doc("processedTriggerEvents/crisisAlert_tp3");
+      await pageAdminsForCrisis({ claimRef: claimB, title: "t", body: "b", dataPayload: {}, logLabel: "test-other-author", authorId: "authorB" });
+      assert.strictEqual((await claimB.get()).exists, false, "no-token path records, never claims");
+      assert.strictEqual((await db.doc("undeliveredCrisisPages/crisisAlert_tp3").get()).exists, true);
+      await db.doc("system/crisisAlertRecipients").delete();
+    });
+    it("the throttle lapses after an hour", async () => {
+      await db.doc("crisisPageThrottle/authorC").set({ lastPagedAt: Timestamp.fromMillis(Date.now() - 61 * 60e3) });
+      assert.strictEqual(await crisisPageThrottled("authorC"), false);
+    });
+  });
+
+  describe("#2 auto-hide: reporter age + per-author cap", () => {
+    const reportFrom = async (rid, uid, postId, target = "victim") => { await reportDoc(rid, { reportedBy: uid, postId, reportedUserId: target }); await runAutoHide(rid); };
+    const st = async (p) => (await db.doc(`posts/${p}`).get()).get("moderationStatus");
+    it("three reporters younger than 72 h do not hide", async () => {
+      await db.doc("posts/pA").set(basePost("victim")); for (const u of ["n1", "n2", "n3"]) await mkUser(u, 1);
+      for (const [i, u] of ["n1", "n2", "n3"].entries()) await reportFrom(`a${i}`, u, "pA");
+      assert.strictEqual(await st("pA"), "live");
+    });
+    it("two established + one new do not hide; a third established reporter hides (genuine reports still work)", async () => {
+      await db.doc("posts/pB").set(basePost("victim")); await mkUser("o1", 10); await mkUser("o2", 10); await mkUser("n1", 1); await mkUser("o3", 4);
+      await reportFrom("b1", "o1", "pB"); await reportFrom("b2", "o2", "pB"); await reportFrom("b3", "n1", "pB");
+      assert.strictEqual(await st("pB"), "live");
+      await reportFrom("b4", "o3", "pB");
+      const d = (await db.doc("posts/pB").get()).data();
+      assert.strictEqual(d.moderationStatus, "pending_review"); assert.strictEqual(d.pendingReason, "user_reports"); assert.strictEqual(d.autoHiddenReportCount, 3);
+    });
+    it("a reporter with no user doc or no createdAt never counts", async () => {
+      assert.strictEqual(await reporterCountsTowardAutoHide("ghost"), false);
+      await db.doc("users/nocreated").set({ handle: "x" });
+      assert.strictEqual(await reporterCountsTowardAutoHide("nocreated"), false);
+    });
+    it("cap: the third auto-hide for one author inside 24 h is skipped; another author is unaffected", async () => {
+      for (const u of ["o1", "o2", "o3"]) await mkUser(u, 10);
+      for (const p of ["c1", "c2", "c3"]) await db.doc(`posts/${p}`).set(basePost("victim"));
+      for (const p of ["c1", "c2", "c3"]) for (const [i, u] of ["o1", "o2", "o3"].entries()) await reportFrom(`${p}_${i}`, u, p);
+      assert.strictEqual(await st("c1"), "pending_review"); assert.strictEqual(await st("c2"), "pending_review"); assert.strictEqual(await st("c3"), "live");
+      await db.doc("posts/d1").set(basePost("other"));
+      for (const [i, u] of ["o1", "o2", "o3"].entries()) await reportFrom(`d1_${i}`, u, "d1", "other");
+      assert.strictEqual(await st("d1"), "pending_review");
+    });
+    it("a reply auto-hide counts toward the same author cap", async () => {
+      for (const u of ["o1", "o2", "o3"]) await mkUser(u, 10);
+      await db.doc("posts/host").set(basePost("host"));
+      await db.doc("posts/host/replies/r1").set({ authorId: "victim", authorHandle: "v", text: "a reply", createdAt: Timestamp.now(), moderationStatus: "live" });
+      await db.doc("posts/host/replies/r2").set({ authorId: "victim", authorHandle: "v", text: "another", createdAt: Timestamp.now(), moderationStatus: "live" });
+      await db.doc("posts/pp").set(basePost("victim"));
+      for (const [i, u] of ["o1", "o2", "o3"].entries()) { await reportDoc(`r1_${i}`, { reportedBy: u, type: "reply", postId: "host", replyId: "r1", reportedUserId: "victim" }); await runAutoHide(`r1_${i}`); }
+      for (const [i, u] of ["o1", "o2", "o3"].entries()) { await reportDoc(`r2_${i}`, { reportedBy: u, type: "reply", postId: "host", replyId: "r2", reportedUserId: "victim" }); await runAutoHide(`r2_${i}`); }
+      for (const [i, u] of ["o1", "o2", "o3"].entries()) await reportFrom(`pp_${i}`, u, "pp");
+      assert.strictEqual((await db.doc("posts/host/replies/r1").get()).get("moderationStatus"), "pending_review");
+      assert.strictEqual((await db.doc("posts/host/replies/r2").get()).get("moderationStatus"), "pending_review");
+      assert.strictEqual(await st("pp"), "live", "third hide for the author within 24 h is capped");
+    });
+    it("reserveAutoHide releases slots older than 24 h", async () => {
+      await db.doc("autoHides/old").set({ events: [Date.now() - 25 * 3600e3, Date.now() - 25 * 3600e3] });
+      assert.strictEqual(await reserveAutoHide("old"), true);
+      assert.strictEqual(await reserveAutoHide("old"), true);
+      assert.strictEqual(await reserveAutoHide("old"), false);
+    });
+  });
+
+  describe("#4 ephemeral expiry is server-owned", () => {
+    const base = { authorId: "u", authorHandle: "h", text: "a quiet line for tonight only, nothing more", likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, moderationStatus: "pending_validation" };
+    it("whisper with a 2-minute expiry → exactly createdAt + 60 min", async () => {
+      await db.doc("users/u").set({ handle: "h" }); await db.doc("users/u/private/data").set({ confirmedAdult: true });
+      const created = Timestamp.now();
+      await db.doc("posts/w2").set({ ...base, createdAt: created, isWhisper: true, expiresAt: Timestamp.fromMillis(Date.now() + 2 * 60e3) });
+      await fns.validatePost.run({ id: "w2", data: await snapOf("posts/w2"), params: { postId: "w2" } });
+      const d = (await db.doc("posts/w2").get()).data();
+      assert.strictEqual(d.expiresAt.toMillis(), created.toMillis() + 3600e3);
+    });
+    it("whisper with an honest ~60-minute expiry is left alone", () => {
+      const created = Timestamp.now();
+      assert.strictEqual(normalizeEphemeralExpiry({ isWhisper: true, createdAt: created, expiresAt: Timestamp.fromMillis(created.toMillis() + 3600e3 + 20e3) }), null);
+    });
+    it("midnight with a 2-minute expiry → floored at createdAt + 60 min; a real local midnight hours away is kept", () => {
+      const created = Timestamp.now();
+      const upd = normalizeEphemeralExpiry({ isMidnightPost: true, createdAt: created, expiresAt: Timestamp.fromMillis(created.toMillis() + 2 * 60e3) });
+      assert.strictEqual(upd.expiresAt.toMillis(), created.toMillis() + 3600e3);
+      assert.strictEqual(normalizeEphemeralExpiry({ isMidnightPost: true, createdAt: created, expiresAt: Timestamp.fromMillis(created.toMillis() + 7 * 3600e3) }), null);
+    });
+    it("a whisper with no expiresAt at all gets one", () => {
+      const created = Timestamp.now();
+      assert.strictEqual(normalizeEphemeralExpiry({ isWhisper: true, createdAt: created }).expiresAt.toMillis(), created.toMillis() + 3600e3);
+    });
+  });
+
+  describe("#4 report snapshot", () => {
+    it("captures the reported post on the report and fills reportedUserId from the real author", async () => {
+      await db.doc("posts/w1").set(basePost("harasser", { text: "you are pathetic", isWhisper: true }));
+      await reportDoc("s1", { postId: "w1" });
+      await fns.onReportCreatedSnapshot.run({ id: "e", data: await snapOf("reports/s1"), params: { reportId: "s1" } });
+      const r = (await db.doc("reports/s1").get()).data();
+      assert.strictEqual(r.snapshot.text, "you are pathetic"); assert.strictEqual(r.snapshot.authorId, "harasser"); assert.strictEqual(r.snapshot.isWhisper, true); assert.strictEqual(r.reportedUserId, "harasser");
+    });
+    it("captures a reply; never recreates a report the rate limiter already deleted", async () => {
+      await db.doc("posts/h1").set(basePost("host")); await db.doc("posts/h1/replies/r1").set({ authorId: "harasser", authorHandle: "hh", text: "mean reply", createdAt: Timestamp.now(), moderationStatus: "live" });
+      await reportDoc("s2", { type: "reply", postId: "h1", replyId: "r1" });
+      const snap = await snapOf("reports/s2"); await db.doc("reports/s2").delete();
+      await fns.onReportCreatedSnapshot.run({ id: "e", data: snap, params: { reportId: "s2" } });
+      assert.strictEqual((await db.doc("reports/s2").get()).exists, false);
+      await reportDoc("s3", { type: "reply", postId: "h1", replyId: "r1" });
+      await fns.onReportCreatedSnapshot.run({ id: "e", data: await snapOf("reports/s3"), params: { reportId: "s3" } });
+      assert.strictEqual((await db.doc("reports/s3").get()).get("snapshot").text, "mean reply");
+    });
+  });
+
+  describe("#5 report cap for new accounts", () => {
+    it("5/h under 7 days (or unreadable), 20/h established", async () => {
+      await mkUser("newbie", 1); await mkUser("older", 30);
+      assert.strictEqual(await reporterCapFor("newbie"), 5); assert.strictEqual(await reporterCapFor("older"), 20); assert.strictEqual(await reporterCapFor("ghost"), 5);
+    });
+    it("rateLimitReports deletes the 6th report in an hour from a new account and keeps the 6th from an established one", async () => {
+      await mkUser("newbie", 1); await mkUser("older", 30);
+      for (const who of ["newbie", "older"]) for (let i = 0; i < 6; i++) await reportDoc(`${who}_${i}`, { reportedBy: who, postId: `p${i}`, reportedUserId: `t${i}` });
+      await fns.rateLimitReports.run({ id: "e1", data: await snapOf("reports/newbie_5"), params: { reportId: "newbie_5" } });
+      await fns.rateLimitReports.run({ id: "e2", data: await snapOf("reports/older_5"), params: { reportId: "older_5" } });
+      assert.strictEqual((await db.doc("reports/newbie_5").get()).exists, false);
+      assert.strictEqual((await db.doc("reports/older_5").get()).exists, true);
+    });
+    it("system reports (handle screen) are never rate-limited", async () => {
+      for (let i = 0; i < 8; i++) await reportDoc(`sys_${i}`, { reportedBy: "system_handle_screen", type: "user" });
+      await fns.rateLimitReports.run({ id: "e3", data: await snapOf("reports/sys_7"), params: { reportId: "sys_7" } });
+      assert.strictEqual((await db.doc("reports/sys_7").get()).exists, true);
+    });
+  });
+
+  describe("#8 gmail dot normalization in the ban hash", () => {
+    const { normalizeEmailAlias, extractIdentities } = require("../functions/bannedIdentities");
+    it("strips dots and folds googlemail for gmail only; plus-tags everywhere", () => {
+      assert.strictEqual(normalizeEmailAlias("bad.actor+x@gmail.com"), "badactor@gmail.com");
+      assert.strictEqual(normalizeEmailAlias("b.a.d.actor@googlemail.com"), "badactor@gmail.com");
+      assert.strictEqual(normalizeEmailAlias("bad.actor@example.com"), "bad.actor@example.com");
+      assert.strictEqual(normalizeEmailAlias("bad.actor+promo@example.com"), "bad.actor@example.com");
+      assert.strictEqual(normalizeEmailAlias("+lead@example.com"), "+lead@example.com");
+    });
+    it("dot variants of a gmail address share a ban identity", () => {
+      const a = extractIdentities({ email: "bad.actor@gmail.com", providerData: [] }).map((i) => i.value);
+      const b = extractIdentities({ email: "badactor@gmail.com", providerData: [] }).map((i) => i.value);
+      assert.ok(a.includes("badactor@gmail.com") && b.includes("badactor@gmail.com"));
+    });
+  });
+
+  describe("#9 abuse spike: live posts from accounts younger than 24 h", () => {
+    it("counts live, non-repost posts in the window from new accounts only", async () => {
+      await mkUser("fresh", 0.1); await mkUser("vet", 30);
+      for (let i = 0; i < 3; i++) await db.doc(`posts/f${i}`).set(basePost("fresh"));
+      await db.doc("posts/fheld").set(basePost("fresh", { moderationStatus: "pending_review" }));
+      await db.doc("posts/frepost").set(basePost("fresh", { isRepost: true }));
+      for (let i = 0; i < 2; i++) await db.doc(`posts/v${i}`).set(basePost("vet"));
+      await db.doc("posts/old").set(basePost("fresh", { createdAt: Timestamp.fromMillis(Date.now() - 2 * 3600e3) }));
+      assert.strictEqual(await watchNewAccountLiveSpike(Date.now() - 3600e3), 3);
+    });
   });
 });

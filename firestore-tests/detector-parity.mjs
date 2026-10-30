@@ -117,6 +117,31 @@ const CORPUS = [
   ["my ex Dean moved out", "allow"],
   ["Dean Miller left me", "allow"],
   ["Earl Grey at 2am again", "allow"],
+  // 2026-10-30 bad-actor audit #1 — doxxing workarounds that used to publish (fictional names)
+  ["sarah johnson broke up with me and i hope she knows it", "hold"],   // lowercase full name
+  ["my ex sarah johnson left me", "hold"],
+  ["s. johnson from dayton did this", "hold"],                           // initial + surname
+  ["Sarah J. from dayton broke up with me", "hold"],                     // given + initial
+  ["sarah (johnson) did this", "hold"],                                  // punctuation split
+  ["SarahJohnson broke up with me", "hold"],                             // concatenated
+  ["sarahjohnson22 is her insta", "hold"],
+  ["five five five eight six seven five three oh nine, text her yourself", "hold"], // spelled-out phone
+  ["her ig is sarahj_22", "hold"],
+  ["find her on the gram, sarahj22", "hold"],
+  ["red civic, plate ABC 1234, you will see it outside the bakery", "hold"],
+  ["numb_stone_99 is the one who did this to me", "hold"],              // bare handle (#6)
+  // …and the controls that must stay allowed
+  ["summer rain on the window again", "allow"],
+  ["grace kelly was in that movie", "allow"],
+  ["the rose garden where we met", "allow"],
+  ["will smith slapped someone", "allow"],
+  ["one more day, two more weeks, three months", "allow"],
+  ["mrs. johnson my old teacher", "allow"],
+  ["love u. always", "allow"],
+  ["harrison ford was in it", "allow"],
+  ["a quiet_night out", "allow"],
+  ["the plate was full of food", "allow"],
+  ["she drives a red civic", "allow"],
   ["my ex Sarah broke my heart", "allow"],
   ["Jessica's laugh haunts me", "allow"],
   ["this guy Tyler ghosted me", "allow"],

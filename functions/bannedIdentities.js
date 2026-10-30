@@ -26,14 +26,22 @@ function identityHash(pepper, kind, value) {
 //     email is a relay (Sign in with Apple) or later rotated.
 // "local+anything@domain" → "local@domain" (lower-cased input expected). Only
 // the plus-tag is stripped — dots and provider-specific quirks are left alone.
+// 2026-10-30 bad-actor audit (#8): Gmail ignores dots in the local part and treats googlemail.com as
+// gmail.com, so a banned Gmail user had unlimited aliases ("bad.actor" / "badactor" / "b.a.d.actor").
+// For those two domains the dots are stripped and the domain folded; other providers keep dots
+// (they are significant there).
+const DOT_INSENSITIVE_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
 function normalizeEmailAlias(email) {
   if (!email) return "";
   const at = email.lastIndexOf("@");
   if (at <= 0) return email;
-  const local = email.slice(0, at);
+  let local = email.slice(0, at);
+  let domain = email.slice(at + 1);
   const plus = local.indexOf("+");
-  if (plus <= 0) return email;
-  return `${local.slice(0, plus)}${email.slice(at)}`;
+  if (plus > 0) local = local.slice(0, plus);
+  if (DOT_INSENSITIVE_DOMAINS.has(domain)) { local = local.replace(/\./g, ""); domain = "gmail.com"; }
+  if (!local) return email;
+  return `${local}@${domain}`;
 }
 
 function extractIdentities(user) {

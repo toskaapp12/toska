@@ -137,13 +137,13 @@ describe("baseline sanity", () => {
     // batch — see the "handle uniqueness registry" tests below.
     const batch = a.batch();
     batch.set(a.collection("users").doc("alice"), {
-      handle: "alice123",
+      handle: "quiet_ghost_123",
       followerCount: 0,
       followingCount: 0,
       totalLikes: 0,
       createdAt: new Date(),
     });
-    batch.set(a.collection("handles").doc("alice123"), { uid: "alice" });
+    batch.set(a.collection("handles").doc("quiet_ghost_123"), { uid: "alice" });
     await assertSucceeds(batch.commit());
   });
 
@@ -3502,16 +3502,35 @@ describe("reserved-handle denylist (2026-08-05)", () => {
     );
   });
 
-  // The generator's real output must still sign up. These are the only two
-  // shapes either client can emit: {adjective}_{noun}_{1..999} from the
-  // fixed word lists (ContentModeration.swift) and the anonymous_{8 hex}
-  // fallback (iOS + webapp/js/app.js).
-  ["quiet_ghost_42", "sleepless_ember_7", "anonymous_1a2b3c4d",
+  // The generator's real output must still sign up: {adjective}_{noun}_{1..999999} from the fixed
+  // word lists (ContentModeration.swift / webapp/js/app.js). 2026-10-30 bad-actor audit (#7): the
+  // anonymous_{8 hex} fallback is gone from both clients and is rejected by generatorHandle().
+  ["quiet_ghost_42", "sleepless_ember_7", "numb_void_123456",
    "almost_shore_999"].forEach((handle) => {
     it(`allows generator-shaped handle "${handle}"`, async () => {
       const a = env.authenticatedContext("alice").firestore();
       await assertSucceeds(signupBatchFor(a, "alice", handle).commit());
     });
+  });
+
+  // 2026-10-30 bad-actor audit (#7 look-alike handles): everything a tampered client could type that
+  // is NOT exactly what the generator emits is rejected — confusable characters, hyphens, leading
+  // zeros, trailing underscores, digits inside words, leet reserved words, invented words, the old
+  // anonymous_ fallback, and mixed case.
+  ["quiet_river_l2", "quiet_rlver_12", "quiet-ghost-12", "quiet_ghost_012", "quiet_ghost_12_",
+   "qu1et_ghost_12", "t0ska_supp0rt", "m0derat0r", "Quiet_Ghost_12", "anonymous_1a2b3c4d",
+   "quiet_ghost", "quiet_ghost_1234567", "alice123", "victim_handle_42"].forEach((handle) => {
+    it(`rejects non-generator handle "${handle}"`, async () => {
+      const a = env.authenticatedContext("alice").firestore();
+      await assertFails(signupBatchFor(a, "alice", handle).commit());
+    });
+  });
+  it("rejects a generator-shaped user doc whose registry row is a look-alike", async () => {
+    const a = env.authenticatedContext("alice").firestore();
+    const batch = a.batch();
+    batch.set(a.collection("users").doc("alice"), { handle: "quiet_ghost_12", followerCount: 0, followingCount: 0, totalLikes: 0, createdAt: new Date() });
+    batch.set(a.collection("handles").doc("quiet_ghost_l2"), { uid: "alice" });
+    await assertFails(batch.commit());
   });
 
   it("existing accounts are unaffected — the check is create-only", async () => {

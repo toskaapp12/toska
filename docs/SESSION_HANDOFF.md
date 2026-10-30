@@ -178,6 +178,33 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   in-app policy body "share pages and the website clear within a few minutes" (A3 wording). **Owner
   hand-test:** type "Olga broke up with me" in compose → inline nudge, post goes through; "my ex Nguyen"
   → held with the full-name/contact dialog; "Don't text him" → no nudge.
+- **Bad-actor audit (2026-10-30, STAGING only; report `AUDIT_BADACTOR_STAGING_2026-10-30.md` at the
+  repo root, gitignored):** 9 ranked findings — doxxing workarounds, report brigading, false crisis
+  pages, post-and-vanish, admin queue burial, block survival, look-alike handles, ban evasion,
+  cross-account flooding. **All nine fixed on STAGING in the owner's order (see BUGS.md
+  BADACTOR-2026-10-30); PROD PENDING OWNER GO — nothing pushed** (a push publishes admin.html to the
+  prod dashboard). Local commits only. Deploy set for prod when approved: `firestore:rules` + the 24
+  functions in the staging deploy (`validatePost, validateReply, onPostCreated, onPostUpdated,
+  onReplyCreatedModerate, onReplyUpdated, reconcilePostVisibility, publicFeed, sharePage,
+  shareCardImage, postsSitemap, auditPostDeletion, auditReplyDeletion, onHandleCreatedScreen,
+  notifyAdminsOfNewReport, onPostCreatedAlertAdmins, onReplyCreatedAlertAdmins,
+  crisisDeliveryWatchdog, onReportCreatedAutoHide, onReportCreatedSnapshot (NEW → 77 → 78, `--force`),
+  rateLimitReports, abuseSpikeWatch, blockBannedSignups, adminDeleteAccount`) + hosting + push, then
+  prod Auth config: sign-up quota 10 per IP per hour (anonymous auth is already off on prod). Tests:
+  functions 167 (+21), rules 408 (+15), parity 152/152, corpus 141, crisis 29; impact gate 0 real
+  texts newly held. **Staging verification 2026-10-30 ~18:50 UTC (`staging-verify.mjs`, 31 checks):**
+  all look-alike / leet / anonymous handles denied and a generator handle accepted; anonymous sign-in
+  refused; whisper and midnight 2-minute expiries both normalized to 60 min, an honest midnight post
+  kept (614 min); crisis text in a report → flagged, 0 pages; snapshot captured and surviving the
+  post's deletion; second crisis post within the hour → held + queued with a throttled claim, 0 pages;
+  3 fresh sockpuppets → post stays live, 3 ten-day-old reporters → hidden, third hide in 24 h capped;
+  9 doxxing variants held as pii, "summer rain" control live; new-account report cap enforced (5 of 7
+  stood — my burst wrote 6 in one second so the concurrent triggers dropped two earlier ones rather
+  than the last two, a pre-existing ordering artifact of the limiter, not a defect). Fixtures removed,
+  staging back to baseline. **Build 108 SHIPPED (18:43 UTC, ASC VALID, Internal group):** detector
+  mirror (#1/#6) + generator-shaped fallback handle. **Owner hand-test on 108:** compose
+  "sarah johnson broke up with me" → hold dialog; "summer rain on the window" → posts;
+  "quiet_ghost_12 lied" → hold dialog.
 - **Owner next (ASC):** version 1.2 "Cancel Release" → rename to 1.3 → attach build 107 → submit
   (steps in the 2026-10-29 session report; "Cancel Release" discards the July build 82 approval,
   live 1.0 unaffected).

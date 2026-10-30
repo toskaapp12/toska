@@ -473,6 +473,90 @@ const AMBIGUOUS_WORDS = new Set([
 const NUDGE_ONLY_NAMES = new Set(["christian", "cole", "dean", "don", "earl"]);
 const DONT_CONTRACTION_RE = /\b[Dd]on['’]t\b/g;
 
+// ── 2026-10-30 bad-actor audit, finding #1 (doxxing workarounds) + #6 (bare handle mentions) ──
+// The app's own handle generator: {adjective}_{noun}_{1..999999}. Mirror of webapp/js/app.js
+// HANDLE_ADJECTIVES / HANDLE_NOUNS and ContentModeration.swift handleAdjectives / handleNouns (the
+// users-create rule pins the same shape). A bare token in this shape can only be a reference to a
+// user, so it is treated exactly like "@handle" (hold, reason pii).
+const HANDLE_ADJECTIVES = [
+  "quiet", "still", "soft", "lost", "tired", "gentle", "fading", "sleepless",
+  "distant", "hollow", "heavy", "broken", "wandering", "waiting", "restless",
+  "silent", "lonely", "aching", "drifting", "numb", "awake", "unsaid", "almost",
+  "barely", "dimly", "slowly", "sadly", "deeply", "half", "nearly",
+];
+const HANDLE_NOUNS = [
+  "ghost", "echo", "rain", "shadow", "light", "heart", "moon", "night",
+  "storm", "drift", "flame", "cloud", "wave", "stone", "dust", "ember",
+  "frost", "shore", "wound", "blur", "haze", "tide", "spark", "soul",
+  "dream", "ache", "sigh", "dark", "glow", "void",
+];
+const HANDLE_SHAPE_RE = new RegExp(`(?:^|[^a-z0-9_])(?:${HANDLE_ADJECTIVES.join("|")})_(?:${HANDLE_NOUNS.join("|")})_[0-9]{1,6}(?![a-z0-9_])`, "i");
+// Spelled-out digits: ≥ 7 number-words inside any 12-token window reads as a phone number
+// ("five five five eight six seven five three oh nine").
+const NUMBER_WORDS = new Set(["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "oh"]);
+// Social handles introduced without the platform keyword the IDENTIFYING_PATTERNS list keys on:
+// "her ig is sarahj_22", "find her on the gram, sarahj22", "gram: sarahj22", "ig is sarahj22".
+const SOCIAL_EXTRA_RE = /\b(?:(?:her|his|their|my|the)\s+)?(?:ig|insta|snap|sc|tt|tiktok)\s+(?:is|was|:)\s*[a-z0-9._]{3,}|\bon\s+the\s+gram\b|\bgram\s*:\s*[a-z0-9._]{3,}/i;
+// License plate: "plate ABC 1234", "plates: abc-123", "plate number XYZ 987".
+const PLATE_RE = /\bplates?\s*(?:number|no\.?|#)?\s*:?\s*[a-z0-9]{2,3}[ -]?[0-9]{3,4}\b/i;
+
+// Given names that are also ordinary lowercase English words (curated from the 359-word overlap with
+// the system dictionary — the gate over real posts caught "then made tea. small acts" as tea + Small).
+// Excluded from the LOWERCASE / compact rules only; the Capitalized rules are unchanged.
+// Mirror: ContentModeration.swift lowercaseExcludedGiven.
+const LOWERCASE_EXCLUDED_GIVEN = new Set([
+  "aba", "age", "ake", "alf", "albino", "anis", "ante", "are", "aria", "ase", "aura", "aurora", "basil", "bent", "beryl", "bora", "buster", "carmine", "chuck", "clement", "dag", "daisy", "desire", "dick", "dolly", "edit", "els", "else", "eros", "ester", "even", "evert", "fay", "felicity", "gad", "gay", "german", "gunnel", "hardy", "hazel", "heather", "jasmine", "job", "kelvin", "kitty", "liana", "line", "lone", "ludo", "margarita", "marina", "marten", "mate", "maxim", "meta", "nadir", "nail", "nana", "noel", "odd", "paddy", "pal", "pall", "per", "pol", "prosper", "randy", "rein", "roar", "roger", "rosemary", "rune", "rut", "serge", "shin", "sienna", "stale", "sultan", "tea", "tilde", "tin", "tor", "tore", "tuba", "urban", "valerian", "ville", "viola", "vita", "willy", "yaw",
+]);
+function isPlainGivenName(w) { return COMMON_NAMES.has(w) && !AMBIGUOUS_WORDS.has(w) && !NUDGE_ONLY_NAMES.has(w) && !LOWERCASE_EXCLUDED_GIVEN.has(w); }
+function isPlainSurname(w) { return COMMON_LAST_NAMES.has(w) && w.length >= 3 && !AMBIGUOUS_WORDS.has(w); }
+
+// Lowercase / compact name shapes the Capitalized rules miss. `lowered` is the raw text lower-cased.
+//   "sarah johnson"        given + surname, any case (controls: "summer rain", "grace kelly",
+//                          "rose garden" — the ambiguous given names never count)
+//   "s. johnson"           dotted initial + surname
+//   "sarah j."             given + dotted initial
+function looksLikeLowercaseFullName(lowered) {
+  const tokens = lowered.split(/[^a-z]+/).filter((t) => t.length > 0);
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    const w1 = tokens[i], w2 = tokens[i + 1];
+    if (!isPlainGivenName(w1) || !isPlainSurname(w2)) continue;
+    if (SAFE_PROPER_NOUN_BIGRAMS.has(`${w1} ${w2}`)) continue;
+    // Only consecutive words count: "sarah (johnson)" is checked by the raw form below.
+    return true;
+  }
+  // "sarah (johnson)" / "sarah, johnson": given + surname separated by punctuation only.
+  const punctRe = /\b([a-z]+)\s*[(,/\-–—]\s*([a-z]+)\)?/g;
+  for (const m of lowered.matchAll(punctRe)) { if (isPlainGivenName(m[1]) && isPlainSurname(m[2])) return true; }
+  for (const m of lowered.matchAll(/(?<![a-z])([a-z])\.\s*([a-z]{3,})\b/g)) { if (isPlainSurname(m[2])) return true; }
+  for (const m of lowered.matchAll(/\b([a-z]{2,})\s+([a-z])\.(?![a-z])/g)) { if (isPlainGivenName(m[1]) && m[2] !== "i") return true; }
+  return false;
+}
+
+// "sarahjohnson", "SarahJohnson22": one token that splits into given + surname (both ≥ 4 letters, so
+// "harrison" / "davidson" never split; a token that is itself a known name is skipped).
+function looksLikeConcatenatedName(lowered) {
+  for (const raw of lowered.split(/[^a-z0-9]+/)) {
+    const tok = raw.replace(/[0-9]+$/, "");
+    if (tok.length < 8 || COMMON_NAMES.has(tok) || COMMON_LAST_NAMES.has(tok)) continue;
+    for (let i = 4; i <= tok.length - 4; i++) {
+      if (isPlainGivenName(tok.slice(0, i)) && isPlainSurname(tok.slice(i))) return true;
+    }
+  }
+  return false;
+}
+
+function hasSpelledOutPhone(lowered) {
+  const tokens = lowered.split(/[^a-z]+/).filter((t) => t.length > 0);
+  let count = 0; const window = [];
+  for (const t of tokens) {
+    const n = NUMBER_WORDS.has(t) ? 1 : 0;
+    window.push(n); count += n;
+    if (window.length > 12) count -= window.shift();
+    if (count >= 7) return true;
+  }
+  return false;
+}
+
 const SAFE_CAPITALIZED_WORDS = new Set([
   "i", "im", "ive", "ill", "id",
   "god", "christmas", "easter", "halloween", "valentines",
@@ -1041,6 +1125,20 @@ function containsNameOrIdentifyingInfo(text) {
   // Full-name shape: two consecutive Capitalized words ("Vera Marchetti").
   if (looksLikeFullName(text)) return true;
 
+  // 2026-10-30 bad-actor audit (#1 doxxing workarounds, #6 bare handle mentions): the lowercase and
+  // compact shapes that slipped past every Capitalized rule, spelled-out phone digits, social handles
+  // without the platform keyword, license plates, and a bare {adj}_{noun}_{n} handle. Mirror of
+  // ContentModeration.swift (same block, same order); pinned by detector-parity.
+  {
+    const loweredCanon = canonicalize(text);
+    if (looksLikeLowercaseFullName(loweredCanon)) return true;
+    if (looksLikeConcatenatedName(loweredCanon)) return true;
+    if (hasSpelledOutPhone(loweredCanon)) return true;
+    if (SOCIAL_EXTRA_RE.test(text)) return true;
+    if (PLATE_RE.test(text)) return true;
+    if (HANDLE_SHAPE_RE.test(text)) return true;
+  }
+
   // 10+ digits → phone number heuristic.
   // Strip invisible separators (so `5​5​5…` collapses to a contiguous run)
   // and fold fullwidth digits U+FF10..U+FF19 → ASCII (so a phone typed in
@@ -1258,4 +1356,11 @@ module.exports = {
   AMBIGUOUS_WORDS,
   SAFE_CAPITALIZED_WORDS,
   NUDGE_ONLY_NAMES,
+  HANDLE_ADJECTIVES,
+  HANDLE_NOUNS,
+  HANDLE_SHAPE_RE,
+  looksLikeLowercaseFullName,
+  looksLikeConcatenatedName,
+  hasSpelledOutPhone,
+  LOWERCASE_EXCLUDED_GIVEN,
 };

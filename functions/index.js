@@ -2511,6 +2511,28 @@ exports.onPostDeletedUpdateTagCounts = onDocumentDeleted(
 // Server-side post validation
 // ============================================================
 
+const EPHEMERAL_MIN_LIFETIME_MS = 60 * 60 * 1000;
+// Returns the update to apply (or null): both flags → whisper (owner decision 2026-10-29); whisper →
+// expiresAt = createdAt + 60 min (±60 s tolerance avoids a rewrite on every honest whisper, whose
+// client clock differs from the server timestamp by a few seconds); midnight → floor at createdAt
+// + 60 min.
+function normalizeEphemeralExpiry(postData) {
+  const created = postData.createdAt?.toMillis?.() ?? Date.now();
+  const exp = postData.expiresAt?.toMillis?.();
+  const upd = {};
+  const isWhisper = postData.isWhisper === true;
+  const isMidnight = postData.isMidnightPost === true;
+  if (isWhisper && isMidnight) upd.isMidnightPost = FieldValue.delete();
+  if (isWhisper) {
+    const want = created + EPHEMERAL_MIN_LIFETIME_MS;
+    if (typeof exp !== "number" || Math.abs(exp - want) > 60e3) upd.expiresAt = Timestamp.fromMillis(want);
+  } else if (isMidnight) {
+    const floor = created + EPHEMERAL_MIN_LIFETIME_MS;
+    if (typeof exp !== "number" || exp < floor) upd.expiresAt = Timestamp.fromMillis(floor);
+  }
+  return Object.keys(upd).length ? upd : null;
+}
+
 exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   const postId = event.params.postId;
   const postData = event.data.data();
@@ -2554,12 +2576,18 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // at its expression ceiling — only type-checks the flags, so a tampered
   // client could write both with an arbitrary expiresAt. Normalize to the
   // SHORTER life: keep whisper, drop the midnight flag, pin expiresAt to ≤ 1 h.
-  if (postData.isWhisper === true && postData.isMidnightPost === true) {
-    const cap = Date.now() + 3600e3;
-    const exp = postData.expiresAt && typeof postData.expiresAt.toMillis === "function" ? postData.expiresAt.toMillis() : null;
-    const expiresAt = typeof exp === "number" && exp <= cap ? postData.expiresAt : Timestamp.fromMillis(cap);
-    console.warn(`validatePost ${postId}: both isWhisper and isMidnightPost set — normalizing to whisper`);
-    await db.collection("posts").doc(postId).update({ isMidnightPost: FieldValue.delete(), expiresAt });
+  // 2026-10-30 bad-actor audit (#4): ephemeral lifetimes are server-owned. A tampered client wrote a
+  // whisper / midnight post with a 2-minute expiry (post-and-vanish harassment); the create rule only
+  // bounds expiresAt to < 26 h. Now: a whisper expires exactly 60 min after createdAt; a midnight post
+  // keeps the client's local-midnight value but never expires sooner than 60 min after createdAt (the
+  // server has no timezone, so local midnight cannot be recomputed here — the floor is what stops the
+  // flash post while a 23:30 midnight post still clears shortly after midnight).
+  {
+    const upd = normalizeEphemeralExpiry(postData);
+    if (upd) {
+      console.warn(`validatePost ${postId}: ephemeral expiry normalized (${Object.keys(upd).join(", ")})`);
+      await db.collection("posts").doc(postId).update(upd);
+    }
   }
 
   // Reposts now run through their own validation path. Previously this
@@ -3525,6 +3553,7 @@ exports.onPostUpdated = onDocumentUpdated(
         body: "a post needs review in the crisis queue",
         dataPayload: { type: "admin_crisis_alert", postId },
         logLabel: `crisis-alert-edit(${postId})`,
+        authorId: after.authorId,
       });
     }
     if (flagReason) await checkRepeatOffenderPosts(after.authorId);
@@ -3614,6 +3643,7 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated(
       body: "a post needs review in the crisis queue",
       dataPayload: { type: "admin_crisis_alert", postId },
       logLabel: `crisis-alert(${postId})`,
+      authorId: data.authorId,
     });
   }
 );
@@ -3630,11 +3660,44 @@ exports.onPostCreatedAlertAdmins = onDocumentCreated(
 // Exponential backoff bounds the retry cost; the claim doc bounds duplicates.
 // Only the claim read (fail open → worst case a duplicate page) and the claim
 // write (fail open → duplicate on next redelivery) are non-fatal.
-async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabel }) {
+// 2026-10-30 bad-actor audit (#3): one PUSH per author per hour. Every crisis item still enters the
+// review queue (the post/reply is held with reason crisis, replies get a crisisReplyQueue entry);
+// only the second and later pushes for the same author inside the window are suppressed. A
+// throttled item gets a claim marked `throttled: true`, so the watchdog treats it as handled rather
+// than as an undelivered page.
+const CRISIS_PAGE_THROTTLE_MS = 60 * 60 * 1000;
+async function crisisPageThrottled(authorId) {
+  if (typeof authorId !== "string" || !authorId) return false;
+  try {
+    const snap = await db.collection("crisisPageThrottle").doc(authorId).get();
+    const last = snap.exists ? snap.get("lastPagedAt")?.toMillis?.() : null;
+    return typeof last === "number" && Date.now() - last < CRISIS_PAGE_THROTTLE_MS;
+  } catch (err) {
+    console.warn(`crisis page throttle read failed for author, failing open: ${err.message}`);
+    return false;
+  }
+}
+async function stampCrisisPage(authorId) {
+  if (typeof authorId !== "string" || !authorId) return;
+  await db.collection("crisisPageThrottle").doc(authorId).set({
+    lastPagedAt: FieldValue.serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  }, { merge: true }).catch((err) => console.warn(`crisis page throttle stamp failed: ${err.message}`));
+}
+
+async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabel, authorId }) {
   try {
     if ((await claimRef.get()).exists) return; // already paged
   } catch (err) {
     console.warn(`${logLabel}: claim read failed, proceeding:`, err.message);
+  }
+  if (await crisisPageThrottled(authorId)) {
+    console.log(JSON.stringify({ tag: "crisis_page_throttled", label: logLabel }));
+    const expiresAt = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    await claimRef.set({ processedAt: FieldValue.serverTimestamp(), expiresAt, throttled: true })
+      .catch((err) => console.warn(`${logLabel}: throttled claim write failed:`, err.message));
+    await db.collection("undeliveredCrisisPages").doc(claimRef.id).delete().catch(() => {});
+    return;
   }
   // Deploy-time param (ACC-06: repo is public — no uid literals in code).
   // Real values live in gitignored .env.toska-4ebf4 / .env.toskastaging;
@@ -3728,6 +3791,7 @@ async function pageAdminsForCrisis({ claimRef, title, body, dataPayload, logLabe
     .catch((err) => console.warn(`${logLabel}: claim write failed:`, err.message));
   // C8: a delivered page resolves any undelivered record (retry succeeded).
   await db.collection("undeliveredCrisisPages").doc(claimRef.id).delete().catch(() => {});
+  await stampCrisisPage(authorId);
 }
 
 // C8 (2026-10-28): resolve an undelivered-page record for a post or reply —
@@ -3754,6 +3818,7 @@ exports.onReplyCreatedAlertAdmins = onDocumentCreated(
       body: "a reply needs review in the crisis queue",
       dataPayload: { type: "admin_crisis_alert", postId: event.params.postId, replyId: event.params.replyId },
       logLabel: `crisis-alert-reply(${event.params.replyId})`,
+      authorId: data.authorId,
     });
   }
 );
@@ -3936,6 +4001,7 @@ exports.onReplyUpdated = onDocumentUpdated(
           body: "a reply needs review in the crisis queue",
           dataPayload: { type: "admin_crisis_alert", postId: event.params.postId, replyId: event.params.replyId },
           logLabel: `crisis-alert-reply-edit(${event.params.replyId})`,
+          authorId: after.authorId,
         });
       }
       // Item 3 (2026-10-28): an edit that introduces explicit crisis text HOLDS
@@ -4088,6 +4154,43 @@ exports.checkReportSLA = onSchedule("every 60 minutes", async () => {
 // volume. Equality-only query (auto single-field index) + in-code time
 // window, so no composite index is required.
 // ============================================================
+const NEW_ACCOUNT_SPIKE_THRESHOLD = 20;      // live posts in the window from accounts < 24 h old
+const NEW_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+// Logs under the existing alert tag (abuse_spike_global, lane live_new_accounts) so the deployed
+// "abuse spike" alerting policy fires without an infra change. Returns the count (tests).
+async function watchNewAccountLiveSpike(cutoffMs) {
+  const snap = await db.collection("posts")
+    .where("createdAt", ">", Timestamp.fromMillis(cutoffMs))
+    .limit(500)
+    .get();
+  const byAuthor = new Map();
+  snap.forEach((doc) => {
+    const d = doc.data();
+    if (d.moderationStatus !== "live" || d.isRepost === true) return;
+    const a = d.authorId; if (typeof a !== "string" || !a) return;
+    byAuthor.set(a, (byAuthor.get(a) || 0) + 1);
+  });
+  if (byAuthor.size === 0) return 0;
+  const authorIds = [...byAuthor.keys()];
+  const userSnaps = await db.getAll(...authorIds.map((a) => db.collection("users").doc(a)));
+  let fromNew = 0, newAuthors = 0;
+  userSnaps.forEach((u, i) => {
+    const created = u.exists ? u.get("createdAt")?.toMillis?.() : null;
+    const isNew = typeof created !== "number" || Date.now() - created < NEW_ACCOUNT_AGE_MS;
+    if (isNew) { fromNew += byAuthor.get(authorIds[i]); newAuthors++; }
+  });
+  if (fromNew >= NEW_ACCOUNT_SPIKE_THRESHOLD) {
+    console.log(JSON.stringify({
+      tag: "abuse_spike_global",
+      lane: "live_new_accounts",
+      livePostsFromNewAccountsLastHour: fromNew,
+      newAccounts: newAuthors,
+      threshold: NEW_ACCOUNT_SPIKE_THRESHOLD,
+    }));
+  }
+  return fromNew;
+}
+
 exports.abuseSpikeWatch = onSchedule("every 60 minutes", async () => {
   const AUTHOR_THRESHOLD = 5;   // held posts from ONE author in the window
   const GLOBAL_THRESHOLD = 20;  // held posts total in the window
@@ -4114,6 +4217,10 @@ exports.abuseSpikeWatch = onSchedule("every 60 minutes", async () => {
     const a = d.authorId || "unknown";
     byAuthor.set(a, (byAuthor.get(a) || 0) + 1);
   });
+
+  // 2026-10-30 bad-actor audit (#9): a flood from fresh sockpuppets is LIVE, not held, so the lanes
+  // above never see it. Count live posts in the last hour from accounts younger than 24 h.
+  await watchNewAccountLiveSpike(cutoffMs).catch((err) => console.warn("abuseSpikeWatch new-account lane failed:", err.message));
 
   if (recentTotal === 0) return;
 
@@ -4478,6 +4585,19 @@ exports.enrichReplyNotification = onDocumentCreated(
 // Index requirement: reports/(reportedBy ASC, createdAt DESC) and
 // reports/(reportedUserId ASC, createdAt DESC) — both added to
 // firestore.indexes.json.
+const REPORT_CAP_ESTABLISHED = 20, REPORT_CAP_NEW_ACCOUNT = 5, REPORT_NEW_ACCOUNT_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+async function reporterCapFor(uid) {
+  try {
+    const snap = await db.collection("users").doc(uid).get();
+    const created = snap.exists ? snap.get("createdAt")?.toMillis?.() : null;
+    if (typeof created === "number" && Date.now() - created >= REPORT_NEW_ACCOUNT_AGE_MS) return REPORT_CAP_ESTABLISHED;
+    return REPORT_CAP_NEW_ACCOUNT;
+  } catch (err) {
+    console.warn(`reporter age read failed, using the established cap: ${err.message}`);
+    return REPORT_CAP_ESTABLISHED;
+  }
+}
+
 exports.rateLimitReports = onDocumentCreated(
   "reports/{reportId}",
   async (event) => {
@@ -4485,18 +4605,22 @@ exports.rateLimitReports = onDocumentCreated(
     if (!reportData) return;
     const reportedBy = reportData.reportedBy;
     if (!reportedBy) return;
+    if (reportedBy.startsWith("system_")) return; // automated reports (handle screen) are not rate-limited
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const since = Timestamp.fromDate(oneHourAgo);
 
-    // Tier 1: per-reporter cap.
+    // Tier 1: per-reporter cap. 2026-10-30 bad-actor audit (#5): accounts younger than 7 days (or
+    // with no readable createdAt) get 5/h instead of 20/h — a fresh sockpuppet can no longer file
+    // 20 reports an hour into the admin queue.
+    const perReporterCap = await reporterCapFor(reportedBy);
     const recentSnap = await db.collection("reports")
       .where("reportedBy", "==", reportedBy)
       .where("createdAt", ">", since)
       .orderBy("createdAt", "desc")
       .limit(25)
       .get();
-    if (recentSnap.size > 20) {
+    if (recentSnap.size > perReporterCap) {
       console.log("Report rate limit exceeded for reporter:", reportedBy);
       await db.collection("reports").doc(event.params.reportId).delete();
       return;
@@ -4542,6 +4666,40 @@ exports.rateLimitReports = onDocumentCreated(
 // Index requirement: reports/(type ASC, postId ASC, createdAt DESC) —
 // added to firestore.indexes.json.
 // ============================================================
+const AUTO_HIDE_REPORTER_MIN_AGE_MS = 72 * 60 * 60 * 1000;
+const AUTO_HIDE_CAP_PER_AUTHOR = 2;
+const AUTO_HIDE_CAP_WINDOW_MS = 24 * 60 * 60 * 1000;
+async function reporterCountsTowardAutoHide(uid) {
+  try {
+    const snap = await db.collection("users").doc(uid).get();
+    const created = snap.exists ? snap.get("createdAt")?.toMillis?.() : null;
+    return typeof created === "number" && Date.now() - created >= AUTO_HIDE_REPORTER_MIN_AGE_MS;
+  } catch (err) {
+    console.warn(`auto-hide reporter age read failed, not counting: ${err.message}`);
+    return false;
+  }
+}
+// Reserve one of the author's AUTO_HIDE_CAP_PER_AUTHOR slots in the rolling window (server-only
+// collection autoHides/{authorId}: { events: [millis…] }). Returns false when the cap is reached.
+async function reserveAutoHide(authorId) {
+  if (typeof authorId !== "string" || !authorId) return true; // no author → nothing to cap against
+  const ref = db.collection("autoHides").doc(authorId);
+  try {
+    return await db.runTransaction(async (t) => {
+      const snap = await t.get(ref);
+      const now = Date.now();
+      const events = (snap.exists ? snap.get("events") || [] : []).filter((ms) => typeof ms === "number" && now - ms < AUTO_HIDE_CAP_WINDOW_MS);
+      if (events.length >= AUTO_HIDE_CAP_PER_AUTHOR) { t.set(ref, { events, expiresAt: Timestamp.fromMillis(now + AUTO_HIDE_CAP_WINDOW_MS) }, { merge: true }); return false; }
+      events.push(now);
+      t.set(ref, { events, expiresAt: Timestamp.fromMillis(now + AUTO_HIDE_CAP_WINDOW_MS) }, { merge: true });
+      return true;
+    });
+  } catch (err) {
+    console.warn(`auto-hide cap transaction failed, allowing: ${err.message}`);
+    return true;
+  }
+}
+
 exports.onReportCreatedAutoHide = onDocumentCreated(
   "reports/{reportId}",
   async (event) => {
@@ -4587,15 +4745,36 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
     // Distinct reporter uids (Set semantics) — same user reporting twice
     // counts as one. Skip docs missing reportedBy (shouldn't happen given
     // rule enforcement, but defensive).
-    const distinctReporters = new Set();
+    const allReporters = new Set();
     reportsSnap.forEach((d) => {
       if (isReplyReport && d.get("replyId") !== replyId) return;
       const r = d.get("reportedBy");
-      if (typeof r === "string" && r) distinctReporters.add(r);
+      if (typeof r === "string" && r) allReporters.add(r);
     });
 
+    // 2026-10-30 bad-actor audit (#2): three 8-second-old sockpuppets could hide any post. Only
+    // reporters whose account is at least 72 h old count toward the threshold; younger accounts'
+    // reports still reach the admin queue, they just don't auto-hide. (≤ a handful of user reads.)
+    const distinctReporters = new Set();
+    for (const uid of allReporters) {
+      if (await reporterCountsTowardAutoHide(uid)) distinctReporters.add(uid);
+    }
+
     const THRESHOLD = 3;
-    if (distinctReporters.size < THRESHOLD) return;
+    if (distinctReporters.size < THRESHOLD) {
+      if (allReporters.size >= THRESHOLD) {
+        console.log(JSON.stringify({ tag: "auto_hide_skipped_new_reporters", postId, replyId: replyId || null, reporters: allReporters.size, eligible: distinctReporters.size }));
+      }
+      return;
+    }
+
+    // (#2) at most AUTO_HIDE_CAP_PER_AUTHOR auto-hides per author per 24 h — a brigade cannot blank
+    // a whole profile. Further reports stay pending for the admin; the content stays up.
+    const authorId = (targetSnap.data() || {}).authorId;
+    if (!(await reserveAutoHide(authorId))) {
+      console.log(JSON.stringify({ tag: "auto_hide_cap_reached", postId, replyId: replyId || null, reporters: distinctReporters.size }));
+      return;
+    }
 
     if (isReplyReport) {
       console.log(`auto-hide reply ${replyId} on ${postId} — ${distinctReporters.size} distinct reports in 24h`);
@@ -4607,6 +4786,40 @@ exports.onReportCreatedAutoHide = onDocumentCreated(
         autoHiddenReportCount: distinctReporters.size,
       });
     }
+  }
+);
+
+// 2026-10-30 bad-actor audit (#4): a report about a whisper / midnight post (or anything the author
+// deletes seconds later) used to carry only the REPORTER's typed text, which the dashboard rightly
+// labels unverified and cannot act on. Capture a server-verified copy of the reported content onto
+// the report the moment it is filed, so the admin can still read it and restrict the author after
+// the content is gone. update(), not set(): if rateLimitReports already deleted the report
+// (NOT_FOUND, code 5) nothing is recreated.
+exports.onReportCreatedSnapshot = onDocumentCreated(
+  "reports/{reportId}",
+  async (event) => {
+    const r = event.data?.data();
+    if (!r || typeof r.postId !== "string" || !r.postId) return;
+    const ref = typeof r.replyId === "string" && r.replyId
+      ? db.collection("posts").doc(r.postId).collection("replies").doc(r.replyId)
+      : db.collection("posts").doc(r.postId);
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    const d = snap.data() || {};
+    const snapshot = {
+      text: typeof d.text === "string" ? d.text.slice(0, 2000) : "",
+      authorId: typeof d.authorId === "string" ? d.authorId : null,
+      authorHandle: typeof d.authorHandle === "string" ? d.authorHandle : null,
+      createdAt: d.createdAt || null,
+      isWhisper: d.isWhisper === true,
+      isMidnightPost: d.isMidnightPost === true,
+      gifUrl: typeof d.gifUrl === "string" ? d.gifUrl : null,
+      moderationStatus: typeof d.moderationStatus === "string" ? d.moderationStatus : null,
+      capturedAt: FieldValue.serverTimestamp(),
+    };
+    const upd = { snapshot };
+    if (typeof r.reportedUserId !== "string" && snapshot.authorId) upd.reportedUserId = snapshot.authorId;
+    await event.data.ref.update(upd).catch((e) => { if (e.code !== 5) throw e; });
   }
 );
 
@@ -6536,22 +6749,16 @@ exports.notifyAdminsOfNewReport = onDocumentCreated(
     // crisis recipients through the standard PAGE-then-CLAIM path (per-report
     // claim id keeps redelivery idempotent). L-1 holds: the page carries no
     // report content, just the pointer — the admin reads it in the dashboard.
+    // 2026-10-30 bad-actor audit (#3): reporter free-text is attacker-controlled, and paging on it
+    // let one account page the on-call phone 20× an hour. The reported post/reply already runs the
+    // crisis detector on create and edit, so a match here only FLAGS the report for the dashboard
+    // (it stays in the pending queue) and logs — no push.
     const reporterText = [data.text, data.reasonLabel]
       .filter((s) => typeof s === "string" && s.length > 0).join(" ");
     if (reporterText && isPostExplicitCrisis(reporterText)) {
-      await pageAdminsForCrisis({
-        claimRef: db.collection("processedTriggerEvents")
-          .doc(`crisisreport_${event.params.reportId}`),
-        title: "report flags possible crisis",
-        body: "a report's text matched explicit-crisis phrasing — review now",
-        dataPayload: {
-          kind: "crisis_report",
-          reportId: event.params.reportId,
-          type: typeof data.type === "string" ? data.type : "unknown",
-          postId: typeof data.postId === "string" ? data.postId : "",
-        },
-        logLabel: `crisis-report ${event.params.reportId}`,
-      });
+      console.warn(JSON.stringify({ tag: "report_text_crisis", reportId: event.params.reportId }));
+      await event.data.ref.update({ reporterTextCrisis: true })
+        .catch((e) => { if (e.code !== 5) console.warn(`report ${event.params.reportId}: crisis flag write failed: ${e.message}`); });
     }
   }
 );
@@ -6750,6 +6957,15 @@ Object.defineProperty(module.exports, "__test", {
   db,
   FieldValue,
   Timestamp,
+  // bad-actor audit fixes (2026-10-30)
+  crisisPageThrottled,
+  stampCrisisPage,
+  reporterCountsTowardAutoHide,
+  reserveAutoHide,
+  reporterCapFor,
+  normalizeEphemeralExpiry,
+  watchNewAccountLiveSpike,
+  AUTO_HIDE_CAP_PER_AUTHOR,
   pruneNotificationsOlderThan,
   // A4 (2026-10-29)
   cleanupReplySnapshotsForUid,

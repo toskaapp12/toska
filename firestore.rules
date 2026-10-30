@@ -198,6 +198,20 @@ service cloud.firestore {
         && h.matches('^[a-zA-Z0-9_-]+$');
     }
 
+    // 2026-10-30 bad-actor audit (#7 look-alike handles): the charset check above let a tampered
+    // client register `quiet_river_l2`, `quiet-river-12`, `qu1et_river_12` or `t0ska_supp0rt`. New
+    // accounts must now carry exactly what the app's generator can produce — {adjective}_{noun}_{n}
+    // from the two fixed 30-word lists (ContentModeration.swift handleAdjectives / handleNouns,
+    // webapp/js/app.js HANDLE_ADJECTIVES / HANDLE_NOUNS, functions/moderation.js mirror), lowercase,
+    // 1–6 digits with no leading zero. That keyspace contains no confusable characters, no
+    // hyphens, no digits inside words and no reserved words, so every look-alike is at worst a
+    // different legitimate handle. CREATE only: existing accounts (incl. the `anonymous_…` owner
+    // test accounts) are untouched, and the handle is immutable on update.
+    function generatorHandle(h) {
+      return h is string
+        && h.matches('^(quiet|still|soft|lost|tired|gentle|fading|sleepless|distant|hollow|heavy|broken|wandering|waiting|restless|silent|lonely|aching|drifting|numb|awake|unsaid|almost|barely|dimly|slowly|sadly|deeply|half|nearly)_(ghost|echo|rain|shadow|light|heart|moon|night|storm|drift|flame|cloud|wave|stone|dust|ember|frost|shore|wound|blur|haze|tide|spark|soul|dream|ache|sigh|dark|glow|void)_[1-9][0-9]{0,5}$');
+    }
+
     // Reserved-handle denylist (2026-08-05). validHandle() above only
     // constrains the CHARSET, and nothing forces a client to use the app's
     // handle generator — users/{uid} create takes whatever `handle` the
@@ -402,6 +416,7 @@ service cloud.firestore {
         // (generateUniqueHandle) only produces strings in this character class
         // so existing accounts are unaffected.
         && validHandle(request.resource.data.handle)
+        && generatorHandle(request.resource.data.handle)
         // Reserved-name check (2026-08-05). Must follow validHandle() in the
         // && chain: reservedHandle() calls .lower(), which errors (→ deny,
         // but for the wrong reason) on a non-string. See reservedHandle()
@@ -1159,6 +1174,7 @@ service cloud.firestore {
         // true on its own terms. handleLower is a doc id, always a string,
         // so .lower() is safe here without a preceding type check.
         && !reservedHandle(handleLower)
+        && generatorHandle(handleLower)
         // Bind the row to the user doc in the SAME batch: the claimed id
         // must equal the lowercased handle the caller's user doc carries
         // after this write. Stops squatting rows that don't match any real
@@ -2106,6 +2122,17 @@ service cloud.firestore {
     // for admins: the dashboard has no use for it, and an admin-readable
     // hash list would only add leak surface.
     match /bannedIdentities/{hash} {
+      allow read, write: if false;
+    }
+
+    // 2026-10-30 bad-actor audit — server-only state for the report and crisis defenses:
+    // autoHides/{authorId} = the author's auto-hide slots in the rolling 24 h window
+    // (onReportCreatedAutoHide); crisisPageThrottle/{authorId} = last on-call push for that author
+    // (pageAdminsForCrisis, one push per author per hour). Admin SDK only.
+    match /autoHides/{authorId} {
+      allow read, write: if false;
+    }
+    match /crisisPageThrottle/{authorId} {
       allow read, write: if false;
     }
 

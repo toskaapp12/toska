@@ -1001,6 +1001,84 @@ func likelyFirstName(_ raw: String) -> Bool {
     return false
 }
 
+
+// ── 2026-10-30 bad-actor audit (#1 doxxing workarounds, #6 bare handle mentions) ──────────────────
+// Mirror of functions/moderation.js (same helpers, same order inside containsNameOrIdentifyingInfo),
+// pinned by detector-parity. The handle word lists live here (above the detector) because a bare
+// {adjective}_{noun}_{n} token can only be a reference to a user and is treated like "@handle".
+private let handleAdjectives = [
+    "quiet", "still", "soft", "lost", "tired", "gentle", "fading", "sleepless",
+    "distant", "hollow", "heavy", "broken", "wandering", "waiting", "restless",
+    "silent", "lonely", "aching", "drifting", "numb", "awake", "unsaid", "almost",
+    "barely", "dimly", "slowly", "sadly", "deeply", "half", "nearly"
+]
+
+private let handleNouns = [
+    "ghost", "echo", "rain", "shadow", "light", "heart", "moon", "night",
+    "storm", "drift", "flame", "cloud", "wave", "stone", "dust", "ember",
+    "frost", "shore", "wound", "blur", "haze", "tide", "spark", "soul",
+    "dream", "ache", "sigh", "dark", "glow", "void"
+]
+
+private let handleShapePattern = "(?:^|[^a-z0-9_])(?:" + handleAdjectives.joined(separator: "|") + ")_(?:" + handleNouns.joined(separator: "|") + ")_[0-9]{1,6}(?![a-z0-9_])"
+private let numberWords: Set<String> = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "oh"]
+private let socialExtraPattern = "\\b(?:(?:her|his|their|my|the)\\s+)?(?:ig|insta|snap|sc|tt|tiktok)\\s+(?:is|was|:)\\s*[a-z0-9._]{3,}|\\bon\\s+the\\s+gram\\b|\\bgram\\s*:\\s*[a-z0-9._]{3,}"
+private let platePattern = "\\bplates?\\s*(?:number|no\\.?|#)?\\s*:?\\s*[a-z0-9]{2,3}[ -]?[0-9]{3,4}\\b"
+// Given names that are also ordinary lowercase English words — excluded from the lowercase / compact
+// rules only. Mirror of moderation.js LOWERCASE_EXCLUDED_GIVEN.
+private let lowercaseExcludedGiven: Set<String> = [
+    "aba", "age", "ake", "alf", "albino", "anis", "ante", "are", "aria", "ase", "aura", "aurora", "basil", "bent", "beryl", "bora", "buster", "carmine", "chuck", "clement", "dag", "daisy", "desire", "dick", "dolly", "edit", "els", "else", "eros", "ester", "even", "evert", "fay", "felicity", "gad", "gay", "german", "gunnel", "hardy", "hazel", "heather", "jasmine", "job", "kelvin", "kitty", "liana", "line", "lone", "ludo", "margarita", "marina", "marten", "mate", "maxim", "meta", "nadir", "nail", "nana", "noel", "odd", "paddy", "pal", "pall", "per", "pol", "prosper", "randy", "rein", "roar", "roger", "rosemary", "rune", "rut", "serge", "shin", "sienna", "stale", "sultan", "tea", "tilde", "tin", "tor", "tore", "tuba", "urban", "valerian", "ville", "viola", "vita", "willy", "yaw",
+]
+private func isPlainGivenName(_ w: String) -> Bool { commonNames.contains(w) && !ambiguousWords.contains(w) && !nudgeOnlyNames.contains(w) && !lowercaseExcludedGiven.contains(w) }
+private func isPlainSurname(_ w: String) -> Bool { commonLastNames.contains(w) && w.count >= 3 && !ambiguousWords.contains(w) }
+private func regexGroups(_ pattern: String, _ s: String) -> [[String]] {
+    guard let re = try? NSRegularExpression(pattern: pattern, options: []) else { return [] }
+    let ns = s as NSString
+    return re.matches(in: s, range: NSRange(location: 0, length: ns.length)).map { m in
+        (0..<m.numberOfRanges).map { i in m.range(at: i).location == NSNotFound ? "" : ns.substring(with: m.range(at: i)) }
+    }
+}
+private func asciiLetterTokens(_ s: String) -> [String] { s.split(whereSeparator: { !($0.isASCII && $0.isLetter) }).map(String.init) }
+// "sarah johnson" / "sarah (johnson)" / "s. johnson" / "sarah j." — given + surname in any case.
+// Controls: "summer rain", "grace kelly", "rose garden" (ambiguous given names never count).
+private func looksLikeLowercaseFullName(_ lowered: String, safeBigrams: Set<String>) -> Bool {
+    let tokens = asciiLetterTokens(lowered)
+    if tokens.count >= 2 {
+        for i in 0..<(tokens.count - 1) {
+            let w1 = tokens[i], w2 = tokens[i + 1]
+            if isPlainGivenName(w1) && isPlainSurname(w2) && !safeBigrams.contains("\(w1) \(w2)") { return true }
+        }
+    }
+    for m in regexGroups("\\b([a-z]+)\\s*[(,/\\-–—]\\s*([a-z]+)\\)?", lowered) where isPlainGivenName(m[1]) && isPlainSurname(m[2]) { return true }
+    for m in regexGroups("(?<![a-z])([a-z])\\.\\s*([a-z]{3,})\\b", lowered) where isPlainSurname(m[2]) { return true }
+    for m in regexGroups("\\b([a-z]{2,})\\s+([a-z])\\.(?![a-z])", lowered) where isPlainGivenName(m[1]) && m[2] != "i" { return true }
+    return false
+}
+// "sarahjohnson" / "SarahJohnson22": one token that splits into given + surname (both ≥ 4 letters).
+private func looksLikeConcatenatedName(_ lowered: String) -> Bool {
+    for raw in lowered.split(whereSeparator: { !($0.isASCII && ($0.isLetter || $0.isNumber)) }) {
+        var tok = String(raw)
+        while let last = tok.last, last.isNumber { tok.removeLast() }
+        if tok.count < 8 || commonNames.contains(tok) || commonLastNames.contains(tok) { continue }
+        let chars = Array(tok)
+        for i in 4...(chars.count - 4) {
+            if isPlainGivenName(String(chars[0..<i])) && isPlainSurname(String(chars[i...])) { return true }
+        }
+    }
+    return false
+}
+// ≥ 7 number-words inside any 12-token window reads as a phone number.
+private func hasSpelledOutPhone(_ lowered: String) -> Bool {
+    var count = 0; var window: [Int] = []
+    for t in asciiLetterTokens(lowered) {
+        let n = numberWords.contains(t) ? 1 : 0
+        window.append(n); count += n
+        if window.count > 12 { count -= window.removeFirst() }
+        if count >= 7 { return true }
+    }
+    return false
+}
+
 func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
     let identifyingPatterns = [
         "instagram", "insta", "snapchat", "snap", "tiktok", "twitter",
@@ -1196,6 +1274,16 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
         if (commonTitleWords.contains(w1) || commonTitleWords.contains(w2))
             && !commonNames.contains(w1) && !commonNames.contains(w2) { continue }
         return true
+    }
+    // 2026-10-30 bad-actor audit (#1 / #6) — mirror of moderation.js, same order.
+    do {
+        let loweredCanon = canonicalize(text)
+        if looksLikeLowercaseFullName(loweredCanon, safeBigrams: safeProperNounBigrams) { return true }
+        if looksLikeConcatenatedName(loweredCanon) { return true }
+        if hasSpelledOutPhone(loweredCanon) { return true }
+        if text.range(of: socialExtraPattern, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        if text.range(of: platePattern, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        if text.range(of: handleShapePattern, options: [.regularExpression, .caseInsensitive]) != nil { return true }
     }
     let crisisNumbers = [
             "988-273-8255", "9882738255", "988 273 8255",
@@ -1417,23 +1505,10 @@ func containsNameOrIdentifyingInfo(_ text: String) -> Bool {
 // No Firestore uniqueness check is performed — collision probability is negligible
 // at current scale. If the app grows significantly, consider adding a Firestore
 // transaction that verifies uniqueness before committing the handle.
-private let handleAdjectives = [
-    "quiet", "still", "soft", "lost", "tired", "gentle", "fading", "sleepless",
-    "distant", "hollow", "heavy", "broken", "wandering", "waiting", "restless",
-    "silent", "lonely", "aching", "drifting", "numb", "awake", "unsaid", "almost",
-    "barely", "dimly", "slowly", "sadly", "deeply", "half", "nearly"
-]
-
-private let handleNouns = [
-    "ghost", "echo", "rain", "shadow", "light", "heart", "moon", "night",
-    "storm", "drift", "flame", "cloud", "wave", "stone", "dust", "ember",
-    "frost", "shore", "wound", "blur", "haze", "tide", "spark", "soul",
-    "dream", "ache", "sigh", "dark", "glow", "void"
-]
 
 func generateUniqueHandle(attempt: Int = 0, completion: @escaping (String) -> Void) {
     guard attempt < 10 else {
-        completion("anonymous_\(UUID().uuidString.prefix(8).lowercased())")
+        completion("\(handleAdjectives.randomElement() ?? "quiet")_\(handleNouns.randomElement() ?? "ghost")_\(Int.random(in: 1000...999999))")
         return
     }
     let adj = handleAdjectives.randomElement() ?? "quiet"
@@ -1471,7 +1546,7 @@ func generateUniqueHandle(attempt: Int = 0, completion: @escaping (String) -> Vo
 /// On timeout, the call site should also fall back to a UUID handle.
 func generateUniqueHandleAsync(attempt: Int = 0) async -> String {
     guard attempt < 10 else {
-        return "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+        return "\(handleAdjectives.randomElement() ?? "quiet")_\(handleNouns.randomElement() ?? "ghost")_\(Int.random(in: 1000...999999))"
     }
     let adj = handleAdjectives.randomElement() ?? "quiet"
     let noun = handleNouns.randomElement() ?? "ghost"
@@ -1513,7 +1588,7 @@ func commitUserDocClaimingHandle(uid: String, initialHandle: String, baseData: [
             lastError = error
             candidate = attempt < 2
                 ? await generateUniqueHandleAsync()
-                : "anonymous_\(UUID().uuidString.prefix(8).lowercased())"
+                : "\(handleAdjectives.randomElement() ?? "quiet")_\(handleNouns.randomElement() ?? "ghost")_\(Int.random(in: 1000...999999))"
         }
     }
     throw lastError

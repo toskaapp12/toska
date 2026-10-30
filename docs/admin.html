@@ -198,7 +198,17 @@
         // the dashboard needs its own Web appId — using the iOS appId
         // here would mean Firestore App Check enforcement rejects every
         // request from this page. Web appId created 2026-05-31 in prod.
-        const app = initializeApp({
+        // 2026-10-30: `?project=staging` points the dashboard at toskastaging so queue changes can be
+        // checked against staging data before they reach prod. Staging has no web app registration
+        // and no App Check enforcement, so the iOS app id is reused and App Check init is skipped.
+        const STAGING_MODE = new URLSearchParams(location.search).get("project") === "staging";
+        const app = initializeApp(STAGING_MODE ? {
+            apiKey: "AIzaSyCTGuUzy9maPF84fZh5gD_-eZ2qkie75OQ",
+            authDomain: "toskastaging.firebaseapp.com",
+            projectId: "toskastaging",
+            messagingSenderId: "260913424323",
+            appId: "1:260913424323:ios:a6631554b2614bed01ff76"
+        } : {
             apiKey: "AIzaSyBrw_EFSHD2lMr7RqQd7sM9-2jMnr2tzdQ",
             authDomain: "toska-4ebf4.firebaseapp.com",
             projectId: "toska-4ebf4",
@@ -206,6 +216,7 @@
             messagingSenderId: "183467627187",
             appId: "1:183467627187:web:fd3f93867a2a54f90756c6"
         });
+        if (STAGING_MODE) document.title = "[STAGING] " + document.title;
 
         // App Check via reCAPTCHA Enterprise. Once a site key is set
         // below, every Firestore read/write from this dashboard carries
@@ -238,7 +249,7 @@
         // 2026-06-11), so this site key must stay valid for the dashboard to
         // reach Firestore; firestore.rules remain the authoritative perimeter.
         const RECAPTCHA_SITE_KEY = "6LfKrQUtAAAAAIMrSCA0WW4UoY1cPe9iONaQLHBP";
-        if (RECAPTCHA_SITE_KEY) {
+        if (RECAPTCHA_SITE_KEY && !STAGING_MODE) {
             // Wrapped in try/catch so an App Check / reCAPTCHA init failure
             // (e.g. the page loaded on a domain the reCAPTCHA key doesn't
             // accept) can NOT halt the rest of the script — otherwise the
@@ -1376,19 +1387,31 @@
 
         // --- Reports ---
 
-        async function loadReports(container) {
-            try {
-                const q = query(collection(db, "reports"), where("status", "==", "pending"), orderBy("createdAt", "desc"), limit(50));
-                const snap = await getDocs(q);
-                document.getElementById("pendingCount").textContent = snap.size;
+        // --- Reports (2026-10-30 bad-actor audit #5 / #4 / #3) ---
+        // Oldest first (the SLA clock), paged 50 at a time with "load more", one collapsed row per
+        // reporter with more than 5 pending reports (a flood from one account no longer buries the
+        // queue), a "new account" badge on reporters younger than 7 days, a "crisis wording" badge
+        // when the server flagged the reporter's own text, and the server-captured `snapshot` of the
+        // reported content when the live post/reply is already gone — verified, so remove/restrict
+        // stay possible after a whisper vanished. Rendering is textContent-only throughout.
+        const REPORTS_PAGE = 50;
+        const COLLAPSE_AT = 5;
+        let reportsCursor = null;
+        let reportsLoadedIds = new Set();
+        let reportsExpandedReporters = new Set();
 
-                // SLA counter over the FULL pending set, not the newest-50
-                // page: with a >50 backlog the OLDEST (most overdue) reports
-                // are exactly the ones the page excludes, so a page-local
-                // count read "0 overdue" while the promise was already
-                // broken. Aggregate count uses the same reports
-                // (status, createdAt) index as the list query.
+        async function loadReports(container, { append = false } = {}) {
+            try {
+                if (!append) { reportsCursor = null; reportsLoadedIds = new Set(); }
+                const parts = [collection(db, "reports"), where("status", "==", "pending"), orderBy("createdAt", "asc")];
+                if (append && reportsCursor) parts.push(startAfter(reportsCursor));
+                parts.push(limit(REPORTS_PAGE));
+                const snap = await getDocs(query(...parts));
+
+                // Pending total + SLA counter over the FULL pending set (aggregates), not the page.
                 try {
+                    const pendingAgg = await getCountFromServer(query(collection(db, "reports"), where("status", "==", "pending")));
+                    document.getElementById("pendingCount").textContent = pendingAgg.data().count;
                     const cutoff = new Date(Date.now() - 24 * 3600 * 1000);
                     const overdueAgg = await getCountFromServer(query(
                         collection(db, "reports"),
@@ -1398,64 +1421,75 @@
                     document.getElementById("overdueCount").textContent = overdueAgg.data().count;
                 } catch (aggErr) {
                     document.getElementById("overdueCount").textContent = "?";
-                    console.warn("overdue aggregate failed:", aggErr.message);
+                    console.warn("pending/overdue aggregate failed:", aggErr.message);
                 }
 
-                if (snap.empty) {
+                if (snap.empty && !append) {
                     emptyState(container, "nothing to review", "no pending reports right now");
                     return;
                 }
+                const reportDocs = snap.docs.filter((d) => !reportsLoadedIds.has(d.id));
+                reportDocs.forEach((d) => reportsLoadedIds.add(d.id));
+                if (snap.docs.length) reportsCursor = snap.docs[snap.docs.length - 1];
 
-                // Reports carry reporter-authored `text` and reporter-chosen
-                // postId/replyId/reportedUserId — none of which the create
-                // rule binds to any real document. Rendering that text as
-                // "the content" next to one-click remove/restrict let a
-                // fabricated report frame an innocent post/user. Fetch the
-                // ACTUAL reported content and act on ITS author; the
-                // reporter's text is shown clearly labeled as an unverified
-                // note.
-                const reportDocs = snap.docs;
+                // Reports carry reporter-authored `text` and reporter-chosen postId/replyId/
+                // reportedUserId — none bound to a real document by the create rule. Fetch the
+                // ACTUAL reported content and act on ITS author; fall back to the server-captured
+                // snapshot (written by onReportCreatedSnapshot) when the content is gone; the
+                // reporter's text is only ever shown as an unverified note.
                 const contents = await Promise.all(reportDocs.map(async (d) => {
                     const r = d.data();
                     try {
                         if (r.postId && r.replyId) {
                             const s = await getDoc(doc(db, "posts", r.postId, "replies", r.replyId));
-                            return s.exists() ? s.data() : null;
-                        }
-                        if (r.postId) {
+                            if (s.exists()) return { ...s.data(), _live: true };
+                        } else if (r.postId) {
                             const s = await getDoc(doc(db, "posts", r.postId));
-                            return s.exists() ? s.data() : null;
+                            if (s.exists()) return { ...s.data(), _live: true };
                         }
                     } catch (e) {
                         console.warn(`report ${d.id}: content fetch failed:`, e.message);
                     }
+                    if (r.snapshot && typeof r.snapshot.text === "string") return { ...r.snapshot, _live: false, _fromSnapshot: true };
                     return null;
                 }));
+                // Reporter account age (one read per distinct reporter on the page).
+                const reporterIds = [...new Set(reportDocs.map((d) => d.get("reportedBy")).filter((u) => typeof u === "string" && u && !u.startsWith("system_")))];
+                const reporterAge = new Map();
+                await Promise.all(reporterIds.map(async (uid) => {
+                    try { const u = await getDoc(doc(db, "users", uid)); const c = u.exists() ? u.data().createdAt?.toDate?.() : null; reporterAge.set(uid, { handle: u.exists() ? u.data().handle : null, created: c || null }); }
+                    catch (e) { reporterAge.set(uid, { handle: null, created: null }); }
+                }));
+                const isNewReporter = (uid) => { const a = reporterAge.get(uid); return !a || !a.created || (Date.now() - a.created.getTime()) < 7 * 24 * 3600 * 1000; };
 
-                container.replaceChildren();
-                container.appendChild(queueHeading("pending reports"));
+                if (!append) {
+                    container.replaceChildren();
+                    container.appendChild(queueHeading("pending reports — oldest first"));
+                }
+                const oldLoadMore = container.querySelector("#reportsLoadMore");
+                if (oldLoadMore) oldLoadMore.remove();
+
+                // Collapse by reporter: more than COLLAPSE_AT reports from one account on this page
+                // render as one summary card (click to expand) so a flood cannot bury the others.
+                const byReporter = new Map();
+                reportDocs.forEach((d, i) => { const k = d.get("reportedBy") || "?"; if (!byReporter.has(k)) byReporter.set(k, []); byReporter.get(k).push(i); });
+                const rendered = new Set();
                 const now = Date.now();
                 const TWELVE_HOURS_MS = 12 * 3600 * 1000;
                 const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1000;
-                reportDocs.forEach((d, i) => {
+
+                const renderReport = (d, i) => {
                     const r = d.data();
                     const content = contents[i];
                     const reportDate = r.createdAt?.toDate?.() || null;
                     const time = reportDate ? timeAgo(reportDate) : "unknown";
-                    // H-1: classify each pending report against the
-                    // 24-hour review SLA the in-app ReportSheet promises.
-                    // Overdue (>24h) → red border + badge. Aging (>12h) →
-                    // amber so the admin sees what's about to miss SLA.
                     const ageMs = reportDate ? now - reportDate.getTime() : 0;
                     let slaClass = "";
                     let slaBadge = null;
-                    if (ageMs > TWENTY_FOUR_HOURS_MS) {
-                        slaClass = "overdue";
-                        slaBadge = span("sla-badge sla-overdue", "overdue");
-                    } else if (ageMs > TWELVE_HOURS_MS) {
-                        slaClass = "aging";
-                        slaBadge = span("sla-badge sla-aging", "aging");
-                    }
+                    if (ageMs > TWENTY_FOUR_HOURS_MS) { slaClass = "overdue"; slaBadge = span("sla-badge sla-overdue", "overdue"); }
+                    else if (ageMs > TWELVE_HOURS_MS) { slaClass = "aging"; slaBadge = span("sla-badge sla-aging", "aging"); }
+                    const reporterBadge = (typeof r.reportedBy === "string" && !r.reportedBy.startsWith("system_") && isNewReporter(r.reportedBy)) ? span("sla-badge sla-aging", "new reporter (<7d)") : null;
+                    const crisisTextBadge = r.reporterTextCrisis === true ? span("sla-badge sla-overdue", "crisis wording in note") : null;
 
                     const reasonText = r.reasonLabel || r.reason || "";
                     const isReplyReport = Boolean(r.postId && r.replyId);
@@ -1464,27 +1498,18 @@
                     dismissBtn.textContent = "dismiss";
                     dismissBtn.addEventListener("click", () => dismissReport(d.id));
 
-                    // Destructive actions only exist when the reported content
-                    // was actually found — and a reply report removes the
-                    // REPLY, never the parent post (r.replyId used to be
-                    // ignored entirely, so the only button on an abusive-reply
-                    // report deleted the innocent parent thread).
+                    // Destructive actions only when the LIVE content exists (a snapshot cannot be
+                    // deleted again); restrict works from live content or the verified snapshot.
                     let removeBtn = null;
-                    if (content && isReplyReport) {
+                    if (content && content._live && isReplyReport) {
                         removeBtn = el("button", "btn-remove");
                         removeBtn.textContent = "remove reply";
                         removeBtn.addEventListener("click", () => removeReportedReply(d.id, r.postId, r.replyId));
-                    } else if (content && r.postId) {
+                    } else if (content && content._live && r.postId) {
                         removeBtn = el("button", "btn-remove");
                         removeBtn.textContent = "remove post";
                         removeBtn.addEventListener("click", () => removePost(d.id, r.postId));
                     }
-
-                    // Restrict binds to the CONTENT's author when content was
-                    // fetched (the verified offender), never the reporter-
-                    // chosen reportedUserId. Pure user reports (no postId)
-                    // have no content doc to verify against — keep the
-                    // action but the card labels the note as unverified.
                     let restrictBtn = null;
                     const restrictTargetId = content ? content.authorId : (r.postId ? null : r.reportedUserId);
                     const restrictTargetHandle = content ? content.authorHandle : r.reportedHandle;
@@ -1495,30 +1520,66 @@
                         restrictBtn.addEventListener("click", () => restrictUser(d.id, restrictTargetId, restrictTargetHandle));
                     }
 
-                    // .slice(0,8) on the post id is a display nicety; the full
-                    // id stays in the removeBtn closure above so the action
-                    // hits the correct doc. Both flow through textContent.
                     const card = renderCard({
                         id: `report-${d.id}`,
                         extraClass: slaClass,
                         groupHeaderLeft: true,
-                        headerLeft: [typeBadge(r.type), slaBadge],
+                        headerLeft: [typeBadge(r.type), slaBadge, reporterBadge, crisisTextBadge],
                         time,
                         reason: `reason: ${reasonText}`,
                         text: content
                             ? (content.text || "(no text)")
                             : (r.postId ? "(reported content not found — it may already be deleted)" : ""),
-                        subText: r.text ? `reporter's note (unverified): ${r.text}` : null,
+                        subText: [
+                            content && content._fromSnapshot ? "verified copy captured when the report was filed — the content has since been deleted" : null,
+                            r.text ? `reporter's note (unverified): ${r.text}` : null,
+                        ].filter(Boolean).join(" · ") || null,
                         meta: [
                             content
-                                ? `author: ${content.authorHandle || "unknown"}`
+                                ? `author: ${content.authorHandle || "unknown"}${content._fromSnapshot ? " (from snapshot)" : ""}`
                                 : `reported: ${r.reportedHandle || "unknown"} (unverified)`,
                             r.postId ? `${isReplyReport ? "reply on post" : "post"}: ${String(r.postId).slice(0, 8)}...` : null,
+                            typeof r.reportedBy === "string" ? `reporter: ${r.reportedBy.startsWith("system_") ? r.reportedBy : (reporterAge.get(r.reportedBy)?.handle || r.reportedBy.slice(0, 8) + "…")}` : null,
                         ],
                         actions: [dismissBtn, removeBtn, restrictBtn],
                     });
                     container.appendChild(card);
+                };
+
+                reportDocs.forEach((d, i) => {
+                    if (rendered.has(i)) return;
+                    const reporter = d.get("reportedBy") || "?";
+                    const group = byReporter.get(reporter) || [i];
+                    if (group.length > COLLAPSE_AT && !reportsExpandedReporters.has(reporter)) {
+                        group.forEach((j) => rendered.add(j));
+                        const expandBtn = el("button", "btn-dismiss");
+                        expandBtn.textContent = `show all ${group.length}`;
+                        expandBtn.addEventListener("click", () => { reportsExpandedReporters.add(reporter); loadReports(container); });
+                        const label = reporterAge.get(reporter)?.handle || reporter.slice(0, 8) + "…";
+                        container.appendChild(renderCard({
+                            id: `report-group-${reporter}`,
+                            extraClass: "aging",
+                            groupHeaderLeft: true,
+                            headerLeft: [span("sla-badge sla-aging", "collapsed"), isNewReporter(reporter) ? span("sla-badge sla-aging", "new reporter (<7d)") : null],
+                            time: "",
+                            reason: `${group.length} pending reports from one reporter: ${label}`,
+                            text: `collapsed so one account cannot flood the queue — reasons: ${[...new Set(group.map((j) => reportDocs[j].get("reasonLabel") || reportDocs[j].get("reason") || "?"))].join(", ")}`,
+                            meta: [`reporter uid: ${reporter}`],
+                            actions: [expandBtn],
+                        }));
+                        return;
+                    }
+                    rendered.add(i);
+                    renderReport(d, i);
                 });
+
+                if (snap.docs.length === REPORTS_PAGE) {
+                    const more = el("button", "btn-dismiss");
+                    more.id = "reportsLoadMore";
+                    more.textContent = "load 50 more (older → newer)";
+                    more.addEventListener("click", () => { more.disabled = true; loadReports(container, { append: true }); });
+                    container.appendChild(more);
+                }
             } catch (e) {
                 emptyState(container, "error loading reports", e.message);
             }

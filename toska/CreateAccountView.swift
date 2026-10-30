@@ -34,7 +34,7 @@ struct CreateAccountView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.toska(15, weight: .medium, relativeTo: .subheadline))
                         Text("back")
                             .font(ToskaFont.sans(12.5, weight: .semibold))
                     }
@@ -93,7 +93,7 @@ struct CreateAccountView: View {
                                         } label: {
                                             HStack(spacing: 4) {
                                                 Image(systemName: "arrow.triangle.2.circlepath")
-                                                    .font(.system(size: 11))
+                                                    .font(.toska(11, relativeTo: .caption2))
                                                 Text("shuffle")
                                                     .font(ToskaFont.sans(11, weight: .medium))
                                             }
@@ -164,7 +164,7 @@ struct CreateAccountView: View {
                                     .overlay(alignment: .trailing) {
                                         Button { showPassword.toggle() } label: {
                                             Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                                .font(.system(size: 14))
+                                                .font(.toska(14, relativeTo: .footnote))
                                                 .foregroundColor(ToskaColor.dot)
                                                 .padding(.horizontal, 12)
                                                 .contentShape(Rectangle())
@@ -205,7 +205,7 @@ struct CreateAccountView: View {
                                     .overlay(alignment: .trailing) {
                                         Button { showConfirmPassword.toggle() } label: {
                                             Image(systemName: showConfirmPassword ? "eye.slash.fill" : "eye.fill")
-                                                .font(.system(size: 14))
+                                                .font(.toska(14, relativeTo: .footnote))
                                                 .foregroundColor(ToskaColor.dot)
                                                 .padding(.horizontal, 12)
                                                 .contentShape(Rectangle())
@@ -230,7 +230,7 @@ struct CreateAccountView: View {
                 } label: {
                     HStack(alignment: .top, spacing: 10) {
                         Image(systemName: optInSharing ? "checkmark.square.fill" : "square")
-                            .font(.system(size: 18))
+                            .font(.toska(18, relativeTo: .title3))
                             .foregroundColor(optInSharing ? ToskaColor.accent : ToskaColor.dot)
                             .padding(.top, 1)
                         Text("share publicly — your post may be featured on the toska website and appear in Google search. your handle is never shown.")

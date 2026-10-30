@@ -538,7 +538,7 @@ struct PostDetailView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 17, weight: .regular))
+                            .font(.toska(17, weight: .regular, relativeTo: .body))
                             .foregroundColor(ToskaColor.dot)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
@@ -660,7 +660,7 @@ struct PostDetailView: View {
                                         } label: {
                                             HStack(spacing: 4) {
                                                 Image(systemName: "arrow.turn.down.right")
-                                                    .font(.system(size: 10, weight: .light))
+                                                    .font(.toska(10, weight: .light, relativeTo: .caption2))
                                                 Text(item.hiddenChildren == 1
                                                      ? "view 1 reply"
                                                      : "view \(item.hiddenChildren) replies")
@@ -745,7 +745,7 @@ struct PostDetailView: View {
                         StableGifPreview(urlString: gifUrl, maxHeight: 100)
                         Button { withAnimation { replyGifUrl = nil } } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
+                                .font(.toska(16, relativeTo: .body))
                                 .foregroundColor(Color.toskaMidGray)
                                 .background(Circle().fill(.white))
                         }
@@ -768,7 +768,7 @@ struct PostDetailView: View {
                         replyingToHandle = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
+                            .font(.toska(13, relativeTo: .caption))
                             .foregroundColor(ToskaColor.dot)
                     }
                 }
@@ -965,7 +965,7 @@ struct PostDetailView: View {
 
                 Button { toggleSave() } label: {
                     Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                        .font(.system(size: 15, weight: .regular))
+                        .font(.toska(15, weight: .regular, relativeTo: .subheadline))
                         .foregroundColor(isSaved ? ToskaColor.accentText : ToskaColor.dot)
                         // 44pt-band hit area (2026-09-17 gate finding).
                         .frame(minWidth: 30, minHeight: 44)
@@ -980,7 +980,7 @@ struct PostDetailView: View {
                 if isShareable && !isLetter && !isWhisper && !isMidnight {
                     Button { showShareCard = true } label: {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .regular))
+                            .font(.toska(15, weight: .regular, relativeTo: .subheadline))
                             .foregroundColor(ToskaColor.dot)
                             .frame(minWidth: 30, minHeight: 44, alignment: .trailing)
                             .contentShape(Rectangle())
@@ -1016,7 +1016,7 @@ struct PostDetailView: View {
     private var feltStat: some View {
         HStack(spacing: 8) {
             Image(systemName: isLiked ? "heart.fill" : "heart")
-                .font(.system(size: 15, weight: .regular))
+                .font(.toska(15, weight: .regular, relativeTo: .subheadline))
             detailStatText(likeCount, "felt this", "felt this")
         }
         .foregroundColor(isLiked ? (tag.map { tagColor(for: $0) } ?? ToskaColor.accentText) : ToskaColor.handle)
@@ -1040,7 +1040,7 @@ struct PostDetailView: View {
     func actionButton(icon: String, label: String, active: Bool, action: @escaping () -> Void) -> some View {
         Button { action() } label: {
             VStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 14, weight: .light))
+                Image(systemName: icon).font(.toska(14, weight: .light, relativeTo: .footnote))
                 Text(label).font(ToskaFont.sans(8))
             }
             .foregroundColor(active ? Color.toskaBlue : Color.toskaInactiveGray)
@@ -1452,7 +1452,7 @@ struct PostDetailView: View {
                 var hasMoreReplies = true
                 while hasMoreReplies {
                     let replySnap = try await db.collection("posts").document(postId).collection("replies")
-                        .limit(to: 500).getDocumentsAsync()
+                        .limit(to: 200).getDocumentsAsync()
                     if replySnap.documents.isEmpty {
                         hasMoreReplies = false
                     } else {
@@ -1636,7 +1636,10 @@ struct PostDetailView: View {
         replyListenerLive = repliesRef
             .whereField("moderationStatus", isEqualTo: "live")
             .order(by: "createdAt", descending: true)
-            .limit(to: 500)
+            // Launch review 2026-10-30: the live listener covers the newest 100 replies (was 500) — the
+            // listener is what fans out reads on every change; older replies are a post-launch "load
+            // older" fetch.
+            .limit(to: 100)
             .addSnapshotListener { snapshot, error in
                 if let error = error {
                     debugLog("⚠️ fetchReplies(live) listener error for post \(postId): \(error)")
@@ -2234,7 +2237,7 @@ struct EditPostView: View {
 
                 if !saveError.isEmpty {
                     HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.circle").font(.system(size: 10))
+                        Image(systemName: "exclamationmark.circle").font(.toska(10, relativeTo: .caption2))
                         Text(saveError).font(ToskaFont.sans(11))
                     }
                     .foregroundColor(Color.toskaErrorRed)
@@ -2278,7 +2281,7 @@ struct EditPostView: View {
                     Rectangle().fill(Color.toskaBorderLight).frame(height: 0.5)
                     HStack {
                         HStack(spacing: 4) {
-                            Image(systemName: "pencil").font(.system(size: 10))
+                            Image(systemName: "pencil").font(.toska(10, relativeTo: .caption2))
                             Text("editing your post").font(ToskaFont.sans(11))
                         }
                         .foregroundColor(Color.toskaAccentGold)
@@ -2292,7 +2295,7 @@ struct EditPostView: View {
                                 .frame(width: 22, height: 22).rotationEffect(.degrees(-90))
                         }
                         Text("\(charLimit - editText.utf16.count)")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.toska(10, design: .monospaced, relativeTo: .caption2))
                             .foregroundColor(editText.utf16.count > charLimit - 50 ? Color.toskaErrorRed : Color.toskaTimestamp)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 8)
@@ -2471,7 +2474,7 @@ struct SwipeToReplyRow: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 13))
+                                .font(.toska(13, relativeTo: .caption))
                                 .foregroundColor(ToskaColor.dot)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -2508,7 +2511,7 @@ struct SwipeToReplyRow: View {
                             } label: {
                                 HStack(spacing: 7) {
                                     Image(systemName: item.reply.isLiked ? "heart.fill" : "heart")
-                                        .font(.system(size: 13.5, weight: .regular))
+                                        .font(.toska(13.5, weight: .regular, relativeTo: .caption))
                                     (Text("\(max(0, item.reply.likes)) ").fontWeight(.semibold)
                                         + Text("felt this"))
                                 }
@@ -2552,7 +2555,7 @@ struct SwipeToReplyRow: View {
                                 onToggleSave()
                             } label: {
                                 Image(systemName: item.reply.isSaved ? "bookmark.fill" : "bookmark")
-                                    .font(.system(size: 13.5, weight: .regular))
+                                    .font(.toska(13.5, weight: .regular, relativeTo: .caption))
                                     .foregroundColor(item.reply.isSaved ? ToskaColor.accentText : ToskaColor.dot)
                                     .frame(minWidth: 30, minHeight: 44)
                                     .contentShape(Rectangle())
@@ -2565,7 +2568,7 @@ struct SwipeToReplyRow: View {
                                 onShare()
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 13.5, weight: .regular))
+                                    .font(.toska(13.5, weight: .regular, relativeTo: .caption))
                                     .foregroundColor(ToskaColor.dot)
                                     .frame(minWidth: 30, minHeight: 44, alignment: .trailing)
                                     .contentShape(Rectangle())

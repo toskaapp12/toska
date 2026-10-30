@@ -36,7 +36,7 @@ struct SignInView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.toska(15, weight: .medium, relativeTo: .subheadline))
                         Text("back")
                             .font(ToskaFont.sans(12.5, weight: .semibold))
                     }
@@ -108,7 +108,7 @@ struct SignInView: View {
                     .overlay(alignment: .trailing) {
                         Button { showPassword.toggle() } label: {
                             Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                .font(.system(size: 14))
+                                .font(.toska(14, relativeTo: .footnote))
                                 .foregroundColor(ToskaColor.dot)
                                 .padding(.horizontal, 12)
                                 .contentShape(Rectangle())

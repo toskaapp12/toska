@@ -790,12 +790,12 @@ function pwField(pw) {
 // ---------------------------------------------------------------- auth views
 function viewSignIn() {
     setChrome(true);
-    const email = el("input", { type: "email", autocomplete: "email", placeholder: "you@example.com" });
-    const pw = el("input", { type: "password", autocomplete: "current-password", placeholder: "password" });
+    const email = el("input", { "aria-label": "email", type: "email", autocomplete: "email", placeholder: "you@example.com" });
+    const pw = el("input", { "aria-label": "password", type: "password", autocomplete: "current-password", placeholder: "password" });
     const err = el("div");
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "sign in");
     // TOTP second-factor step — hidden until an MFA-enrolled account signs in.
-    const mfaCode = el("input", { type: "text", inputmode: "numeric", autocomplete: "one-time-code", placeholder: "6-digit code from your authenticator" });
+    const mfaCode = el("input", { "aria-label": "6-digit code from your authenticator app", type: "text", inputmode: "numeric", autocomplete: "one-time-code", placeholder: "6-digit code from your authenticator" });
     const mfaBtn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "verify");
     const mfaStep = el("div", { style: "display:none; margin-top:8px;" },
         el("div", { class: "field" }, el("label", {}, "two-factor code"), mfaCode), mfaBtn);
@@ -902,11 +902,11 @@ function viewSignIn() {
 // callable → verified. Any failure rolls the auth user back.
 function viewSignUp() {
     setChrome(true);
-    const email = el("input", { type: "email", autocomplete: "email", placeholder: "you@example.com" });
-    const pw = el("input", { type: "password", autocomplete: "new-password", placeholder: "at least 8 characters" });
-    const adult = el("input", { type: "checkbox", id: "adultCk", style: "width:auto;" });
-    const terms = el("input", { type: "checkbox", id: "termsCk", style: "width:auto;" });
-    const share = el("input", { type: "checkbox", id: "shareCk", style: "width:auto;" }); // B94-W: opt-in, unchecked
+    const email = el("input", { "aria-label": "email", type: "email", autocomplete: "email", placeholder: "you@example.com" });
+    const pw = el("input", { "aria-label": "password, at least 8 characters", type: "password", autocomplete: "new-password", placeholder: "at least 8 characters" });
+    const adult = el("input", { "aria-label": "i confirm i am 18 or older", type: "checkbox", id: "adultCk", style: "width:auto;" });
+    const terms = el("input", { "aria-label": "i agree to the terms and privacy policy", type: "checkbox", id: "termsCk", style: "width:auto;" });
+    const share = el("input", { "aria-label": "allow my posts to be shared outside the app", type: "checkbox", id: "shareCk", style: "width:auto;" }); // B94-W: opt-in, unchecked
     const err = el("div");
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;" }, "create account");
     btn.onclick = async () => {
@@ -1083,7 +1083,7 @@ async function viewFeed() {
     // Search — honest scope, same as FeedView: filters only what's already
     // fetched (text + handle), no extra Firestore round-trip.
     const search = el("input", {
-        type: "search", class: "feed-search", placeholder: "search what's been said here…",
+        "aria-label": "search posts", type: "search", class: "feed-search", placeholder: "search what's been said here…",
     });
     // Holds server-wide search results; embedded in the layout below, wired
     // up by the keydown handler further down. MUST be declared before the
@@ -1170,7 +1170,7 @@ async function viewFeed() {
         // Page-size checks use the RAW fetch count (_fetched), not the
         // visible rows: one blocked/expired/flagged doc in the first page used
         // to drop the count below 60 and hide "more" forever.
-        if (tab === "for you" && (cache.fetched ?? cache.rows.length) >= 60 && cache.cursor && !cache.noMore) {
+        if (tab === "for you" && (cache.fetched ?? cache.rows.length) >= 40 && cache.cursor && !cache.noMore) {
             const more = el("button", { class: "btn quiet", style: "display:block; margin:20px auto;" }, "more");
             more.onclick = async () => {
                 more.disabled = true;
@@ -1223,7 +1223,7 @@ async function fetchForYou(cursor) {
     const base = [where("moderationStatus", "==", "live"), orderBy("createdAt", "desc")];
     const q = cursor
         ? query(collection(db, "posts"), ...base, startAfter(cursor), limit(20))
-        : query(collection(db, "posts"), ...base, limit(60));
+        : query(collection(db, "posts"), ...base, limit(40));
     const snap = await getDocs(q);
     const rows = snap.docs.filter(d => postVisible(d.data())).map(d => [d.id, d.data()]);
     rows._cursor = snap.docs.at(-1);
@@ -1258,7 +1258,7 @@ function gifPicker(onPick) {
     const overlay = el("div", { class: "modal-overlay" });
     const grid = el("div", { class: "gif-grid" });
     const note = el("p", { class: "modal-hint" }, "");
-    const input = el("input", { type: "search", placeholder: "search gifs…" });
+    const input = el("input", { "aria-label": "search gifs", type: "search", placeholder: "search gifs…" });
     const card = el("div", { class: "modal-card gif-card" },
         el("h3", {}, "add a gif"), input, note, grid);
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
@@ -1339,7 +1339,7 @@ function viewCompose() {
     const prompt = promptContext;
     promptContext = null;
     if (prompt?.tag) selectedTag = prompt.tag;
-    const ta = el("textarea", { placeholder: "say it how it actually feels…", maxlength: "2100" });
+    const ta = el("textarea", { "aria-label": "your post", placeholder: "say it how it actually feels…", maxlength: "2100" });
     const count = el("span", { class: "char-count" }, "0 / 500");
     const err = el("div");
     const limit = () => isLetter ? 2000 : 500;
@@ -1783,7 +1783,7 @@ async function viewPost(postId) {
                     el("button", { onclick: () => { replyingTo = null; renderStrip(); } }, "cancel"));
             }
         };
-        const rta = el("textarea", { placeholder: "say something kind, anonymously…", rows: "1", maxlength: "520" });
+        const rta = el("textarea", { "aria-label": "your reply", placeholder: "say something kind, anonymously…", rows: "1", maxlength: "520" });
         let replyGif = null;
         const replyGifBox = el("div");
         const renderReplyGif = () => replyGifBox.replaceChildren(replyGif ? el("div", { class: "gif-attach" },
@@ -1874,7 +1874,7 @@ function editSheet({ text, isReply, onSave }) {
     const baseCap = isReply ? 500 : 2000;
     const cap = Math.max(baseCap, (text ?? "").length);
     const overlay = el("div", { class: "modal-overlay" });
-    const ta = el("textarea", { maxlength: String(cap) }, );
+    const ta = el("textarea", { "aria-label": "edit your text", maxlength: String(cap) }, );
     ta.value = text ?? "";
     const count = el("span", { class: "char-count" }, `${ta.value.length} / ${cap}`);
     ta.addEventListener("input", () => {
@@ -1963,7 +1963,7 @@ async function fetchReplies(postId) {
     // everyone, own-authored any-status for the pending banner.
     const [live, mine] = await Promise.all([
         getDocs(query(collection(db, "posts", postId, "replies"),
-            where("moderationStatus", "==", "live"), orderBy("createdAt", "desc"), limit(500))),
+            where("moderationStatus", "==", "live"), orderBy("createdAt", "desc"), limit(200))),
         getDocs(query(collection(db, "posts", postId, "replies"),
             where("authorId", "==", me.uid), orderBy("createdAt", "asc"))).catch(() => ({ docs: [] })),
     ]);
@@ -2076,7 +2076,7 @@ async function viewProfile(uid) {
         // B94-W: web sharing toggle (opt-in; mirrors the iOS Settings → Privacy
         // toggle). Reads/writes allowSharing on the user doc; handle never shown.
         own ? (() => {
-            const ck = el("input", { type: "checkbox", id: "shareToggle", style: "width:auto;" });
+            const ck = el("input", { "aria-label": "allow sharing outside the app", type: "checkbox", id: "shareToggle", style: "width:auto;" });
             ck.checked = ud.allowSharing === true;
             ck.onchange = async () => {
                 try {
@@ -2276,7 +2276,7 @@ document.getElementById("signOutBtn").onclick = async () => {
 // for accounts that predate a policy bump. Declining signs out — the account
 // and content persist so they can return and accept later.
 function renderPolicyReacceptGate(uid) {
-    const ck = el("input", { type: "checkbox", id: "reacceptCk" });
+    const ck = el("input", { "aria-label": "i accept the updated terms and privacy policy", type: "checkbox", id: "reacceptCk" });
     const err = el("div", {});
     const btn = el("button", { class: "btn", style: "width:100%; margin-top:8px;", disabled: "" }, "i agree and continue");
     ck.onchange = () => { if (ck.checked) btn.removeAttribute("disabled"); else btn.setAttribute("disabled", ""); };

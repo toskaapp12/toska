@@ -1017,7 +1017,7 @@ class FeedViewModel: ObservableObject {
         likedListener = Firestore.firestore()
             .collection("users").document(uid).collection("liked")
             .order(by: "createdAt", descending: true)
-            .limit(to: 500)
+            .limit(to: 200)
             .addSnapshotListener { [weak self] snapshot, _ in
                 Task { @MainActor [weak self] in
                     guard let self,
@@ -1034,7 +1034,7 @@ class FeedViewModel: ObservableObject {
         savedListener = Firestore.firestore()
             .collection("users").document(uid).collection("saved")
             .order(by: "createdAt", descending: true)
-            .limit(to: 500)
+            .limit(to: 200)
             .addSnapshotListener { [weak self] snapshot, _ in
                 Task { @MainActor [weak self] in
                     guard let self,
@@ -1053,7 +1053,7 @@ class FeedViewModel: ObservableObject {
             .whereField("authorId", isEqualTo: uid)
             .whereField("isRepost", isEqualTo: true)
             .order(by: "createdAt", descending: true)
-            .limit(to: 200)
+            .limit(to: 100)
             .addSnapshotListener { [weak self] snapshot, _ in
                 Task { @MainActor [weak self] in
                     guard let self,
@@ -1243,7 +1243,7 @@ class FeedViewModel: ObservableObject {
                 guard let snapshot = try? await db.collection("posts")
                     .whereField("moderationStatus", isEqualTo: "live")
                     .order(by: "createdAt", descending: true)
-                    .limit(to: 60)
+                    .limit(to: 40)
                     .getDocumentsAsync() else {
                     // Distinguish a real load failure (App Check rejection,
                     // network blip, missing index) from a genuinely empty feed.
@@ -1374,8 +1374,8 @@ class FeedViewModel: ObservableObject {
                                                                                                                             // that ranked below the top-20 on this page. Net effect was
                                                                                                                             // permanent holes in the feed.
                                                                                                                             self.lastDocument = documents.last
-                                                                                                                            self.hasMorePosts = documents.count >= 60
-                                                                                        } else if documents.count >= 60 {
+                                                                                                                            self.hasMorePosts = documents.count >= 40
+                                                                                        } else if documents.count >= 40 {
                                                                                                                                                     self.hasLoadedOnce = true
                                                                                                                                                     self.posts = []
                                                                                                                                                     self.lastDocument = documents.last

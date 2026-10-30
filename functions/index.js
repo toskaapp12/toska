@@ -6047,8 +6047,12 @@ exports.confirmAdult = onCall(
 // so every non-rejection error is caught). The deliberate rejection is the
 // only thrown error, with a neutral message — silent-removal policy, the
 // banned user isn't told why.
+// minInstances: 1 (owner decision 2026-10-30, launch review item 1): this Auth blocking function
+// cold-started in 13–14 s (whole-codebase module load) against Auth's 7 s blocking deadline, so the
+// first sign-up on a cold instance failed with auth/internal-error. One warm instance (≈ $5–8/month)
+// keeps sign-up inside the deadline. Long-term: move it to its own small codebase.
 exports.blockBannedSignups = beforeUserCreated(
-  { secrets: [BANNED_ID_PEPPER] },
+  { secrets: [BANNED_ID_PEPPER], minInstances: 1 },
   async (event) => {
     try {
       const user = event.data;

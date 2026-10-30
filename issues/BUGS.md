@@ -172,6 +172,17 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## LAUNCH-2026-10-30 — launch-readiness fixes (owner decisions 2026-10-30; server on prod, clients in build 109 + staging web; prod web pending owner go)
+
+- **Sign-up cold start (review item 1) — PROD.** `blockBannedSignups` now runs with `minInstances: 1` (`--force`, raises the minimum bill ≈ $6/month). Evidence: 13.7 s (prod) / 14 s (staging) cold start vs Auth's 7 s blocking deadline → `auth/internal-error` on the first sign-up after idle. Staging: min-scale 1, sign-up 3 s right after deploy. Prod: min-scale 1, instance ready 20:07 UTC. Headless prod sign-up is impossible (referrer lock + App Check) — **owner confirms one real sign-up.** Long-term: move the blocking function to its own small codebase so the deadline has margin without a warm instance.
+- **iPad (item 2).** ASC: 1.0 is Ready for Sale (build 1, 2026-04-21); the device family `1,2,7` dates from the first project commit (2026-04-16) → 1.0 shipped WITH iPad, so iPad support stays (Apple rejects updates that drop it). Build 109 renders the whole app in a centered ≤ 600 pt column on the themed background (root `.frame(maxWidth: 600)` in `toskaApp.swift`), portrait and landscape; iPhone unchanged. visionOS (`7`) removed from the device family. iPad mini screenshot taken.
+- **Feed paging (item 3).** Correction to the review: the iOS main feed was already a one-shot paged query (60 + 20), not a 500-doc listener; the 500s were the user's own liked/saved id listeners and the thread reply listener. Now: iOS + web first page 40, 20 per load-more; own-id listeners 200/200/100; thread reply listener newest 100 (iOS), thread fetch 200 (web). Cost model re-run in `LAUNCH_READINESS_2026-10-30.md` §2 (≈ $8 / $30 / $250 per month at 1k / 10k / 100k users).
+- **Demo account (item 4).** Password rotated via Admin SDK (handed to the owner in chat, not stored anywhere in the repo); account enabled, 3 seeded posts, `confirmedAdult`, policy v4 → the v5 re-accept screen will show once (documented). `APP_REVIEW_NOTES.md` gained the "if you test with crisis phrasing" paragraph. **Owner: paste the password into ASC and sign in once on a device.**
+- **Accessibility (item 5).** Web `--faint` / `--dot` → L 0.50 (5.7:1 on paper) with dark-mode overrides (0.70 / 0.68, 6.9:1); iOS `tertiaryText`, `timeText`, `dotSeparator` → `#6E6B76` day (4.9:1) / `#8A8791` night (5.3:1). `Font.toska(_:weight:design:relativeTo:)` (UIFontMetrics-scaled, root cap `.accessibility3` unchanged) replaces 78 `.font(.system(size:))` calls on FeedView, ComposeView, PostDetailView, ProfileView, SettingsView, SignInView, SplashView, CreateAccountView. 15 web inputs/textareas gained `aria-label`s (sign-in, sign-up, checkboxes, search, GIF search, compose, reply, edit, sharing toggles, re-accept). Remaining a11y items (VoiceOver pass, hints, tap-target audit, Reduce Motion) → post-launch.
+- **Staging web deployed** (feed 40, labels, tokens). **Prod hosting + push pending owner go.**
+
+---
+
 ## BADACTOR-2026-10-30 — adversarial audit fixes (STAGING 2026-10-30; prod pending owner go; iOS in build 108)
 
 - **Source:** `AUDIT_BADACTOR_STAGING_2026-10-30.md` (repo root, gitignored — local only until prod ships): 9 ranked findings from a staging-only bad-actor audit (67 throwaway accounts, real client write shapes, everything removed). Owner fix order 2026-10-30: #3, #2, #1, #4, #5, #7, #8, #6, #9.

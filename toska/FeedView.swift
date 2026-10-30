@@ -102,7 +102,7 @@ struct FeedView: View {
                                 }
                             } label: {
                                 Image(systemName: "magnifyingglass")
-                                    .font(.system(size: 18, weight: .regular))
+                                    .font(.toska(18, weight: .regular, relativeTo: .title3))
                                     .foregroundColor(ToskaColor.text2)
                                     .frame(width: 44, height: 44, alignment: .trailing)
                                     .contentShape(Rectangle())
@@ -122,10 +122,10 @@ struct FeedView: View {
                 HStack(spacing: 8) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 15))
+                            .font(.toska(15, relativeTo: .subheadline))
                             .foregroundColor(ToskaColor.text3)
                         TextField("search moments, people, feelings", text: $searchText)
-                            .font(.system(size: 15))
+                            .font(.toska(15, relativeTo: .subheadline))
                             .foregroundColor(ToskaColor.handle)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
@@ -146,7 +146,7 @@ struct FeedView: View {
                         if !searchText.isEmpty {
                             Button { searchText = "" } label: {
                                 Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 15))
+                                    .font(.toska(15, relativeTo: .subheadline))
                                     .foregroundColor(ToskaColor.text3)
                             }
                         }
@@ -198,7 +198,7 @@ struct FeedView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "leaf")
-                            .font(.system(size: 12, weight: .light))
+                            .font(.toska(12, weight: .light, relativeTo: .caption))
                             .foregroundColor(Color.toskaFollowGreen)
                         Text("you've been here a while. take a breath if you need.")
                             .font(ToskaFont.sans(12, weight: .regular))
@@ -207,7 +207,7 @@ struct FeedView: View {
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 8)
                         Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.toska(10, weight: .medium, relativeTo: .caption2))
                             .foregroundColor(Color.toskaDivider)
                     }
                     .padding(.horizontal, 16)
@@ -242,7 +242,7 @@ struct FeedView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 12))
+                            .font(.toska(12, relativeTo: .caption))
                         Text(newPostsBadgeCount == 1
                              ? "1 new post · tap to see"
                              : "\(newPostsBadgeCount) new posts · tap to see")
@@ -788,7 +788,7 @@ struct FeedPostRow: View, Equatable {
                     // the prompt wraps or not.
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(Image(systemName: "sparkle"))
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.toska(10, weight: .semibold, relativeTo: .caption2))
                         Text(prompt)
                             .font(ToskaFont.serifItalic(13))
                             .lineSpacing(1)
@@ -812,7 +812,7 @@ struct FeedPostRow: View, Equatable {
                     let reposterIsMe = !authorId.isEmpty && authorId == Auth.auth().currentUser?.uid && isRepostPost
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.2.squarepath")
-                            .font(.system(size: 10, weight: .regular))
+                            .font(.toska(10, weight: .regular, relativeTo: .caption2))
                         Text(reposterIsMe ? "you reposted" : "\(reposter) reposted")
                             .font(ToskaFont.sans(11.5, weight: .medium))
                     }
@@ -962,7 +962,7 @@ struct FeedPostRow: View, Equatable {
                                             // bookmark + share trailing, 14pt, dot colour
                                             Button { toggleSave() } label: {
                                                 Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                                                    .font(.system(size: 14, weight: .regular))
+                                                    .font(.toska(14, weight: .regular, relativeTo: .footnote))
                                                     .foregroundColor(isSaved ? ToskaColor.accentText : ToskaColor.dot)
                                                     // 44pt-band hit area — the bare 14pt glyph
                                                     // was a ~10pt-wide target (2026-09-17 gate).
@@ -978,7 +978,7 @@ struct FeedPostRow: View, Equatable {
                                             if isShareable && !isLetter && !isWhisperPost && !isMidnightPost {
                                                 Button { showShareCard = true } label: {
                                                     Image(systemName: "square.and.arrow.up")
-                                                        .font(.system(size: 14, weight: .regular))
+                                                        .font(.toska(14, weight: .regular, relativeTo: .footnote))
                                                         .foregroundColor(ToskaColor.dot)
                                                         .frame(minWidth: 30, minHeight: 44, alignment: .trailing)
                                                         .contentShape(Rectangle())
@@ -1255,12 +1255,12 @@ struct FeedPostRow: View, Equatable {
             Text(metaTimeText)
             if isMidnightPost {
                 Image(systemName: "moon.fill")
-                    .font(.system(size: 9))
+                    .font(.toska(9, relativeTo: .caption2))
                     .foregroundColor(ToskaColor.dot)
             }
             if isWhisperPost {
                 Image(systemName: "eye.slash")
-                    .font(.system(size: 9))
+                    .font(.toska(9, relativeTo: .caption2))
                     .foregroundColor(ToskaColor.dot)
             }
             if let rank = rank {
@@ -1290,9 +1290,9 @@ struct FeedPostRow: View, Equatable {
         HStack(spacing: 7) {
             ZStack {
                 Image(systemName: isLiked ? "heart.fill" : "heart")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.toska(14, weight: .regular, relativeTo: .footnote))
                 Image(systemName: "heart.fill")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.toska(14, weight: .regular, relativeTo: .footnote))
                     .scaleEffect(likeBurstScale)
                     .opacity(likeBurstOpacity)
                     .allowsHitTesting(false)
@@ -1557,7 +1557,7 @@ struct FeedHeaderCard: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 12))
+                                    .font(.toska(12, relativeTo: .caption))
                                 Text("your response")
                                     .font(ToskaFont.sans(12.5, weight: .semibold))
                             }
@@ -1761,10 +1761,10 @@ struct FeedColumn: View {
                                 HStack(spacing: 8) {
                                     HStack(spacing: 8) {
                                         Image(systemName: "magnifyingglass")
-                                            .font(.system(size: 15, weight: .regular))
+                                            .font(.toska(15, weight: .regular, relativeTo: .subheadline))
                                             .foregroundColor(ToskaColor.text3)
                                         TextField("search", text: $searchText)
-                                            .font(.system(size: 15))
+                                            .font(.toska(15, relativeTo: .subheadline))
                                             .foregroundColor(ToskaColor.handle)
                                             .autocorrectionDisabled()
                                             .textInputAutocapitalization(.never)
@@ -1776,7 +1776,7 @@ struct FeedColumn: View {
                                                 searchText = ""
                                             } label: {
                                                 Image(systemName: "xmark.circle.fill")
-                                                    .font(.system(size: 15))
+                                                    .font(.toska(15, relativeTo: .subheadline))
                                                     .foregroundColor(ToskaColor.text3)
                                             }
                                             .accessibilityLabel("Clear search")
@@ -1842,7 +1842,7 @@ struct FeedColumn: View {
                                                 } label: {
                                                     HStack(spacing: 4) {
                                                         Image(systemName: tag.icon)
-                                                            .font(.system(size: 11))
+                                                            .font(.toska(11, relativeTo: .caption2))
                                                         Text(tag.name)
                                                             .font(ToskaFont.sans(13, weight: .medium))
                                                     }
@@ -1958,7 +1958,7 @@ struct FeedColumn: View {
                                             if let error = vm.fetchError {
                                                 HStack(spacing: 8) {
                                                     Image(systemName: "exclamationmark.circle")
-                                                        .font(.system(size: 10))
+                                                        .font(.toska(10, relativeTo: .caption2))
                                                     Text(error)
                                                         .font(ToskaFont.sans(11))
                                                     Spacer()
@@ -2016,7 +2016,7 @@ struct FeedColumn: View {
                                         if tab == 1 && vm.followingFetchIncomplete {
                                             HStack(spacing: 8) {
                                                 Image(systemName: "exclamationmark.circle")
-                                                    .font(.system(size: 10))
+                                                    .font(.toska(10, relativeTo: .caption2))
                                                 Text("some posts may be missing — pull to refresh")
                                                     .font(ToskaFont.sans(11))
                                             }
@@ -2047,7 +2047,7 @@ struct FeedColumn: View {
                                     // instead of leaving a blank screen.
                                     VStack(spacing: 16) {
                                         Image(systemName: "moon.stars")
-                                            .font(.system(size: 28, weight: .light))
+                                            .font(.toska(28, weight: .light, relativeTo: .title))
                                             .foregroundColor(LateNightTheme.tertiaryText)
                                         Text("it's quiet right now.")
                                             .font(ToskaFont.serifItalic(16))
@@ -2065,7 +2065,7 @@ struct FeedColumn: View {
                                             } label: {
                                                 HStack(spacing: 4) {
                                                     Image(systemName: "plus.circle")
-                                                        .font(.system(size: 11))
+                                                        .font(.toska(11, relativeTo: .caption2))
                                                     Text("say something")
                                                         .font(ToskaFont.sans(12, weight: .medium))
                                                 }
@@ -2080,7 +2080,7 @@ struct FeedColumn: View {
                                             } label: {
                                                 HStack(spacing: 4) {
                                                     Image(systemName: "magnifyingglass")
-                                                        .font(.system(size: 11))
+                                                        .font(.toska(11, relativeTo: .caption2))
                                                     Text("explore")
                                                         .font(ToskaFont.sans(12, weight: .medium))
                                                 }

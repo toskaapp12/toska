@@ -140,14 +140,14 @@ struct LateNightTheme {
     static var primaryText: Color   { isLateNight ? Color(hex: "E8E4DD") : Color(hex: "25222C") }
     static var bodyText: Color      { isLateNight ? Color(hex: "D4D0CA") : Color(hex: "33303B") }
     static var secondaryText: Color { isLateNight ? Color(hex: "93909A") : Color(hex: "5E5B66") }
-    static var tertiaryText: Color  { isLateNight ? Color(hex: "6A6770") : Color(hex: "87848F") }
+    static var tertiaryText: Color  { isLateNight ? Color(hex: "8A8791") : Color(hex: "6E6B76") } // 2026-10-30 a11y: 5.3:1 night / 4.9:1 day (was 3.4 / 3.4)
     static var handleText: Color    { isLateNight ? Color(hex: "9F9DA6") : Color(hex: "56535E") }
 
     // Dividers — hair (between posts, chrome hairlines), hair2 (stats-line
     // separators, outlined chips), dotSeparator (the "·" glyphs).
     static var divider: Color       { isLateNight ? Color(hex: "27252D") : Color(hex: "E8E3DC") }
     static var divider2: Color      { isLateNight ? Color(hex: "312F37") : Color(hex: "DFD9D1") }
-    static var dotSeparator: Color  { isLateNight ? Color(hex: "5E5C65") : Color(hex: "93909B") }
+    static var dotSeparator: Color  { isLateNight ? Color(hex: "8A8791") : Color(hex: "6E6B76") } // 2026-10-30 a11y
 
     // Accent — the one ink-violet. Drives primary buttons (write pill, send,
     // post), toggles, selected states. accentText is the lighter cut used for
@@ -174,7 +174,7 @@ struct LateNightTheme {
     static var ownPostShadow: Color { isLateNight ? Color.clear : Color(hex: "3A2D5C").opacity(0.07) }
 
     // Timestamp / meta tertiary, badge, and scrim
-    static var timeText: Color { isLateNight ? Color(hex: "6A6770") : Color(hex: "87848F") }
+    static var timeText: Color { isLateNight ? Color(hex: "8A8791") : Color(hex: "6E6B76") } // 2026-10-30 a11y
     static var badge: Color    { Color.toskaWhisperPink }
     static var scrim: Color    { isLateNight ? Color.black.opacity(0.66) : Color.toskaInkBlack.opacity(0.38) }
 

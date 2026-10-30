@@ -68,7 +68,7 @@ struct SettingsView: View {
                 if let banner = saveErrorBanner {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 10))
+                            .font(.toska(10, relativeTo: .caption2))
                         Text(banner)
                             .font(ToskaFont.sans(11))
                         Spacer()
@@ -219,7 +219,7 @@ struct SettingsView: View {
                                                         ForEach(Array(providers.enumerated()), id: \.offset) { idx, provider in
                                                             HStack {
                                                                 Image(systemName: providerIcon(provider.providerID))
-                                                                    .font(.system(size: 13, weight: .light))
+                                                                    .font(.toska(13, weight: .light, relativeTo: .caption))
                                                                     .foregroundColor(Color.toskaTextLight)
                                                                     .frame(width: 18)
                                                                 Text(providerLabel(provider.providerID))
@@ -556,7 +556,7 @@ struct SettingsView: View {
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .regular))
+                .font(.toska(14, weight: .regular, relativeTo: .footnote))
                 .foregroundColor(ToskaColor.dot)
         }
         .padding(.vertical, 14)
@@ -572,7 +572,7 @@ struct SettingsView: View {
                     .foregroundColor(ToskaColor.text)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.toska(14, weight: .regular, relativeTo: .footnote))
                     .foregroundColor(ToskaColor.dot)
             }
             .padding(.vertical, 14)
@@ -1562,7 +1562,7 @@ struct LinkBackupAuthView: View {
             HStack {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.toska(13, weight: .medium, relativeTo: .caption))
                         .foregroundColor(Color.toskaTextLight)
                 }
                 .accessibilityLabel("close")
@@ -1571,7 +1571,7 @@ struct LinkBackupAuthView: View {
                     .font(ToskaFont.sans(15, weight: .semibold))
                     .foregroundColor(ToskaColor.text)
                 Spacer()
-                Image(systemName: "xmark").font(.system(size: 13)).foregroundColor(.clear).accessibilityHidden(true)
+                Image(systemName: "xmark").font(.toska(13, relativeTo: .caption)).foregroundColor(.clear).accessibilityHidden(true)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

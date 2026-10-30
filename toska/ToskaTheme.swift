@@ -1986,3 +1986,33 @@ struct SkeletonFeed: View {
         .accessibilityHidden(true) // VoiceOver shouldn't read placeholder rows
     }
 }
+
+
+// MARK: - Dynamic Type (launch review 2026-10-30)
+// The brand uses tuned point sizes. `Font.toska(_:)` keeps those sizes at the default content size and
+// scales them with the user's Dynamic Type setting along the curve of the nearest text style (the app
+// root caps at .accessibility3, so growth stays bounded). Replaces `.font(.system(size:))` on the main
+// screens: feed, compose, post detail, profile, settings, sign-in, splash, create account.
+extension Font {
+    static func toska(_ size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default, relativeTo style: Font.TextStyle = .body) -> Font {
+        let scaled = UIFontMetrics(forTextStyle: style.uiKitTextStyle).scaledValue(for: size)
+        return .system(size: scaled, weight: weight, design: design)
+    }
+}
+extension Font.TextStyle {
+    var uiKitTextStyle: UIFont.TextStyle {
+        switch self {
+        case .largeTitle: return .largeTitle
+        case .title: return .title1
+        case .title2: return .title2
+        case .title3: return .title3
+        case .headline: return .headline
+        case .subheadline: return .subheadline
+        case .callout: return .callout
+        case .footnote: return .footnote
+        case .caption: return .caption1
+        case .caption2: return .caption2
+        default: return .body
+        }
+    }
+}

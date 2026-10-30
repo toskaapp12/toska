@@ -111,7 +111,7 @@ struct ProfileView: View {
                         // ~18pt hit area (below the 44pt minimum) — mirror the
                         // fix OtherProfileView already applied to its ellipsis.
                         Image(systemName: "gearshape")
-                            .font(.system(size: 18, weight: .regular))
+                            .font(.toska(18, weight: .regular, relativeTo: .title3))
                             .foregroundColor(ToskaColor.text)
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
@@ -591,7 +591,7 @@ struct ProfileView: View {
                 Spacer()
                 
                 Image(systemName: "moon.stars")
-                    .font(.system(size: 28, weight: .light))
+                    .font(.toska(28, weight: .light, relativeTo: .title))
                     .foregroundColor(Color.toskaBlue)
                     .padding(.bottom, 16)
                 
@@ -601,14 +601,14 @@ struct ProfileView: View {
                     .padding(.bottom, 4)
                 
                 Text("\(totalNights) \(totalNights == 1 ? "night" : "nights")")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.toska(36, weight: .bold, design: .rounded, relativeTo: .largeTitle))
                     .foregroundColor(.white)
                     .padding(.bottom, 4)
                 
                 if !streakLabel.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "flame")
-                            .font(.system(size: 10))
+                            .font(.toska(10, relativeTo: .caption2))
                         Text(streakLabel)
                             .font(ToskaFont.sans(12, weight: .medium))
                     }
@@ -1329,7 +1329,7 @@ struct ProfileView: View {
                                                                                     VStack(alignment: .leading, spacing: 0) {
                                                                                         HStack(spacing: 4) {
                                                                                             Image(systemName: "arrow.2.squarepath")
-                                                                                                .font(.system(size: 9))
+                                                                                                .font(.toska(9, relativeTo: .caption2))
                                                                                             Text("you reposted")
                                                                                                 .font(ToskaFont.sans(11, weight: .medium))
                                                                                         }
@@ -1451,7 +1451,7 @@ struct ReplyEngagementRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left")
-                .font(.system(size: 11, weight: .light))
+                .font(.toska(11, weight: .light, relativeTo: .caption2))
                 .foregroundColor(Color.toskaBlue.opacity(0.7))
                 .padding(.top, 4)
             VStack(alignment: .leading, spacing: 4) {
@@ -1773,7 +1773,7 @@ private struct FollowRow: View {
                 .buttonStyle(.plain)
             } else {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .light))
+                    .font(.toska(10, weight: .light, relativeTo: .caption2))
                     .foregroundColor(Color.toskaDivider)
             }
         }
@@ -1989,7 +1989,7 @@ struct PendingReviewBanner: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isCrisis ? "heart.fill" : "eye.slash.fill")
-                .font(.system(size: 10))
+                .font(.toska(10, relativeTo: .caption2))
             VStack(alignment: .leading, spacing: 4) {
                 Text("under review — visible only to you")
                     .font(ToskaFont.sans(11, weight: .semibold))
@@ -2007,7 +2007,7 @@ struct PendingReviewBanner: View {
                         if let url = URL(string: res.url) {
                             Link(destination: url) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: res.icon).font(.system(size: 10))
+                                    Image(systemName: res.icon).font(.toska(10, relativeTo: .caption2))
                                     Text(res.label).font(ToskaFont.sans(11, weight: .semibold)).underline()
                                 }
                             }

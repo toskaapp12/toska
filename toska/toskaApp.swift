@@ -299,6 +299,12 @@ struct toskaApp: App {
     var body: some Scene {
             WindowGroup {
                 ContentView()
+                    // iPad (launch review 2026-10-30): 1.0 shipped with iPad support, so it stays. The
+                    // whole app renders in a centered phone-width column (≤ 600 pt) on the themed
+                    // background, portrait or landscape; on iPhone the frame is a no-op.
+                    .frame(maxWidth: 600)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(LateNightTheme.background.ignoresSafeArea())
                     .environment(LateNightThemeManager.shared)
                     // Cap Dynamic Type at .accessibility3 globally. Most of the
                     // app uses brand-tuned fixed sizes (Georgia italic at

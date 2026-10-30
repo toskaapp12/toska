@@ -220,6 +220,14 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   landscape enabled, untested; (3) iOS feed listeners `limit(to: 500)` — the one real scaling cost
   (page at 40); (4) demo account + on-call + screenshots (owner); (5) contrast tokens below AA for
   timestamps, fixed-size fonts vs Dynamic Type, web inputs without labels.
+- **Launch fixes (owner decisions 2026-10-30 evening; BUGS.md LAUNCH-2026-10-30):** `blockBannedSignups`
+  `minInstances: 1` on staging + PROD (min-scale 1 confirmed; owner confirms one real sign-up);
+  iPad stays (1.0 shipped with it — device family set 2026-04-16, before the 04-21 upload) with a
+  centered ≤ 600 pt column at the root, visionOS removed; feed page 40 + 20 on iOS and web, own-id
+  listeners 200/200/100, thread reply listener 100; contrast tokens fixed (web + iOS), 78 fixed fonts
+  → `Font.toska(_:relativeTo:)` Dynamic Type on the 8 main screens, 15 web inputs labeled; demo
+  password rotated (handed over in chat) + review notes gained the crisis-phrasing paragraph.
+  **Staging web deployed; prod hosting + push pending owner go. Build 109 = all iOS changes.**
 - **Owner next (ASC):** version 1.2 "Cancel Release" → rename to 1.3 → attach build 107 → submit
   (steps in the 2026-10-29 session report; "Cancel Release" discards the July build 82 approval,
   live 1.0 unaffected).

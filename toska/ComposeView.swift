@@ -400,7 +400,7 @@ struct ComposeView: View {
                                     } label: {
                                         HStack(spacing: 4) {
                                             Image(systemName: tag.icon)
-                                                .font(.system(size: 10))
+                                                .font(.toska(10, relativeTo: .caption2))
                                             Text(tag.name)
                                                 .font(ToskaFont.sans(11, weight: .medium))
                                         }
@@ -448,7 +448,7 @@ struct ComposeView: View {
                 if UserHandleCache.shared.breakupStage == "still in it" && editingDraftId == nil {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.shield")
-                            .font(.system(size: 10))
+                            .font(.toska(10, relativeTo: .caption2))
                         Text("don't have to share it. tap save and it stays just for you.")
                             .font(ToskaFont.sans(11))
                     }
@@ -588,7 +588,7 @@ struct ComposeView: View {
                                     withAnimation { selectedGifUrl = nil }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 20))
+                                        .font(.toska(20, relativeTo: .title3))
                                         .foregroundColor(LateNightTheme.secondaryText)
                                         .background(Circle().fill(LateNightTheme.cardBackground))
                                 }
@@ -604,12 +604,12 @@ struct ComposeView: View {
                             HStack(spacing: 8) {
                                 let tagData = tags.first(where: { $0.name == tag })
                                 Image(systemName: tagData?.icon ?? "tag")
-                                    .font(.system(size: 10))
+                                    .font(.toska(10, relativeTo: .caption2))
                                 Text(tag)
                                     .font(ToskaFont.sans(11, weight: .medium))
                                 Button { withAnimation { selectedTag = nil } } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 12))
+                                        .font(.toska(12, relativeTo: .caption))
                                         .foregroundColor(Color(hex: tagData?.colorHex ?? "9198a8").opacity(0.4))
                                 }
                             }
@@ -659,7 +659,7 @@ struct ComposeView: View {
 
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 32))
+                        .font(.toska(32, relativeTo: .largeTitle))
                         .foregroundColor(Color.toskaErrorRed)
 
                     Text("hold on")
@@ -675,7 +675,7 @@ struct ComposeView: View {
                     VStack(spacing: 8) {
                         Button { showContentWarning = false } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "pencil").font(.system(size: 13))
+                                Image(systemName: "pencil").font(.toska(13, relativeTo: .caption))
                                 Text("edit my post").font(ToskaFont.sans(13, weight: .medium))
                             }
                             .foregroundColor(.white)
@@ -731,7 +731,7 @@ struct ComposeView: View {
 
                 VStack(spacing: 16) {
                     Image(systemName: "theatermasks")
-                        .font(.system(size: 32))
+                        .font(.toska(32, relativeTo: .largeTitle))
                         .foregroundColor(Color.toskaAccentGold)
 
                     Text("keep it anonymous")
@@ -751,7 +751,7 @@ struct ComposeView: View {
                     VStack(spacing: 8) {
                         Button { showNameWarning = false } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "pencil").font(.system(size: 13))
+                                Image(systemName: "pencil").font(.toska(13, relativeTo: .caption))
                                 Text("edit my post").font(ToskaFont.sans(13, weight: .medium))
                             }
                             .foregroundColor(.white)
@@ -976,13 +976,13 @@ struct ComposeView: View {
     func composeModeBanner(icon: String, text: String, off: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(.toska(11, relativeTo: .caption2))
             Text(text)
                 .font(ToskaFont.sans(11.5, weight: .medium))
             Spacer()
             Button(action: off) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.toska(9, weight: .medium, relativeTo: .caption2))
                     .foregroundColor(ToskaColor.accentText.opacity(0.6))
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
@@ -998,7 +998,7 @@ struct ComposeView: View {
 
     func warningBanner(icon: String, text: String, color: String) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 10))
+            Image(systemName: icon).font(.toska(10, relativeTo: .caption2))
             Text(text).font(ToskaFont.sans(11))
         }
         .foregroundColor(Color(hex: color))
@@ -1568,7 +1568,7 @@ struct StableGifPreview: View {
                     .overlay(
                         VStack(spacing: 4) {
                             Image(systemName: "photo.badge.exclamationmark")
-                                .font(.system(size: 16, weight: .light))
+                                .font(.toska(16, weight: .light, relativeTo: .body))
                             Text("couldn't load — pick another?")
                                 .font(ToskaFont.sans(11))
                         }
@@ -1587,7 +1587,7 @@ struct StableGifPreview: View {
                     .frame(height: min(maxHeight, 160))
                     .overlay(
                         Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 18, weight: .ultraLight))
+                            .font(.toska(18, weight: .ultraLight, relativeTo: .title3))
                             .foregroundColor(LateNightTheme.tertiaryText.opacity(0.6))
                     )
             }

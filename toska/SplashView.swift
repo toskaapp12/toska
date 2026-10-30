@@ -130,11 +130,11 @@ struct SplashView: View {
                                         .frame(width: 17, height: 17)
                                 } else {
                                     Text("G")
-                                        .font(.system(size: 17, weight: .bold))
+                                        .font(.toska(17, weight: .bold, relativeTo: .body))
                                         .foregroundColor(Color(hex: "4285F4"))
                                 }
                                 Text("Sign in with Google")
-                                    .font(.system(size: 17, weight: .medium))
+                                    .font(.toska(17, weight: .medium, relativeTo: .body))
                                     .foregroundColor(ToskaColor.text)
                             }
                         }

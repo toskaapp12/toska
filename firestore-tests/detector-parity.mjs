@@ -113,6 +113,10 @@ const CRISIS_CORPUS = [
 const CORPUS = [
   // N-17: plain lone first names allowed
   ["I miss John so much", "allow"],
+  // Nudge-only names (2026-10-30) never count as a name for HOLDS: lone, after a prefix, or paired.
+  ["my ex Dean moved out", "allow"],
+  ["Dean Miller left me", "allow"],
+  ["Earl Grey at 2am again", "allow"],
   ["my ex Sarah broke my heart", "allow"],
   ["Jessica's laugh haunts me", "allow"],
   ["this guy Tyler ghosted me", "allow"],
@@ -182,6 +186,17 @@ const FIRST_CORPUS = [
   // (an OBFUSCATED first name is a HOLD by design, N-17) — both are holds, so
   // the nudge never gets a chance to show.
   ["thinking of Jess tonight", "nudge"],
+  // Nudge-only names (owner decision 2026-10-30): ambiguous for HOLDS, but still nudge.
+  ["Christian broke up with me", "nudge"],
+  ["Cole never called back", "nudge"],
+  ["Dean said it was over", "nudge"],
+  ["Don left without a word", "nudge"],
+  ["Earl moved out yesterday", "nudge"],
+  ["my ex dean moved out", "nudge"],
+  ["this guy earl", "nudge"],
+  ["Don't text him back", "none"],               // contraction, not the name
+  ["Don’t text him back", "none"],               // curly apostrophe
+  ["my ex don't care anymore", "none"],          // (not "don't even": Even is a Norwegian given name)
   ["Grace is what I need", "none"],              // ambiguous word
   ["Will you come back", "none"],
   ["hope it gets better", "none"],

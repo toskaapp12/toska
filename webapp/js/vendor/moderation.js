@@ -464,6 +464,15 @@ const AMBIGUOUS_WORDS = new Set([
   "young",
 ]);
 
+// Owner decision 2026-10-30: five given names that are also ordinary words stay in AMBIGUOUS_WORDS,
+// so NO hold rule ever treats them as a name ("my ex Dean" is not a lone-name hold, "Dean Miller" is
+// not a full-name hold), but they still drive the soft compose NUDGE when Capitalized or right after a
+// relationship prefix. Independent of COMMON_NAMES ("earl" is not in the given list). The contraction
+// "don't" is stripped before matching so it never reads as the name Don.
+// Mirror: ContentModeration.swift nudgeOnlyNames; docs/admin.html ADMIN_NUDGE_ONLY.
+const NUDGE_ONLY_NAMES = new Set(["christian", "cole", "dean", "don", "earl"]);
+const DONT_CONTRACTION_RE = /\b[Dd]on['’]t\b/g;
+
 const SAFE_CAPITALIZED_WORDS = new Set([
   "i", "im", "ive", "ill", "id",
   "god", "christmas", "easter", "halloween", "valentines",
@@ -1214,11 +1223,12 @@ function containsNameOrIdentifyingInfo(text) {
 function likelyFirstName(text) {
   if (typeof text !== "string" || text.length === 0) return false;
   if (text.length > DETECTOR_MAX_LEN) text = text.slice(0, DETECTOR_MAX_LEN);
-  const canon = foldLetterformsKeepCase(text);
+  const canon = foldLetterformsKeepCase(text).replace(DONT_CONTRACTION_RE, " ");
   const capRe = /\b([A-Z][a-z]+)\b/g;
   for (const m of canon.matchAll(capRe)) {
     const w = m[1].toLowerCase();
     if (w.length < 2) continue;
+    if (NUDGE_ONLY_NAMES.has(w)) return true;
     if (!COMMON_NAMES.has(w)) continue;
     if (AMBIGUOUS_WORDS.has(w) || SAFE_CAPITALIZED_WORDS.has(w)) continue;
     return true;
@@ -1228,6 +1238,7 @@ function likelyFirstName(text) {
     let idx = lowered.indexOf(prefix);
     while (idx !== -1) {
       const tok = lowered.slice(idx + prefix.length).split(/[^a-z]+/).filter((t) => t.length > 0)[0];
+      if (tok && NUDGE_ONLY_NAMES.has(tok)) return true;
       if (tok && COMMON_NAMES.has(tok) && !AMBIGUOUS_WORDS.has(tok)) return true;
       idx = lowered.indexOf(prefix, idx + prefix.length);
     }
@@ -1246,4 +1257,5 @@ module.exports = {
   COMMON_LAST_NAMES,
   AMBIGUOUS_WORDS,
   SAFE_CAPITALIZED_WORDS,
+  NUDGE_ONLY_NAMES,
 };

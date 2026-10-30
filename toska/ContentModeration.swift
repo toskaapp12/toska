@@ -944,6 +944,12 @@ private let ambiguousWords: Set<String> = [
     "young",
 ]
 
+// Owner decision 2026-10-30 (mirror of moderation.js NUDGE_ONLY_NAMES): given names that are also
+// ordinary words. They stay in ambiguousWords so no HOLD rule treats them as a name, but they still
+// drive the soft compose nudge when Capitalized or right after a relationship prefix. "don't" is
+// stripped before matching so the contraction never reads as the name Don.
+private let nudgeOnlyNames: Set<String> = ["christian", "cole", "dean", "don", "earl"]
+
 // "my ex [Name]", "my friend [Name]", "my sister [Name]" etc.
 private let relationshipPrefixes = ["my ex ", "my friend ", "my bf ", "my gf ",
     "my boyfriend ", "my girlfriend ", "my sister ", "my brother ",
@@ -962,6 +968,7 @@ func likelyFirstName(_ raw: String) -> Bool {
     if raw.isEmpty { return false }
     let text = raw.count > 2000 ? String(raw.prefix(2000)) : raw
     let canon = foldLetterformsKeepCase(text)
+        .replacingOccurrences(of: "\\b[Dd]on['’]t\\b", with: " ", options: .regularExpression)
     let safeCapitalizedWords: Set<String> = ["i", "im", "ive", "ill", "id", "god", "christmas", "easter", "halloween", "valentines"]
     // Capitalized tokens: first letter uppercase, rest lowercase ASCII letters, length >= 2.
     var current = ""
@@ -975,6 +982,7 @@ func likelyFirstName(_ raw: String) -> Bool {
         let rest = tok.dropFirst()
         guard rest.allSatisfy({ $0.isLowercase && $0.isASCII }) else { continue }
         let w = tok.lowercased()
+        if nudgeOnlyNames.contains(w) { return true }
         if !commonNames.contains(w) { continue }
         if ambiguousWords.contains(w) || safeCapitalizedWords.contains(w) { continue }
         return true
@@ -985,6 +993,7 @@ func likelyFirstName(_ raw: String) -> Bool {
         while let r = lowered.range(of: prefix, range: searchStart..<lowered.endIndex) {
             let after = lowered[r.upperBound...]
             let tok = after.split(whereSeparator: { !($0.isLetter && $0.isASCII) }).first.map(String.init) ?? ""
+            if !tok.isEmpty && nudgeOnlyNames.contains(tok) { return true }
             if !tok.isEmpty && commonNames.contains(tok) && !ambiguousWords.contains(tok) { return true }
             searchStart = r.upperBound
         }

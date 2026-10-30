@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-10-28 (A1 fix deployed to prod)._
+_Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization on prod; build 107)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -158,6 +158,29 @@ _Last updated: 2026-10-28 (A1 fix deployed to prod)._
   staging 5/5 measured (page/card/feed 122 s, sitemap 304 s):** cache caps cut (page/card 60/120, sitemap 300/300, feed 2-min memo + 120/120); policy
   wording "within a few minutes". Prod plan: hosting + 4 functions `--only`, push. See BUGS.md AUDIT-A3.
   **Next after A4/A3 prod: launch prep; post-launch list in BUGS.md.**
+- **Name-list expansion + nudge-only names + whisper/midnight normalization — PROD 2026-10-30 ~16:00 UTC
+  (14 detector-dependent functions via `--only`, 77 → 77, nothing removed; hosting; push publishes
+  admin.html); staging 15/15 first; code 4d30356 + bbe10bf:** given names 208 → 4,030 (Wikidata CC0),
+  surnames 81 → 877 (US Census 2010), ambiguous words 55 → 145 (owner's common-word names + curated;
+  accepted: Taylor/Genesis no longer nudge, six occupational surnames no longer lone-surname holds);
+  `NUDGE_ONLY_NAMES` (christian, cole, dean, don, earl) nudge but never hold, "don't" stripped first;
+  validatePost turns whisper+midnight into a one-hour whisper (3 function tests). Impact gate over
+  401 real texts: 0 newly held / un-held / nudged. Parity 129/129, corpus 141, crisis 29, functions
+  146. See BUGS.md NAMES-EXPANSION. **Final read-only prod sweep (2026-10-30 ~16:10 UTC):** ruleset
+  `9d012ef6…` byte-identical to `firestore.rules`; 77 functions = exports minus the parked reset; 40
+  posts all live (0 held / flagged / concerning / status-less), 16 replies all live, 11 users; 0
+  undeliveredCrisisPages, 0 unreviewed crisis replies, 0 restricted, 0 open reports, 0 pending
+  deletions; watchdog heartbeat every 5 min all zeros; no function errors since the deploy.
+- **Build 107 SHIPPED (2026-10-30 16:12 UTC):** CLI archive + upload (ASC key, automatic signing,
+  `ExportOptions` app-store-connect/upload shape), ASC state VALID, assigned to the Internal TestFlight
+  group. Carries on top of 106: expanded name lists + nudge-only names in `ContentModeration.swift`
+  (compose nudge now fires for most non-Anglo first names; "Dean"/"Don" nudge but never hold) and the
+  in-app policy body "share pages and the website clear within a few minutes" (A3 wording). **Owner
+  hand-test:** type "Olga broke up with me" in compose → inline nudge, post goes through; "my ex Nguyen"
+  → held with the full-name/contact dialog; "Don't text him" → no nudge.
+- **Owner next (ASC):** version 1.2 "Cancel Release" → rename to 1.3 → attach build 107 → submit
+  (steps in the 2026-10-29 session report; "Cancel Release" discards the July build 82 approval,
+  live 1.0 unaffected).
 - **Next iOS build (103) batch:** B102-1 own-post white card; A1 per-doc liked/saved + engaged tags +
   repost-sweep filter (ProfileView, FeedViewModel, PostDetailView); A2 detector mirror
   (ContentModeration.swift, ComposeView `.sexualReview` override); item 3 held-reply banner

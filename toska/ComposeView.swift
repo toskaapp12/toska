@@ -90,6 +90,15 @@ struct ComposeView: View {
     // the scrub to cover them.
     private static let composeDraftIsLetterKey = "toska_composeDraftIsLetter"
     private static let composeDraftGifUrlKey   = "toska_composeDraftGifUrl"
+    // (owner 2026-11-02) one stable, client-chosen post id per compose session: a second submission of
+    // the same words targets the same document, which the rules reject as an update (authors may only
+    // change text/editedAt), so a retry after a mid-post disconnect can never create a second post.
+    private static let composeDraftPostIdKey  = "toska_composeDraftPostId"
+    static func newPostId() -> String { UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() }
+    @State private var draftPostId: String = ""
+    // Offline: the first keystroke after the connection drops writes the draft immediately (no debounce),
+    // so a force-close right after going offline can't lose the words the banner promises are saved.
+    @State private var wroteSinceOffline = false
     @State private var text = ""
     // Owner decision 2026-10-29: soft, non-blocking first-name nudge. Bare
     // first names are allowed; this just offers the choice. Dismissed once per
@@ -432,7 +441,7 @@ struct ComposeView: View {
                 // @Observable singleton inside body creates a tracked
                 // dependency so this updates the moment connectivity flips.
                 if showOfflineWarning || !NetworkMonitor.shared.isConnected {
-                    warningBanner(icon: "wifi.slash", text: "you're offline. the words will keep.", color: "c45c5c")
+                    warningBanner(icon: "wifi.slash", text: "you're offline. your words are saved here — leave or close the app and they'll be waiting.", color: "c45c5c")
                 }
                 if !postError.isEmpty {
                     warningBanner(icon: "exclamationmark.circle", text: postError, color: "c45c5c")
@@ -482,6 +491,17 @@ struct ComposeView: View {
                     composeModeBanner(icon: "person.crop.circle",
                                       text: "you can leave their name out if you'd like — first names are okay.") { nameNudgeDismissed = true }
                 }
+
+                // The promise line (owner 2026-11-02): it lived in the footer, under the keyboard while
+                // typing. Now it sits with the other notes above the editor.
+                Text("no name, no photo. read by a safety check before it goes live.")
+                    .font(ToskaFont.sans(12))
+                    .foregroundColor(ToskaColor.text2)
+                    .lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 6)
+                    .padding(.bottom, 10)
 
                 Rectangle().fill(LateNightTheme.divider).frame(height: 1)
 
@@ -624,18 +644,6 @@ struct ComposeView: View {
                     }
                 }
 
-                // Footer note (design 2026-09-16) — hairline + the promise.
-                VStack(alignment: .leading, spacing: 0) {
-                    Rectangle().fill(LateNightTheme.divider).frame(height: 1)
-                    Text("no name, no photo. read by a safety check before it goes live.")
-                        .font(ToskaFont.sans(12))
-                        .foregroundColor(ToskaColor.text2)
-                        .lineSpacing(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 28)
-                        .padding(.top, 14)
-                        .padding(.bottom, 12)
-                }
 
             }
 
@@ -836,8 +844,10 @@ struct ComposeView: View {
         // immediately (clearing the draft on send/dismiss must not be deferred).
         .onChange(of: draftText) { _, newValue in
             draftSaveTask?.cancel()
-            if newValue.isEmpty {
+            let offline = !NetworkMonitor.shared.isConnected
+            if newValue.isEmpty || (offline && !wroteSinceOffline) {
                 DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
+                if offline && !newValue.isEmpty { wroteSinceOffline = true }
             } else {
                 draftSaveTask = Task {
                     try? await Task.sleep(nanoseconds: 500_000_000)
@@ -849,6 +859,9 @@ struct ComposeView: View {
                     DraftStore.set(newValue, forKey: UserDefaultsKeys.composeDraftText)
                 }
             }
+        }
+        .onChange(of: NetworkMonitor.shared.isConnected) { _, connected in
+            if connected { wroteSinceOffline = false }
         }
         .onChange(of: draftTag) { _, newValue in
             persistBufferString(newValue, forKey: UserDefaultsKeys.composeDraftTag)
@@ -872,6 +885,8 @@ struct ComposeView: View {
             draftGifUrl = ""
             persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
             persistBufferString("", forKey: Self.composeDraftGifUrlKey)
+            draftPostId = ""
+            DraftStore.remove(forKey: Self.composeDraftPostIdKey)
         }
         // Drives the fade/scale transition on the gentle-check overlay
         // regardless of which surface (button, tap-outside, etc.) flips it.
@@ -896,6 +911,8 @@ struct ComposeView: View {
                     // these decode to false / "" — the old defaults.
                     draftIsLetter = DraftStore.getBool(forKey: Self.composeDraftIsLetterKey)
                     draftGifUrl = DraftStore.get(forKey: Self.composeDraftGifUrlKey) ?? ""
+                    draftPostId = DraftStore.get(forKey: Self.composeDraftPostIdKey) ?? ""
+                    if draftPostId.isEmpty { draftPostId = Self.newPostId(); DraftStore.set(draftPostId, forKey: Self.composeDraftPostIdKey) }
                     loadHandle()
                     seedTextAndTag()
                     focusTask?.cancel()
@@ -1301,6 +1318,8 @@ struct ComposeView: View {
                     draftGifUrl = ""
                     persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
                     persistBufferString("", forKey: Self.composeDraftGifUrlKey)
+                    draftPostId = ""
+                    DraftStore.remove(forKey: Self.composeDraftPostIdKey)
                 }
                 Telemetry.draftSaved(isUpdate: editingDraftId != nil)
                 // First time saving a NEW draft, explain where it lives before
@@ -1421,13 +1440,49 @@ struct ComposeView: View {
                 postData["isMidnightPost"] = true
             }
 
+            // (owner 2026-11-02) stable client-chosen id (see composeDraftPostIdKey); an edited draft reuses
+            // its own id so publishing it twice can't duplicate either.
+            let postId: String = {
+                if let d = editingDraftId { return "fromdraft_\(d)" }
+                if draftPostId.isEmpty { draftPostId = Self.newPostId(); DraftStore.set(draftPostId, forKey: Self.composeDraftPostIdKey) }
+                return draftPostId
+            }()
+            let targetRef = db.collection("posts").document(postId)
+            // Clear the draft buffer the moment the write is ISSUED, not when the server confirms: a
+            // mid-post disconnect used to leave the full text in the draft while the SDK's queued write
+            // landed later, so the next compose re-offered the same words. Restored below on a definite
+            // error (the editor still holds the text either way).
+            let submitted = (tag: draftTag, isLetter: draftIsLetter, gifUrl: draftGifUrl)
+            if editingDraftId == nil {
+                draftText = ""; draftTag = ""; draftIsLetter = false; draftGifUrl = ""
+                persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
+                persistBufferString("", forKey: Self.composeDraftGifUrlKey)
+            }
             var newPostRef: DocumentReference? = nil
-            newPostRef = db.collection("posts").addDocument(data: postData) { error in
+            newPostRef = targetRef
+            targetRef.setData(postData) { error in
                 Task { @MainActor in
                     self.isPosting = false
                     if let error = error {
-                        Telemetry.recordError(error, context: "ComposeView.addPost")
                         let nsError = error as NSError
+                        // Same id already on the server (an earlier submission landed) → the rules
+                        // denied this one as an update. That IS success; never post twice.
+                        if nsError.domain == "FIRFirestoreErrorDomain", nsError.code == 7,
+                           let snap = try? await targetRef.getDocument(), snap.exists,
+                           (snap.get("authorId") as? String) == uid {
+                            self.postError = ""
+                            if self.editingDraftId == nil { self.draftPostId = ""; DraftStore.remove(forKey: Self.composeDraftPostIdKey) }
+                            if let onPostSuccess = self.onPostSuccess { onPostSuccess() } else { self.dismiss() }
+                            return
+                        }
+                        // Definite failure: put the words back in the draft buffer so cancel/close keeps them.
+                        if self.editingDraftId == nil {
+                            self.draftText = self.text
+                            self.draftTag = submitted.tag; self.draftIsLetter = submitted.isLetter; self.draftGifUrl = submitted.gifUrl
+                            self.persistBufferBool(submitted.isLetter, forKey: Self.composeDraftIsLetterKey)
+                            self.persistBufferString(submitted.gifUrl, forKey: Self.composeDraftGifUrlKey)
+                        }
+                        Telemetry.recordError(error, context: "ComposeView.addPost")
                         // permission-denied on first post usually means
                         // hasConfirmedAdult() rejected the write because the
                         // confirmAdult Cloud Function call from the iOS age
@@ -1480,6 +1535,8 @@ struct ComposeView: View {
                             self.draftGifUrl = ""
                             self.persistBufferBool(false, forKey: Self.composeDraftIsLetterKey)
                             self.persistBufferString("", forKey: Self.composeDraftGifUrlKey)
+                            self.draftPostId = ""
+                            DraftStore.remove(forKey: Self.composeDraftPostIdKey)
                         }
                         // If we were editing an existing saved draft and the
                         // user chose to publish (rather than update), delete

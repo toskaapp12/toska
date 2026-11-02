@@ -1248,8 +1248,10 @@ struct FeedPostRow: View, Equatable {
                 // recognizable, and ink-violet already means "you" app-wide
                 // (felt hearts, write pill, your-response check).
                 Text(handle)
-                    .foregroundColor(displayedHandleIsOwn ? ToskaColor.accentText : nil)
-                    .fontWeight(displayedHandleIsOwn ? .medium : nil)
+                    // (2026-11-02) `nil` here did not inherit the row's handle color — it reset to the
+                    // system default, which turned handles white when the iPhone was in dark mode.
+                    .foregroundColor(displayedHandleIsOwn ? ToskaColor.accentText : ToskaColor.handle)
+                    .fontWeight(displayedHandleIsOwn ? .medium : .regular)
                 Text("·").foregroundColor(ToskaColor.dot)
             }
             Text(metaTimeText)

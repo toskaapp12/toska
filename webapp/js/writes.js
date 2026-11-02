@@ -84,7 +84,7 @@ async function notify(toUserId, type, postId) {
 export const POST_TAGS = ["longing", "numb", "anger", "regret", "acceptance",
     "confusion", "unsent", "moving on", "still love you"];
 
-export async function createPost({ text, tag, isLetter, isWhisper, isMidnight, gifUrl, promptDate }) {
+export async function createPost({ text, tag, isLetter, isWhisper, isMidnight, gifUrl, promptDate, clientId }) {
     const profile = await myProfile();
     const handle = profile.handle;
     if (!handle) throw new Error("no handle on user doc");
@@ -119,9 +119,13 @@ export async function createPost({ text, tag, isLetter, isWhisper, isMidnight, g
         midnight.setHours(24, 0, 0, 0); // next local midnight
         data.expiresAt = Timestamp.fromDate(midnight);
     }
-    const ref = await addDoc(collection(db, "posts"), data);
+    // (owner 2026-11-02) a stable client-chosen id per compose session: a second submission of the
+    // same words targets the same document, which the rules reject as an update — never a second post.
+    let id;
+    if (clientId) { await setDoc(doc(db, "posts", clientId), data); id = clientId; }
+    else { const ref = await addDoc(collection(db, "posts"), data); id = ref.id; }
     lastAt.post = Date.now();
-    return ref.id;
+    return id;
 }
 export function postRateLimited() { return lastAt.post && Date.now() - lastAt.post < 30_000; }
 

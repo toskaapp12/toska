@@ -228,6 +228,12 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   → `Font.toska(_:relativeTo:)` Dynamic Type on the 8 main screens, 15 web inputs labeled; demo
   password rotated (handed over in chat) + review notes gained the crisis-phrasing paragraph.
   **PROD web hosting deployed 2026-11-02 14:52 UTC (feed 40, labels, tokens; served files verified; no errors; watchdog nominal). Build 110 = all iOS changes (109 superseded by the policy-cover Dynamic Type fix); owner hand-test passed (load-more, large text).** Owner still to do: one prod sign-up from a device; ASC 1.3 setup.
+- **Break-it fixes (owner 2026-11-02; BUGS.md BREAKIT-2026-11-02) — build 111 + staging web; prod web
+  pending owner go:** compose promise line above the editor; stable client-chosen post ids + clear-on-issue
+  (no duplicate posts after a mid-post disconnect); offline banner wording + immediate first draft write
+  offline; palette = phone dark mode OR night hours with the window color scheme pinned (no mixed
+  palettes), feed handle nil-color bug fixed, web night tokens fixed. **Owner: device pass of every
+  signed-in screen in both modes on 111, then go for prod web.**
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would
   publish the April 1.0 build immediately. Order: cancel 1.2 release → rename to 1.3 → attach build 110

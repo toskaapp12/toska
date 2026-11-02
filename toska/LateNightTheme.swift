@@ -13,6 +13,13 @@ class LateNightThemeManager {
     /// `SIMCTL_CHILD_TOSKA_FORCE_NIGHT=1 simctl launch …` forces the night
     /// theme so it can be reviewed without waiting for midnight. Compiled
     /// out of Release.
+    // (owner 2026-11-02) the night palette also follows the iPhone's dark-mode setting. Read from the
+    // screen's trait collection, not a view's: the app pins its own color scheme on the window (see
+    // ToskaColorSchemePin), so view traits reflect that override while the screen reflects the system.
+    static var systemPrefersDark: Bool {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        return (scene?.screen.traitCollection.userInterfaceStyle ?? UIScreen.main.traitCollection.userInterfaceStyle) == .dark
+    }
     static var forcedNight: Bool {
         #if DEBUG
         return ProcessInfo.processInfo.environment["TOSKA_FORCE_NIGHT"] == "1"
@@ -23,7 +30,7 @@ class LateNightThemeManager {
 
     private init() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = Self.forcedNight || hour < 5
+        isLateNight = Self.forcedNight || hour < 5 || Self.systemPrefersDark
         startTimer()
 
         // queue: .main guarantees the callback runs on the main thread, so
@@ -41,6 +48,11 @@ class LateNightThemeManager {
             }
         }
 
+        // Dark mode toggled in Control Center while toska is open: no notification exists for a screen
+        // trait change, so re-check on activation and on the 60 s timer below.
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
         foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil, queue: .main
@@ -54,7 +66,7 @@ class LateNightThemeManager {
 
     func refresh() {
         let hour = Calendar.current.component(.hour, from: Date())
-        isLateNight = Self.forcedNight || hour < 5
+        isLateNight = Self.forcedNight || hour < 5 || Self.systemPrefersDark
     }
 
     private func startTimer() {
@@ -183,4 +195,15 @@ struct LateNightTheme {
 
     // Post font size bumps slightly at night
     static var postFontSize: CGFloat { isLateNight ? 16 : 15 }
+}
+
+
+// (owner 2026-11-02, option b) Pin the window's color scheme to toska's palette so nothing mixes:
+// every SwiftUI default (unstyled text, keyboard, alerts, sheets, navigation chrome) follows the
+// night/light palette instead of the phone setting. The palette itself already follows the phone's
+// dark mode OR the late-night hours (LateNightThemeManager).
+struct ToskaColorSchemePin: ViewModifier {
+    func body(content: Content) -> some View {
+        content.preferredColorScheme(LateNightThemeManager.shared.isLateNight ? .dark : .light)
+    }
 }

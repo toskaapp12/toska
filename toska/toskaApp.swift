@@ -305,6 +305,7 @@ struct toskaApp: App {
                     .frame(maxWidth: 600)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(LateNightTheme.background.ignoresSafeArea())
+                    .modifier(ToskaColorSchemePin())
                     .environment(LateNightThemeManager.shared)
                     // Cap Dynamic Type at .accessibility3 globally. Most of the
                     // app uses brand-tuned fixed sizes (Georgia italic at

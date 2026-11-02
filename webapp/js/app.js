@@ -78,8 +78,18 @@ async function confirmAdultWithRetry(attempts = 4) {
     return false;
 }
 
-// Late night: mirror LateNightTheme — device hour < 5 flips the whole app.
-if (new Date().getHours() < 5) document.documentElement.dataset.theme = "night";
+// Night palette (owner 2026-11-02): the device's dark-mode preference OR the late-night hours
+// (< 5), re-evaluated when the preference flips and every minute for the hour boundary. Mirrors
+// LateNightTheme on iOS; the page never inherits browser dark styling (no color-scheme declared),
+// so the two palettes can't mix.
+const darkMq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+function applyTheme() {
+    const night = (darkMq && darkMq.matches) || new Date().getHours() < 5;
+    if (night) document.documentElement.dataset.theme = "night"; else delete document.documentElement.dataset.theme;
+}
+applyTheme();
+if (darkMq && darkMq.addEventListener) darkMq.addEventListener("change", applyTheme);
+setInterval(applyTheme, 60_000);
 
 // ---------------------------------------------------------------- helpers
 const mount = document.getElementById("mount");
@@ -247,6 +257,26 @@ function saveDraft(kind, text) {
     const k = draftKey(kind);
     if (!k) return;
     try { text.trim() ? localStorage.setItem(k, text) : localStorage.removeItem(k); } catch {}
+}
+// (owner 2026-11-02) one stable post id per compose session (see writes.js createPost): a retry after a
+// mid-post disconnect reuses it, so the second write is rejected as an update instead of creating a
+// second post. Lives next to the draft under the same per-uid prefix (clearDrafts removes it too).
+const composeIdKey = () => me ? `draft_${me.uid}_compose_id` : null;
+function composePostId() {
+    const k = composeIdKey(); if (!k) return null;
+    try {
+        let id = localStorage.getItem(k);
+        if (!id) {
+            id = (crypto.randomUUID ? crypto.randomUUID() : [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("")).replace(/-/g, "");
+            localStorage.setItem(k, id);
+        }
+        return id;
+    } catch { return null; }
+}
+function clearComposePostId() { const k = composeIdKey(); try { if (k) localStorage.removeItem(k); } catch {} }
+async function alreadyPosted(postId) {
+    if (!postId) return false;
+    try { const s = await getDoc(doc(db, "posts", postId)); return s.exists() && s.data().authorId === me.uid; } catch { return false; }
 }
 function clearDrafts(uid) {
     try {
@@ -1409,7 +1439,7 @@ function viewCompose() {
         if (!text && !gifUrl) return;
         if (!policyEnabled("compose")) { err.replaceChildren(errorBox("posting is paused for a moment — your words are safe here, try again soon.")); return; }
         if (text.length > limit()) { err.replaceChildren(errorBox(`keep it under ${limit()} characters${isLetter ? "" : " — or make it a letter"}.`)); return; }
-        if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline. your words deserve to actually land — try again when you're back.")); return; }
+        if (!navigator.onLine) { err.replaceChildren(errorBox("you're offline. your words are saved here — leave or close the app and they'll be waiting.")); return; }
         if (postRateLimited()) { err.replaceChildren(errorBox("one moment between posts — breathe, then share.")); return; }
         if (await isRestricted()) { err.replaceChildren(errorBox("your account is under review. you cannot post right now.")); return; }
         share.disabled = true;
@@ -1419,15 +1449,24 @@ function viewCompose() {
             // The safety gates read words; a gif-only post has none to read.
             const gate = text ? await runGates(text) : { ok: true, willBeHeld: false };
             if (!gate.ok) { restoreShare(); return; }
+            const postId = composePostId();
+            saveDraft("compose", ""); // cleared the moment the write is issued; restored below on a definite error
             await createPost({
                 text, tag: selectedTag, isLetter, isWhisper, isMidnight, gifUrl,
-                promptDate: prompt?.promptDate,
+                promptDate: prompt?.promptDate, clientId: postId,
             });
             invalidateFeedCache(); // the new post should show on the next feed visit
-            saveDraft("compose", "");
+            clearComposePostId();
             toast(gate.willBeHeld ? "shared — it'll be looked over first." : "shared, quietly.");
             location.hash = "#/me";
         } catch (e) {
+            // The same id already landed (an earlier submission) → the rules denied this one as an
+            // update. That is success, never a second post.
+            if (e?.code === "permission-denied" && await alreadyPosted(composePostId())) {
+                invalidateFeedCache(); clearComposePostId();
+                toast("shared, quietly."); location.hash = "#/me"; return;
+            }
+            saveDraft("compose", ta.value); // definite failure: keep the words
             console.error(e);
             err.replaceChildren(errorBox(GENERIC_ERR));
             restoreShare();
@@ -1445,6 +1484,8 @@ function viewCompose() {
             toggleRow,
             noteBox,
             nudgeBox,
+            // Promise line (owner 2026-11-02): above the editor with the other notes, not under the keyboard.
+            el("p", { class: "note mode-note" }, "no name, no photo. read by a safety check before it goes live."),
             ta,
             gifBox,
             el("div", { class: "compose-meta" },
@@ -1452,7 +1493,7 @@ function viewCompose() {
                 share),
             err),
         el("p", { class: "note", style: "padding:0 6px;" },
-            "no name, no photo. read by a safety check before it goes live. letters can run long (2000); everything else stays short (500)."),
+            "letters can run long (2000); everything else stays short (500)."),
     ].filter(Boolean));
     render();
 }

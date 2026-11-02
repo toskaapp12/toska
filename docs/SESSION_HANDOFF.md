@@ -228,6 +228,11 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   → `Font.toska(_:relativeTo:)` Dynamic Type on the 8 main screens, 15 web inputs labeled; demo
   password rotated (handed over in chat) + review notes gained the crisis-phrasing paragraph.
   **PROD web hosting deployed 2026-11-02 14:52 UTC (feed 40, labels, tokens; served files verified; no errors; watchdog nominal). Build 110 = all iOS changes (109 superseded by the policy-cover Dynamic Type fix); owner hand-test passed (load-more, large text).** Owner still to do: one prod sign-up from a device; ASC 1.3 setup.
+- **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
+  manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would
+  publish the April 1.0 build immediately. Order: cancel 1.2 release → rename to 1.3 → attach build 110
+  → metadata/screenshots/review info → submit → (approved) release 1.3 manually → confirm "1.3 Ready for
+  Sale" → THEN add United States. Full list in `DRAFT_RELEASE_PLAN.md` §A/§A.2.
 - **Owner next (ASC):** version 1.2 "Cancel Release" → rename to 1.3 → attach build 107 → submit
   (steps in the 2026-10-29 session report; "Cancel Release" discards the July build 82 approval,
   live 1.0 unaffected).

@@ -456,6 +456,7 @@ struct FeedView: View {
             }
             vm.posts.removeAll { $0.id == deletedId }
             vm.followingPosts.removeAll { $0.id == deletedId }
+            vm.serverSearchResults.removeAll { $0.id == deletedId }
         }
         .onChange(of: vm.posts.count) { _, newValue in
             // "X new posts available" delta tracking. previousPostCount

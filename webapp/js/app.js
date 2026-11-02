@@ -1082,6 +1082,11 @@ function saveFeedScroll() {
     if (c) c.scrollY = window.scrollY;
 }
 function invalidateFeedCache() { feedCache.clear(); }
+// (owner 2026-11-02) a post found missing on open leaves every cached tab immediately (the 2-minute
+// TTL used to keep the row for other readers).
+function dropFromFeedCache(postId) {
+    for (const c of feedCache.values()) if (Array.isArray(c.rows)) c.rows = c.rows.filter(([id]) => id !== postId);
+}
 let followingUids = null; // {uids, at} — the follow graph only changes via block on web
 function onSocialGraphChange() { followingUids = null; feedCache.delete("following"); }
 async function viewFeed() {
@@ -1656,7 +1661,8 @@ async function viewPost(postId) {
         mount.querySelector(".spinner")?.remove();
         // C5: the author can open their own held/flagged post (pending banner below).
         if (!ps.exists() || !postVisible(ps.data(), { own: ps.data().authorId === me?.uid })) {
-            mount.append(emptyState("this post has disappeared."));
+            if (!ps.exists()) dropFromFeedCache(postId);
+            mount.append(emptyState("this post isn't available anymore."));
             return;
         }
         const d = ps.data();
@@ -1870,7 +1876,16 @@ async function viewPost(postId) {
                 const rows = await fetchReplies(targetPostId);
                 repliesBox.replaceChildren();
                 renderThread(repliesBox, rows, null, 0, onReplyTo);
-            } catch (e) { console.error(e); toast(GENERIC_ERR); }
+            } catch (e) {
+                console.error(e);
+                // (2026-11-02) the rules deny a reply on a post that no longer exists → say so; the
+                // text stays in the box.
+                if (e?.code === "permission-denied") {
+                    const parent = await getDoc(doc(db, "posts", targetPostId)).catch(() => null);
+                    if (parent && !parent.exists()) { dropFromFeedCache(targetPostId); toast("this post was removed, so your reply couldn't be sent — your words are still in the box."); return; }
+                }
+                toast(GENERIC_ERR);
+            }
             send.disabled = false;
             send.textContent = "↑";
         };
@@ -2142,7 +2157,7 @@ async function viewProfile(uid) {
             list.replaceChildren(spinner());
             try {
                 if (tab === "posts") renderPostDocs(list, await fetchOwnPosts(),
-                    { showPending: true, emptyMsg: "no posts yet. the app is where words begin." });
+                    { showPending: true, emptyMsg: "nothing here yet. when you're ready, write." });
                 else if (tab === "liked") renderPostDocs(list, await fetchRefTab("liked"),
                     { emptyMsg: "nothing felt yet. it finds you." });
                 else if (tab === "saved") renderPostDocs(list, await fetchRefTab("saved"),

@@ -88,6 +88,9 @@ class FeedViewModel: ObservableObject {
     // Simple in-flight flag so fetchPosts callers coalesce instead of stacking
     // duplicate Firestore queries on rapid trigger (onAppear + notification, etc).
     var isFetchingPosts = false
+    // (owner 2026-11-02) a user-initiated refresh supersedes any in-flight fetch instead of being skipped;
+    // the generation guard keeps a superseded fetch from writing its (older) result or clearing the flag.
+    private var fetchGeneration = 0
 
     // MARK: - Error State
     @Published var fetchError: String? = nil
@@ -1218,11 +1221,10 @@ class FeedViewModel: ObservableObject {
             // Coalesce concurrent callers. Without this, every rapid onAppear /
             // notification trigger fires a fresh 60-doc Firestore query in parallel,
             // wasting reads and racing on posts assignment.
-            guard !isFetchingPosts else {
-                debugLog("⚠️ fetchPosts — already in flight, skipping")
-                return
-            }
+            if isFetchingPosts { debugLog("🔄 fetchPosts — superseding an in-flight fetch") }
             isFetchingPosts = true
+            fetchGeneration += 1
+            let gen = fetchGeneration
             // Reset the blocking-saturation flag here too, not just inside
             // loadMorePosts. Without this, a refresh that lands on a clean
             // batch never clears the stale flag set by a prior pagination
@@ -1232,7 +1234,7 @@ class FeedViewModel: ObservableObject {
             debugLog("🔄 fetchPosts — firing Firestore query, hasAuth: \(Auth.auth().currentUser != nil)")
 
             Task { @MainActor in
-                defer { self.isFetchingPosts = false }
+                defer { if self.fetchGeneration == gen { self.isFetchingPosts = false } }
                 // moderationStatus filter required by firestore.rules
                 // 2026-05-31: pending-review posts are hidden from non-author
                 // readers, so the query must pin moderationStatus=="live" or
@@ -1240,11 +1242,21 @@ class FeedViewModel: ObservableObject {
                 // still see their own pending posts via ProfileView (which
                 // filters by authorId == self, so isOwner allows the read).
                 let capturedUid = Auth.auth().currentUser?.uid
-                guard let snapshot = try? await db.collection("posts")
+                let feedQuery = db.collection("posts")
                     .whereField("moderationStatus", isEqualTo: "live")
                     .order(by: "createdAt", descending: true)
                     .limit(to: 40)
-                    .getDocumentsAsync() else {
+                // 12 s timeout: a fetch that never completes (seen after airplane-mode toggles) used to
+                // pin the in-flight flag for the app's lifetime and silently skip every later refresh.
+                var fetched = try? await feedQuery.getDocumentsAsync(source: .default, timeoutSeconds: 12)
+                guard self.fetchGeneration == gen else { return }
+                // A cached result while online can still contain a post deleted on the server (the
+                // SDK falls back to cache when the server is momentarily unreachable) → one server retry.
+                if let first = fetched, first.metadata.isFromCache, NetworkMonitor.shared.isConnected {
+                    if let fresh = try? await feedQuery.getDocumentsAsync(source: .server, timeoutSeconds: 12) { fetched = fresh }
+                    guard self.fetchGeneration == gen else { return }
+                }
+                guard let snapshot = fetched else {
                     // Distinguish a real load failure (App Check rejection,
                     // network blip, missing index) from a genuinely empty feed.
                     // Without this, the failure collapses into the "its quiet
@@ -1252,9 +1264,8 @@ class FeedViewModel: ObservableObject {
                     // is a pull-to-refresh. Surface the error banner + retry,
                     // and DON'T clobber any posts we already had on screen.
                     self.hasLoadedOnce = true
-                    if self.posts.isEmpty {
-                        self.fetchError = "couldn't load the feed — pull to retry"
-                    }
+                    // Never fail silently: an empty feed gets the load error, a populated one a quiet line.
+                    self.fetchError = self.posts.isEmpty ? "couldn't load the feed — pull to retry" : "couldn't refresh — pull to try again"
                     return
                 }
                 // Guard against a sign-out that landed while this public-feed

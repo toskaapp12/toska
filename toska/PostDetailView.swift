@@ -216,6 +216,11 @@ struct PostDetailView: View {
     // same banner as the profile row so it never reads as live. Derived from
     // the live listener (authorId == me); nobody else can read a held doc.
     @State private var ownPendingReview = false
+    // (owner 2026-11-02) the opened post vanished (author/admin delete or expiry): stay in place with a
+    // message instead of dismissing silently; a typed reply is preserved (orphanedReply) and moved to the
+    // compose draft.
+    @State private var postUnavailable = false
+    @State private var orphanedReply: String? = nil
     @State private var ownPendingReasonLabel: String? = nil
     @State private var ownPendingIsCrisis = false
 
@@ -230,7 +235,7 @@ struct PostDetailView: View {
             // Product decision (2026-10-28, audit C6): no replies on a held
             // post — the rules deny the create, so the bar is hidden on the
             // author's own held post (nobody else can open one).
-            .safeAreaInset(edge: .bottom, spacing: 0) { if !ownPendingReview { replyBarView } }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if !ownPendingReview && !postUnavailable { replyBarView } }
             .hidesAppTabBar()
             .presentationDragIndicator(.visible)
             .interactiveDismissDisabled(false)
@@ -570,6 +575,11 @@ struct PostDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // C5: the author opened their own held post — same
                         // banner as the profile row (reason + crisis support).
+                        if postUnavailable {
+                            PostUnavailableBanner(orphanedReply: orphanedReply)
+                                .padding(.horizontal, 28)
+                                .padding(.top, 14)
+                        }
                         if ownPendingReview {
                             PendingReviewBanner(reasonLabel: ownPendingReasonLabel, isCrisis: ownPendingIsCrisis)
                                 .padding(.horizontal, 28)
@@ -1144,9 +1154,12 @@ struct PostDetailView: View {
                         return
                     }
                     if snapshot?.exists == false {
+                        // (2026-11-02) only a server-confirmed absence counts (the first cache event can
+                        // report exists=false before the doc syncs); then stay in place with a message.
+                        guard snapshot?.metadata.isFromCache == false else { return }
                         self.liveListener?.remove()
                         self.liveListener = nil
-                        self.dismiss()
+                        self.markPostUnavailable()
                         return
                     }
                     guard let data = snapshot?.data() else { return }
@@ -1165,7 +1178,7 @@ struct PostDetailView: View {
                        expiresAt.dateValue() < Date() {
                         self.liveListener?.remove()
                         self.liveListener = nil
-                        self.dismiss()
+                        self.markPostUnavailable()
                         return
                     }
                     if data["isLetter"] as? Bool == true { isLetter = true }
@@ -2167,7 +2180,17 @@ struct PostDetailView: View {
                 RateLimiter.shared.lastReplyTime = nil
                 // Tell the user (same alert the offline guard uses) — a
                 // silent failure looked like the reply just vanished.
-                self.replyPostError = "couldn't send — try again."
+                // (2026-11-02) …unless the rules denied it because the post no longer exists: then say
+                // so in place and keep the words (markPostUnavailable).
+                let ns = error as NSError
+                if ns.domain == "FIRFirestoreErrorDomain", ns.code == 7 {
+                    Task { @MainActor in
+                        let snap = try? await Firestore.firestore().collection("posts").document(self.postId).getDocument()
+                        if let snap, !snap.exists { self.markPostUnavailable() } else { self.replyPostError = "couldn't send — try again." }
+                    }
+                } else {
+                    self.replyPostError = "couldn't send — try again."
+                }
             }
         }
     }
@@ -2691,5 +2714,73 @@ struct SwipeToReplyRow: View {
         } message: {
             Text("you won't see their posts or replies. they won't be notified.")
         }
+    }
+}
+
+
+// (owner 2026-11-02) A post that vanishes while open — deleted by its author or an admin, or expired —
+// used to dismiss the screen silently and leave stale rows in every list. Now the screen stays, shows
+// a calm message, broadcasts the deletion so the feed / search / profile tabs drop the row at once,
+// and keeps any reply the person had typed (copyable, and moved into the compose draft).
+extension PostDetailView {
+    @MainActor func markPostUnavailable() {
+        guard !postUnavailable else { return }
+        postUnavailable = true
+        NotificationCenter.default.post(name: .postDeleted, object: nil, userInfo: ["postId": postId])
+        preserveOrphanedReply()
+    }
+    @MainActor private func preserveOrphanedReply() {
+        let typed = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+        orphanedReply = typed
+        replyFocused = false
+        let existing = (DraftStore.get(forKey: UserDefaultsKeys.composeDraftText) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        DraftStore.set(existing.isEmpty ? typed : existing + "\n\n" + typed, forKey: UserDefaultsKeys.composeDraftText)
+        DraftStore.remove(forKey: UserDefaultsKeys.replyDraft(postId: postId))
+    }
+}
+
+struct PostUnavailableBanner: View {
+    let orphanedReply: String?
+    @State private var copied = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "moon.zzz")
+                    .font(.toska(13, relativeTo: .footnote))
+                    .foregroundColor(ToskaColor.text2)
+                Text(orphanedReply == nil ? "this post isn't available anymore." : "this post was removed, so your reply couldn't be sent.")
+                    .font(ToskaFont.sans(13, weight: .medium))
+                    .foregroundColor(ToskaColor.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let reply = orphanedReply {
+                Text(reply)
+                    .font(ToskaFont.sans(13))
+                    .foregroundColor(ToskaColor.text2)
+                    .lineSpacing(3)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    Button {
+                        UIPasteboard.general.string = reply
+                        copied = true
+                    } label: {
+                        Text(copied ? "copied" : "copy")
+                            .font(ToskaFont.sans(12.5, weight: .medium))
+                            .foregroundColor(ToskaColor.accentText)
+                    }
+                    .accessibilityLabel("copy your reply")
+                    Text("it's saved in your draft too.")
+                        .font(ToskaFont.sans(12))
+                        .foregroundColor(ToskaColor.text3)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(ToskaColor.card2)
+        .cornerRadius(12)
+        .accessibilityElement(children: .combine)
     }
 }

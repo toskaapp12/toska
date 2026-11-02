@@ -105,3 +105,34 @@ func withTimeout<T: Sendable>(
         return result
     }
 }
+
+
+// (owner 2026-11-02) Feed refresh hardening: a one-shot query that resolves exactly once — from
+// Firestore's completion or from a timeout — and can be pinned to the server so a cached result
+// (which may still hold a post deleted on the server) can be re-checked while online.
+struct FetchTimeoutError: Error {}
+private final class ResumeOnce<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    private let continuation: CheckedContinuation<T, Error>
+    init(_ c: CheckedContinuation<T, Error>) { continuation = c }
+    func resume(_ r: Result<T, Error>) {
+        lock.lock(); defer { lock.unlock() }
+        guard !done else { return }
+        done = true
+        continuation.resume(with: r)
+    }
+}
+extension Query {
+    func getDocumentsAsync(source: FirestoreSource, timeoutSeconds: Double) async throws -> QuerySnapshot {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<QuerySnapshot, Error>) in
+            let once = ResumeOnce(continuation)
+            self.getDocuments(source: source) { snapshot, error in
+                if let error { once.resume(.failure(error)) }
+                else if let snapshot { once.resume(.success(snapshot)) }
+                else { once.resume(.failure(NSError(domain: "FirestoreExtensions", code: -1, userInfo: [NSLocalizedDescriptionKey: "No snapshot and no error returned"]))) }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds) { once.resume(.failure(FetchTimeoutError())) }
+        }
+    }
+}

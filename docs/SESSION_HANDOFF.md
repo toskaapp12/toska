@@ -233,6 +233,12 @@ _Last updated: 2026-11-02 (break-it fixes live; build 111 is the launch candidat
   (no duplicate posts after a mid-post disconnect); offline banner wording + immediate first draft write
   offline; palette = phone dark mode OR night hours with the window color scheme pinned (no mixed
   palettes), feed handle nil-color bug fixed, web night tokens fixed. **Owner device pass on 111 clean (dark/light, footer, offline, empty compose); PROD web deployed 2026-11-02 17:56 UTC. Build 111 = LAUNCH CANDIDATE** (attach to 1.3 per the ASC order below).
+- **Deleted-post handling (owner batch 2, 2026-11-02; BUGS.md BREAKIT2-2026-11-02) — build 112 + staging
+  web; prod web pending owner go:** in-place "isn't available anymore" instead of a silent dismiss, deletion
+  broadcast to every list, reply text preserved + copy + moved to the compose draft, feed refresh hardened
+  (supersede in-flight, 12 s timeout, server retry for cached results, quiet refresh error). Owner retests
+  on 112: open a deleted post, reply while deleted, pull-to-refresh after airplane mode. Test account
+  `tired_moon_193` (uid qPjXCvp7TJZHHHTT2zB26sL4AFn2) stays until the owner says delete.
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would
   publish the April 1.0 build immediately. Order: cancel 1.2 release → rename to 1.3 → attach build 110

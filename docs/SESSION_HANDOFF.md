@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization on prod; build 107)._
+_Last updated: 2026-11-02 (break-it fixes live; build 111 is the launch candidate; prod web current)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -232,8 +232,7 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   pending owner go:** compose promise line above the editor; stable client-chosen post ids + clear-on-issue
   (no duplicate posts after a mid-post disconnect); offline banner wording + immediate first draft write
   offline; palette = phone dark mode OR night hours with the window color scheme pinned (no mixed
-  palettes), feed handle nil-color bug fixed, web night tokens fixed. **Owner: device pass of every
-  signed-in screen in both modes on 111, then go for prod web.**
+  palettes), feed handle nil-color bug fixed, web night tokens fixed. **Owner device pass on 111 clean (dark/light, footer, offline, empty compose); PROD web deployed 2026-11-02 17:56 UTC. Build 111 = LAUNCH CANDIDATE** (attach to 1.3 per the ASC order below).
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would
   publish the April 1.0 build immediately. Order: cancel 1.2 release → rename to 1.3 → attach build 110

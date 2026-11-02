@@ -227,7 +227,7 @@ _Last updated: 2026-10-30 (name-list expansion + whisper/midnight normalization 
   listeners 200/200/100, thread reply listener 100; contrast tokens fixed (web + iOS), 78 fixed fonts
   → `Font.toska(_:relativeTo:)` Dynamic Type on the 8 main screens, 15 web inputs labeled; demo
   password rotated (handed over in chat) + review notes gained the crisis-phrasing paragraph.
-  **Staging web deployed; prod hosting pending owner go. Build 110 = all iOS changes (109 superseded by the policy-cover Dynamic Type fix).**
+  **PROD web hosting deployed 2026-11-02 14:52 UTC (feed 40, labels, tokens; served files verified; no errors; watchdog nominal). Build 110 = all iOS changes (109 superseded by the policy-cover Dynamic Type fix); owner hand-test passed (load-more, large text).** Owner still to do: one prod sign-up from a device; ASC 1.3 setup.
 - **Owner next (ASC):** version 1.2 "Cancel Release" → rename to 1.3 → attach build 107 → submit
   (steps in the 2026-10-29 session report; "Cancel Release" discards the July build 82 approval,
   live 1.0 unaffected).

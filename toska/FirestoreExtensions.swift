@@ -111,22 +111,25 @@ func withTimeout<T: Sendable>(
 // Firestore's completion or from a timeout — and can be pinned to the server so a cached result
 // (which may still hold a post deleted on the server) can be re-checked while online.
 struct FetchTimeoutError: Error {}
-private final class ResumeOnce<T>: @unchecked Sendable {
+// Non-generic on purpose: a generic class holding a CheckedContinuation crashed the Swift 6.2
+// optimizer (IRGen of its deinit) in Release builds — Debug compiled fine. The continuation is
+// consumed on the first resume, so a second caller (completion vs. timeout) is a no-op.
+private final class SnapshotResumeOnce: @unchecked Sendable {
     private let lock = NSLock()
-    private var done = false
-    private let continuation: CheckedContinuation<T, Error>
-    init(_ c: CheckedContinuation<T, Error>) { continuation = c }
-    func resume(_ r: Result<T, Error>) {
-        lock.lock(); defer { lock.unlock() }
-        guard !done else { return }
-        done = true
-        continuation.resume(with: r)
+    private var continuation: CheckedContinuation<QuerySnapshot, Error>?
+    init(_ c: CheckedContinuation<QuerySnapshot, Error>) { continuation = c }
+    func resume(_ r: Result<QuerySnapshot, Error>) {
+        lock.lock()
+        let c = continuation
+        continuation = nil
+        lock.unlock()
+        c?.resume(with: r)
     }
 }
 extension Query {
     func getDocumentsAsync(source: FirestoreSource, timeoutSeconds: Double) async throws -> QuerySnapshot {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<QuerySnapshot, Error>) in
-            let once = ResumeOnce(continuation)
+            let once = SnapshotResumeOnce(continuation)
             self.getDocuments(source: source) { snapshot, error in
                 if let error { once.resume(.failure(error)) }
                 else if let snapshot { once.resume(.success(snapshot)) }

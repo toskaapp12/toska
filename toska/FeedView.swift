@@ -617,6 +617,50 @@ struct FeedView: View {
         let day = Calendar.current.ordinality(of: .day, in: .year, for: date) ?? 1
         return FeedViewModel.dailyPrompts[day % FeedViewModel.dailyPrompts.count]
     }
+
+    /// Prompt text with its first letter capitalised — the header form the
+    /// feed card and PromptResponsesView use.
+    static func displayPrompt(_ p: String) -> String {
+        guard let f = p.first else { return p }
+        return f.uppercased() + p.dropFirst()
+    }
+}
+
+/// "✦ answering: <prompt>" above a daily-prompt answer — feed rows, profiles,
+/// search and post detail, same placement/copy/style as the web's
+/// `promptLine` (owner 2026-11-03). Tapping opens that day's "what others
+/// said" (PromptResponsesView for the answer's promptDate). Rows clamp to
+/// two lines; detail passes lineLimit nil for the full prompt. A
+/// destination-closure NavigationLink, like the row's own link, so dozens of
+/// rows don't collide the way per-row navigationDestination(isPresented:) does.
+@MainActor
+struct PromptContextLine: View {
+    let promptDate: String
+    var lineLimit: Int? = 2
+
+    var body: some View {
+        if let prompt = FeedView.prompt(for: promptDate) {
+            NavigationLink {
+                PromptResponsesView(promptText: FeedView.displayPrompt(prompt.0), promptDate: promptDate)
+                    .navigationBarHidden(true)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("✦")
+                        .font(.toska(10, weight: .semibold, relativeTo: .caption2))
+                    (Text("answering: ").font(ToskaFont.sans(11.5, weight: .semibold))
+                        + Text(prompt.0).font(ToskaFont.serifItalic(13)))
+                        .lineLimit(lineLimit)
+                        .lineSpacing(1)
+                        .multilineTextAlignment(.leading)
+                }
+                .foregroundColor(ToskaColor.accentText)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("answering: \(prompt.0). opens what others said for that day")
+            .padding(.bottom, 10)
+        }
+    }
 }
 
 // MARK: - Feed Post Row
@@ -651,7 +695,7 @@ struct FeedPostRow: View, Equatable {
             && l.isWhisperPost == r.isWhisperPost
             && l.isLetterExpanded == r.isLetterExpanded
             && l.reposterHandle == r.reposterHandle
-            && l.promptText == r.promptText
+            && l.promptDate == r.promptDate
             && l.rank == r.rank
     }
 
@@ -711,11 +755,11 @@ struct FeedPostRow: View, Equatable {
         private var interactionAuthorId: String {
             originalPostId != nil ? (originalAuthorId ?? "") : authorId
         }
-        // The daily prompt this post answered (FeedView passes
-        // FeedView.promptText(for: post.promptDate)). When set, the card shows
-        // the prompt in plum above the reply, so prompt answers read as
-        // "prompt → reply" across the feed.
-        var promptText: String? = nil
+        // The daily prompt this post answered (its stored promptDate). When
+        // set, PromptContextLine renders "✦ answering: <prompt>" in plum above
+        // the text, tappable to that day's "what others said" — same on web
+        // (owner 2026-11-03). Reposts stay as they are.
+        var promptDate: String? = nil
         // Profile pages render the author's rows under their own header —
         // repeating the handle on every meta line there is noise (owner
         // 2026-09-17 detail pass). Feed/search leave it false.
@@ -806,25 +850,11 @@ struct FeedPostRow: View, Equatable {
                     .navigationBarHidden(true)
                 } label: {
                   VStack(alignment: .leading, spacing: 0) {
-                // Daily-prompt header — when this post is a response to the day's
-                // prompt, show the prompt itself in plum above the reply so the
-                // card reads "prompt → reply" (the answer in context).
-                if let prompt = promptText, !prompt.isEmpty {
-                    // Owner (2026-09-22): icon and prompt sit EVEN on the
-                    // line — .top floated the sparkle above the italic's
-                    // centre. firstTextBaseline + the icon rendered AS Text
-                    // (inherits baseline metrics) keeps them level whether
-                    // the prompt wraps or not.
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(Image(systemName: "sparkle"))
-                            .font(.toska(10, weight: .semibold, relativeTo: .caption2))
-                        Text(prompt)
-                            .font(ToskaFont.serifItalic(13))
-                            .lineSpacing(1)
-                            .multilineTextAlignment(.leading)
-                    }
-                    .foregroundColor(ToskaColor.accentText)
-                    .padding(.bottom, 10)
+                // Daily-prompt context — "✦ answering: <prompt>" above the
+                // answer, tappable to that day's "what others said" (owner
+                // 2026-11-03; same on web). Reposts stay as they are.
+                if let promptDate = promptDate, originalPostId == nil, !isRepostPost {
+                    PromptContextLine(promptDate: promptDate)
                 }
                 // Repost provenance — small "@reposter reposted" line above
                 // the handle row when this post is a repost. Without this,
@@ -1938,7 +1968,7 @@ struct FeedColumn: View {
                                                                                                                                                         // row — author included (owner 2026-09-17: with the
                                                                                                                                                         // pinned card gone, the row is the response's one
                                                                                                                                                         // home in the feed and should carry its context).
-                                                                                                                                                        promptText: FeedView.promptText(for: post.promptDate)
+                                                                                                                                                        promptDate: post.promptDate
                                                                                                                                                                                                                                                                                                     )
                                                                                                                                                                                                                                                                                                     .equatable()
                                                                                                                                                                                                                                                                                                     .id(post.id)

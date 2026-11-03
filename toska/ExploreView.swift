@@ -15,6 +15,8 @@ struct ExplorePost {
     let time: String
     let authorId: String
     let createdAt: Date
+    // Daily-prompt answer → "answering:" context line (2026-11-03).
+    let promptDate: String?
 
     init(doc: QueryDocumentSnapshot, blockedUserIds: Set<String>) throws {
             let data = doc.data()
@@ -31,6 +33,7 @@ struct ExplorePost {
             if data["flagged"] as? Bool == true { throw ExplorePostError.blocked }
             let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         self.id = doc.documentID
+        self.promptDate = data["promptDate"] as? String
         self.handle = data["authorHandle"] as? String ?? "anonymous"
         self.text = data["text"] as? String ?? ""
         self.tag = data["tag"] as? String
@@ -276,7 +279,7 @@ struct ExploreView: View {
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16).padding(.vertical, 8)
                                     ForEach(Array(searchResults.enumerated()), id: \.element.id) { index, post in
-                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id))
+                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), promptDate: post.promptDate)
                                     }
                                 }
                             }
@@ -364,7 +367,7 @@ struct ExploreView: View {
                                         }.frame(maxWidth: .infinity).padding(.vertical, 60)
                                     } else {
                                         ForEach(Array(tagPosts.enumerated()), id: \.element.id) { index, post in
-                                            FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id))
+                                            FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), promptDate: post.promptDate)
                                         }
                                     }
                                 }
@@ -381,7 +384,7 @@ struct ExploreView: View {
                             } else {
                                 VStack(spacing: 0) {
                                     ForEach(Array(trendingPosts.enumerated()), id: \.element.id) { index, post in
-                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id))
+                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: interactions.repostedPostIds.contains(post.id), isAlreadyLiked: interactions.likedPostIds.contains(post.id), isAlreadySaved: interactions.savedPostIds.contains(post.id), promptDate: post.promptDate)
                                     }
                                     if trendingLoadFailed && trendingPosts.isEmpty {
                                                                             ToskaErrorBanner("couldn't load trending — check your connection") {

@@ -78,6 +78,8 @@ struct SavedPost: Identifiable, Equatable {
     var gifUrl: String? = nil
     var originalPostId: String? = nil
     var originalAuthorId: String? = nil
+    // Daily-prompt answer → "answering:" context line (2026-11-03).
+    var promptDate: String? = nil
 }
 
 /// Used in ProfileView for myPosts (has handle in last position)
@@ -143,6 +145,8 @@ struct OtherProfilePost: Identifiable {
     var gifUrl: String? = nil
     var originalPostId: String? = nil
     var originalAuthorId: String? = nil
+    // Daily-prompt answer → "answering:" context line (2026-11-03).
+    var promptDate: String? = nil
 }
 
 /// Used in TopView for ranked posts

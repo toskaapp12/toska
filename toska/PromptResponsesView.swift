@@ -19,6 +19,18 @@ struct PromptResponsesView: View {
     @State private var hasLoaded = false
     @State private var loadFailed = false
 
+    // Reached for a past day from an answer's "answering:" line (2026-11-03):
+    // same query and filters, date-aware header ("prompt for 2 nov").
+    private var isToday: Bool { promptDate == ToskaFormatters.dateKey.string(from: Date()) }
+    private var eyebrow: String {
+        if isToday { return "today's prompt" }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
+        guard let d = f.date(from: promptDate) else { return "prompt" }
+        let out = DateFormatter(); out.locale = Locale(identifier: "en_GB")
+        out.dateFormat = Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year) ? "d MMM" : "d MMM yyyy"
+        return "prompt for " + out.string(from: d).lowercased()
+    }
+
     var body: some View {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
@@ -29,7 +41,7 @@ struct PromptResponsesView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         // The prompt itself, band-styled — same voice as the feed.
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("today's prompt")
+                            Text(eyebrow)
                                 .font(ToskaFont.sans(10.5, weight: .semibold))
                                 .textCase(.uppercase)
                                 .tracking(0.74)
@@ -57,12 +69,14 @@ struct PromptResponsesView: View {
                             SkeletonFeed(kind: .post, count: 3)
                         } else if responses.isEmpty {
                             VStack(spacing: 8) {
-                                Text("no one has answered yet.")
+                                Text(isToday ? "no one has answered yet." : "no one answered that day.")
                                     .font(ToskaFont.serifItalic(16))
                                     .foregroundColor(ToskaColor.text2)
-                                Text("your words could be the first.")
-                                    .font(ToskaFont.sans(12.5))
-                                    .foregroundColor(ToskaColor.text2)
+                                if isToday {
+                                    Text("your words could be the first.")
+                                        .font(ToskaFont.sans(12.5))
+                                        .foregroundColor(ToskaColor.text2)
+                                }
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.top, 80)

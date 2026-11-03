@@ -705,6 +705,41 @@ const todaysPromptDate = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+// The prompt a stored promptDate (yyyy-MM-dd) answered — the same local-date
+// ordinal the card used on that day, so the line matches what was shown.
+// null for non-prompt posts and bad values.
+function promptForDate(promptDate) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(promptDate || "");
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (d.getFullYear() !== +m[1] || d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[3]) return null;
+    return DAILY_PROMPTS[dayOfYear(d) % DAILY_PROMPTS.length];
+}
+// "2 nov" (year added when it isn't this year) for the past-day header.
+function promptDayLabel(promptDate) {
+    const d = new Date(promptDate + "T12:00:00");
+    const s = d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toLowerCase();
+    return d.getFullYear() === new Date().getFullYear() ? s : `${s} ${d.getFullYear()}`;
+}
+// "✦ answering: <prompt>" above a daily-prompt answer (feed rows, profiles,
+// search, post detail) — same placement, copy and style as iOS
+// PromptContextLine (owner 2026-11-03). Tap opens that day's "what others
+// said" (#/prompt/yyyy-MM-dd). Rows clamp to two lines; detail shows it all.
+// Reposts of answers carry no promptDate and stay as they are. Rendered as a
+// span with role=link because feed rows are themselves <a> elements.
+function promptLine(d, { full = false } = {}) {
+    if (d.isRepost || !d.promptDate) return null;
+    const p = promptForDate(d.promptDate);
+    if (!p) return null;
+    const line = el("span", { class: "prompt-line" + (full ? " full" : ""), role: "link", tabindex: "0",
+        "aria-label": `answering: ${p[0]}. opens what others said for that day` },
+        el("span", { class: "prompt-line-k" }, "✦ answering: "),
+        el("span", { class: "prompt-line-t" }, p[0]));
+    const go = (e) => { e.preventDefault(); e.stopPropagation(); location.hash = `#/prompt/${d.promptDate}`; };
+    line.addEventListener("click", go);
+    line.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") go(e); });
+    return line;
+}
 // Set by the prompt card's "respond" click; consumed by the next compose.
 let promptContext = null; // {text, tag, promptDate} — all from ONE render of the card
 // Re-evaluate the prompt surfaces when the local date changes while a page
@@ -795,6 +830,7 @@ function postRow(id, d) {
     // Words first, then the feeling line, then the stats line (design order).
     return el("a", { class: "post-row" + (mine ? " mine" : ""), href: `#/post/${id}` },
         d.isRepost ? el("div", { class: "repost-strip" }, d.authorId === me?.uid ? "you reposted" : `${d.authorHandle ?? "anonymous"} reposted`) : null,
+        promptLine(d),
         el("div", { class: "post-text" }, d.text ?? ""),
         gifImg(d.gifUrl, "max-width:100%; border-radius:12px; margin-top:12px;"),
         meta,
@@ -1373,26 +1409,31 @@ function gifPicker(onPick) {
 // prompt, newest first — the prompt as a shared moment. Mirrors iOS
 // PromptResponsesView; served by the (moderationStatus, promptDate,
 // createdAt) composite index.
-async function viewPromptResponses() {
+// Today by default; #/prompt/yyyy-MM-dd opens a past day's answers (reached
+// from an answer's "answering:" line). Same query and the same filters for
+// every date: live only (held never leaves the query, deleted is gone),
+// then postVisible (flagged / expired / blocked / blocked-by) + my blocks.
+async function viewPromptResponses(date = todaysPromptDate()) {
     setChrome(false);
-    const [pText] = todaysPrompt();
+    const isToday = date === todaysPromptDate();
+    const [pText] = promptForDate(date) ?? todaysPrompt();
     const list = el("div");
     mount.replaceChildren(
         el("a", { class: "back", href: "#/" }, "← feed"),
         el("div", { class: "prompt-card" },
-            el("div", { class: "eyebrow" }, "today's prompt"),
+            el("div", { class: "eyebrow" }, isToday ? "today's prompt" : `prompt for ${promptDayLabel(date)}`),
             el("div", { class: "post-text" }, pText)),
         list, spinner());
     try {
         const snap = await getDocs(query(collection(db, "posts"),
-            where("promptDate", "==", todaysPromptDate()),
+            where("promptDate", "==", date),
             where("moderationStatus", "==", "live"),
             orderBy("createdAt", "desc"), limit(100)));
         mount.querySelector(".spinner")?.remove();
         const rows = snap.docs.map(d => [d.id, d.data()])
             .filter(([, d]) => postVisible(d) && !blocked.has(d.authorId));
         if (!rows.length) {
-            list.append(emptyState("no one has answered yet. your words could be the first."));
+            list.append(emptyState(isToday ? "no one has answered yet. your words could be the first." : "no one answered that day."));
             return;
         }
         for (const [id, d] of rows) list.append(postRow(id, d));
@@ -1723,6 +1764,7 @@ async function viewPost(postId) {
         const body = el("div", { class: "post-row" + (mine ? " mine" : ""), style: "cursor:default; border-bottom:none;" },
             d.isRepost ? el("div", { class: "repost-strip" }, `${d.authorHandle} reposted`) : null,
             (d.moderationStatus ?? "live") !== "live" && own ? pendingBanner(undefined, d.moderationStatus) : null,
+            promptLine(d, { full: true }),
             el("div", { class: "post-text", style: "font-size:17px; line-height:1.68;" }, d.text ?? ""),
             gifImg(d.gifUrl, "max-width:100%; border-radius:10px; margin-top:10px;"),
             el("div", { class: "post-meta" },
@@ -2353,6 +2395,10 @@ function route() {
     if (h === "#/" || h === "" || h === "#/signin" || h === "#/signup") { setActiveNav("feed"); viewFeed(); }
     else if (h === "#/compose") { setActiveNav(""); viewCompose(); }
     else if (h === "#/prompt") { setActiveNav("feed"); viewPromptResponses(); }
+    else if (h.startsWith("#/prompt/")) {
+        const date = h.slice(9);
+        if (promptForDate(date)) { setActiveNav("feed"); viewPromptResponses(date); } else location.replace("#/prompt");
+    }
     else if (h === "#/top") { setActiveNav("top"); viewTop(); }
     else if (h === "#/notifications") { setActiveNav("notifications"); viewNotifications(); }
     else if (h.startsWith("#/post/")) { setActiveNav(""); viewPost(h.slice(7)); }

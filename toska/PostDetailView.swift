@@ -200,6 +200,9 @@ struct PostDetailView: View {
     @State private var isReplySending = false
     @State private var isLetter = false
     @State private var isWhisper = false
+    // Daily-prompt answer → "answering:" context line above the text
+    // (2026-11-03). Read from the doc; the detail always shows the original.
+    @State private var promptDate: String? = nil
     // Sharing consent, mirrored from the live listener. Starts FALSE (share
     // button hidden) until server truth arrives — fail-closed is the right
     // direction for a consent gate. The feed treats a missing field as
@@ -268,6 +271,7 @@ struct PostDetailView: View {
                                         }
                                         if snapshot?.data()?["isLetter"] as? Bool == true { isLetter = true }
                                         if snapshot?.data()?["isWhisper"] as? Bool == true { isWhisper = true }
+                                        if let pd = snapshot?.data()?["promptDate"] as? String { promptDate = pd }
                                         if snapshot?.data()?["isMidnightPost"] as? Bool == true { isMidnight = true }
                                     }
                                 }
@@ -907,6 +911,10 @@ struct PostDetailView: View {
             .font(ToskaFont.sans(11.5))
             .foregroundColor(ToskaColor.handle)
 
+            if let promptDate = promptDate {
+                PromptContextLine(promptDate: promptDate, lineLimit: nil)
+                    .padding(.top, 12)
+            }
             Text(postText)
                 .font(ToskaFont.serif(16))
                 .lineSpacing(5)
@@ -1163,6 +1171,7 @@ struct PostDetailView: View {
                         return
                     }
                     guard let data = snapshot?.data() else { return }
+                    self.promptDate = data["promptDate"] as? String
                     // Expired posts must not be readable here (2026-08-06
                     // accuracy audit). Terms §8 promises an expired post
                     // "stops appearing in every feed and surface", but this

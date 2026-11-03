@@ -221,6 +221,18 @@ a.handle:hover { color: var(--accent-text); }
 .post-stats span + span::before { content: ""; display: inline-block; width: 1px; height: 11px; background: var(--hair-2); margin-right: 15px; vertical-align: -1px; }
 .repost-strip { font-family: "Instrument Sans", sans-serif; font-size: 11.5px; color: var(--meta); margin-bottom: 10px; letter-spacing: 0.005em; }
 .repost-strip::before { content: "↻ "; color: var(--accent-text); }
+/* "✦ answering: <prompt>" above a daily-prompt answer (owner 2026-11-03) —
+   plum, two-line clamp on rows, full on post detail; tappable to that day's
+   "what others said". Mirrors iOS PromptContextLine. */
+.prompt-line {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    margin-bottom: 10px; color: var(--accent-text); font-size: 13.5px; line-height: 1.5; cursor: pointer;
+}
+.prompt-line.full { display: block; overflow: visible; }
+.prompt-line-k { font-family: "Instrument Sans", "Helvetica Neue", Arial, sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 0.005em; }
+.prompt-line-t { font-style: italic; }
+.prompt-line:hover .prompt-line-t, .prompt-line:focus-visible .prompt-line-t { text-decoration: underline; text-underline-offset: 2px; }
+.prompt-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 /* prompt band — tinted violet, full-bleed, hairline below */
 .prompt-card {

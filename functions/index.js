@@ -2533,6 +2533,28 @@ function normalizeEphemeralExpiry(postData) {
   return Object.keys(upd).length ? upd : null;
 }
 
+// promptDate plausibility (daily-prompt check F3, 2026-11-03). A real
+// calendar date, exactly yyyy-MM-dd, within [UTC today − 2, UTC today + 1]:
+// a client can legitimately sit at UTC+14 (already tomorrow) or UTC−12
+// (still yesterday), and a prompt compose opened before local midnight and
+// posted after is stamped with the day before that. Anything else is a
+// tampered client pre-seeding a future day's "what others said" (or an
+// impossible date the prompt lookup would map to an arbitrary prompt).
+const PROMPT_DATE_WINDOW = { pastDays: 2, futureDays: 1 };
+function promptDateIsPlausible(value, nowMs = Date.now()) {
+  if (typeof value !== "string") return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  const utc = Date.UTC(y, mo - 1, d);
+  const back = new Date(utc);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return false;
+  const now = new Date(nowMs);
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const delta = Math.round((utc - todayUtc) / 86400e3);
+  return delta >= -PROMPT_DATE_WINDOW.pastDays && delta <= PROMPT_DATE_WINDOW.futureDays;
+}
+
 exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   const postId = event.params.postId;
   const postData = event.data.data();
@@ -2545,9 +2567,9 @@ exports.validatePost = onDocumentCreated("posts/{postId}", async (event) => {
   // 1000-expression cap), so strip anything that isn't the exact yyyy-MM-dd
   // the daily-prompt composer writes. Strip (not hold): the post itself is
   // legitimate; only the side-channel field is forged.
-  if ("promptDate" in postData
-      && (typeof postData.promptDate !== "string"
-          || !/^\d{4}-\d{2}-\d{2}$/.test(postData.promptDate))) {
+  // 2026-11-03 (daily-prompt check F3): the shape alone let 2099-01-01,
+  // 1999-12-31 and 2026-13-45 through — see promptDateIsPlausible.
+  if ("promptDate" in postData && !promptDateIsPlausible(postData.promptDate)) {
     console.warn(`validatePost ${postId}: stripping malformed promptDate (${typeof postData.promptDate}, ${String(postData.promptDate).length} chars)`);
     await db.collection("posts").doc(postId).update({ promptDate: FieldValue.delete() });
   }
@@ -7021,6 +7043,9 @@ Object.defineProperty(module.exports, "__test", {
   reporterCapFor,
   normalizeEphemeralExpiry,
   watchNewAccountLiveSpike,
+  // daily-prompt check F3 (2026-11-03)
+  promptDateIsPlausible,
+  PROMPT_DATE_WINDOW,
   AUTO_HIDE_CAP_PER_AUTHOR,
   pruneNotificationsOlderThan,
   // A4 (2026-10-29)

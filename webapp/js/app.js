@@ -691,8 +691,14 @@ const DAILY_PROMPTS = [
     ["what's the dream you keep having where they're back. how do you feel when you wake.", "longing"],
     ["i would trade almost anything for the weight of their head on my chest one more time.", "longing"],
 ];
+// Ordinal day of the LOCAL calendar date, Jan 1 = 1 — the same value iOS gets
+// from Calendar.ordinality(of: .day, in: .year). Computed from the local
+// y/m/d via Date.UTC so daylight-saving shifts can't bend it: the previous
+// `(now − Dec 31 00:00) / 24h` form was an hour short during DST and showed
+// yesterday's prompt from 00:00 to 01:00 (and tomorrow's 23:00–24:00 in
+// southern-hemisphere standard time) — daily-prompt check F1, 2026-11-03.
 function dayOfYear(d = new Date()) {
-    return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400e3);
+    return Math.round((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 0)) / 86400e3);
 }
 const todaysPrompt = () => DAILY_PROMPTS[dayOfYear() % DAILY_PROMPTS.length];
 const todaysPromptDate = () => {
@@ -700,7 +706,23 @@ const todaysPromptDate = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 // Set by the prompt card's "respond" click; consumed by the next compose.
-let promptContext = null; // {promptDate, tag}
+let promptContext = null; // {text, tag, promptDate} — all from ONE render of the card
+// Re-evaluate the prompt surfaces when the local date changes while a page
+// is open (midnight, a zone change, a tab resumed days later). viewFeed and
+// viewCompose register a refresher; it's called every minute and whenever
+// the tab becomes visible (daily-prompt check F2, 2026-11-03).
+let promptRefresher = null;
+function refreshPromptSurfaces() { try { promptRefresher?.(); } catch (e) { console.warn("prompt refresh", e); } }
+setInterval(refreshPromptSurfaces, 60_000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { applyTheme(); refreshPromptSurfaces(); } });
+// One answer per day (owner 2026-11-03, matching iOS): the id of my post
+// stamped with this promptDate, or null. Held answers count — same as iOS.
+async function myPromptResponseId(promptDate) {
+    if (!me) return null;
+    const snap = await getDocs(query(collection(db, "posts"),
+        where("authorId", "==", me.uid), where("promptDate", "==", promptDate), limit(1)));
+    return snap.empty ? null : snap.docs[0].id;
+}
 
 // Post visible on read surfaces: mirrors iOS filterBlocked + expiry + flagged.
 // C5 (2026-10-27 audit): `own` lets the AUTHOR open their own held post (the
@@ -1102,19 +1124,38 @@ async function viewFeed() {
             } }, t)),
     );
     // Daily prompt card — same client-static list + dayOfYear pick as iOS.
-    const [pText, pTag] = todaysPrompt();
-    const respond = el("button", { class: "btn quiet" }, "write yours");
-    respond.onclick = () => {
-        promptContext = { text: pText, tag: pTag, promptDate: todaysPromptDate() };
-        location.hash = "#/compose";
+    // Text, tag and promptDate come from ONE evaluation (the respond click
+    // used to re-read the date, so a card left open across midnight filed
+    // yesterday's prompt under today's date — check F2), and the card
+    // re-renders itself when the local date moves (promptRefresher).
+    const promptCard = el("div", { class: "prompt-card" });
+    const renderPromptCard = () => {
+        const [pText, pTag] = todaysPrompt();
+        const pDate = todaysPromptDate();
+        promptCard.dataset.promptDate = pDate;
+        const respond = el("button", { class: "btn quiet" }, "write yours");
+        respond.onclick = () => {
+            promptContext = { text: pText, tag: pTag, promptDate: pDate };
+            location.hash = "#/compose";
+        };
+        const action = el("span", {}, respond);
+        const others = el("a", { class: "plain", href: "#/prompt",
+            style: "font-size:12.5px; font-weight:600; color:var(--accent-text);" },
+            "what others said…");
+        promptCard.replaceChildren(
+            el("div", { class: "eyebrow" }, "today's prompt"),
+            el("div", { class: "post-text" }, pText),
+            el("div", { class: "prompt-actions", style: "display:flex; justify-content:space-between; align-items:center; gap:12px;" }, action, others));
+        // One answer per day (matches iOS): already answered → "your response"
+        // (opens the post; delete it there to answer again).
+        myPromptResponseId(pDate).then((id) => {
+            if (!id || promptCard.dataset.promptDate !== pDate) return;
+            action.replaceChildren(el("a", { class: "plain", href: `#/post/${id}`, "aria-label": "view your response",
+                style: "font-size:12.5px; font-weight:600; color:var(--accent-text);" }, "✓ your response"));
+        }).catch((e) => console.warn("prompt response lookup", e?.code || e));
     };
-    const others = el("a", { class: "plain", href: "#/prompt",
-        style: "font-size:12.5px; font-weight:600; color:var(--accent-text);" },
-        "what others said…");
-    const promptCard = el("div", { class: "prompt-card" },
-        el("div", { class: "eyebrow" }, "today's prompt"),
-        el("div", { class: "post-text" }, pText),
-        el("div", { class: "prompt-actions", style: "display:flex; justify-content:space-between; align-items:center; gap:12px;" }, respond, others));
+    renderPromptCard();
+    promptRefresher = () => { if (promptCard.isConnected && promptCard.dataset.promptDate !== todaysPromptDate()) renderPromptCard(); };
     // Search — honest scope, same as FeedView: filters only what's already
     // fetched (text + handle), no extra Firestore round-trip.
     const search = el("input", {
@@ -1374,6 +1415,17 @@ function viewCompose() {
     const prompt = promptContext;
     promptContext = null;
     if (prompt?.tag) selectedTag = prompt.tag;
+    // Owner 2026-11-03: an open prompt compose follows the day too — if the
+    // local date moves while writing, the banner, the stamped date and the
+    // auto-picked tag all move to the new prompt together (typed text stays).
+    const promptNote = prompt ? el("p", { class: "note", style: "padding:0 6px;" }, `responding to today's prompt — "${prompt.text}"`) : null;
+    promptRefresher = prompt ? () => {
+        if (!promptNote.isConnected || prompt.promptDate === todaysPromptDate()) return;
+        const [nText, nTag] = todaysPrompt();
+        if (selectedTag === prompt.tag) { selectedTag = nTag; render(); }
+        prompt.text = nText; prompt.tag = nTag; prompt.promptDate = todaysPromptDate();
+        promptNote.textContent = `responding to today's prompt — "${nText}"`;
+    } : null;
     const ta = el("textarea", { "aria-label": "your post", placeholder: "say it how it actually feels…", maxlength: "2100" });
     const count = el("span", { class: "char-count" }, "0 / 500");
     const err = el("div");
@@ -1480,7 +1532,7 @@ function viewCompose() {
     // NB: replaceChildren stringifies a raw null (unlike el()'s child filter)
     mount.replaceChildren(...[
         el("a", { class: "back", href: "#/" }, "← feed"),
-        prompt ? el("p", { class: "note", style: "padding:0 6px;" }, `responding to today's prompt — "${prompt.text}"`) : null,
+        promptNote,
         // Order (owner, build-105 round 2026-10-29): chips, mode note and the
         // first-name nudge ABOVE the text box so they stay visible with a
         // mobile keyboard up — mirrors the iOS composer.

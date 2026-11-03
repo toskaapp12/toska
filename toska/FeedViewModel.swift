@@ -644,6 +644,21 @@ class FeedViewModel: ObservableObject {
         ToskaFormatters.dateKey.string(from: Date())
     }
 
+    /// The local date the prompt surfaces were last rendered for. Bumped by
+    /// refreshPromptDay() when the day rolls over or the zone changes while
+    /// the feed is on screen (UIApplication.significantTimeChange + foreground
+    /// return), so the header card re-renders with the new prompt and the
+    /// user's own answer is re-fetched — the card, the stamped date and
+    /// "what others said" always agree (owner 2026-11-03, daily-prompt check F2).
+    @Published var promptDayKey: String = ToskaFormatters.dateKey.string(from: Date())
+
+    func refreshPromptDay() {
+        let key = todaysPromptDateString
+        guard key != promptDayKey else { return }
+        promptDayKey = key
+        fetchTodaysPromptResponse()
+    }
+
     /// The current user's response to today's prompt, if they've answered.
     /// Populated by fetchTodaysPromptResponse(); nil when the user hasn't
     /// responded yet (or hasn't loaded yet). FeedHeaderCard reads this to

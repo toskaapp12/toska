@@ -59,6 +59,20 @@ struct ComposeView: View {
     // already responded today and flip the card to show their response with
     // edit/delete. nil for non-prompt posts (the regular + compose path).
     var promptDate: String? = nil
+    // Owner 2026-11-03 (daily-prompt check F2): an open prompt compose follows
+    // the day. If the local date moves while writing (midnight, a zone change,
+    // the app resumed days later), the stamped date and the auto-picked tag
+    // move to the new prompt together; typed text stays. nil until a change.
+    @State private var promptDayOverride: String? = nil
+    private var effectivePromptDate: String? { promptDate == nil ? nil : (promptDayOverride ?? promptDate) }
+    private func refreshPromptDay() {
+        guard promptDate != nil else { return }
+        let today = ToskaFormatters.dateKey.string(from: Date())
+        guard today != effectivePromptDate else { return }
+        let oldTag = FeedView.prompt(for: effectivePromptDate)?.1
+        promptDayOverride = today
+        if selectedTag == oldTag, let newTag = FeedView.prompt(for: today)?.1 { selectedTag = newTag }
+    }
     var onPostSuccess: (() -> Void)? = nil
     // When opened from DraftsView, the id of the draft being edited.
     // The Save button updates that doc instead of creating a new draft;
@@ -960,6 +974,14 @@ struct ComposeView: View {
         .onReceive(NotificationCenter.default.publisher(for: .dismissAllSheets)) { _ in
             showGifPicker = false
         }
+        // Prompt compose follows the day (F2, 2026-11-03): midnight / zone change
+        // while open, or the app returning to the foreground on a new day.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            refreshPromptDay()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            refreshPromptDay()
+        }
         // First-time explainer for whisper / midnight / letter (set in each
         // toggle the first time it's turned on).
         .alert(activeHint?.title ?? "", isPresented: Binding(
@@ -1426,7 +1448,7 @@ struct ComposeView: View {
             // FeedView's prompt "respond" flow. Lets the FeedHeaderCard show
             // "your response" with edit/delete instead of "respond" once a
             // user has answered today's prompt.
-            if let promptDate = promptDate { postData["promptDate"] = promptDate }
+            if let promptDate = effectivePromptDate { postData["promptDate"] = promptDate }
             if isWhisper && !expiresAtMidnight {
                 let oneHourFromNow = Date().addingTimeInterval(3600)
                 postData["expiresAt"] = Timestamp(date: oneHourFromNow)
@@ -1576,7 +1598,7 @@ struct ComposeView: View {
                             // Owner (2026-09-22): the purple prompt line must
                             // render on the echo's FIRST frame — without this
                             // it popped in when the server copy landed.
-                            "promptDate": self.promptDate ?? "",
+                            "promptDate": self.effectivePromptDate ?? "",
                         ])
                         if self.postWillBeHeld {
                             // Held for review — tell the user before leaving the

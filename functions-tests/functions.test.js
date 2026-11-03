@@ -1663,3 +1663,38 @@ describe("follow-up: new-account limits + deterministic limiter ordering", () =>
     assert.strictEqual((await db.doc("posts/vet_repost_orig").get()).exists, true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Daily-prompt check F3 (2026-11-03): promptDate must be a real calendar
+// date within [UTC today − 2, UTC today + 1]; the shape regex alone had
+// accepted 2099-01-01, 1999-12-31 and 2026-13-45.
+describe("daily-prompt F3 — promptDate plausibility", () => {
+  const { promptDateIsPlausible, PROMPT_DATE_WINDOW } = __test;
+  const NOW = Date.UTC(2026, 10, 3, 17, 0, 0); // 2026-11-03T17:00Z
+  it("window is [today − 2, today + 1] in UTC", () => {
+    assert.deepStrictEqual(PROMPT_DATE_WINDOW, { pastDays: 2, futureDays: 1 });
+    for (const ok of ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04"]) assert.strictEqual(promptDateIsPlausible(ok, NOW), true, ok);
+    for (const bad of ["2026-10-31", "2026-11-05", "2099-01-01", "1999-12-31"]) assert.strictEqual(promptDateIsPlausible(bad, NOW), false, bad);
+  });
+  it("impossible and malformed values are rejected", () => {
+    for (const bad of ["2026-13-45", "2026-02-30", "2026-11-3", "2026-11-03T00:00:00", "", 12345, null, undefined, {}]) assert.strictEqual(promptDateIsPlausible(bad, NOW), false, String(bad));
+  });
+  it("year, month and leap edges", () => {
+    assert.strictEqual(promptDateIsPlausible("2026-12-31", Date.UTC(2027, 0, 1, 1)), true);    // Jan 1 01:00Z → yesterday
+    assert.strictEqual(promptDateIsPlausible("2027-01-01", Date.UTC(2026, 11, 31, 23)), true); // Dec 31 23:00Z → UTC+14 is already Jan 1
+    assert.strictEqual(promptDateIsPlausible("2028-02-29", Date.UTC(2028, 1, 28, 12)), true);
+    assert.strictEqual(promptDateIsPlausible("2027-02-29", Date.UTC(2027, 1, 28, 12)), false);
+  });
+  it("validatePost strips a far-future promptDate and keeps today's", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const base = { authorId: "pd", authorHandle: "h", text: "a plain answer with nothing to hold", createdAt: Timestamp.now(), likeCount: 0, repostCount: 0, replyCount: 0, isRepost: false, isShareable: false, moderationStatus: "pending_validation" };
+    await db.doc("users/pd").set({ handle: "h_pd", createdAt: Timestamp.fromMillis(Date.now() - 3 * 86400e3) });
+    await db.doc("users/pd/private/data").set({ confirmedAdult: true });
+    await db.doc("posts/pd_future").set({ ...base, promptDate: "2099-01-01" });
+    await db.doc("posts/pd_today").set({ ...base, promptDate: today });
+    await fns.validatePost.run({ id: "pd1", data: await snapOf("posts/pd_future"), params: { postId: "pd_future" } });
+    await fns.validatePost.run({ id: "pd2", data: await snapOf("posts/pd_today"), params: { postId: "pd_today" } });
+    assert.strictEqual((await db.doc("posts/pd_future").get()).get("promptDate"), undefined);
+    assert.strictEqual((await db.doc("posts/pd_today").get()).get("promptDate"), today);
+  });
+});

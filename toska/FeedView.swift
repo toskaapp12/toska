@@ -546,7 +546,13 @@ struct FeedView: View {
                         searchFocused = false
                         showSearch = false
                     }
+                    vm.refreshPromptDay()   // day may have rolled while backgrounded
                     vm.handleForegroundReturn()
+                }
+        // Midnight, a timezone change or a carrier time change while the feed
+        // is on screen: re-render the prompt card for the new day (F2, 2026-11-03).
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                    vm.refreshPromptDay()
                 }
         .onReceive(NotificationCenter.default.publisher(for: .saveFeedScrollPosition)) { notif in
                             if let postId = notif.userInfo?["postId"] as? String {
@@ -596,6 +602,12 @@ struct FeedView: View {
     /// recovers the exact prompt — no need to store the text on every post.
     /// Returns nil for non-prompt posts.
     static func promptText(for promptDate: String?) -> String? {
+        prompt(for: promptDate)?.0
+    }
+
+    /// The full (text, tag, icon) prompt for a promptDate — same day-of-year
+    /// pick as FeedViewModel.todaysPrompt. nil for non-prompt posts.
+    static func prompt(for promptDate: String?) -> (String, String, String)? {
         guard let promptDate = promptDate else { return nil }
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
@@ -603,7 +615,7 @@ struct FeedView: View {
         guard let date = fmt.date(from: promptDate),
               !FeedViewModel.dailyPrompts.isEmpty else { return nil }
         let day = Calendar.current.ordinality(of: .day, in: .year, for: date) ?? 1
-        return FeedViewModel.dailyPrompts[day % FeedViewModel.dailyPrompts.count].0
+        return FeedViewModel.dailyPrompts[day % FeedViewModel.dailyPrompts.count]
     }
 }
 

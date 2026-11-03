@@ -109,7 +109,19 @@ struct PromptResponsesView: View {
                     .limit(to: 100)
                     .getDocumentsAsync()
                 guard Auth.auth().currentUser?.uid == capturedUid else { return }
+                let now = Date()
                 responses = snap.documents
+                    // Same two checks as the feed (FeedViewModel's visibility filter):
+                    // auto-hidden answers keep moderationStatus "live" but carry
+                    // flagged == true, and expired whispers/midnights linger until the
+                    // 10-minute cleanup — the web list already hid both
+                    // (daily-prompt check F4, 2026-11-03).
+                    .filter { doc in
+                        let data = doc.data()
+                        if data["flagged"] as? Bool == true { return false }
+                        if let exp = data["expiresAt"] as? Timestamp, exp.dateValue() < now { return false }
+                        return true
+                    }
                     .map { FeedView.feedPost(from: $0) }
                     .filter { !BlockedUsersCache.shared.isHiddenAuthor($0.authorId) }
                 hasLoaded = true

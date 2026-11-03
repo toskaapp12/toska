@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-11-03 (deleted-post + reconnect fixes live; build 115 is the launch candidate; prod web current; test account removed)._
+_Last updated: 2026-11-03 (daily-prompt check fixes: build 116 on TestFlight awaiting the owner's device pass; prod web + validatePost deploy and push HELD for go; 115 stays the shipped candidate until then)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -245,6 +245,16 @@ _Last updated: 2026-11-03 (deleted-post + reconnect fixes live; build 115 is the
   **`ReconnectDiagnostics.enabled = true` is a TEMPORARY visible status line — set false before the
   launch build.** 114: A/B/C all pass. **Build 115 = LAUNCH CANDIDATE** (diagnostics removed, badge prefetch); prod web deployed 2026-11-03 15:51 UTC; `tired_moon_193` deleted and verified. Test account
   `tired_moon_193` (uid qPjXCvp7TJZHHHTT2zB26sL4AFn2) stays until the owner says delete.
+- **Daily-prompt check (2026-11-03, BUGS.md `PROMPT-2026-11-03`):** read-only automated check on staging
+  (fake clocks, Swift mirror, headless Chrome with timezone emulation, static pages) found a web DST
+  one-hour mismatch, a stale-card-across-midnight filing bug on both platforms, server acceptance of
+  any date-shaped promptDate, two missing filters in the iOS responses list, and web lacking the
+  one-answer-per-day card state. All five fixed; functions tests 180/180; staging web + `validatePost`
+  deployed and re-verified headless; **build 116** uploaded + internal group. **Next:** owner device
+  pass on 116 (midnight/zone-change card refresh, compose follows the day, "your response" flip,
+  responses list filters) → go → `firebase deploy --only hosting --project toska-4ebf4`,
+  `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
+  log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would
   publish the April 1.0 build immediately. Order: cancel 1.2 release → rename to 1.3 → attach build 110

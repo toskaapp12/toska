@@ -96,26 +96,53 @@ class FeedViewModel: ObservableObject {
     /// delta into the "new posts" badge instead of inserting (keeps the reader's place).
     @Published var reconnectNewPosts = 0
 
-    /// (owner 2026-11-02) In-place refresh after connectivity returns: a server-only read of the first
-    /// page (patient, the SDK stream may still be reconnecting) that removes rows the server no longer
-    /// serves — only inside that page's time range, so older paged-in posts are untouched — and never
-    /// reorders or replaces the visible list. Genuinely new posts go to the badge.
+    /// (2026-11-03) Visible, temporary reconnect diagnostics (ReconnectDiagnostics.enabled) — cleared 4 s
+    /// after each update. Remove before the launch build.
+    @Published var reconnectStatus: String? = nil
+    private var reconnectStatusClear: Task<Void, Never>? = nil
+    private func setReconnectStatus(_ text: String) {
+        reconnectStatus = text
+        reconnectStatusClear?.cancel()
+        reconnectStatusClear = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            guard !Task.isCancelled else { return }
+            reconnectStatus = nil
+        }
+    }
+
+    /// Patient server-sourced read: keeps trying every 2 s until `windowSeconds` pass. A server read
+    /// while the Firestore client still thinks it is offline fails immediately, so attempts are cheap;
+    /// a connectivity flicker mid-window does NOT abort (the OS path often flips twice after airplane
+    /// mode). Returns nil only when the whole window passed without a server result.
+    private func serverSnapshot(_ q: Query, windowSeconds: Double, isCurrent: @escaping () -> Bool = { true }) async -> QuerySnapshot? {
+        let deadline = Date().addingTimeInterval(windowSeconds)
+        while isCurrent() {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 { return nil }
+            if let snap = try? await q.getDocumentsAsync(source: .server, timeoutSeconds: min(6, max(1, remaining))) { return snap }
+            if deadline.timeIntervalSinceNow <= 2 { return nil }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+        return nil
+    }
+
+    /// (owner 2026-11-02/03) In-place refresh after connectivity returns: a server-only read of the first
+    /// page — patient for up to 15 s while the client's stream and App Check come back — that removes
+    /// rows the server no longer serves, only inside that page's time range (older paged-in posts are
+    /// untouched), and never reorders or replaces the visible list. Genuinely new posts go to the badge.
     func reconcileAfterReconnect() async {
         guard Auth.auth().currentUser != nil else { return }
+        if ReconnectDiagnostics.enabled { setReconnectStatus("reconnected — checking the feed…") }
         if posts.isEmpty { fetchPosts(); return }
         let q = Firestore.firestore().collection("posts")
             .whereField("moderationStatus", isEqualTo: "live")
             .order(by: "createdAt", descending: true)
             .limit(to: 40)
-        var snap: QuerySnapshot? = nil
-        for attempt in 0..<4 {
-            snap = try? await q.getDocumentsAsync(source: .server, timeoutSeconds: 6)
-            if snap != nil { break }
-            if attempt < 3 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
-            guard NetworkMonitor.shared.isConnected else { return }
-        }
-        guard let snap, Auth.auth().currentUser != nil else {
-            if NetworkMonitor.shared.isConnected { fetchError = "couldn't refresh — pull to try again" }
+        guard let snap = await serverSnapshot(q, windowSeconds: 15), Auth.auth().currentUser != nil else {
+            if NetworkMonitor.shared.isConnected {
+                fetchError = "couldn't refresh — pull to try again"
+                if ReconnectDiagnostics.enabled { setReconnectStatus("couldn't reach the server in 15 s") }
+            }
             return
         }
         let visibleDocs = filterBlocked(documents: snap.documents)
@@ -128,13 +155,18 @@ class FeedViewModel: ObservableObject {
             guard let created = pageTimes[p.id] else { return false }   // older than the page: unknown, keep
             return created >= oldest && !serverIds.contains(p.id) && !echoIds.contains(p.id)
         }
+        let before = posts.count
         posts.removeAll(where: gone)
         followingPosts.removeAll(where: gone)
         serverSearchResults.removeAll(where: gone)
+        let removed = before - posts.count
         let known = Set(posts.map { $0.id }).union(echoIds)
         let newCount = visibleIds.subtracting(known).count
         if newCount > 0 { reconnectNewPosts += newCount }
         fetchError = nil
+        if ReconnectDiagnostics.enabled {
+            setReconnectStatus(removed > 0 ? "removed \(removed) post\(removed == 1 ? "" : "s") that no longer exist" : (newCount > 0 ? "feed checked — \(newCount) new" : "feed up to date"))
+        }
     }
 
     // MARK: - Error State
@@ -1300,14 +1332,8 @@ class FeedViewModel: ObservableObject {
                 // airplane mode — seconds to a minute). Patient server retry: up to 4 attempts, 2 s apart.
                 var serverRetryFailed = false
                 if let first = fetched, first.metadata.isFromCache, NetworkMonitor.shared.isConnected {
-                    var fresh: QuerySnapshot? = nil
-                    for attempt in 0..<4 {
-                        fresh = try? await feedQuery.getDocumentsAsync(source: .server, timeoutSeconds: 6)
-                        guard self.fetchGeneration == gen else { return }
-                        if fresh != nil { break }
-                        if attempt < 3 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
-                        guard self.fetchGeneration == gen, NetworkMonitor.shared.isConnected else { break }
-                    }
+                    let fresh = await self.serverSnapshot(feedQuery, windowSeconds: 15, isCurrent: { self.fetchGeneration == gen })
+                    guard self.fetchGeneration == gen else { return }
                     if let fresh { fetched = fresh } else { serverRetryFailed = NetworkMonitor.shared.isConnected }
                 }
                 guard let snapshot = fetched else {
@@ -1736,3 +1762,9 @@ class FeedViewModel: ObservableObject {
         }
     }
 }
+
+
+// (2026-11-03) Temporary, visible reconnect diagnostics for the owner's TestFlight tests — release
+// builds compile out debugLog, so a small on-screen line is the only confirmation that the reconnect
+// reconcile fired and what it did. MUST be set to false before the launch build (BUGS.md).
+enum ReconnectDiagnostics { static let enabled = true }

@@ -60,6 +60,7 @@ class NetworkMonitor {
                             let db = Firestore.firestore()
                             db.disableNetwork { _ in db.enableNetwork { _ in } }
                         }
+                        NotificationCenter.default.post(name: .networkDidReconnect, object: nil)
                     }
 
                     if path.status != .satisfied {

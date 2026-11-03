@@ -239,8 +239,11 @@ _Last updated: 2026-11-02 (break-it fixes live; build 111 is the launch candidat
   (supersede in-flight, 12 s timeout, server retry for cached results, quiet refresh error). 112 retest: deleted post ✓, reply ✓,
   **refresh after airplane mode ✗ (Firestore stream backoff; see BUGS.md) → build 113:** patient server
   retry, quiet line when online retries fail, Firestore network cycle on reconnect, in-place reconcile
-  3 s after reconnect (removals only within the first page's time range; new posts → badge). Owner
-  retests the three cases + the reconnect pull on 113. Test account
+  3 s after reconnect (removals only within the first page's time range; new posts → badge). 113: row still
+  not cleared on its own → **build 114**: explicit `.networkDidReconnect` + `onReceive`, shared 15 s
+  flicker-tolerant server retry for reconcile and pull, quiet line when the window passes online.
+  **`ReconnectDiagnostics.enabled = true` is a TEMPORARY visible status line — set false before the
+  launch build.** Owner retests A/B/C on 114; if A still fails, pull-to-refresh is accepted. Test account
   `tired_moon_193` (uid qPjXCvp7TJZHHHTT2zB26sL4AFn2) stays until the owner says delete.
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would

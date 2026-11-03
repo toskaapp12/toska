@@ -1965,6 +1965,7 @@ struct FeedColumn: View {
                                 // dead (always 0/false since the custom drag gesture
                                 // was removed), so it rendered a second, out-of-sync
                                 // spinner box on refresh. Removed (2026 polish).
+                                            ReconnectStatusLine(vm: vm)
                                             if let error = vm.fetchError {
                                                 HStack(spacing: 8) {
                                                     Image(systemName: "exclamationmark.circle")
@@ -2298,11 +2299,12 @@ private struct ReconnectReconcile: ViewModifier {
     @State private var reconnectTask: Task<Void, Never>? = nil
     func body(content: Content) -> some View {
         content
-            .onChange(of: NetworkMonitor.shared.isConnected) { _, connected in
+            .onReceive(NotificationCenter.default.publisher(for: .networkDidReconnect)) { _ in
+                // Explicit event from NetworkMonitor (not observation tracking). 2 s lets the Firestore
+                // network cycle land; the reconcile itself then waits patiently for a server result.
                 reconnectTask?.cancel()
-                guard connected else { return }
                 reconnectTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
                     guard !Task.isCancelled else { return }
                     await vm.reconcileAfterReconnect()
                 }
@@ -2312,5 +2314,21 @@ private struct ReconnectReconcile: ViewModifier {
                 withAnimation(.easeInOut(duration: 0.25)) { badge += (new - old) }
                 pendingRefresh = true
             }
+    }
+}
+
+
+// (2026-11-03) Temporary visible reconnect status (see ReconnectDiagnostics). Empty when disabled.
+private struct ReconnectStatusLine: View {
+    @ObservedObject var vm: FeedViewModel
+    var body: some View {
+        if ReconnectDiagnostics.enabled, let status = vm.reconnectStatus {
+            Text(status)
+                .font(ToskaFont.sans(11))
+                .foregroundColor(ToskaColor.text3)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 6)
+                .transition(.opacity)
+        }
     }
 }

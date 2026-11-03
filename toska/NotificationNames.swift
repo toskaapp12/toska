@@ -23,6 +23,9 @@ extension NSNotification.Name {
     // Posted on successful reply text edit. userInfo: ["replyId": String]
     static let replyEdited         = NSNotification.Name("ReplyEdited")
     static let scrollFeedToTop     = NSNotification.Name("ScrollFeedToTop")
+    /// (2026-11-03) posted by NetworkMonitor on the offline→online transition, after Firestore's
+    /// network has been cycled. Explicit so the feed's reconcile does not depend on observation tracking.
+    static let networkDidReconnect = NSNotification.Name("NetworkDidReconnect")
     static let dismissAllSheets    = NSNotification.Name("DismissAllSheets")
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")
         // Push tap on a follow notification routes through here — opens

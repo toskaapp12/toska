@@ -59,6 +59,9 @@ struct FeedView: View {
     @State private var newPostsBadgeCount = 0
     @ObservedObject private var policy = ClientPolicyManager.shared
     @State private var previousPostCount = -1
+    // (owner 2026-11-02) reconnect handling: an in-place reconcile 3 s after connectivity returns;
+    // new posts found that way wait in the badge until the reader taps it.
+    @State private var pendingReconnectRefresh = false
     // Head post id at the last count change. A pagination call APPENDS to the
     // tail (count grows, head unchanged), which must not trigger the "new posts"
     // banner; only a genuine head insertion should. Without this the banner
@@ -234,6 +237,9 @@ struct FeedView: View {
             // useful). The count keeps accumulating; it shows on switch-back.
             if newPostsBadgeCount > 0 && vm.selectedTab == 0 {
                 Button {
+                    // Posts found by a reconnect reconcile were held back to keep the reader's place;
+                    // tapping the badge is the moment to bring them in.
+                    if pendingReconnectRefresh { pendingReconnectRefresh = false; vm.refreshFeed() }
                     NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
                     withAnimation(.easeInOut(duration: 0.25)) {
                         newPostsBadgeCount = 0
@@ -442,6 +448,7 @@ struct FeedView: View {
         .onReceive(NotificationCenter.default.publisher(for: .postEdited)) { _ in
             vm.handlePostEdited()
         }
+        .modifier(ReconnectReconcile(vm: vm, badge: $newPostsBadgeCount, pendingRefresh: $pendingReconnectRefresh))
         .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
             guard let deletedId = notif.userInfo?["postId"] as? String else { return }
             if vm.todaysPromptResponse?.id == deletedId {
@@ -2277,5 +2284,33 @@ struct FeedColumn: View {
                                                 .frame(width: geo.size.width, height: geo.size.height)
                                                 }
         .background(LateNightTheme.feedBackground)
+    }
+}
+
+
+// (owner 2026-11-02) Reconnect handling for the feed, kept out of FeedView's body chain (the type
+// checker gave up with two more modifiers inline): 3 s after connectivity returns, reconcile the
+// first page in place; posts that arrived meanwhile go to the "new posts" badge, not into the list.
+private struct ReconnectReconcile: ViewModifier {
+    @ObservedObject var vm: FeedViewModel
+    @Binding var badge: Int
+    @Binding var pendingRefresh: Bool
+    @State private var reconnectTask: Task<Void, Never>? = nil
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: NetworkMonitor.shared.isConnected) { _, connected in
+                reconnectTask?.cancel()
+                guard connected else { return }
+                reconnectTask = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    await vm.reconcileAfterReconnect()
+                }
+            }
+            .onChange(of: vm.reconnectNewPosts) { old, new in
+                guard new > old else { return }
+                withAnimation(.easeInOut(duration: 0.25)) { badge += (new - old) }
+                pendingRefresh = true
+            }
     }
 }

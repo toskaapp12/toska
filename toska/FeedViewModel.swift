@@ -91,6 +91,51 @@ class FeedViewModel: ObservableObject {
     // (owner 2026-11-02) a user-initiated refresh supersedes any in-flight fetch instead of being skipped;
     // the generation guard keeps a superseded fetch from writing its (older) result or clearing the flag.
     private var fetchGeneration = 0
+    private var pageCreatedAt: [String: Date] = [:]
+    /// Cumulative count of posts that arrived while the reader was scrolled; FeedView turns the
+    /// delta into the "new posts" badge instead of inserting (keeps the reader's place).
+    @Published var reconnectNewPosts = 0
+
+    /// (owner 2026-11-02) In-place refresh after connectivity returns: a server-only read of the first
+    /// page (patient, the SDK stream may still be reconnecting) that removes rows the server no longer
+    /// serves — only inside that page's time range, so older paged-in posts are untouched — and never
+    /// reorders or replaces the visible list. Genuinely new posts go to the badge.
+    func reconcileAfterReconnect() async {
+        guard Auth.auth().currentUser != nil else { return }
+        if posts.isEmpty { fetchPosts(); return }
+        let q = Firestore.firestore().collection("posts")
+            .whereField("moderationStatus", isEqualTo: "live")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 40)
+        var snap: QuerySnapshot? = nil
+        for attempt in 0..<4 {
+            snap = try? await q.getDocumentsAsync(source: .server, timeoutSeconds: 6)
+            if snap != nil { break }
+            if attempt < 3 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
+            guard NetworkMonitor.shared.isConnected else { return }
+        }
+        guard let snap, Auth.auth().currentUser != nil else {
+            if NetworkMonitor.shared.isConnected { fetchError = "couldn't refresh — pull to try again" }
+            return
+        }
+        let visibleDocs = filterBlocked(documents: snap.documents)
+        let serverIds = Set(snap.documents.map { $0.documentID })
+        let visibleIds = Set(visibleDocs.map { $0.documentID })
+        let oldest = snap.documents.compactMap { ($0.data()["createdAt"] as? Timestamp)?.dateValue() }.min() ?? .distantFuture
+        let echoIds = Set(optimisticEcho.map { $0.post.id })
+        let pageTimes = pageCreatedAt
+        let gone: (FeedPost) -> Bool = { p in
+            guard let created = pageTimes[p.id] else { return false }   // older than the page: unknown, keep
+            return created >= oldest && !serverIds.contains(p.id) && !echoIds.contains(p.id)
+        }
+        posts.removeAll(where: gone)
+        followingPosts.removeAll(where: gone)
+        serverSearchResults.removeAll(where: gone)
+        let known = Set(posts.map { $0.id }).union(echoIds)
+        let newCount = visibleIds.subtracting(known).count
+        if newCount > 0 { reconnectNewPosts += newCount }
+        fetchError = nil
+    }
 
     // MARK: - Error State
     @Published var fetchError: String? = nil
@@ -1250,11 +1295,20 @@ class FeedViewModel: ObservableObject {
                 // pin the in-flight flag for the app's lifetime and silently skip every later refresh.
                 var fetched = try? await feedQuery.getDocumentsAsync(source: .default, timeoutSeconds: 12)
                 guard self.fetchGeneration == gen else { return }
-                // A cached result while online can still contain a post deleted on the server (the
-                // SDK falls back to cache when the server is momentarily unreachable) → one server retry.
+                // A cached result while online can still contain a post deleted on the server: the SDK
+                // answers from cache while its own stream is reconnecting (exponential backoff after
+                // airplane mode — seconds to a minute). Patient server retry: up to 4 attempts, 2 s apart.
+                var serverRetryFailed = false
                 if let first = fetched, first.metadata.isFromCache, NetworkMonitor.shared.isConnected {
-                    if let fresh = try? await feedQuery.getDocumentsAsync(source: .server, timeoutSeconds: 12) { fetched = fresh }
-                    guard self.fetchGeneration == gen else { return }
+                    var fresh: QuerySnapshot? = nil
+                    for attempt in 0..<4 {
+                        fresh = try? await feedQuery.getDocumentsAsync(source: .server, timeoutSeconds: 6)
+                        guard self.fetchGeneration == gen else { return }
+                        if fresh != nil { break }
+                        if attempt < 3 { try? await Task.sleep(nanoseconds: 2_000_000_000) }
+                        guard self.fetchGeneration == gen, NetworkMonitor.shared.isConnected else { break }
+                    }
+                    if let fresh { fetched = fresh } else { serverRetryFailed = NetworkMonitor.shared.isConnected }
                 }
                 guard let snapshot = fetched else {
                     // Distinguish a real load failure (App Check rejection,
@@ -1268,6 +1322,9 @@ class FeedViewModel: ObservableObject {
                     self.fetchError = self.posts.isEmpty ? "couldn't load the feed — pull to retry" : "couldn't refresh — pull to try again"
                     return
                 }
+                // Online, but every server attempt failed and we only have the cache: keep the list and
+                // say so (offline stays quiet here — the app-wide banner covers it).
+                if serverRetryFailed { self.fetchError = "couldn't refresh — pull to try again" }
                 // Guard against a sign-out that landed while this public-feed
                 // fetch was in flight — every other async fetch in this file
                 // re-verifies the uid before mutating @Published state.
@@ -1275,6 +1332,11 @@ class FeedViewModel: ObservableObject {
                 self.fetchError = nil
                 let documents = snapshot.documents
                 debugLog("✅ fetchPosts — got \(documents.count) docs from Firestore")
+                // Remember this page's creation times so a reconnect reconcile can tell "no longer on the
+                // server" apart from "older than the first page" (see reconcileAfterReconnect).
+                self.pageCreatedAt = Dictionary(uniqueKeysWithValues: documents.compactMap { d in
+                    (d.data()["createdAt"] as? Timestamp).map { (d.documentID, $0.dateValue()) }
+                })
                 let filtered = self.filterBlocked(documents: documents)
 
                     let scored: [(doc: QueryDocumentSnapshot, score: Double)] = filtered.map { doc in

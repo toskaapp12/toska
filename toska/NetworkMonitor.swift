@@ -1,6 +1,8 @@
 import Foundation
 import Network
 import Observation
+import FirebaseCore
+import FirebaseFirestore
 
 @Observable
 @MainActor
@@ -46,6 +48,18 @@ class NetworkMonitor {
                         // Fresh connectivity (first sample or a reconnect) —
                         // sync anything the user did while offline.
                         OfflineActionQueue.flush()
+                    }
+                    if self.isConnected && !wasConnected {
+                        // (owner 2026-11-02) Firestore reconnects its own stream with exponential backoff
+                        // after an outage (seconds to a minute); cycling its network resets that so the
+                        // next read reaches the server. Safe: queued writes stay queued and flush on
+                        // enable; listeners only receive cache-flagged snapshots meanwhile (the post
+                        // detail ignores cache-based absence); the offline banner is driven by NWPath,
+                        // not by Firestore, so it does not blip.
+                        if FirebaseApp.app() != nil {
+                            let db = Firestore.firestore()
+                            db.disableNetwork { _ in db.enableNetwork { _ in } }
+                        }
                     }
 
                     if path.status != .satisfied {

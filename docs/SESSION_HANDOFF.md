@@ -236,8 +236,11 @@ _Last updated: 2026-11-02 (break-it fixes live; build 111 is the launch candidat
 - **Deleted-post handling (owner batch 2, 2026-11-02; BUGS.md BREAKIT2-2026-11-02) — build 112 + staging
   web; prod web pending owner go:** in-place "isn't available anymore" instead of a silent dismiss, deletion
   broadcast to every list, reply text preserved + copy + moved to the compose draft, feed refresh hardened
-  (supersede in-flight, 12 s timeout, server retry for cached results, quiet refresh error). Owner retests
-  on 112: open a deleted post, reply while deleted, pull-to-refresh after airplane mode. Test account
+  (supersede in-flight, 12 s timeout, server retry for cached results, quiet refresh error). 112 retest: deleted post ✓, reply ✓,
+  **refresh after airplane mode ✗ (Firestore stream backoff; see BUGS.md) → build 113:** patient server
+  retry, quiet line when online retries fail, Firestore network cycle on reconnect, in-place reconcile
+  3 s after reconnect (removals only within the first page's time range; new posts → badge). Owner
+  retests the three cases + the reconnect pull on 113. Test account
   `tired_moon_193` (uid qPjXCvp7TJZHHHTT2zB26sL4AFn2) stays until the owner says delete.
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would

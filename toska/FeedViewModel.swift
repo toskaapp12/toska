@@ -95,19 +95,20 @@ class FeedViewModel: ObservableObject {
     /// Cumulative count of posts that arrived while the reader was scrolled; FeedView turns the
     /// delta into the "new posts" badge instead of inserting (keeps the reader's place).
     @Published var reconnectNewPosts = 0
-
-    /// (2026-11-03) Visible, temporary reconnect diagnostics (ReconnectDiagnostics.enabled) — cleared 4 s
-    /// after each update. Remove before the launch build.
-    @Published var reconnectStatus: String? = nil
-    private var reconnectStatusClear: Task<Void, Never>? = nil
-    private func setReconnectStatus(_ text: String) {
-        reconnectStatus = text
-        reconnectStatusClear?.cancel()
-        reconnectStatusClear = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            guard !Task.isCancelled else { return }
-            reconnectStatus = nil
-        }
+    /// (owner 2026-11-03) When the reconnect reconcile finds new posts, the ranked first page is fetched in
+    /// the background and parked here; tapping the badge applies it instantly instead of refetching.
+    private var deferNextFeedApply = false
+    private var deferredFeed: (posts: [FeedPost], last: DocumentSnapshot?, hasMore: Bool)? = nil
+    var hasDeferredFeed: Bool { deferredFeed != nil }
+    func applyDeferredFeed() {
+        guard let d = deferredFeed else { return }
+        deferredFeed = nil
+        posts = d.posts
+        mergeOptimisticEcho()
+        prefetchVisibleGifs()
+        hasLoadedOnce = true
+        lastDocument = d.last
+        hasMorePosts = d.hasMore
     }
 
     /// Patient server-sourced read: keeps trying every 2 s until `windowSeconds` pass. A server read
@@ -132,17 +133,13 @@ class FeedViewModel: ObservableObject {
     /// untouched), and never reorders or replaces the visible list. Genuinely new posts go to the badge.
     func reconcileAfterReconnect() async {
         guard Auth.auth().currentUser != nil else { return }
-        if ReconnectDiagnostics.enabled { setReconnectStatus("reconnected — checking the feed…") }
         if posts.isEmpty { fetchPosts(); return }
         let q = Firestore.firestore().collection("posts")
             .whereField("moderationStatus", isEqualTo: "live")
             .order(by: "createdAt", descending: true)
             .limit(to: 40)
         guard let snap = await serverSnapshot(q, windowSeconds: 15), Auth.auth().currentUser != nil else {
-            if NetworkMonitor.shared.isConnected {
-                fetchError = "couldn't refresh — pull to try again"
-                if ReconnectDiagnostics.enabled { setReconnectStatus("couldn't reach the server in 15 s") }
-            }
+            if NetworkMonitor.shared.isConnected { fetchError = "couldn't refresh — pull to try again" }
             return
         }
         let visibleDocs = filterBlocked(documents: snap.documents)
@@ -162,11 +159,13 @@ class FeedViewModel: ObservableObject {
         let removed = before - posts.count
         let known = Set(posts.map { $0.id }).union(echoIds)
         let newCount = visibleIds.subtracting(known).count
-        if newCount > 0 { reconnectNewPosts += newCount }
-        fetchError = nil
-        if ReconnectDiagnostics.enabled {
-            setReconnectStatus(removed > 0 ? "removed \(removed) post\(removed == 1 ? "" : "s") that no longer exist" : (newCount > 0 ? "feed checked — \(newCount) new" : "feed up to date"))
+        if newCount > 0 {
+            reconnectNewPosts += newCount
+            // Prefetch the ranked page now so the badge tap is instant.
+            deferNextFeedApply = true
+            fetchPosts()
         }
+        fetchError = nil
     }
 
     // MARK: - Error State
@@ -1062,6 +1061,8 @@ class FeedViewModel: ObservableObject {
     /// that actually changes.
     func refreshFeed() {
         fetchError = nil
+        deferNextFeedApply = false   // a pull always publishes
+        deferredFeed = nil
         fetchPosts()
         fetchFollowingPosts()
         fetchTodaysPromptResponse()
@@ -1459,6 +1460,14 @@ class FeedViewModel: ObservableObject {
                 debugLog("✅ fetchPosts — setting \(newPosts.count) posts after scoring/filtering")
 
                 if !newPosts.isEmpty {
+                                                                                                                            // Badge prefetch (2026-11-03): park the ranked page instead of publishing it — the reader is
+                                                                                                                            // scrolled and asked not to be moved; the badge tap applies it instantly.
+                                                                                                                            if self.deferNextFeedApply {
+                                                                                                                                self.deferNextFeedApply = false
+                                                                                                                                self.deferredFeed = (newPosts, documents.last, documents.count >= 40)
+                                                                                                                                self.hasLoadedOnce = true
+                                                                                                                                return
+                                                                                                                            }
                                                                                                                             self.posts = newPosts
                                                                                                                             // Re-apply the author's own not-yet-promoted post
                                                                                                                             // (local echo) after the wholesale replace above.
@@ -1762,9 +1771,3 @@ class FeedViewModel: ObservableObject {
         }
     }
 }
-
-
-// (2026-11-03) Temporary, visible reconnect diagnostics for the owner's TestFlight tests — release
-// builds compile out debugLog, so a small on-screen line is the only confirmation that the reconnect
-// reconcile fired and what it did. MUST be set to false before the launch build (BUGS.md).
-enum ReconnectDiagnostics { static let enabled = true }

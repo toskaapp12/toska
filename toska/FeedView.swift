@@ -62,6 +62,7 @@ struct FeedView: View {
     // (owner 2026-11-02) reconnect handling: an in-place reconcile 3 s after connectivity returns;
     // new posts found that way wait in the badge until the reader taps it.
     @State private var pendingReconnectRefresh = false
+    @State private var badgeLoading = false
     // Head post id at the last count change. A pagination call APPENDS to the
     // tail (count grows, head unchanged), which must not trigger the "new posts"
     // banner; only a genuine head insertion should. Without this the banner
@@ -239,7 +240,11 @@ struct FeedView: View {
                 Button {
                     // Posts found by a reconnect reconcile were held back to keep the reader's place;
                     // tapping the badge is the moment to bring them in.
-                    if pendingReconnectRefresh { pendingReconnectRefresh = false; vm.refreshFeed() }
+                    if pendingReconnectRefresh {
+                        pendingReconnectRefresh = false
+                        if vm.hasDeferredFeed { vm.applyDeferredFeed() }          // prefetched → instant
+                        else { badgeLoading = true; vm.refreshFeed() }             // fallback → visible loading
+                    }
                     NotificationCenter.default.post(name: .scrollFeedToTop, object: nil)
                     withAnimation(.easeInOut(duration: 0.25)) {
                         newPostsBadgeCount = 0
@@ -247,8 +252,12 @@ struct FeedView: View {
                     HapticManager.play(.tabSwitch)
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.toska(12, relativeTo: .caption))
+                        if badgeLoading {
+                            ProgressView().scaleEffect(0.6).tint(ToskaColor.onAccent)
+                        } else {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.toska(12, relativeTo: .caption))
+                        }
                         Text(newPostsBadgeCount == 1
                              ? "1 new post · tap to see"
                              : "\(newPostsBadgeCount) new posts · tap to see")
@@ -448,7 +457,7 @@ struct FeedView: View {
         .onReceive(NotificationCenter.default.publisher(for: .postEdited)) { _ in
             vm.handlePostEdited()
         }
-        .modifier(ReconnectReconcile(vm: vm, badge: $newPostsBadgeCount, pendingRefresh: $pendingReconnectRefresh))
+        .modifier(ReconnectReconcile(vm: vm, badge: $newPostsBadgeCount, pendingRefresh: $pendingReconnectRefresh, badgeLoading: $badgeLoading))
         .onReceive(NotificationCenter.default.publisher(for: .postDeleted)) { notif in
             guard let deletedId = notif.userInfo?["postId"] as? String else { return }
             if vm.todaysPromptResponse?.id == deletedId {
@@ -1965,7 +1974,6 @@ struct FeedColumn: View {
                                 // dead (always 0/false since the custom drag gesture
                                 // was removed), so it rendered a second, out-of-sync
                                 // spinner box on refresh. Removed (2026 polish).
-                                            ReconnectStatusLine(vm: vm)
                                             if let error = vm.fetchError {
                                                 HStack(spacing: 8) {
                                                     Image(systemName: "exclamationmark.circle")
@@ -2296,6 +2304,7 @@ private struct ReconnectReconcile: ViewModifier {
     @ObservedObject var vm: FeedViewModel
     @Binding var badge: Int
     @Binding var pendingRefresh: Bool
+    @Binding var badgeLoading: Bool
     @State private var reconnectTask: Task<Void, Never>? = nil
     func body(content: Content) -> some View {
         content
@@ -2314,21 +2323,9 @@ private struct ReconnectReconcile: ViewModifier {
                 withAnimation(.easeInOut(duration: 0.25)) { badge += (new - old) }
                 pendingRefresh = true
             }
-    }
-}
-
-
-// (2026-11-03) Temporary visible reconnect status (see ReconnectDiagnostics). Empty when disabled.
-private struct ReconnectStatusLine: View {
-    @ObservedObject var vm: FeedViewModel
-    var body: some View {
-        if ReconnectDiagnostics.enabled, let status = vm.reconnectStatus {
-            Text(status)
-                .font(ToskaFont.sans(11))
-                .foregroundColor(ToskaColor.text3)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 6)
-                .transition(.opacity)
-        }
+            .onChange(of: vm.isFetchingPosts) { _, fetching in
+                // Fallback path: the badge showed a spinner while the refetch ran; done → clear it.
+                if !fetching && badgeLoading { badgeLoading = false; withAnimation { badge = 0 } }
+            }
     }
 }

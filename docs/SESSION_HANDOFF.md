@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-11-02 (break-it fixes live; build 111 is the launch candidate; prod web current)._
+_Last updated: 2026-11-03 (deleted-post + reconnect fixes live; build 115 is the launch candidate; prod web current; test account removed)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -243,7 +243,7 @@ _Last updated: 2026-11-02 (break-it fixes live; build 111 is the launch candidat
   not cleared on its own → **build 114**: explicit `.networkDidReconnect` + `onReceive`, shared 15 s
   flicker-tolerant server retry for reconcile and pull, quiet line when the window passes online.
   **`ReconnectDiagnostics.enabled = true` is a TEMPORARY visible status line — set false before the
-  launch build.** Owner retests A/B/C on 114; if A still fails, pull-to-refresh is accepted. Test account
+  launch build.** 114: A/B/C all pass. **Build 115 = LAUNCH CANDIDATE** (diagnostics removed, badge prefetch); prod web deployed 2026-11-03 15:51 UTC; `tired_moon_193` deleted and verified. Test account
   `tired_moon_193` (uid qPjXCvp7TJZHHHTT2zB26sL4AFn2) stays until the owner says delete.
 - **ASC release order (owner correction 2026-11-02):** territories stay at ZERO until 1.3 is approved AND
   manually released — 1.0 is Ready for Sale at 0 territories, so adding any territory earlier would

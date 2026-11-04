@@ -172,6 +172,16 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## B119-PASS-2026-11-04 — owner device pass on 119 → build 120 (FIXED in code; prod HELD)
+
+- **3 "your own words can't be reposted." never showed:** the guard was never reached — on your own rows the repost count is plain text (feed row, profile row, post detail) and the context menu hides "repost" for own posts, so a tap did nothing and said nothing. Fix: the count on own rows is now a tappable control that posts the gentle notice (warning haptic + capsule above the tab bar) with no network; the manager guards stay as a backstop. Screenshot-verified on the simulator (`test08_build120`) on the feed row and in post detail. On the profile tabs the whole row is one Button (open the post) and swallows every nested control — Button, `.borderless`, and a high-priority tap gesture were all tried — so there the tap opens the post, where the count shows the notice.
+- **4 Profile list cut off + glitchy + jumps back to the top (owner's phone, standard text):** caused by the build-119 pager change — `containerRelativeFrame([.horizontal, .vertical])` CENTRES a page whose natural size differs from the frame, so the list was shifted and re-laid-out while scrolling. Replaced with an explicit top-aligned frame measured from the pager's own geometry (`SwipePager` now wraps a GeometryReader; pages are `frame(width:height:alignment: .top).clipped()`). Same code path serves the feed and most-felt pagers.
+- **7 Prompt card top clipped under the tabs (NEW on 119):** same root cause as 4 — the feed column was centred in its page, pushing the card's 14 pt top padding under the divider. Fixed by the same change.
+- **6 "what others said" looked empty:** prod had no answers to that day's prompt (only one answer in the last four days). The empty state existed but had no call to action; it now reads "no one has answered yet. / be the first." with a "write yours" button that opens the prompt compose and refreshes the list when the answer lands. Starter answers seeded on prod (today ×2, yesterday ×2, two days ago ×1, five different App Review accounts; see `PROD_SEED_2026-11-04.md`).
+- **5 most felt:** works on device with the starter content.
+
+---
+
 ## B118-PASS-2026-11-04 — owner device pass on 118 → build 119 (FIXED in code; prod web unchanged; prod HELD)
 
 - **1 "you reposted" label missing after a repost (iOS):** reposts never refetched the feed (`.newPostCreated` only refetches for composed posts), so after the tap the viewer kept the plain original row with the repost icon lit; the labelled repost row only appeared after a pull. Fix: `FeedViewModel.showRepostInPlace(of:)` — the mirror of the undo swap — replaces the original row in place with my repost row (deterministic id, "you reposted", same position, no scroll jump). Prod check: 0 repost docs on prod at the time (the owner had undone it).

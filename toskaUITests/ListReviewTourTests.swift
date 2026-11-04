@@ -212,6 +212,44 @@ final class ListReviewTourTests: XCTestCase {
         tapBar(0.15); scrollToTop(8)
         if tapIf(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "what others said")).firstMatch, 4) { sleep(3); toBottom("prompt-responses"); back() }
     }
+    /// Build 120 checks (2026-11-04): own-post repost tap shows the gentle notice (feed row + detail), the feed's prompt
+    /// card top padding is intact, the profile survives slow diagonal drags without jumping to the top, and the
+    /// prompt responses screen shows its empty state with a "write yours" button on a day with no answers.
+    func test08_build120() {
+        launch(night: false); signInIfNeeded("b120")
+        snap("b120-01-feed-top")
+        let handle = ProcessInfo.processInfo.environment["TOSKA_TOUR_HANDLE"] ?? ""
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        // FEED: my own row's repost count ("N reposts" / "1 repost"; the profile tab is just "reposts")
+        let statPred = NSPredicate(format: "label MATCHES %@", "^[0-9]+ reposts?$")
+        let feedStat = app.buttons.matching(statPred).firstMatch
+        if feedStat.waitForExistence(timeout: 6) { feedStat.tap(); usleep(350_000); snap("b120-02a-feed-own-repost-notice") }
+        sleep(3)
+        if app.buttons["back"].exists { back() }
+        // PROFILE: slow diagonal drags on the list first (screenshots along the way), then the own-row tap
+        tapBar(0.85); sleep(2)
+        if notNowLate.waitForExistence(timeout: 2) { notNowLate.tap() }
+        for i in 0..<4 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 12, dy: -420)))
+            usleep(900_000); snap("b120-03-profile-drag-\(i)")
+        }
+        sleep(2); snap("b120-04-profile-settled")
+        scrollToTop(4)
+        let repostStat = app.buttons.matching(statPred).firstMatch
+        if repostStat.waitForExistence(timeout: 6) { repostStat.tap(); usleep(350_000); snap("b120-02-profile-own-repost-notice") }
+        sleep(3)
+        if app.buttons["back"].waitForExistence(timeout: 1) { back(); sleep(1) }
+        // open my own post → detail → tap the repost count
+        if let row = findRow(containing: "b120:") { forceTap(row); sleep(3)
+            let d = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "^[0-9]+ reposts?$")).firstMatch
+            if d.waitForExistence(timeout: 5) { forceTap(d); usleep(700_000); snap("b120-05-detail-own-repost-notice") }
+            back(); sleep(1) }
+        // prompt responses empty state
+        tapBar(0.15); scrollToTop(8)
+        if tapIf(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "what others said")).firstMatch, 4) { sleep(4); snap("b120-06-prompt-responses-empty"); back() }
+        _ = handle
+    }
     func test05_trendingOnly() {
         launch(night: false); signInIfNeeded("trend")
         tapBar(0.30); snap("trend-01-today"); dump("trend-ax")

@@ -399,17 +399,28 @@ struct SwipePager<ID: Hashable, Content: View>: View {
     @ViewBuilder var content: (ID) -> Content
 
     @State private var posID: ID?
+    @State private var pagerSize: CGSize = .zero
 
     var body: some View {
+        // Each page is exactly the pager's own size, TOP-aligned. Build 119 used
+        // containerRelativeFrame([.horizontal, .vertical]), which centres a page
+        // whose natural size differs from the frame — on the owner's phone that
+        // clipped the top of the feed's prompt card and made the profile list
+        // jump back to the top (2026-11-04). A measured frame has no ambiguity.
+        GeometryReader { geo in
+            pager
+                .onAppear { pagerSize = geo.size }
+                .onChange(of: geo.size) { _, s in pagerSize = s }
+        }
+    }
+
+    private var pager: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
                 ForEach(ids, id: \.self) { id in
-                    // Pin each page to the pager's full size, not just its width:
-                    // a page's own ScrollView then gets a bounded height and can
-                    // reach its last row above the floating tab bar (owner, build
-                    // 118 device pass 2026-11-04: profile wouldn't scroll to the end).
                     content(id)
-                        .containerRelativeFrame([.horizontal, .vertical])
+                        .frame(width: max(pagerSize.width, 1), height: max(pagerSize.height, 1), alignment: .top)
+                        .clipped()
                 }
             }
             .scrollTargetLayout()

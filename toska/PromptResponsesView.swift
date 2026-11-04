@@ -18,6 +18,7 @@ struct PromptResponsesView: View {
     @State private var responses: [FeedPost] = []
     @State private var hasLoaded = false
     @State private var loadFailed = false
+    @State private var showCompose = false
 
     // Reached for a past day from an answer's "answering:" line (2026-11-03):
     // same query and filters, date-aware header ("prompt for 2 nov").
@@ -73,9 +74,24 @@ struct PromptResponsesView: View {
                                     .font(ToskaFont.serifItalic(16))
                                     .foregroundColor(ToskaColor.text2)
                                 if isToday {
-                                    Text("your words could be the first.")
+                                    Text("be the first.")
                                         .font(ToskaFont.sans(12.5))
                                         .foregroundColor(ToskaColor.text2)
+                                    // Owner 2026-11-04: an empty day should invite, not sit blank —
+                                    // the same prompt compose the feed card opens.
+                                    Button {
+                                        showCompose = true
+                                        HapticManager.play(.compose)
+                                    } label: {
+                                        Text("write yours")
+                                            .font(ToskaFont.sans(13, weight: .semibold))
+                                            .foregroundColor(ToskaColor.onAccent)
+                                            .padding(.horizontal, 22).padding(.vertical, 11)
+                                            .background(ToskaColor.accent, in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.top, 10)
+                                    .accessibilityLabel("write yours")
                                 }
                             }
                             .frame(maxWidth: .infinity)
@@ -109,6 +125,15 @@ struct PromptResponsesView: View {
             }
         }
         .onAppear { load() }
+        .fullScreenCover(isPresented: $showCompose) {
+            EdgeSwipeDismissWrapper {
+                ComposeView(initialText: "", initialTag: FeedView.prompt(for: promptDate)?.1, promptDate: promptDate)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .newPostCreated)) { _ in
+            // The answer just written should appear here without leaving the screen.
+            hasLoaded = false; load()
+        }
         // Pushed drill-in like explore / other profile / detail: hide the floating
         // tab bar so the last answer isn't covered (owner, build 118 pass 2026-11-04;
         // the simulator shot showed the bar over the final row).

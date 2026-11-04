@@ -965,8 +965,19 @@ struct PostDetailView: View {
                 // the copy would outlive the original); midnight posts are
                 // caught by the tap-time fetch in PostInteractionManager.
                 if isOwnPost {
-                    detailStatText(localRepostCount, "repost", "reposts")
-                        .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                    // Own words: tapping the count explains instead of doing nothing
+                    // (owner 2026-11-04).
+                    Button {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                                        userInfo: ["text": "your own words can't be reposted."])
+                    } label: {
+                        detailStatText(localRepostCount, "repost", "reposts")
+                            .padding(.vertical, 11)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                    .accessibilityHint("your own words can't be reposted")
                 } else {
                     Button { repostPost() } label: {
                         detailStatText(localRepostCount, "repost", "reposts")

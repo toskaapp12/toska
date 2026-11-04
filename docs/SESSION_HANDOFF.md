@@ -268,8 +268,12 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   cut off on their phone → **build 119** (in-place repost row with label, server-truth self-repost guard + gentle notice
   capsule, pager pages pinned to full height, prompt responses hides the tab bar). Prod starter content seeded across the six
   App Review accounts (kept as starter content) (`PROD_SEED_2026-11-04.md`, delete script in `~/toska-review-artifacts/`).
-  **Next:** owner device pass on 119 (label after repost, notice on self-repost, profile scroll to the end on THEIR
-  phone — not reproducible on simulators; most felt today/week with the starter content) → go →
+  Owner pass on 119: most felt ✓; self-repost still silent (own rows had dead text, not a button), profile list
+  jumped to the top + prompt card clipped (the 119 pager centring) → **build 120** (own-row repost tap → notice;
+  pager pages framed top-aligned from measured geometry; responses empty state with a write button; five starter
+  prompt answers seeded on prod).
+  **Next:** owner device pass on 120 (notice on own repost tap, profile scroll + prompt card top, responses empty
+  state / answers) → go →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

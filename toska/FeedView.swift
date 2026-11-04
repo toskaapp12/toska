@@ -998,8 +998,23 @@ struct FeedPostRow: View, Equatable {
                                             // self-repost; felt stays live); dimmed for
                                             // ephemerals + legacy id-less repost docs.
                                             if isOwnPost {
-                                                statText(localRepostCount, "repost", "reposts")
-                                                    .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                                // Own words: the count stays, but a tap now says why nothing
+                                                // happens (owner 2026-11-04 — it used to be silent, dead text).
+                                                // Note: on the profile tabs the whole row is one Button (open the
+                                                // post), so this tap opens the detail there — where the count
+                                                // explains too. Feed, following and search rows show the notice.
+                                                Button {
+                                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                                                    NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                                                                    userInfo: ["text": "your own words can't be reposted."])
+                                                } label: {
+                                                    statText(localRepostCount, "repost", "reposts")
+                                                        .padding(.vertical, 11)
+                                                        .contentShape(Rectangle())
+                                                }
+                                                .buttonStyle(ToskaTapStyle())
+                                                .accessibilityLabel(localRepostCount == 1 ? "1 repost" : "\(localRepostCount) reposts")
+                                                .accessibilityHint("your own words can't be reposted")
                                             } else {
                                             Button { repostPost() } label: {
                                                 statText(localRepostCount, "repost", "reposts")

@@ -1993,9 +1993,11 @@ struct PostDetailView: View {
         for reply in flat {
             if let parentId = reply.parentReplyId, lookup[parentId] != nil {
                 childIdsMap[parentId, default: []].append(reply.id)
-            } else {
+            } else if reply.parentReplyId == nil {
                 rootIds.append(reply.id)
             }
+            // A reply whose parent is gone (deleted, blocked, beyond the window)
+            // is dropped, like the web thread (review F6, 2026-11-03).
         }
 
         var resolved = Set<String>()
@@ -2018,7 +2020,6 @@ struct PostDetailView: View {
         }
 
         for id in rootIds { visit(id) }
-        for reply in flat where !resolved.contains(reply.id) { visit(reply.id) }
         for id in order {
             guard lookup[id] != nil else { continue }
             let kids = (childIdsMap[id] ?? []).compactMap { lookup[$0] }

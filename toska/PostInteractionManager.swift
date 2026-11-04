@@ -284,6 +284,13 @@ class PostInteractionManager {
                    debugLog("⚠️ repost — offline, skipping")
                    return
                }
+               // Own post: nothing to repost (web parity — toggleRepost returns
+               // "own_post"; owner decision 2026-11-03). Report the unchanged
+               // state so the optimistic flip rolls back.
+               if authorId == uid {
+                   onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                   return
+               }
                // Record on attempt — same rationale as toggleLike/toggleSave.
                // 2-second gate is enough to let the dedup-check round-trip
                // settle before a second tap can land, so we don't fire two

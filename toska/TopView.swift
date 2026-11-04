@@ -138,10 +138,8 @@ struct TopView: View {
                 }
             }
         } else {
-            TopPeriodColumn(posts: posts, period: p) {
-                await withCheckedContinuation { continuation in
-                    fetchTopPosts(for: p, force: true, onComplete: { continuation.resume() })
-                }
+            TopPeriodColumn(posts: posts, period: p) { done in
+                fetchTopPosts(for: p, force: true, onComplete: done)
             }
         }
     }
@@ -354,7 +352,11 @@ struct TopView: View {
 struct TopPeriodColumn: View {
     let posts: [RankedPost]
     let period: TopView.Period
-    let onRefresh: () async -> Void
+    // Completion-style, NOT `() async -> Void`: an async function type stored on
+    // a View crashed the iOS 17 runtime (swift_getTypeByMangledNode on
+    // AttributeGraph's layout thread) under the Xcode 26 toolchain — list
+    // review F0, 2026-11-03. The iOS 26 runtime demangled it fine.
+    let onRefresh: (@escaping () -> Void) -> Void
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -386,7 +388,7 @@ struct TopPeriodColumn: View {
 
                 Color.clear.frame(height: 130)
             }
-            .refreshable { await onRefresh() }
+            .refreshable { await withCheckedContinuation { c in onRefresh { c.resume() } } }
             .onReceive(NotificationCenter.default.publisher(for: .scrollTopTabToTop)) { _ in
                 withAnimation(.easeInOut(duration: 0.4)) {
                     proxy.scrollTo("top", anchor: .top)

@@ -2,6 +2,7 @@
 // Query shapes deliberately mirror the iOS client 1:1 (see FeedViewModel /
 // PostDetailView / ProfileView) — the rules deny any broader read.
 import { FIREBASE_CONFIG, IS_PROD, RECAPTCHA_SITE_KEY, POLICY_VERSION } from "./config.js";
+import { collapseReposts } from "./repostCollapse.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword,
@@ -1253,8 +1254,8 @@ async function viewFeed() {
             if (gen !== searchGen || !serverBox.isConnected) return;
             const shown = new Set([...list.querySelectorAll(".post-row")]
                 .filter(r => !r.hidden).map(r => r.getAttribute("href")));
-            const rows = snap.docs
-                .map(d => [d.id, d.data()])
+            const shownKeys = new Set((feedCache.get(feedTab)?.rows ?? []).map(([id, d]) => d.originalPostId ?? id));
+            const rows = collapseReposts(snap.docs.map(d => [d.id, d.data()]), { viewer: me?.uid, seen: shownKeys })
                 .filter(([id, d]) => postVisible(d) && !blocked.has(d.authorId)
                     && !shown.has(`#/post/${id}`));
             serverBox.replaceChildren(
@@ -1287,7 +1288,8 @@ async function viewFeed() {
             more.onclick = async () => {
                 more.disabled = true;
                 try {
-                    const next = await fetchForYou(cache.cursor);
+                    cache.seen ??= new Set(cache.rows.map(([id, d]) => d.originalPostId ?? id));
+                    const next = await fetchForYou(cache.cursor, cache.seen);
                     for (const [id, d] of next) list.append(postRow(id, d));
                     prefetchGifs(next.map(([, d]) => d)); // warm next page's GIFs (2026-10-26)
                     list.append(more); // keep the button below the new rows
@@ -1318,8 +1320,9 @@ async function viewFeed() {
     const cached = feedCache.get(tab);
     if (cached && Date.now() - cached.at < FEED_TTL) { finish(cached); return; }
     try {
-        const rows = tab === "for you" ? await fetchForYou() : await fetchFollowing();
-        const cache = { rows, cursor: rows._cursor, fetched: rows._fetched, noMore: false, scrollY: 0, at: Date.now() };
+        const seen = new Set();
+        const rows = tab === "for you" ? await fetchForYou(undefined, seen) : await fetchFollowing();
+        const cache = { rows, cursor: rows._cursor, fetched: rows._fetched, noMore: false, scrollY: 0, at: Date.now(), seen };
         feedCache.set(tab, cache);
         finish(cache);
     } catch (e) {
@@ -1329,7 +1332,10 @@ async function viewFeed() {
     }
 }
 
-async function fetchForYou(cursor) {
+// One row per original (list-integrity review F1, 2026-11-03): `seen` carries the
+// keys already on screen across pages so a repost on page 2 can't bring back an
+// original shown on page 1 (see repostCollapse.js for the rules).
+async function fetchForYou(cursor, seen = new Set()) {
     // Mirrors FeedViewModel.fetchPosts / loadMorePosts. createdAt DESC render
     // order (client-side ranking is an iOS nicety, skipped here).
     const base = [where("moderationStatus", "==", "live"), orderBy("createdAt", "desc")];
@@ -1337,7 +1343,7 @@ async function fetchForYou(cursor) {
         ? query(collection(db, "posts"), ...base, startAfter(cursor), limit(20))
         : query(collection(db, "posts"), ...base, limit(40));
     const snap = await getDocs(q);
-    const rows = snap.docs.filter(d => postVisible(d.data())).map(d => [d.id, d.data()]);
+    const rows = collapseReposts(snap.docs.filter(d => postVisible(d.data())).map(d => [d.id, d.data()]), { viewer: me?.uid, seen });
     rows._cursor = snap.docs.at(-1);
     rows._fetched = snap.docs.length; // pre-filter page size, for "more" gating
     return rows;
@@ -1359,7 +1365,7 @@ async function fetchFollowing() {
             orderBy("createdAt", "desc"), limit(30)))));
     const all = chunks.flatMap(s => s.docs).filter(d => postVisible(d.data()));
     all.sort((a, b) => (b.data().createdAt?.toMillis() ?? 0) - (a.data().createdAt?.toMillis() ?? 0));
-    return all.slice(0, 50).map(d => [d.id, d.data()]);
+    return collapseReposts(all.map(d => [d.id, d.data()]), { viewer: me?.uid, seen: new Set() }).slice(0, 50);
 }
 
 // ---------------------------------------------------------------- gif picker
@@ -1590,7 +1596,7 @@ function viewCompose() {
                 el("div", { style: "display:flex; gap:8px; align-items:center;" }, count),
                 share),
             err),
-        el("p", { class: "note", style: "padding:0 6px;" },
+        el("p", { class: "note", style: "padding:0 28px;" },
             "letters can run long (2000); everything else stays short (500)."),
     ].filter(Boolean));
     render();
@@ -1627,7 +1633,9 @@ async function viewTop() {
         mount.querySelector(".spinner")?.remove();
         const ranked = snap.docs
             .map(d => [d.id, d.data()])
-            .filter(([, d]) => postVisible(d) && (d.likeCount ?? 0) > 0)
+            // Reposts are excluded like iOS TopView: copies carry the original's
+            // mirrored likeCount and ranked as duplicates (review F2, 2026-11-03).
+            .filter(([, d]) => postVisible(d) && d.isRepost !== true && (d.likeCount ?? 0) > 0)
             .sort(([, a], [, b]) =>
                 ((b.likeCount ?? 0) + (b.createdAt?.toMillis() ?? 0) / 1e15) -
                 ((a.likeCount ?? 0) + (a.createdAt?.toMillis() ?? 0) / 1e15))
@@ -1995,7 +2003,7 @@ async function viewPost(postId) {
         const canReply = (d.moderationStatus ?? "live") === "live";
         mount.append(body, actions,
             canReply ? composer : el("div", { class: "muted", style: "padding:10px 0 2px; font-size:13px;" }, "replies open once this post is live."),
-            el("h3", { style: "margin:18px 0 4px; font-weight:500;" }, "replies"), repliesBox, spinner());
+            el("h3", { style: "margin:18px 0 4px; padding:0 28px; font-weight:500;" }, "replies"), repliesBox, spinner());
         // Interaction-state reads fire after the body is on screen (§ perf):
         // three exists() doc reads that shouldn't contend with first paint.
         isLiked(targetPostId).then(v => {
@@ -2207,6 +2215,9 @@ async function viewProfile(uid) {
     }
     mount.querySelector(".spinner")?.remove();
     if (!u.exists()) { mount.append(emptyState("this profile isn't available.")); return; }
+    // Someone I blocked: same closed door as someone who blocked me (iOS closes
+    // the view in both cases) — review F8, 2026-11-03.
+    if (!own && blocked.has(uid)) { mount.append(emptyState("this profile isn't available.")); return; }
     const ud = u.data();
     const joined = ud.createdAt?.toDate ?
         ud.createdAt.toDate().toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "";
@@ -2311,7 +2322,7 @@ async function fetchOtherPosts(uid) {
     const snap = await getDocs(query(collection(db, "posts"),
         where("moderationStatus", "==", "live"), where("authorId", "==", uid),
         orderBy("createdAt", "desc"), limit(50)));
-    return snap.docs.filter(d => postVisible(d.data())).map(d => [d.id, d.data()]);
+    return collapseReposts(snap.docs.filter(d => postVisible(d.data())).map(d => [d.id, d.data()]), { viewer: me?.uid, seen: new Set() });
 }
 async function fetchRefTab(sub) {
     // users/{uid}/liked|saved refs → hydrate via documentId IN chunks of 30.

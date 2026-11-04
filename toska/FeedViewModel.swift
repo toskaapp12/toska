@@ -142,7 +142,8 @@ class FeedViewModel: ObservableObject {
             if NetworkMonitor.shared.isConnected { fetchError = "couldn't refresh — pull to try again" }
             return
         }
-        let visibleDocs = filterBlocked(documents: snap.documents)
+        var seenKeys = Set<String>()
+        let visibleDocs = collapseReposts(filterBlocked(documents: snap.documents), seen: &seenKeys)
         let serverIds = Set(snap.documents.map { $0.documentID })
         let visibleIds = Set(visibleDocs.map { $0.documentID })
         let oldest = snap.documents.compactMap { ($0.data()["createdAt"] as? Timestamp)?.dateValue() }.min() ?? .distantFuture
@@ -769,7 +770,8 @@ class FeedViewModel: ObservableObject {
                     // — comparing it scrambled recency within equal-hit
                     // groups (2026-09-18 tech review). Index order also makes
                     // the sort deterministic (Swift's sort isn't stable).
-                    self.serverSearchResults = docs
+                    var seenKeys = Set((self.posts + self.followingPosts).map { $0.originalPostId ?? $0.id })
+                    self.serverSearchResults = self.collapseReposts(docs, seen: &seenKeys)
                         .map { FeedView.feedPost(from: $0) }
                         .filter { !BlockedUsersCache.shared.isHiddenAuthor($0.authorId) }
                         .enumerated()
@@ -1006,6 +1008,24 @@ class FeedViewModel: ObservableObject {
         // to prune them here.
     }
 
+    /// Undo without a refresh (review F1, owner 2026-11-03): when my repost of
+    /// `originalId` is withdrawn, the collapsed feed would otherwise show nothing
+    /// for that post until the next fetch. Swap my repost row in place for the
+    /// original, rebuilt from the copy (same words, counts, GIF, author handle).
+    func restoreOriginalAfterUnrepost(of originalId: String) {
+        guard let me = Auth.auth().currentUser?.uid else { return }
+        func swap(_ list: inout [FeedPost]) {
+            guard let i = list.firstIndex(where: { $0.isRepost && $0.authorId == me && $0.originalPostId == originalId }) else { return }
+            let r = list[i]
+            guard !list.contains(where: { $0.id == originalId }) else { list.remove(at: i); return }
+            list[i] = FeedPost(id: originalId, handle: r.originalHandle ?? r.handle, text: r.text, tag: r.tag,
+                               likes: r.likes, reposts: max(0, r.reposts - 1), replies: r.replies, time: r.time,
+                               authorId: r.originalAuthorId ?? r.authorId, isShareable: r.isShareable,
+                               gifUrl: r.gifUrl, promptDate: r.promptDate, isRepost: false)
+        }
+        swap(&posts); swap(&followingPosts); swap(&serverSearchResults)
+    }
+
     func handleInteractionChanged(_ info: [AnyHashable: Any]) {
         guard let postId = info["postId"] as? String,
               let action = info["action"] as? String,
@@ -1021,6 +1041,7 @@ class FeedViewModel: ObservableObject {
             // repost state on other rendered copies of the same post, so
             // the button stays in its pre-action state until a full refresh.
             if value { repostedPostIds.insert(postId) } else { repostedPostIds.remove(postId) }
+            if !value { restoreOriginalAfterUnrepost(of: postId) }
         default: break
         }
     }
@@ -1237,6 +1258,37 @@ class FeedViewModel: ObservableObject {
 
     // MARK: - Filter Helper
 
+    /// One row per original (list-integrity review F1, 2026-11-03): drops the
+
+    /// original when a repost of it is in the batch (repost wins), later reposts
+
+    /// of the same original, reposts of the viewer's own words (their own row
+
+    /// wins), and anything whose key is already on screen (`seen`). Rules in
+
+    /// RepostCollapse.swift, mirrored on web and pinned by the parity test.
+
+    nonisolated func collapseReposts(_ docs: [QueryDocumentSnapshot], seen: inout Set<String>) -> [QueryDocumentSnapshot] {
+
+        let viewer = Auth.auth().currentUser?.uid ?? ""
+
+        let items = docs.map { d -> RepostCollapse.Item in
+
+            let data = d.data()
+
+            return RepostCollapse.Item(id: d.documentID, authorId: data["authorId"] as? String ?? "",
+
+                                       originalPostId: data["originalPostId"] as? String,
+
+                                       originalAuthorId: data["originalAuthorId"] as? String)
+
+        }
+
+        return RepostCollapse.keptIndices(items, viewer: viewer, seen: &seen).map { docs[$0] }
+
+    }
+
+
     nonisolated func filterBlocked(documents: [QueryDocumentSnapshot]) -> [QueryDocumentSnapshot] {
         return documents.filter { doc in
             let data = doc.data()
@@ -1379,9 +1431,10 @@ class FeedViewModel: ObservableObject {
                 self.pageCreatedAt = Dictionary(uniqueKeysWithValues: documents.compactMap { d in
                     (d.data()["createdAt"] as? Timestamp).map { (d.documentID, $0.dateValue()) }
                 })
-                let filtered = self.filterBlocked(documents: documents)
+                var seenKeys = Set<String>()
+                let filtered = self.collapseReposts(self.filterBlocked(documents: documents), seen: &seenKeys)
 
-                    let scored: [(doc: QueryDocumentSnapshot, score: Double)] = filtered.map { doc in
+                let scored: [(doc: QueryDocumentSnapshot, score: Double)] = filtered.map { doc in
                         let data = doc.data()
                         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                         let likeCount = data["likeCount"] as? Int ?? 0
@@ -1566,7 +1619,8 @@ class FeedViewModel: ObservableObject {
                         self.hasMorePosts = false
                         return
                     }
-                    let filtered = self.filterBlocked(documents: documents)
+                    var seenKeys = Set(self.posts.map { $0.originalPostId ?? $0.id })
+                    let filtered = self.collapseReposts(self.filterBlocked(documents: documents), seen: &seenKeys)
                     var existingIds = Set(self.posts.map { $0.id })
                     for doc in filtered where !existingIds.contains(doc.documentID) {
                         existingIds.insert(doc.documentID)
@@ -1671,10 +1725,11 @@ class FeedViewModel: ObservableObject {
                 // Back on the main actor — safe to call FeedView.feedPost(from:)
                 // and extractPostMetadata here.
                 guard !Task.isCancelled, Auth.auth().currentUser?.uid == uid else { return }
-                let sorted = allRawResults.sorted { $0.date > $1.date }.prefix(50)
-                followingPosts = sorted.map { item in
-                    let post = FeedView.feedPost(from: item.doc)
-                    self.extractPostMetadata(from: item.doc)
+                var seenKeys = Set<String>()
+                let sortedDocs = collapseReposts(allRawResults.sorted { $0.date > $1.date }.map { $0.doc }, seen: &seenKeys).prefix(50)
+                followingPosts = sortedDocs.map { doc in
+                    let post = FeedView.feedPost(from: doc)
+                    self.extractPostMetadata(from: doc)
                     return post
                 }
                 let wasTruncated = followSnap.documents.count >= followingLimit

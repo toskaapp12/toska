@@ -670,11 +670,19 @@ struct ProfileView: View {
                    if let timestamp = data["createdAt"] as? Timestamp {
                        joinedDate = ToskaFormatters.monthYear.string(from: timestamp.dateValue())
                    }
-                   let postSnap = try? await db.collection("posts")
+                   // Header "N posts" must match the posts tab, which excludes reposts
+                   // (they have their own tab) — review F12, 2026-11-03. Legacy docs
+                   // may lack isRepost, so count all minus the explicit reposts.
+                   async let allSnap = try? db.collection("posts")
                        .whereField("authorId", isEqualTo: uid)
                        .count.getAggregation(source: .server)
+                   async let repostSnap = try? db.collection("posts")
+                       .whereField("authorId", isEqualTo: uid)
+                       .whereField("isRepost", isEqualTo: true)
+                       .count.getAggregation(source: .server)
+                   let (allCount, repostCount) = await (allSnap, repostSnap)
                    guard Auth.auth().currentUser?.uid == uid else { return }
-                   postCount = Int(truncating: postSnap?.count ?? 0)
+                   postCount = max(0, Int(truncating: allCount?.count ?? 0) - Int(truncating: repostCount?.count ?? 0))
                } catch {
                    debugLog("⚠️ loadProfile failed: \(error)")
                    // H2: only surface the banner if we still have nothing to
@@ -2052,6 +2060,9 @@ fileprivate func profileSavedPost(id: String, data: [String: Any]) -> SavedPost?
     if BlockedUsersCache.shared.isHiddenAuthor(data["authorId"] as? String ?? "") { return nil }
     if let originalAuthorId = data["originalAuthorId"] as? String,
        BlockedUsersCache.shared.isHiddenAuthor(originalAuthorId) { return nil }
+    // Auto-hidden (flagged, status still live) stays off the felt/saved tabs,
+    // like the feed and the web tabs (review F4, 2026-11-03).
+    if data["flagged"] as? Bool == true { return nil }
     let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
     return SavedPost(id: id, authorId: data["authorId"] as? String ?? "", handle: data["authorHandle"] as? String ?? "anonymous", text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: ToskaFormatters.timeAgo(from: createdAt), createdAt: createdAt, gifUrl: data["gifUrl"] as? String, originalPostId: data["originalPostId"] as? String, originalAuthorId: data["originalAuthorId"] as? String, promptDate: data["promptDate"] as? String)
 }

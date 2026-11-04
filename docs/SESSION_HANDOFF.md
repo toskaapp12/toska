@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-11-03 (daily-prompt fixes + "answering:" context line: build 117 on TestFlight awaiting the owner's device pass; staging web current; prod web + validatePost deploy and push HELD for go; 115 stays the shipped candidate until then)._
+_Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in build 118; staging web verified headless; prod web deploy + push HELD for the owner's go after the 118 device pass; prod is on the 117 web + validatePost)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -254,7 +254,18 @@ _Last updated: 2026-11-03 (daily-prompt fixes + "answering:" context line: build
   "your response" ✓; midnight checks pending). **Build 117** adds the "✦ answering: <prompt>" context
   line on both platforms (feed, profiles, explore/search, detail; tappable → that day's "what others
   said", `#/prompt/yyyy-MM-dd` on web, date-aware header) — staging web deployed + verified headless.
-  **Next:** owner device pass on 117 (midnight checks, the answering line + tap, past-day page) → go →
+  Owner pass on 117: answering line, tap, detail, profile, "your response" ✓; prod web + validatePost deployed 2026-11-03 ~19:50 UTC; pushed.
+- **List-integrity review (2026-11-03/04, BUGS.md `LISTS-2026-11-03`):** read-only review found the repost duplicate
+  (original + repost rows) in for-you/following/search on both platforms, repost copies ranked in web most-felt, an
+  iOS 17 crash on the trending tab (async closure field vs the iOS 17 runtime), and nine smaller gaps. All fixed in
+  **build 118** + web (`RepostCollapse.swift` ↔ `repostCollapse.js`, parity pin in `test:pins`). Staging web verified
+  headless (one row per original across pages, own-original exception, blocked profile copy, alignment). The iOS
+  simulator tour (`toskaUITests/ListReviewTourTests`, iOS 17.5, light + night, every main screen incl. trending) is
+  the regression check; run via `build/ios-uitest.sh`. **The 2026-11-04 tmp sweep wiped the scratchpad** (harness,
+  archives, derived data): durable copies live in `~/toska-review-artifacts/` (harness, results, screenshots,
+  build 118 archive).
+  **Next:** owner device pass on 118 (repost dedupe + undo in place, own-original row, self-repost blocked, trending
+  tab, profile count, lowercase prompt) → go →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

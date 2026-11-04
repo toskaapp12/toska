@@ -383,6 +383,10 @@ struct OtherProfileView: View {
                                                                 // feed's filterBlocked behavior so a moderated post doesn't appear on
                                                                 // someone's profile after it was hidden from the feed.
                                                                 if data["flagged"] as? Bool == true { return nil }
+                                                                // Their repost of someone I blocked (or who blocked me) stays
+                                                                // hidden, like the feed and web (review F5, 2026-11-03).
+                                                                if let oa = data["originalAuthorId"] as? String,
+                                                                   BlockedUsersCache.shared.isHiddenAuthor(oa) { return nil }
                                                                 let createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
                                                                 return OtherProfilePost(id: doc.documentID, text: data["text"] as? String ?? "", tag: data["tag"] as? String, likes: data["likeCount"] as? Int ?? 0, reposts: data["repostCount"] as? Int ?? 0, replies: data["replyCount"] as? Int ?? 0, time: FeedView.timeAgoString(from: createdAt), isRepost: data["isRepost"] as? Bool ?? false, originalHandle: data["originalHandle"] as? String, gifUrl: data["gifUrl"] as? String, originalPostId: data["originalPostId"] as? String, originalAuthorId: data["originalAuthorId"] as? String, promptDate: data["promptDate"] as? String)
                                                             }

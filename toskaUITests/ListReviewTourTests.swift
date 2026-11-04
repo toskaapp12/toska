@@ -31,12 +31,16 @@ final class ListReviewTourTests: XCTestCase {
     }
     func tapIf(_ e: XCUIElement, _ t: TimeInterval = 4) -> Bool { if e.waitForExistence(timeout: t) { forceTap(e); return true }; return false }
     func back() {
-        // Custom headers use a chevron button; fall back to an edge swipe.
-        let candidates = [app.buttons["Back"], app.buttons["back"], app.buttons["chevron.left"], app.navigationBars.buttons.firstMatch]
-        for c in candidates where c.exists && c.isHittable { c.tap(); sleep(1); return }
+        // Custom headers (ToskaHeader) expose a "back" button; tap it even when XCUITest
+        // thinks it isn't hittable. The edge-swipe fallback is a last resort only: a
+        // synthetic interactive-pop gesture followed by tab taps left SwiftUI animating
+        // and XCUITest waiting for idle (2026-11-04 tour, not an app issue).
+        let byLabel = app.buttons.matching(NSPredicate(format: "label ==[c] %@ OR label CONTAINS[c] %@", "back", "back")).firstMatch
+        if byLabel.waitForExistence(timeout: 3) { forceTap(byLabel); sleep(2); return }
+        if app.navigationBars.buttons.firstMatch.exists { forceTap(app.navigationBars.buttons.firstMatch); sleep(2); return }
         let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 300, dy: 0)))
-        sleep(1)
+        sleep(3)
     }
     func scrollToTop(_ n: Int = 4) { for _ in 0..<n { app.swipeDown(); usleep(350_000) } }
     func findRow(containing text: String, swipes: Int = 6) -> XCUIElement? {
@@ -80,7 +84,9 @@ final class ListReviewTourTests: XCTestCase {
             if other.exists { forceTap(other); usleep(600_000); continue }
             break
         }
-        XCTAssertTrue(waitFor(app.buttons["for you"], 40), "Feed didn't load")
+        XCTAssertTrue(waitFor(app.buttons["for you"], 90), "Feed didn't load")
+        // The keychain "Save Password?" sheet can also land AFTER the feed; clear it again.
+        if notNow.waitForExistence(timeout: 4) { notNow.tap() }
         sleep(4)
     }
 
@@ -182,6 +188,16 @@ final class ListReviewTourTests: XCTestCase {
     }
     func test03_light_rest() { launch(night: false); tour2("light") }
     /// Minimal crash repro: sign in, open the trending tab, switch periods (2026-11-03 list review F0).
+    /// Compose-hang diagnostic (2026-11-04): tap "write" from the tab bar, then stay OFF the accessibility
+    /// tree for 90 s so a host-side `sample` can show what the app's main thread is doing. Screenshots are
+    /// taken from the host (simctl) during that window; this test only asserts that the app survives.
+    func test06_composeOpenHold() {
+        launch(night: false); signInIfNeeded("compose")
+        sleep(2); tapBar(0.50)
+        sleep(90)
+        snap("compose-after-90s")
+        _ = tapIf(app.buttons["cancel"], 10)
+    }
     func test05_trendingOnly() {
         launch(night: false); signInIfNeeded("trend")
         tapBar(0.30); snap("trend-01-today"); dump("trend-ax")

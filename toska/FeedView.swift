@@ -618,12 +618,9 @@ struct FeedView: View {
         return FeedViewModel.dailyPrompts[day % FeedViewModel.dailyPrompts.count]
     }
 
-    /// Prompt text with its first letter capitalised — the header form the
-    /// feed card and PromptResponsesView use.
-    static func displayPrompt(_ p: String) -> String {
-        guard let f = p.first else { return p }
-        return f.uppercased() + p.dropFirst()
-    }
+    /// Header form of a prompt: lowercase, exactly as listed — matches the web
+    /// card and the "answering:" line (owner 2026-11-03, review F11).
+    static func displayPrompt(_ p: String) -> String { p }
 }
 
 /// "✦ answering: <prompt>" above a daily-prompt answer — feed rows, profiles,
@@ -1441,6 +1438,11 @@ struct FeedPostRow: View, Equatable {
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 return
             }
+            // Own words can't be reposted (web parity, owner 2026-11-03).
+            if !isReposted, interactionAuthorId == Auth.auth().currentUser?.uid {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                return
+            }
             // C-3: arm the suppression window so the feed listener echo doesn't
             // clobber the optimistic count (mirrors toggleLike).
             suppressRepostListenerUntil = Date().addingTimeInterval(2.0)
@@ -1549,11 +1551,9 @@ struct FeedHeaderCard: View {
     /// Display-only sentence case for the prompt (owner 2026-09-17): the
     /// stored prompts are lowercase (brand voice), the band capitalizes the
     /// first letter.
-    private var displayPrompt: String {
-        let p = vm.todaysPrompt.0
-        guard let f = p.first else { return p }
-        return f.uppercased() + p.dropFirst()
-    }
+    // Lowercase, like the web card and the "answering:" line (owner 2026-11-03,
+    // review F11) — the app's voice is lowercase everywhere else.
+    private var displayPrompt: String { vm.todaysPrompt.0 }
 
     var body: some View {
         VStack(spacing: 0) {

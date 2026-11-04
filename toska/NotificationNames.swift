@@ -26,6 +26,9 @@ extension NSNotification.Name {
     /// (2026-11-03) posted by NetworkMonitor on the offline→online transition, after Firestore's
     /// network has been cycled. Explicit so the feed's reconcile does not depend on observation tracking.
     static let networkDidReconnect = NSNotification.Name("NetworkDidReconnect")
+    /// A short, gentle in-app line (userInfo["text"]) shown above the tab bar
+    /// for a moment — e.g. "your own words can't be reposted." (2026-11-04).
+    static let gentleNotice        = NSNotification.Name("GentleNotice")
     static let dismissAllSheets    = NSNotification.Name("DismissAllSheets")
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")
         // Push tap on a follow notification routes through here — opens

@@ -1441,6 +1441,7 @@ struct FeedPostRow: View, Equatable {
             // Own words can't be reposted (web parity, owner 2026-11-03).
             if !isReposted, interactionAuthorId == Auth.auth().currentUser?.uid {
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                NotificationCenter.default.post(name: .gentleNotice, object: nil, userInfo: ["text": "your own words can't be reposted."])
                 return
             }
             // C-3: arm the suppression window so the feed listener echo doesn't

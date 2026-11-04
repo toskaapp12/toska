@@ -1026,6 +1026,27 @@ class FeedViewModel: ObservableObject {
         swap(&posts); swap(&followingPosts); swap(&serverSearchResults)
     }
 
+    /// The mirror of restoreOriginalAfterUnrepost (owner 2026-11-04, build 118
+    /// device pass: after a repost the feed kept showing the plain original —
+    /// reposts never refetch the feed). Swap the original row in place for my
+    /// repost row (deterministic id `{uid}_repost_{original}`, "you reposted"
+    /// label), keeping position and scroll.
+    func showRepostInPlace(of originalId: String) {
+        guard let me = Auth.auth().currentUser?.uid else { return }
+        let myHandle = UserHandleCache.shared.handle ?? "you"
+        func swap(_ list: inout [FeedPost]) {
+            guard !list.contains(where: { $0.isRepost && $0.authorId == me && $0.originalPostId == originalId }),
+                  let i = list.firstIndex(where: { $0.id == originalId && !$0.isRepost }) else { return }
+            let o = list[i]
+            list[i] = FeedPost(id: "\(me)_repost_\(originalId)", handle: myHandle, text: o.text, tag: o.tag,
+                               likes: o.likes, reposts: o.reposts + 1, replies: o.replies, time: "now",
+                               authorId: me, isShareable: o.isShareable, originalHandle: o.handle,
+                               originalAuthorId: o.authorId, originalPostId: originalId,
+                               gifUrl: o.gifUrl, promptDate: nil, isRepost: true)
+        }
+        swap(&posts); swap(&followingPosts); swap(&serverSearchResults)
+    }
+
     func handleInteractionChanged(_ info: [AnyHashable: Any]) {
         guard let postId = info["postId"] as? String,
               let action = info["action"] as? String,
@@ -1041,7 +1062,7 @@ class FeedViewModel: ObservableObject {
             // repost state on other rendered copies of the same post, so
             // the button stays in its pre-action state until a full refresh.
             if value { repostedPostIds.insert(postId) } else { repostedPostIds.remove(postId) }
-            if !value { restoreOriginalAfterUnrepost(of: postId) }
+            if value { showRepostInPlace(of: postId) } else { restoreOriginalAfterUnrepost(of: postId) }
         default: break
         }
     }

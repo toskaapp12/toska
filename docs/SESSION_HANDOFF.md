@@ -264,8 +264,12 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   the regression check; run via `build/ios-uitest.sh`. **The 2026-11-04 tmp sweep wiped the scratchpad** (harness,
   archives, derived data): durable copies live in `~/toska-review-artifacts/` (harness, results, screenshots,
   build 118 archive).
-  **Next:** owner device pass on 118 (repost dedupe + undo in place, own-original row, self-repost blocked, trending
-  tab, profile count, lowercase prompt) → go →
+  Owner pass on 118: dedupe ✓, undo ✓, lowercase ✓; label missing after repost, silent self-repost refusal, profile list
+  cut off on their phone → **build 119** (in-place repost row with label, server-truth self-repost guard + gentle notice
+  capsule, pager pages pinned to full height, prompt responses hides the tab bar). Prod starter content seeded from the
+  App Review demo account (`PROD_SEED_2026-11-04.md`, delete script in `~/toska-review-artifacts/`).
+  **Next:** owner device pass on 119 (label after repost, notice on self-repost, profile scroll to the end on THEIR
+  phone — not reproducible on simulators; most felt today/week with the starter content) → go →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

@@ -172,6 +172,16 @@ Format: severity · surface · status. "Pre-existing" = present before the
 
 ---
 
+## B118-PASS-2026-11-04 — owner device pass on 118 → build 119 (FIXED in code; prod web unchanged; prod HELD)
+
+- **1 "you reposted" label missing after a repost (iOS):** reposts never refetched the feed (`.newPostCreated` only refetches for composed posts), so after the tap the viewer kept the plain original row with the repost icon lit; the labelled repost row only appeared after a pull. Fix: `FeedViewModel.showRepostInPlace(of:)` — the mirror of the undo swap — replaces the original row in place with my repost row (deterministic id, "you reposted", same position, no scroll jump). Prod check: 0 repost docs on prod at the time (the owner had undone it).
+- **3 Reposting my own post — no message (iOS):** the 118 guard was silent (warning haptic only) and only covered callers that pass an authorId (PostDetailView passes `authorUserId`, empty on some paths). Prod check: no self-repost document was ever created (0 reposts total). Fix: the manager now also checks the ORIGINAL's author after the fresh read (server truth) and rolls the flip back, and every refusal posts a gentle notice — new `Notification.Name.gentleNotice` + a self-dismissing capsule above the tab bar in MainTabView ("your own words can't be reposted.").
+- **5 Profile list cut off behind the tab bar (owner device):** NOT reproduced on iPhone 15 / iOS 17.5 nor iPhone 16 / iOS 26.0 simulators with 9 posts on every tab (`test07_scrollToBottoms` screenshots: last row fully above the bar). Two changes anyway: `SwipePager` pages are pinned to the pager's full size (`containerRelativeFrame([.horizontal, .vertical])`) so each tab's ScrollView has a bounded height on every runtime, and **prompt responses** — the one scrolling screen that really was covered by the bar (pushed screen that never hid it) — now hides the tab bar like explore / other profile / detail. All other screens verified by screenshot at their bottom: feed, following, most felt, notifications, post detail (bar hidden), settings (bar hidden).
+- **4 Prod starter content:** 13 posts by the App Review demo account, see local `PROD_SEED_2026-11-04.md` + `~/toska-review-artifacts/prod-seed-2026-11-04.json` (delete script alongside).
+- **6 lowercase prompt:** confirmed on device.
+
+---
+
 ## LISTS-2026-11-03 — list-integrity + visual review → repost duplicates and 11 follow-ups (FIXED in code; STAGING web verified; build 118; prod HELD for owner go)
 
 - **Review (read-only, staging, 2026-11-03):** 20 seeded users / 66 posts over 5 simulated days; every list on iOS and web rebuilt from its exact query+filter+sort and checked for duplicates (id and original), hidden items, ordering, page boundaries, refresh stability and iOS↔web parity (62 checks); real web lists scraped headless and matched 19/19; 92 web screenshots + iOS simulator tour. Write-up: local `LIST_INTEGRITY_REVIEW_2026-11-03.md` (gitignored); artifacts in `~/toska-review-artifacts/`.

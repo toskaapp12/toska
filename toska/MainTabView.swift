@@ -42,6 +42,8 @@ struct MainTabView: View {
     // bar slides off-screen so reply composers, action rows, and other
     // bottom-anchored UI inside pushed detail views aren't covered.
     @State private var tabBarHidden = false
+    @State private var gentleNotice: String? = nil
+    @State private var gentleNoticeTask: Task<Void, Never>? = nil
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -243,6 +245,23 @@ struct MainTabView: View {
             // for a misclick recovery, short enough not to linger after the
             // user has moved on. Positioned just above the tab bar (offset)
             // via padding(.bottom) so it doesn't collide with the icons.
+            // Gentle notice (2026-11-04): a one-line, self-dismissing message above the
+            // tab bar for refusals that used to be silent on iOS (e.g. reposting your
+            // own words). Posted via Notification.Name.gentleNotice.
+            if let notice = gentleNotice {
+                VStack {
+                    Spacer()
+                    Text(notice)
+                        .font(ToskaFont.sans(12.5, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 9)
+                        .background(Color.black.opacity(0.85), in: Capsule())
+                        .padding(.bottom, tabBarHidden ? 40 : 112)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .allowsHitTesting(false)
+                .accessibilityAddTraits(.updatesFrequently)
+            }
             if let toast = pendingUndoBlock {
                 VStack {
                     Spacer()
@@ -342,6 +361,16 @@ struct MainTabView: View {
                     replies: 0,
                     time: ""
                 )
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .gentleNotice)) { n in
+            guard let text = n.userInfo?["text"] as? String, !text.isEmpty else { return }
+            gentleNoticeTask?.cancel()
+            withAnimation(.easeOut(duration: 0.2)) { gentleNotice = text }
+            gentleNoticeTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_600_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeIn(duration: 0.25)) { gentleNotice = nil }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .openPostFromPush)) { notification in

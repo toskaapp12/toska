@@ -404,8 +404,12 @@ struct SwipePager<ID: Hashable, Content: View>: View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 0) {
                 ForEach(ids, id: \.self) { id in
+                    // Pin each page to the pager's full size, not just its width:
+                    // a page's own ScrollView then gets a bounded height and can
+                    // reach its last row above the floating tab bar (owner, build
+                    // 118 device pass 2026-11-04: profile wouldn't scroll to the end).
                     content(id)
-                        .containerRelativeFrame(.horizontal)
+                        .containerRelativeFrame([.horizontal, .vertical])
                 }
             }
             .scrollTargetLayout()

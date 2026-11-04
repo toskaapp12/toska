@@ -198,6 +198,20 @@ final class ListReviewTourTests: XCTestCase {
         snap("compose-after-90s")
         _ = tapIf(app.buttons["cancel"], 10)
     }
+    /// Bottom-inset check (2026-11-04): scroll each top-level screen to its very end and screenshot,
+    /// so the last row's relation to the floating tab bar is visible. Needs an account with ≥ 8 posts.
+    func test07_scrollToBottoms() {
+        launch(night: false); signInIfNeeded("inset")
+        func toBottom(_ name: String) { for _ in 0..<8 { app.swipeUp(); usleep(350_000) }; sleep(1); snap("inset-\(name)-bottom") }
+        toBottom("feed")
+        tapBar(0.30); toBottom("trending")
+        tapBar(0.70); toBottom("notifications")
+        tapBar(0.85); toBottom("profile-posts")
+        if tapIf(app.buttons["liked"], 3) { sleep(2); toBottom("profile-liked") }
+        if tapIf(app.buttons["replies"], 3) { sleep(2); toBottom("profile-replies") }
+        tapBar(0.15); scrollToTop(8)
+        if tapIf(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "what others said")).firstMatch, 4) { sleep(3); toBottom("prompt-responses"); back() }
+    }
     func test05_trendingOnly() {
         launch(night: false); signInIfNeeded("trend")
         tapBar(0.30); snap("trend-01-today"); dump("trend-ax")

@@ -289,6 +289,8 @@ class PostInteractionManager {
                // state so the optimistic flip rolls back.
                if authorId == uid {
                    onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                   NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                                   userInfo: ["text": "your own words can't be reposted."])
                    return
                }
                // Record on attempt — same rationale as toggleLike/toggleSave.
@@ -429,6 +431,16 @@ class PostInteractionManager {
                             // 2026-06 repost fix — this was the green-then-grey failure.
                             let freshText = data["text"] as? String ?? postText
                             let freshAuthorId = data["authorId"] as? String ?? authorId
+                            // Own words (server truth — some callers pass an empty
+                            // authorId): no copy, roll the flip back, say so gently
+                            // (owner 2026-11-04).
+                            if freshAuthorId == uid {
+                                RateLimiter.shared.markRepostComplete(postId)
+                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                                                userInfo: ["text": "your own words can't be reposted."])
+                                return
+                            }
 
                             // originalHandle is byline-only and OPTIONAL in the rule
                             // (firestore.rules): when present it MUST equal the original

@@ -109,6 +109,10 @@ struct PromptResponsesView: View {
             }
         }
         .onAppear { load() }
+        // Pushed drill-in like explore / other profile / detail: hide the floating
+        // tab bar so the last answer isn't covered (owner, build 118 pass 2026-11-04;
+        // the simulator shot showed the bar over the final row).
+        .hidesAppTabBar()
     }
 
     private func load() {

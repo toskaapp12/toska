@@ -28,6 +28,8 @@ extension NSNotification.Name {
     static let networkDidReconnect = NSNotification.Name("NetworkDidReconnect")
     /// A short, gentle in-app line (userInfo["text"]) shown above the tab bar
     /// for a moment — e.g. "your own words can't be reposted." (2026-11-04).
+    /// Posted once by FeedView when the first real feed rows are on screen (build 122).
+    static let feedDidFirstPaint = NSNotification.Name("FeedDidFirstPaint")
     static let gentleNotice        = NSNotification.Name("GentleNotice")
     static let dismissAllSheets    = NSNotification.Name("DismissAllSheets")
     static let openPostFromPush        = NSNotification.Name("OpenPostFromPush")

@@ -355,6 +355,71 @@ final class ListReviewTourTests: XCTestCase {
         }
         let a = XCTAttachment(string: log); a.name = "a11y-log"; a.lifetime = .keepAlways; add(a)
     }
+    /// Build 122: share / report / block / context menu still work from rows after the per-row covers and
+    /// dialogs moved to the single app-level RowPresenter — feed, search, profile, most felt → detail, detail.
+    func test13_rowActions() {
+        launch(night: false); signInIfNeeded("rowact")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        var log = ""
+        let reportTitle = app.staticTexts["why are you reporting this?"]
+        func dismissReport() { if !tapIf(app.buttons["cancel"].firstMatch, 2) { if !tapIf(app.buttons["back"].firstMatch, 2) { back() } }; sleep(1) }
+        func longPress(_ e: XCUIElement) {
+            // Coordinate press: XCUITest refuses press() on a row it deems not hittable (NavigationLink label).
+            e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(forDuration: 1.2)
+        }
+        func checkMenu(on row: XCUIElement, where name: String) {
+            longPress(row); sleep(1); snap("rowact-\(name)-menu")
+            let hasReport = app.buttons["report"].firstMatch.waitForExistence(timeout: 3)
+            let blockBtn = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "block ")).firstMatch
+            log += "\(name): menu report=\(hasReport) block=\(blockBtn.exists) share=\(app.buttons["share"].firstMatch.exists) felt=\(app.buttons["felt this"].exists || app.buttons["unlike"].exists)\n"
+            if hasReport {
+                app.buttons["report"].firstMatch.tap()
+                let ok = reportTitle.waitForExistence(timeout: 5); log += "\(name): report sheet=\(ok)\n"; snap("rowact-\(name)-report")
+                XCTAssertTrue(ok, "report sheet did not open from \(name)"); dismissReport()
+                longPress(row); sleep(1)
+                if blockBtn.waitForExistence(timeout: 3) {
+                    blockBtn.tap()
+                    let dlg = app.buttons["block"].firstMatch.waitForExistence(timeout: 4); log += "\(name): block dialog=\(dlg)\n"; snap("rowact-\(name)-block")
+                    XCTAssertTrue(dlg, "block dialog did not open from \(name)"); _ = tapIf(app.buttons["cancel"].firstMatch, 3); sleep(1)
+                }
+                longPress(row); sleep(1)
+                if app.buttons["share"].firstMatch.waitForExistence(timeout: 2) {
+                    app.buttons["share"].firstMatch.tap()
+                    let sc = app.buttons["Close"].firstMatch.waitForExistence(timeout: 5); log += "\(name): share card=\(sc)\n"; snap("rowact-\(name)-share")
+                    XCTAssertTrue(sc, "share card did not open from \(name)"); _ = tapIf(app.buttons["Close"].firstMatch, 3); sleep(1)
+                } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap(); sleep(1) }
+            } else if app.buttons["share"].firstMatch.exists {
+                // Own rows: no report/block, but share must still open the card from the app-level host.
+                // (Two "share" buttons can be on screen — the menu item and the action bar — hence firstMatch.)
+                app.buttons["share"].firstMatch.tap()
+                let sc = app.buttons["Close"].firstMatch.waitForExistence(timeout: 5); log += "\(name): share card=\(sc)\n"; snap("rowact-\(name)-share")
+                XCTAssertTrue(sc, "share card did not open from \(name)"); _ = tapIf(app.buttons["Close"].firstMatch, 3); sleep(1)
+            } else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap(); sleep(1) }
+        }
+        // FEED — a row by another author (seeded "b122 w")
+        if let row = findRow(containing: "b122 w") { checkMenu(on: row, where: "feed") } else { log += "feed: no w row found\n" }
+        // SEARCH — header search, query the seeded text
+        tapBar(0.15); scrollToTop(8)
+        if tapIf(app.buttons["Search"], 3) {
+            let field = app.textFields.firstMatch
+            if field.waitForExistence(timeout: 3) { field.tap(); field.typeText("b122 w\n"); sleep(3); snap("rowact-search")
+                if let row = findRow(containing: "b122 w", swipes: 2) { checkMenu(on: row, where: "search") } else { log += "search: no row\n" }
+                _ = tapIf(app.buttons["cancel"].firstMatch, 2); _ = tapIf(app.buttons["Clear search"].firstMatch, 1)
+            }
+        }
+        // PROFILE — own rows: context menu opens (felt/save), no report/block by design
+        tapBar(0.85); sleep(2)
+        if let row = findRow(containing: "b122 #", swipes: 2) { checkMenu(on: row, where: "profile-own") }
+        // MOST FELT → detail → detail's own report
+        tapBar(0.30); sleep(3); _ = tapIf(app.buttons["all time"], 3); sleep(3)
+        let firstRank = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "felt this")).firstMatch
+        if firstRank.waitForExistence(timeout: 4) { forceTap(firstRank); sleep(3); snap("rowact-top-detail")
+            if tapIf(app.buttons["report"], 3) { let ok = reportTitle.waitForExistence(timeout: 5); log += "detail(from most felt): report sheet=\(ok)\n"; XCTAssertTrue(ok); dismissReport() }
+            else { log += "detail(from most felt): no direct report button (menu-based)\n" }
+            back(); sleep(1)
+        }
+        let a = XCTAttachment(string: log); a.name = "rowact-log"; a.lifetime = .keepAlways; add(a)
+    }
     /// Quick probe (build 121): does the profile's tab selector pin under the header after scrolling?
     func test11_profilePinProbe() {
         launch(night: false); signInIfNeeded("pin")

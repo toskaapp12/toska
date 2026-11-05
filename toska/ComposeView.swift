@@ -1711,7 +1711,9 @@ struct StableGifPreview: View {
         let (downloaded, _) = try await URLSession.shared.data(from: url)
         guard downloaded.count <= GifLoadGuard.maxBytes else { return nil }
         return await Task.detached(priority: .userInitiated) {
-            AnimatedGifImageView.animatedImage(from: downloaded) ?? UIImage(data: downloaded)
+            // Stills (1-frame GIF/PNG/JPG) are lazy too — force the bitmap decode here.
+            // Both callees are nonisolated, so this closure stays off the main actor.
+            AnimatedGifImageView.animatedImage(from: downloaded) ?? UIImage(data: downloaded)?.preparingForDisplay()
         }.value
     }
 
@@ -1802,7 +1804,12 @@ private struct AnimatedGifImageView: UIViewRepresentable {
         if image.images != nil { uiView.startAnimating() }
     }
 
-    static func animatedImage(from data: Data) -> UIImage? {
+    // `nonisolated` (device profiling, build 122 session A on the phone): a View
+    // type is main-actor isolated, so a plain static func on it IS main-actor code —
+    // the "detached" decode task hopped back to the main thread and the 3 s decode
+    // ran there anyway (3,085 ImageIO samples under animatedImage(from:) on Main
+    // Thread). With nonisolated, the detached task really decodes off-main.
+    nonisolated static func animatedImage(from data: Data) -> UIImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let count = CGImageSourceGetCount(source)
         guard count > 1 else { return nil }
@@ -1811,8 +1818,21 @@ private struct AnimatedGifImageView: UIViewRepresentable {
         let frameCount = min(count, GifLoadGuard.maxFrames)
         var frames: [UIImage] = []
         var totalDuration: Double = 0
+        // Device profiling (iPhone 15 Pro Max, 2026-11-05): CGImageSourceCreateImageAtIndex
+        // hands back LAZY images, so the "off-main decode" decoded nothing — Core
+        // Animation then decoded every WebP frame on the MAIN thread the moment the
+        // image view started animating (one 3.27 s severe hang in the feed; the same
+        // path froze post detail). The thumbnail API with ShouldCacheImmediately
+        // decodes HERE, on the caller's detached task, and downsamples to display
+        // size (rows show GIFs at ≤ 200 pt tall; 480 px covers 2–3× scale).
+        let frameOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 480,
+        ]
         for i in 0..<frameCount {
-            guard let cg = CGImageSourceCreateImageAtIndex(source, i, nil) else { continue }
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, i, frameOptions as CFDictionary) else { continue }
             frames.append(UIImage(cgImage: cg))
             totalDuration += frameDelay(at: i, source: source)
         }
@@ -1822,7 +1842,7 @@ private struct AnimatedGifImageView: UIViewRepresentable {
         return UIImage.animatedImage(with: frames, duration: totalDuration)
     }
 
-    static func frameDelay(at index: Int, source: CGImageSource) -> Double {
+    nonisolated static func frameDelay(at index: Int, source: CGImageSource) -> Double {
         guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any] else {
             return 0.1
         }

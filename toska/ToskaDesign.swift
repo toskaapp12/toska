@@ -313,22 +313,35 @@ extension View {
 // `.overlay(ToskaPaperGrain())`.
 
 struct ToskaPaperGrain: View {
+    // Device profiling (2026-11-05): the Core Image generation ran on the main
+    // thread at first body (~140 ms inside a launch hang). It now runs once on a
+    // background task; the overlay fades in when the tile is ready.
+    @State private var tile: UIImage? = ToskaPaperGrain.cachedNoise
     var body: some View {
         Group {
-            if let img = ToskaPaperGrain.noise {
+            if let img = tile {
                 Image(uiImage: img)
                     .resizable(resizingMode: .tile)
                     .opacity(LateNightTheme.isLateNight ? 0.05 : 0.03)
+                    .transition(.opacity)
             } else {
                 Color.clear
             }
         }
         .allowsHitTesting(false)
         .ignoresSafeArea()
+        .task {
+            guard tile == nil else { return }
+            let made = await Task.detached(priority: .utility) { ToskaPaperGrain.makeNoise() }.value
+            ToskaPaperGrain.cachedNoise = made
+            withAnimation(.easeIn(duration: 0.3)) { tile = made }
+        }
     }
 
-    /// 160×160 monochrome noise tile, generated once.
-    static let noise: UIImage? = {
+    @MainActor static var cachedNoise: UIImage? = nil
+
+    /// 160×160 monochrome noise tile. Off the main thread — see `tile`.
+    nonisolated static func makeNoise() -> UIImage? {
         let ctx = CIContext(options: nil)
         guard let noise = CIFilter(name: "CIRandomGenerator")?.outputImage else { return nil }
         // Desaturate to grayscale so the grain doesn't tint the surface.
@@ -340,7 +353,7 @@ struct ToskaPaperGrain: View {
         let rect = CGRect(x: 0, y: 0, width: 160, height: 160)
         guard let cg = ctx.createCGImage(mono, from: rect) else { return nil }
         return UIImage(cgImage: cg)
-    }()
+    }
 }
 
 // MARK: - Shared error/retry banner

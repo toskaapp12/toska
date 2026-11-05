@@ -281,8 +281,16 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   in `ListReviewTourTests`, artefacts in `~/toska-review-artifacts/2026-11-04-build121/`. Lessons: a LazyVStack with
   one huge child jumps its offset; a PreferenceKey scroll-edge detector never fired here, a global-coordinate
   GeometryReader + onChange did; XCUITest queries must stay to one `firstMatch`/`exists` per pass on big eager trees.
-  **Next:** owner device pass on 121 (profile scroll to the end + felt/save from profile rows, feed scroll, most felt,
-  VoiceOver on feed tabs / periods) → go →
+  Owner on 121: feed + profile still pause/glitch on the iPhone 15 Pro Max, post open froze → **device profiling**
+  (Instruments over USB on a Release dev-signed build; `~/toska-review-artifacts/2026-11-05-device-perf/`,
+  `DEVICE_PERF_2026-11-05.md`): 3.27 s hang = animated WebP frames decoded on main by Core Animation (lazy CGImages);
+  22 hitches + 13 interaction delays/min = per-row covers/dialogs (~14k preference updates/10 s) + FeedViewModel
+  publish storms; launch = paper grain on main + keyboard prewarm. → **build 122** (thumbnail-API decode off-main;
+  one app-level RowPresenter; interaction sets only in InteractionStateStore; ReconnectReconcile observes two
+  publishers; grain off-main; prewarm after first feed paint). BUGS.md PERF-2026-11-05.
+  **Next:** install 122 on the owner's phone (`xcrun devicectl device install app … dd-device/…/toska.app`, phone on
+  USB), re-run `record.sh` sessions A/B/C, before/after numbers (no hang > 250 ms, hitch drop) → TestFlight 122 →
+  owner pass → go →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

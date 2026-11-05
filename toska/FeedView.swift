@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
@@ -400,6 +401,10 @@ struct FeedView: View {
                                                  // mid-scroll — trigger is now rapid posting, wired
                                                  // in the .newPostCreated handler below.
                                              }
+               // First real rows on screen → keyboard prewarm (KeyboardDismiss) may run.
+               .onChange(of: vm.hasLoadedOnce, initial: true) { _, loaded in
+                   if loaded { NotificationCenter.default.post(name: .feedDidFirstPaint, object: nil) }
+               }
                .onReceive(NotificationCenter.default.publisher(for: .authDidVerify)) { _ in
                                                  debugLog("⚡️ AuthDidVerify received in FeedView — hasLoadedOnce: \(vm.hasLoadedOnce), posts.count: \(vm.posts.count)")
                                                  if !vm.hasLoadedOnce {
@@ -825,10 +830,9 @@ struct FeedPostRow: View, Equatable {
             // automatically and don't compose with anything else.
             @State private var likeBurstScale: CGFloat = 1.0
             @State private var likeBurstOpacity: Double = 0.0
-            @State private var showShareCard = false
-        @State private var showReportSheet = false
-        @State private var showBlockConfirm = false
-        @State private var showAdminDeleteConfirm = false
+        // Share / report / block / admin-delete are presented by ONE app-level host
+        // (RowPresenter, bottom of this file) — per-row covers and dialogs cost
+        // ~14k preference updates per 10 s of scrolling (device profiling 2026-11-05).
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -1073,7 +1077,7 @@ struct FeedPostRow: View, Equatable {
                                             // (private/ephemeral, not shareable) and when
                                             // the author disabled sharing.
                                             if isShareable && !isLetter && !isWhisperPost && !isMidnightPost {
-                                                Button { showShareCard = true } label: {
+                                                Button { presentShare() } label: {
                                                     Image(systemName: "square.and.arrow.up")
                                                         .font(.toska(14, weight: .regular, relativeTo: .footnote))
                                                         .foregroundColor(ToskaColor.dot)
@@ -1164,7 +1168,7 @@ struct FeedPostRow: View, Equatable {
 
                     if isShareable && !isLetter && !isWhisperPost && !isMidnightPost {
                                             Button {
-                                                showShareCard = true
+                                                presentShare()
                                             } label: {
                                                 Label("share", systemImage: "square.and.arrow.up")
                                             }
@@ -1174,10 +1178,10 @@ struct FeedPostRow: View, Equatable {
                     // stay clean — the tag sits where the inline ⋯ menu used to.
                     if !authorId.isEmpty, authorId != Auth.auth().currentUser?.uid {
                         Divider()
-                        Button { showReportSheet = true } label: {
+                        Button { presentReport() } label: {
                             Label("report", systemImage: "flag")
                         }
-                        Button(role: .destructive) { showBlockConfirm = true } label: {
+                        Button(role: .destructive) { presentBlock() } label: {
                             Label("block \(handle)", systemImage: "person.slash")
                         }
                         // Admin-only: remove someone else's post right from the
@@ -1187,7 +1191,7 @@ struct FeedPostRow: View, Equatable {
                         // independently enforces it server-side, so this button
                         // is convenience, not the security boundary.
                         if AdminManager.shared.isAdmin && !postId.isEmpty {
-                            Button(role: .destructive) { showAdminDeleteConfirm = true } label: {
+                            Button(role: .destructive) { presentAdminDelete() } label: {
                                 Label("delete post (admin)", systemImage: "trash")
                             }
                         }
@@ -1237,61 +1241,27 @@ struct FeedPostRow: View, Equatable {
                         localRepostCount = newValue
                     }
                 }
-                // Opening the post uses push navigation (the NavigationLink
-                // wrapping the content above) so it slides in from the right.
-                // Share and report stay as modal covers — secondary leaf
-                // actions where a modal is conventional. Per-row covers don't
-                // collide the way per-row navigationDestination(isPresented:)
-                // did, which is why these two are safe to keep per-row.
-                .fullScreenCover(isPresented: $showShareCard) {
-                    EdgeSwipeDismissWrapper {
-                        ShareCardView(text: text, handle: handle, feltCount: localLikeCount, tag: tag,
-                                      shareURL: ShareConsent.publicShareURL(
-                                          postId: interactionPostId, isShareable: isShareable,
-                                          isLetter: isLetter, isWhisper: isWhisperPost,
-                                          isMidnight: isMidnightPost))
-                            .navigationBarHidden(true)
-                    }
-                }
-                .fullScreenCover(isPresented: $showReportSheet) {
-                    EdgeSwipeDismissWrapper {
-                        NavigationStack {
-                            // Repost rows report/block the ORIGINAL author —
-                            // the words on screen are theirs (handle already
-                            // shows them); the reposter is reachable via
-                            // their own rows.
-                            ReportSheet(target: .post(
-                                postId: interactionPostId,
-                                authorId: interactionAuthorId,
-                                authorHandle: handle,
-                                text: text
-                            ))
-                            .navigationBarHidden(true)
-                        }
-                    }
-                }
-                                .confirmationDialog(
-                                    "block \(handle)?",
-                                    isPresented: $showBlockConfirm,
-                                    titleVisibility: .visible
-                                ) {
-                                    Button("block", role: .destructive) {
-                                        BlockedUsersCache.shared.block(interactionAuthorId, handle: handle)
-                                    }
-                                    Button("cancel", role: .cancel) {}
-                                } message: {
-                                    Text("you won't see their posts or replies. they won't be notified.")
-                                }
-                                .confirmationDialog(
-                                    "delete this post for everyone?",
-                                    isPresented: $showAdminDeleteConfirm,
-                                    titleVisibility: .visible
-                                ) {
-                                    Button("delete (admin)", role: .destructive) { adminDeletePost() }
-                                    Button("cancel", role: .cancel) {}
-                                } message: {
-                                    Text("removes the post and its replies permanently. this action is recorded in the admin audit log.")
-                                }
+    }
+
+    // MARK: - Presentation requests (handled by RowPresenter's host)
+    private func presentShare() {
+        RowPresenter.shared.cover = .share(text: text, handle: handle, feltCount: localLikeCount, tag: tag,
+                                           shareURL: ShareConsent.publicShareURL(
+                                               postId: interactionPostId, isShareable: isShareable,
+                                               isLetter: isLetter, isWhisper: isWhisperPost,
+                                               isMidnight: isMidnightPost))
+    }
+    private func presentReport() {
+        // Repost rows report/block the ORIGINAL author — the words on screen are
+        // theirs (handle already shows them); the reposter is reachable via their own rows.
+        RowPresenter.shared.cover = .report(postId: interactionPostId, authorId: interactionAuthorId,
+                                            authorHandle: handle, text: text)
+    }
+    private func presentBlock() {
+        RowPresenter.shared.dialog = .block(authorId: interactionAuthorId, handle: handle)
+    }
+    private func presentAdminDelete() {
+        RowPresenter.shared.dialog = .adminDelete(postId: postId)
     }
 
     /// Admin-only removal of another user's post, straight from the feed.
@@ -1300,7 +1270,7 @@ struct FeedPostRow: View, Equatable {
     /// pre-delete snapshot, then delete. Server triggers clean up the reply
     /// subtree, likes, and repost copies — no client-side cascade (the
     /// own-post path's like cleanup would permission-fail for an admin).
-    private func adminDeletePost() {
+    static func adminDeletePost(postId: String) {
         guard AdminManager.shared.isAdmin, !postId.isEmpty,
               let adminUid = Auth.auth().currentUser?.uid else { return }
         let ref = Firestore.firestore().collection("posts").document(postId)
@@ -1848,6 +1818,8 @@ func tagDotColor(for tag: String) -> Color {
 
 struct FeedColumn: View {
     @ObservedObject var vm: FeedViewModel
+    // The liked/saved/reposted sets live here (not on vm) — see FeedViewModel.
+    @ObservedObject private var interactions = InteractionStateStore.shared
     let tab: Int
     @Binding var searchText: String
     var searchFocused: FocusState<Bool>.Binding
@@ -2385,11 +2357,15 @@ struct FeedColumn: View {
 // checker gave up with two more modifiers inline): 3 s after connectivity returns, reconcile the
 // first page in place; posts that arrived meanwhile go to the "new posts" badge, not into the list.
 private struct ReconnectReconcile: ViewModifier {
-    @ObservedObject var vm: FeedViewModel
+    // NOT @ObservedObject (device profiling 2026-11-05): observing the whole view
+    // model re-ran this modifier's body on every published change (1,712 updates in
+    // ~10 s of scrolling). It only needs the two publishers below.
+    let vm: FeedViewModel
     @Binding var badge: Int
     @Binding var pendingRefresh: Bool
     @Binding var badgeLoading: Bool
     @State private var reconnectTask: Task<Void, Never>? = nil
+    @State private var lastNewPosts = 0
     func body(content: Content) -> some View {
         content
             .onReceive(NotificationCenter.default.publisher(for: .networkDidReconnect)) { _ in
@@ -2402,14 +2378,110 @@ private struct ReconnectReconcile: ViewModifier {
                     await vm.reconcileAfterReconnect()
                 }
             }
-            .onChange(of: vm.reconnectNewPosts) { old, new in
+            .onReceive(vm.$reconnectNewPosts.removeDuplicates()) { new in
+                let old = lastNewPosts; lastNewPosts = new
                 guard new > old else { return }
                 withAnimation(.easeInOut(duration: 0.25)) { badge += (new - old) }
                 pendingRefresh = true
             }
-            .onChange(of: vm.isFetchingPosts) { _, fetching in
+            .onReceive(vm.$isFetchingPosts.removeDuplicates()) { fetching in
                 // Fallback path: the badge showed a spinner while the refetch ran; done → clear it.
                 if !fetching && badgeLoading { badgeLoading = false; withAnimation { badge = 0 } }
             }
     }
+}
+
+// MARK: - Row presentation host (build 122, device profiling 2026-11-05)
+//
+// Every FeedPostRow used to carry two .fullScreenCover and two
+// .confirmationDialog modifiers (share card, report sheet, block, admin delete).
+// Presentation preferences are re-flowed through the whole view tree on each
+// update, so 60 rows × 4 modifiers cost ~14k preference-transform updates per
+// 10 s of scrolling on the owner's iPhone 15 Pro Max. Rows now set ONE request
+// on this shared presenter and MainTabView hosts the covers/dialogs once, at
+// the root — which also covers rows inside pushed screens (profile, explore,
+// prompt responses, post detail) because full-screen covers present from the
+// window scene.
+enum RowPresentation: Identifiable {
+    case share(text: String, handle: String, feltCount: Int, tag: String?, shareURL: URL?)
+    case report(postId: String, authorId: String, authorHandle: String, text: String)
+    case block(authorId: String, handle: String)
+    case adminDelete(postId: String)
+    var id: String {
+        switch self {
+        case .share(let text, let handle, _, _, _): return "share|\(handle)|\(text.hashValue)"
+        case .report(let postId, _, _, _): return "report|\(postId)"
+        case .block(let authorId, _): return "block|\(authorId)"
+        case .adminDelete(let postId): return "adminDelete|\(postId)"
+        }
+    }
+}
+
+@MainActor
+final class RowPresenter: ObservableObject {
+    static let shared = RowPresenter()
+    /// Full-screen covers: share card, report sheet.
+    @Published var cover: RowPresentation? = nil
+    /// Confirmation dialogs: block, admin delete.
+    @Published var dialog: RowPresentation? = nil
+    private init() {}
+}
+
+private struct RowPresentationHost: ViewModifier {
+    @ObservedObject private var presenter = RowPresenter.shared
+    private var dialogShown: Binding<Bool> {
+        Binding(get: { presenter.dialog != nil }, set: { if !$0 { presenter.dialog = nil } })
+    }
+    private var dialogTitle: String {
+        switch presenter.dialog {
+        case .block(_, let handle): return "block \(handle)?"
+        case .adminDelete: return "delete this post for everyone?"
+        default: return ""
+        }
+    }
+    func body(content: Content) -> some View {
+        content
+            .fullScreenCover(item: $presenter.cover) { item in
+                EdgeSwipeDismissWrapper {
+                    switch item {
+                    case .share(let text, let handle, let feltCount, let tag, let shareURL):
+                        ShareCardView(text: text, handle: handle, feltCount: feltCount, tag: tag, shareURL: shareURL)
+                            .navigationBarHidden(true)
+                    case .report(let postId, let authorId, let authorHandle, let text):
+                        NavigationStack {
+                            ReportSheet(target: .post(postId: postId, authorId: authorId,
+                                                      authorHandle: authorHandle, text: text))
+                                .navigationBarHidden(true)
+                        }
+                    default:
+                        EmptyView()
+                    }
+                }
+            }
+            .confirmationDialog(dialogTitle, isPresented: dialogShown, titleVisibility: .visible) {
+                switch presenter.dialog {
+                case .block(let authorId, let handle):
+                    Button("block", role: .destructive) {
+                        BlockedUsersCache.shared.block(authorId, handle: handle)
+                    }
+                    Button("cancel", role: .cancel) {}
+                case .adminDelete(let postId):
+                    Button("delete (admin)", role: .destructive) { FeedPostRow.adminDeletePost(postId: postId) }
+                    Button("cancel", role: .cancel) {}
+                default:
+                    EmptyView()
+                }
+            } message: {
+                switch presenter.dialog {
+                case .block: Text("you won't see their posts or replies. they won't be notified.")
+                case .adminDelete: Text("removes the post and its replies permanently. this action is recorded in the admin audit log.")
+                default: EmptyView()
+                }
+            }
+    }
+}
+
+extension View {
+    /// Apply ONCE at the app root (MainTabView). See RowPresenter.
+    func rowPresentationHost() -> some View { modifier(RowPresentationHost()) }
 }

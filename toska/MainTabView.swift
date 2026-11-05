@@ -302,6 +302,9 @@ struct MainTabView: View {
             }
         }
         .ignoresSafeArea(.all, edges: .bottom)
+        // One host for every row's share card / report sheet / block / admin-delete
+        // (build 122) — see RowPresenter in FeedView.swift.
+        .rowPresentationHost()
         .onPreferenceChange(HidesAppTabBarKey.self) { hidden in
             // Hide the app tab bar on drill-in views that declare
             // `.hidesAppTabBar()` (PostDetailView, etc.) so the reply composer

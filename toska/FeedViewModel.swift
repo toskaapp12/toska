@@ -61,14 +61,24 @@ class FeedViewModel: ObservableObject {
     // didSet mirrors keep InteractionStateStore in lockstep with every
     // mutation path (snapshot listeners, handleInteractionChanged, the
     // cancelAllTasks sign-out clear) — see the store's comment above.
-    @Published var repostedPostIds: Set<String> = [] {
-        didSet { InteractionStateStore.shared.repostedPostIds = repostedPostIds }
+    // Device profiling (2026-11-05): these three sets used to be @Published HERE
+    // (plus a didSet mirror into the store), so every liked/saved/reposted change
+    // — and the listeners' per-id inserts, 63 publishes inside 1 ms — re-ran
+    // FeedView, both FeedColumns, FeedHeaderCard and ReconnectReconcile. They now
+    // live ONLY in InteractionStateStore (rows already read it); FeedColumn
+    // observes the store, so a change re-evaluates the list alone and the
+    // .equatable() rows skip themselves unless their own flags changed.
+    var repostedPostIds: Set<String> {
+        get { InteractionStateStore.shared.repostedPostIds }
+        set { InteractionStateStore.shared.repostedPostIds = newValue }
     }
-    @Published var likedPostIds: Set<String> = [] {
-        didSet { InteractionStateStore.shared.likedPostIds = likedPostIds }
+    var likedPostIds: Set<String> {
+        get { InteractionStateStore.shared.likedPostIds }
+        set { InteractionStateStore.shared.likedPostIds = newValue }
     }
-    @Published var savedPostIds: Set<String> = [] {
-        didSet { InteractionStateStore.shared.savedPostIds = savedPostIds }
+    var savedPostIds: Set<String> {
+        get { InteractionStateStore.shared.savedPostIds }
+        set { InteractionStateStore.shared.savedPostIds = newValue }
     }
     @Published var postGifUrls: [String: String] = [:]
     var midnightPostIds: Set<String> = []
@@ -87,7 +97,8 @@ class FeedViewModel: ObservableObject {
     // MARK: - Fetch State
     // Simple in-flight flag so fetchPosts callers coalesce instead of stacking
     // duplicate Firestore queries on rapid trigger (onAppear + notification, etc).
-    var isFetchingPosts = false
+    // @Published (build 122): ReconnectReconcile listens to it directly instead of observing the whole model.
+    @Published var isFetchingPosts = false
     // (owner 2026-11-02) a user-initiated refresh supersedes any in-flight fetch instead of being skipped;
     // the generation guard keeps a superseded fetch from writing its (older) result or clearing the flag.
     private var fetchGeneration = 0

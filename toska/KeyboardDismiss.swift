@@ -124,10 +124,18 @@ extension View {
             UIApplication.shared.installKeyboardDismissGesture()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 UIApplication.shared.installKeyboardDismissGesture()
-                // Pre-warm once the window is attached so the first reply/compose
-                // keyboard appears instantly instead of lagging (blank-then-keyboard).
-                UIApplication.shared.prewarmKeyboard()
             }
+        }
+        // Pre-warm so the first reply/compose keyboard appears instantly — but
+        // AFTER the feed's first paint, at low priority (device profiling
+        // 2026-11-05: the 0.5 s-after-appear prewarm cost ~1 s of main-thread time
+        // right where the first scroll happens). Falls back to a late timer if
+        // the feed never reports a paint (signed-out launch).
+        .task(priority: .utility) {
+            let paint = NotificationCenter.default.notifications(named: .feedDidFirstPaint).makeAsyncIterator()
+            _ = await paint.next()
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            await MainActor.run { UIApplication.shared.prewarmKeyboard() }
         }
     }
 }

@@ -53,7 +53,11 @@ struct ProfileView: View {
     // and blocks the main thread during render, so without feedback the user
     // taps share and the app appears frozen.
     @State private var isStreakRendering = false
-    
+    // Build 121: true once the identity section has scrolled off the top of the
+    // profile scroll view — the tab selector is then drawn as a pinned overlay.
+    @State private var tabsPinned = false
+    @State private var scrollTopGlobal: CGFloat = 0
+
     // Each tuple is (inactive icon, active icon) for the profile tab bar.
     // SF Symbols `note.text` has no filled pair, so we substitute
     // `text.document` (outlined) → `text.document.fill` (filled) to match the
@@ -126,25 +130,79 @@ struct ProfileView: View {
                     }
                 }
 
-                // Fixed identity header + tab selector; content pages horizontally
-                // beneath them (same pattern as the feed / most-felt tabs).
-                profileIdentitySection
-                profileTabSelector
-
-                // Swipeable content: swipe between posts / liked / saved / replies
-                // / reposts (tapping the tabs still works — both drive selectedTab).
-                SwipePager(selection: $selectedTab, ids: Array(0..<tabIcons.count)) { index in
-                    ScrollViewReader { proxy in
-                        ScrollView(showsIndicators: false) {
+                // Build 121 (owner 2026-11-04): ONE plain vertical scroll view. The
+                // identity section scrolls away, the tab selector sticks under the
+                // header, and the selected tab's rows are switched in place. Builds
+                // 118–120 paged the tabs horizontally (SwipePager → per-page
+                // ScrollView → LazyVStack); on the owner's iPhone 15 Pro Max that
+                // lazy-in-lazy nesting stalled partway, left the last row under the
+                // tab bar, and only reached the end after several up/down passes.
+                //
+                // Everything here is EAGER (profile lists are capped at 30–100 rows).
+                // A first cut used LazyVStack(pinnedViews:) for the sticky selector;
+                // with one 6 000 pt child the lazy container jumped the scroll offset
+                // back ~4 000 pt every time it passed ~5 000 pt (test09, 2026-11-05).
+                // So: plain VStack, and the sticky selector is an overlay that shows
+                // once the identity section's bottom edge passes the top of the scroll
+                // view (tracked with one GeometryReader on that edge).
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
                             Color.clear.frame(height: 0).id("top")
-                            profileTabContent(index)
+                            profileIdentitySection
+                                .background(alignment: .bottom) {
+                                    // Global coordinates on both sides (the scroll view's top edge is
+                                    // measured below) — no named-space lookup to go wrong, and onChange
+                                    // instead of a preference so the update path is direct.
+                                    GeometryReader { g in
+                                        let bottom = g.frame(in: .global).maxY
+                                        Color.clear
+                                            .onChange(of: bottom, initial: true) { _, b in
+                                                let pinned = b <= scrollTopGlobal + 0.5
+                                                if pinned != tabsPinned { tabsPinned = pinned }
+                                            }
+                                    }
+                                    .frame(height: 1)
+                                }
+                            profileTabSelector
+                                .id("tabs")
+                                // The inline copy scrolls away; the pinned overlay takes over.
+                                .opacity(tabsPinned ? 0 : 1)
+                            VStack(spacing: 0) {
+                                profileTabContent(selectedTab)
+                            }
+                            .id(selectedTab)
                             Color.clear.frame(height: 130)
                         }
-                        .refreshable { await refreshProfileTab(index) }
-                        .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
-                            withAnimation(.easeInOut(duration: 0.4)) {
-                                proxy.scrollTo("top", anchor: .top)
-                            }
+                    }
+                    .background {
+                        // The scroll view's top edge, global — compared against the
+                        // identity section's bottom edge above.
+                        GeometryReader { g in
+                            let top = g.frame(in: .global).minY
+                            Color.clear.onChange(of: top, initial: true) { _, t in scrollTopGlobal = t }
+                        }
+                    }
+                    .accessibilityIdentifier("profileScroll")
+                    .overlay(alignment: .top) {
+                        if tabsPinned {
+                            profileTabSelector
+                                .background(LateNightTheme.background)
+                        }
+                    }
+                    .refreshable { await refreshProfileTab(selectedTab) }
+                    .onReceive(NotificationCenter.default.publisher(for: .scrollProfileToTop)) { _ in
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            proxy.scrollTo("top", anchor: .top)
+                        }
+                    }
+                    .onChange(of: selectedTab) { _, _ in
+                        // A tab tapped while deep in a list (selector pinned): start the
+                        // new list at its top. Near the top of the page, leave the scroll
+                        // alone so the identity section doesn't jump away.
+                        guard tabsPinned else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo("tabs", anchor: .top)
                         }
                     }
                 }
@@ -407,53 +465,10 @@ struct ProfileView: View {
             }
     }
     
-    func openMyPost(_ post: MyPost) {
-        guard !post.id.isEmpty else { return }
-        // Repost retarget (owner 2026-09-21): opening your own repost opens
-        // the ORIGINAL's detail — its likes/replies/counts are the real ones
-        // (web has always scoped repost details to the original).
-        let targetId = post.isRepost ? (post.originalPostId ?? post.id) : post.id
-        let targetAuthor = post.isRepost
-            ? (post.originalAuthorId ?? "")
-            : (Auth.auth().currentUser?.uid ?? "")
-        Firestore.firestore().collection("posts").document(targetId).getDocument { snapshot, error in
-            Task { @MainActor in
-                // Transient read error → leave the row in place; only prune on a
-                // confirmed-missing doc (network blips shouldn't vanish posts).
-                if error != nil { return }
-                guard snapshot?.data() != nil else { myPosts.removeAll { $0.id == post.id }; return }
-                selectedPostId = targetId
-                selectedPostData = PostDetailData(handle: post.isRepost ? post.handle : userHandle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, authorId: targetAuthor)
-                showPost = true
-            }
-        }
-    }
-    
-    func openSavedPost(_ post: SavedPost) {
-        guard !post.id.isEmpty else { return }
-        let db = Firestore.firestore()
-        db.collection("posts").document(post.id).getDocument { snapshot, error in
-            Task { @MainActor in
-                // Transient read error → do NOT delete the saved/liked entry; a
-                // network blip must not be misread as "post deleted".
-                if error != nil { return }
-                guard let data = snapshot?.data() else {
-                    if let uid = Auth.auth().currentUser?.uid {
-                        db.collection("users").document(uid).collection("saved").document(post.id).delete()
-                        db.collection("users").document(uid).collection("liked").document(post.id).delete()
-                    }
-                    savedPosts.removeAll { $0.id == post.id }
-                    likedPosts.removeAll { $0.id == post.id }
-                    return
-                }
-                let authorId = data["authorId"] as? String ?? ""
-                selectedPostId = post.id
-                selectedPostData = PostDetailData(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, authorId: authorId)
-                showPost = true
-            }
-        }
-    }
-    
+    // openMyPost / openSavedPost removed in build 121: rows are no longer wrapped in a
+    // Button — FeedPostRow's own NavigationLink opens the (original) post, and a post
+    // that turns out to be gone is pruned via .postDeleted from PostDetailView.
+
     func replyRow(_ reply: MyReply) -> some View {
         Button {
             if !reply.parentPostId.isEmpty {
@@ -1303,17 +1318,20 @@ struct ProfileView: View {
                                                                     if authoredPosts.isEmpty {
                                                                         emptyState(icon: "square.and.pencil", title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
                                                                     } else {
-                                                                        LazyVStack(spacing: 0) {
+                                                                        // Build 121: no outer Button around the row. FeedPostRow's own
+                                                                        // NavigationLink opens the detail (reposts retarget to the original,
+                                                                        // as openMyPost did), and the action bar's felt / save / repost /
+                                                                        // share buttons receive their taps — same as the feed. A deleted
+                                                                        // post is handled downstream: PostDetailView posts .postDeleted on a
+                                                                        // server-confirmed miss and this view strips it (onReceive above).
+                                                                        VStack(spacing: 0) {
                                                                             ForEach(authoredPosts) { post in
-                                                                                Button { openMyPost(post) } label: {
-                                                                                    VStack(alignment: .leading, spacing: 0) {
-                                                                                        if post.pendingReview {
-                                                                                            PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
-                                                                                        }
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", gifUrl: post.gifUrl, isRepostPost: post.isRepost, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptDate: post.promptDate, hideMetaHandle: !post.isRepost)
+                                                                                VStack(alignment: .leading, spacing: 0) {
+                                                                                    if post.pendingReview {
+                                                                                        PendingReviewBanner(reasonLabel: post.pendingReasonLabel, isCrisis: post.pendingReasonIsCrisis)
                                                                                     }
+                                                                                    FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isAlreadyReposted: InteractionStateStore.shared.repostedPostIds.contains(post.originalPostId ?? post.id), isAlreadyLiked: InteractionStateStore.shared.likedPostIds.contains(post.id), isAlreadySaved: InteractionStateStore.shared.savedPostIds.contains(post.id), gifUrl: post.gifUrl, isRepostPost: post.isRepost, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptDate: post.promptDate, hideMetaHandle: !post.isRepost)
                                                                                 }
-                                                                                .buttonStyle(.plain)
                                                                             }
                                                                             // The fetch caps at 50 posts COMBINED (authored +
                                                                             // reposts), so key the truncation note on the full
@@ -1331,23 +1349,12 @@ struct ProfileView: View {
                                                                     if repostItems.isEmpty {
                                                                         emptyState(icon: "arrow.2.squarepath", title: "no reposts yet.", subtitle: "when something says it better than you could, repost it.")
                                                                     } else {
-                                                                        LazyVStack(spacing: 0) {
+                                                                        // Build 121: FeedPostRow draws its own "you reposted" line (reposterHandle
+                                                                        // + authorId == me) exactly as the feed does; no outer Button, so the
+                                                                        // original's felt / save / undo-repost work from here.
+                                                                        VStack(spacing: 0) {
                                                                             ForEach(repostItems) { post in
-                                                                                Button { openMyPost(post) } label: {
-                                                                                    VStack(alignment: .leading, spacing: 0) {
-                                                                                        HStack(spacing: 4) {
-                                                                                            Image(systemName: "arrow.2.squarepath")
-                                                                                                .font(.toska(9, relativeTo: .caption2))
-                                                                                            Text("you reposted")
-                                                                                                .font(ToskaFont.sans(11, weight: .medium))
-                                                                                        }
-                                                                                        .foregroundColor(Color.toskaMovingOnGreen)
-                                                                                        .padding(.horizontal, 16)
-                                                                                        .padding(.top, 8)
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", gifUrl: post.gifUrl, isRepostPost: post.isRepost, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId)
-                                                                                    }
-                                                                                }
-                                                                                .buttonStyle(.plain)
+                                                                                FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: Auth.auth().currentUser?.uid ?? "", isAlreadyReposted: true, isAlreadyLiked: InteractionStateStore.shared.likedPostIds.contains(post.originalPostId ?? post.id), isAlreadySaved: InteractionStateStore.shared.savedPostIds.contains(post.originalPostId ?? post.id), gifUrl: post.gifUrl, isRepostPost: post.isRepost, reposterHandle: userHandle, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId)
                                                                             }
                                                                         }
                                                                     }
@@ -1356,17 +1363,15 @@ struct ProfileView: View {
                                                                     if likedItems.isEmpty {
                                                                         emptyState(icon: "heart", title: "nothing felt yet.", subtitle: "youll know it when you see it.")
                                                                     } else {
-                                                                        LazyVStack(spacing: 0) {
+                                                                        VStack(spacing: 0) {
                                                                             ForEach(likedItems) { item in
                                                                                 switch item {
                                                                                 case .post(let post):
-                                                                                    Button { openSavedPost(post) } label: {
-                                                                                        // H3 (deep audit): every post on the Liked tab IS liked, so seed
-                                                                                        // isAlreadyLiked=true — else the heart renders empty and a double-tap
-                                                                                        // silently unlikes it while drifting the count.
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyLiked: true, gifUrl: post.gifUrl, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptDate: post.promptDate)
-                                                                                    }
-                                                                                    .buttonStyle(.plain)
+                                                                                    // H3 (deep audit): every post on the Liked tab IS liked, so seed
+                                                                                    // isAlreadyLiked=true — else the heart renders empty and a double-tap
+                                                                                    // silently unlikes it while drifting the count. Build 121: no outer
+                                                                                    // Button — the row's own link + action bar, like the feed.
+                                                                                    FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: InteractionStateStore.shared.repostedPostIds.contains(post.originalPostId ?? post.id), isAlreadyLiked: true, isAlreadySaved: InteractionStateStore.shared.savedPostIds.contains(post.originalPostId ?? post.id), gifUrl: post.gifUrl, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptDate: post.promptDate)
                                                                                 case .reply(let liked):
                                                                                     Button { openLikedReply(liked) } label: {
                                                                                         ReplyEngagementRow(handle: liked.replyHandle, text: liked.replyText, time: liked.likedAt)
@@ -1386,17 +1391,14 @@ struct ProfileView: View {
                                                                     if items.isEmpty {
                                                                         emptyState(icon: "bookmark", title: "nothing saved.", subtitle: "some things are worth keeping.")
                                                                     } else {
-                                                                        LazyVStack(spacing: 0) {
+                                                                        VStack(spacing: 0) {
                                                                             ForEach(items) { item in
                                                                                 switch item {
                                                                                 case .post(let post):
-                                                                                    Button { openSavedPost(post) } label: {
-                                                                                        // H3 (deep audit): every post on the Saved tab IS saved, so seed
-                                                                                        // isAlreadySaved=true — else the bookmark renders empty and a
-                                                                                        // double-tap silently unsaves it.
-                                                                                        FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadySaved: true, gifUrl: post.gifUrl, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptDate: post.promptDate)
-                                                                                    }
-                                                                                    .buttonStyle(.plain)
+                                                                                    // H3 (deep audit): every post on the Saved tab IS saved, so seed
+                                                                                    // isAlreadySaved=true — else the bookmark renders empty and a
+                                                                                    // double-tap silently unsaves it. Build 121: no outer Button.
+                                                                                    FeedPostRow(handle: post.handle, text: post.text, tag: post.tag, likes: post.likes, reposts: post.reposts, replies: post.replies, time: post.time, postId: post.id, authorId: post.authorId, isAlreadyReposted: InteractionStateStore.shared.repostedPostIds.contains(post.originalPostId ?? post.id), isAlreadyLiked: InteractionStateStore.shared.likedPostIds.contains(post.originalPostId ?? post.id), isAlreadySaved: true, gifUrl: post.gifUrl, originalPostId: post.originalPostId, originalAuthorId: post.originalAuthorId, promptDate: post.promptDate)
                                                                                 case .reply(let saved):
                                                                                     Button { openSavedReply(saved) } label: {
                                                                                         ReplyEngagementRow(handle: saved.replyHandle, text: saved.replyText, time: saved.savedAt)
@@ -1415,7 +1417,7 @@ struct ProfileView: View {
                                                                     if myReplies.isEmpty {
                                                                         emptyState(icon: "arrowshape.turn.up.left", title: "no replies yet.", subtitle: "say something back to someone who needed it.")
                                                                     } else {
-                                                                        LazyVStack(spacing: 0) {
+                                                                        VStack(spacing: 0) {
                                                                             ForEach(myReplies) { reply in
                                                                                 replyRow(reply)
                                                                             }

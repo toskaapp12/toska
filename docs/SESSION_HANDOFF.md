@@ -272,8 +272,17 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   jumped to the top + prompt card clipped (the 119 pager centring) → **build 120** (own-row repost tap → notice;
   pager pages framed top-aligned from measured geometry; responses empty state with a write button; five starter
   prompt answers seeded on prod).
-  **Next:** owner device pass on 120 (notice on own repost tap, profile scroll + prompt card top, responses empty
-  state / answers) → go →
+  Owner pass on 120: everything ✓ except the profile list on their iPhone 15 Pro Max (stalls partway, last row under
+  the bar) and a similar feel on the feed → **build 121** (structural: no horizontal pager anywhere — profile is one
+  plain vertical ScrollView with a sticky tab selector, eager rows and no outer row Button so felt/save/repost work
+  there; feed and most felt keep their columns alive in a ZStack and switch in place with the hidden column
+  accessibility-hidden; `SwipePager` deleted). Diagnosis + plan: local `PROFILE_SCROLL_PLAN_2026-11-04.md`; depth
+  tests `test09_profileDepth` / `test10_feedDepth` / `test11_profilePinProbe` / `test12_hiddenColumnsAccessibility`
+  in `ListReviewTourTests`, artefacts in `~/toska-review-artifacts/2026-11-04-build121/`. Lessons: a LazyVStack with
+  one huge child jumps its offset; a PreferenceKey scroll-edge detector never fired here, a global-coordinate
+  GeometryReader + onChange did; XCUITest queries must stay to one `firstMatch`/`exists` per pass on big eager trees.
+  **Next:** owner device pass on 121 (profile scroll to the end + felt/save from profile rows, feed scroll, most felt,
+  VoiceOver on feed tabs / periods) → go →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

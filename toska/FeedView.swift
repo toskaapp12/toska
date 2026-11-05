@@ -57,6 +57,9 @@ struct FeedView: View {
     // first snapshot (cold-load) doesn't false-trigger the banner against
     // an empty initial state.
     @State private var newPostsBadgeCount = 0
+    // Build 121: feed columns created so far (for-you always; following on first
+    // visit) — both are kept alive in the ZStack so their scroll positions survive.
+    @State private var loadedFeedTabs: Set<Int> = [0]
     @ObservedObject private var policy = ClientPolicyManager.shared
     @State private var previousPostCount = -1
     // (owner 2026-11-02) reconnect handling: an in-place reconcile 3 s after connectivity returns;
@@ -342,8 +345,31 @@ struct FeedView: View {
                 .fill(LateNightTheme.divider)
                 .frame(height: 1)
 
-            SwipePager(selection: $vm.selectedTab, ids: [0, 1]) { tab in
-                FeedColumn(vm: vm, tab: tab, searchText: $searchText, searchFocused: $searchFocused)
+            // Build 121 (owner 2026-11-05): for-you / following are two kept-alive
+            // vertical columns in a ZStack, switched in place by the tabs — no
+            // horizontal pager. The SwipePager (horizontal ScrollView + LazyHStack
+            // + GeometryReader-measured page frames) nested each column's lazy
+            // tail inside a lazy pager; on the owner's iPhone 15 Pro Max both the
+            // profile and this feed stalled partway. Same keep-alive trick as
+            // MainTabView's root tabs: the hidden column keeps its scroll position,
+            // its load-more state and its refresh, and is invisible, untappable
+            // and hidden from VoiceOver. The following column is created on first
+            // visit and kept after that.
+            ZStack {
+                FeedColumn(vm: vm, tab: 0, searchText: $searchText, searchFocused: $searchFocused)
+                    .opacity(vm.selectedTab == 0 ? 1 : 0)
+                    .allowsHitTesting(vm.selectedTab == 0)
+                    .accessibilityHidden(vm.selectedTab != 0)
+                if loadedFeedTabs.contains(1) {
+                    FeedColumn(vm: vm, tab: 1, searchText: $searchText, searchFocused: $searchFocused)
+                        .opacity(vm.selectedTab == 1 ? 1 : 0)
+                        .allowsHitTesting(vm.selectedTab == 1)
+                        .accessibilityHidden(vm.selectedTab != 1)
+                }
+            }
+            .animation(.easeInOut(duration: 0.18), value: vm.selectedTab)
+            .onChange(of: vm.selectedTab, initial: true) { _, tab in
+                loadedFeedTabs.insert(tab)
             }
                                             }
                                             .background(LateNightTheme.feedBackground)

@@ -60,6 +60,10 @@ final class ListReviewTourTests: XCTestCase {
         forceTap(agree)
     }
     func signInIfNeeded(_ p: String) {
+        // A restored session whose account was deleted (previous seed cleaned up) lands on
+        // "setting up your account" — go back to login first.
+        let backToLogin = app.buttons["back to login"]
+        if backToLogin.waitForExistence(timeout: 4) { forceTap(backToLogin); sleep(2) }
         if waitFor(app.buttons["sign in"], 6) {
             snap("\(p)-00-splash")
             app.buttons["sign in"].tap()
@@ -258,4 +262,178 @@ final class ListReviewTourTests: XCTestCase {
         app.swipeDown(); sleep(3); snap("trend-04-after-pull")
     }
     func test04_night_rest() { launch(night: true); tour2("night") }
+    /// Feed scroll depth (build 121, owner 2026-11-04: "the feed also feels stuck"): flick / drag the for-you
+    /// feed and log the topmost visible row after every pass — a pass whose top row doesn't move is a stall.
+    /// Runs until "no more posts to show" is on screen or the pass budget is spent. Then the same on most felt.
+    func test10_feedDepth() {
+        launch(night: false); signInIfNeeded("fdepth")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        var log = ""
+        func topRow() -> String {
+            // firstMatch = topmost row in hierarchy order; one query per pass (enumerating every
+            // staticText on a 150-post feed took minutes per pass and timed the driver out).
+            let t = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "b121")).firstMatch
+            guard t.exists else { return "none" }
+            return String(t.label.prefix(12)).replacingOccurrences(of: "\n", with: " ") + "@y\(Int(t.frame.minY))"
+        }
+        func flush(_ phase: String) { let a = XCTAttachment(string: log); a.name = "fdepth-log-\(phase)"; a.lifetime = .keepAlways; add(a) }
+        func run(_ name: String, passes: Int, endLabel: String, move: () -> Void) {
+            var prev = topRow(); var stalls = 0; var ended = -1
+            log += "\(name) start: top=\(prev)\n"
+            for i in 1...passes {
+                move(); usleep(900_000)
+                let now = topRow()
+                let end = app.staticTexts[endLabel]
+                let endVisible = end.exists && end.frame.minY < app.frame.height - 60 && end.frame.minY > 0
+                if now == prev { stalls += 1; log += "\(name) \(i): STALL top=\(now)\n"; snap("fdepth-\(name)-stall-\(i)") }
+                else { log += "\(name) \(i): top=\(now)\n" }
+                if i % 8 == 0 { snap("fdepth-\(name)-\(i)") }
+                if endVisible { ended = i; snap("fdepth-\(name)-end-\(i)"); break }
+                prev = now
+            }
+            log += "\(name): ended=\(ended) stalls=\(stalls)\n"; flush(name)
+        }
+        // FEED — flicks, then slow drags, then diagonal drags (sideways drift like a thumb)
+        run("flick", passes: 30, endLabel: "no more posts to show") { self.app.swipeUp() }
+        tapBar(0.15); scrollToTop(14); sleep(1)
+        run("drag", passes: 30, endLabel: "no more posts to show") {
+            let s = self.app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            s.press(forDuration: 0.08, thenDragTo: s.withOffset(CGVector(dx: 8, dy: -520)))
+        }
+        tapBar(0.15); scrollToTop(14); sleep(1)
+        run("diag120", passes: 30, endLabel: "no more posts to show") {
+            let s = self.app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            s.press(forDuration: 0.08, thenDragTo: s.withOffset(CGVector(dx: -120, dy: -450)))
+        }
+        let followingVisible = app.staticTexts["follow someone to see their words here"]
+        log += "after diag: following empty-state on screen=\(followingVisible.exists && followingVisible.frame.minX >= 0 && followingVisible.frame.minX < app.frame.width - 10)\n"
+        snap("fdepth-feed-final")
+        // MOST FELT — flicks + diagonal on "today"
+        tapBar(0.30); sleep(3); snap("fdepth-top-start")
+        run("top-flick", passes: 12, endLabel: "—no-end—") { self.app.swipeUp() }
+        scrollToTop(8); sleep(1)
+        run("top-diag120", passes: 12, endLabel: "—no-end—") {
+            let s = self.app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            s.press(forDuration: 0.08, thenDragTo: s.withOffset(CGVector(dx: -120, dy: -450)))
+        }
+        snap("fdepth-top-final")
+        let a = XCTAttachment(string: log); a.name = "fdepth-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Build 121 safeguard (owner 2026-11-05): the kept-alive hidden column must be out of the accessibility
+    /// tree (accessibilityHidden), so VoiceOver / the accessibility inspector only see the visible column.
+    /// XCUITest reads the same accessibility tree, so hidden content must not resolve here at all.
+    func test12_hiddenColumnsAccessibility() {
+        launch(night: false); signInIfNeeded("a11y")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        let followingEmpty = app.staticTexts["follow someone to see their words here"]
+        let promptCard = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "what others said")).firstMatch
+        var log = ""
+        // FEED — for you visible: prompt card present, following's empty state absent
+        log += "for-you: promptCard=\(promptCard.exists) followingEmpty=\(followingEmpty.exists)\n"
+        XCTAssertFalse(followingEmpty.exists, "following column leaks into the tree while for-you is shown")
+        // switch to following (empty for this account) and back
+        XCTAssertTrue(tapIf(app.buttons["following"], 4)); sleep(2); snap("a11y-01-following")
+        log += "following: promptCard=\(promptCard.exists) followingEmpty=\(followingEmpty.exists)\n"
+        XCTAssertTrue(followingEmpty.waitForExistence(timeout: 4), "following empty state should be visible")
+        XCTAssertFalse(promptCard.exists, "for-you column (prompt card) leaks into the tree while following is shown")
+        XCTAssertTrue(tapIf(app.buttons["for you"], 4)); sleep(2); snap("a11y-02-for-you-again")
+        log += "for-you again: promptCard=\(promptCard.exists) followingEmpty=\(followingEmpty.exists)\n"
+        XCTAssertTrue(promptCard.waitForExistence(timeout: 4)); XCTAssertFalse(followingEmpty.exists)
+        // MOST FELT — visit all three periods; each column's empty state / list must only resolve while shown
+        tapBar(0.30); sleep(3)
+        let quiet = app.staticTexts["everyone is being quiet right now."]
+        func periodState(_ name: String) -> String {
+            let rows = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "0")).count // "01", "02"… rank labels
+            return "\(name): emptyStates=\(quiet.exists ? app.staticTexts.matching(NSPredicate(format: "label == %@", "everyone is being quiet right now.")).count : 0) rankLabels=\(rows)"
+        }
+        log += periodState("today") + "\n"
+        for p in ["this week", "all time", "today"] {
+            XCTAssertTrue(tapIf(app.buttons[p], 4)); sleep(3); snap("a11y-top-\(p.replacingOccurrences(of: " ", with: "-"))")
+            let st = periodState(p); log += st + "\n"
+            // Never more than ONE period's empty state in the tree, whichever periods are empty.
+            XCTAssertLessThanOrEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "everyone is being quiet right now.")).count, 1, "hidden most-felt column leaks into the tree on \(p)")
+        }
+        let a = XCTAttachment(string: log); a.name = "a11y-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Quick probe (build 121): does the profile's tab selector pin under the header after scrolling?
+    func test11_profilePinProbe() {
+        launch(night: false); signInIfNeeded("pin")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        tapBar(0.85); sleep(3); snap("pin-00-top")
+        app.swipeUp(); sleep(2); snap("pin-01-after-1-flick")
+        let sel = app.buttons["liked"]
+        var log = "after 1 flick: liked tab buttons=\(app.buttons.matching(identifier: "liked").count) exists=\(sel.exists) y=\(sel.exists ? Int(sel.frame.minY) : -1)\n"
+        app.swipeUp(); app.swipeUp(); sleep(2); snap("pin-02-after-3-flicks")
+        log += "after 3 flicks: liked tab buttons=\(app.buttons.matching(identifier: "liked").count) exists=\(sel.exists) y=\(sel.exists ? Int(sel.frame.minY) : -1)\n"
+        // Pinned selector sits just under the header (y ≈ 118 on a 15 Pro Max); unpinned it would be off screen.
+        XCTAssertTrue(sel.exists && sel.frame.minY > 0 && sel.frame.minY < 400, "tab selector not pinned after scrolling")
+        forceTap(sel); sleep(2); snap("pin-03-tapped-felt-while-pinned")
+        let a = XCTAttachment(string: log); a.name = "pin-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Profile scroll depth (build 121 diagnosis, 2026-11-04): with a 30-post account, count how many swipes
+    /// (fast flicks, then slow drags) it takes until the LAST post ("b121-LAST") is on screen and hittable.
+    /// A healthy list reaches it in ~6–8 flicks and never loses ground; the owner's phone needed many
+    /// up-and-down passes. Also records the list's reported frame after each pass.
+    func test09_profileDepth() {
+        launch(night: false); signInIfNeeded("depth")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        tapBar(0.85); sleep(3)
+        if notNowLate.waitForExistence(timeout: 2) { notNowLate.tap() }
+        let last = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "b121-LAST")).firstMatch
+        var log = ""
+        func status(_ tag: String) {
+            // Cheap: one query for the marker row (no hierarchy enumeration, no isHittable — with the
+            // build-121 eager list every row is in the tree and per-element round-trips took minutes).
+            let ex = last.exists
+            let fr = ex ? last.frame : .zero
+            // Topmost visible post number via firstMatch (hierarchy order == list order).
+            let first = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND label != %@", "b121 #", last.label)).firstMatch
+            let topLabel = first.exists ? String(first.label.prefix(9)) + "@y\(Int(first.frame.minY))" : "none"
+            log += "\(tag): first=\(topLabel) last exists=\(ex) frameY=\(Int(fr.minY)) maxY=\(Int(fr.maxY)) screenH=\(Int(app.frame.height))\n"
+        }
+        func flush(_ phase: String) { let a = XCTAttachment(string: log); a.name = "depth-log-\(phase)"; a.lifetime = .keepAlways; add(a) }
+        status("start")
+        var reachedFlick = -1
+        for i in 1...14 {
+            app.swipeUp(); usleep(900_000); status("flick \(i)")
+            if i == 4 || i == 8 || i == 12 { snap("depth-flick-\(i)") }
+            if reachedFlick < 0, last.exists, last.frame.maxY < app.frame.height - 100, last.frame.minY > 300 { reachedFlick = i; snap("depth-flick-reached-\(i)"); break }
+        }
+        log += "REACHED by flick after: \(reachedFlick)\n"
+        snap("depth-flick-end"); flush("flick")
+        scrollToTop(12); sleep(1); status("after scroll to top")
+        var reachedDrag = -1
+        for i in 1...24 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            start.press(forDuration: 0.08, thenDragTo: start.withOffset(CGVector(dx: 8, dy: -520)))
+            usleep(500_000); status("drag \(i)")
+            if i % 6 == 0 { snap("depth-drag-\(i)") }
+            if reachedDrag < 0, last.exists, last.frame.maxY < app.frame.height - 100, last.frame.minY > 300 { reachedDrag = i; snap("depth-drag-reached-\(i)"); break }
+        }
+        log += "REACHED by drag after: \(reachedDrag)\n"
+        snap("depth-drag-end"); flush("drag")
+        // Diagonal drags — a thumb drifts sideways; does the horizontal pager steal the gesture (page flips to
+        // "felt", or the vertical scroll is cancelled and the list stops short)?
+        for (dx, name) in [(90, "diag90"), (160, "diag160")] {
+            scrollToTop(12); sleep(1)
+            if tapIf(app.buttons["posts"], 2) { sleep(1) }
+            status("\(name) start")
+            var reached = -1
+            for i in 1...16 {
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+                start.press(forDuration: 0.08, thenDragTo: start.withOffset(CGVector(dx: -dx, dy: -450)))
+                usleep(500_000); status("\(name) \(i)")
+                // The felt page exists in the lazy pager as soon as it's a neighbour; only an ON-SCREEN frame means a flip.
+                let feltEmpty = app.staticTexts["nothing felt yet."]
+                if feltEmpty.exists, feltEmpty.frame.minX >= 0, feltEmpty.frame.minX < app.frame.width - 10 {
+                    log += "\(name) \(i): PAGE FLIPPED to felt (x=\(Int(feltEmpty.frame.minX)))\n"; snap("depth-\(name)-flipped-\(i)")
+                    if tapIf(app.buttons["posts"], 2) { sleep(1) }; continue
+                }
+                if i % 5 == 0 { snap("depth-\(name)-\(i)") }
+                if reached < 0, last.exists, last.frame.maxY < app.frame.height - 100 { reached = i; snap("depth-\(name)-reached-\(i)"); break }
+            }
+            log += "REACHED by \(name) after: \(reached)\n"; flush(name)
+        }
+        let a = XCTAttachment(string: log); a.name = "depth-log"; a.lifetime = .keepAlways; add(a)
+    }
 }

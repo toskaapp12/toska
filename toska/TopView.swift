@@ -47,6 +47,8 @@ struct TopView: View {
     // load" (with pull-to-retry) instead of a false "everyone's being quiet".
     @State private var loadFailedPeriods: Set<Period> = []
     @State private var period: Period = .today
+    // Periods whose column has been created (kept alive after the first visit).
+    @State private var visitedPeriods: Set<Period> = [.today]
 
     var body: some View {
         ZStack {
@@ -57,19 +59,30 @@ struct TopView: View {
                 periodSelector
                     .padding(.bottom, 4)
 
-                // Swipeable three-tab pager (today / this week / all time). The
-                // period selector above and this TabView both bind to `period`,
-                // so tapping a tab and swiping stay in sync — same pattern as the
-                // main feed's for-you/following pager.
-                SwipePager(selection: $period, ids: Period.allCases) { p in
-                    periodPage(p)
+                // Build 121 (owner 2026-11-05): the three periods are kept-alive
+                // vertical columns in a ZStack, switched in place by the selector —
+                // no horizontal pager (see FeedView for the reasoning). A period's
+                // column is created on first visit; the hidden ones are invisible,
+                // untappable and hidden from VoiceOver.
+                ZStack {
+                    ForEach(Period.allCases) { p in
+                        if visitedPeriods.contains(p) {
+                            periodPage(p)
+                                .opacity(period == p ? 1 : 0)
+                                .allowsHitTesting(period == p)
+                                .accessibilityHidden(period != p)
+                        }
+                    }
                 }
+                .animation(.easeInOut(duration: 0.18), value: period)
             }
         }
         .onAppear {
+            visitedPeriods.insert(.today)
             ensureFetched(.today)
         }
         .onChange(of: period) { _, newPeriod in
+            visitedPeriods.insert(newPeriod)
             ensureFetched(newPeriod)
         }
         // The per-period caches live all session (fetchedPeriods guards

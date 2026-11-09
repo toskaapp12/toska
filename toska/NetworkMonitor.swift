@@ -126,6 +126,27 @@ class RateLimiter {
     // self-heal: if a caller ever throws before reaching markLikeComplete, an
     // entry older than this safety window is treated as cleared rather than
     // locking that post's like for the rest of the session.
+    // Build 123 (owner 2026-11-05/09): a tap that lands while the same action is still
+    // in flight is QUEUED, never dropped — the old `guard !isXInFlight else { return }`
+    // swallowed the first undo tap on a real network (the repost pipeline is four
+    // round trips; on cellular that is 1–3 s). Polls every 100 ms up to `maxWait`,
+    // then runs anyway (the in-flight timeout below clears stale flags).
+    func whenClear(_ isBusy: @escaping () -> Bool, maxWait: TimeInterval = 8, then action: @escaping () -> Void) {
+        guard isBusy() else { action(); return }
+        #if DEBUG
+        // Test-only "before" switch: TOSKA_SIM_LEGACY_DROP=1 restores the pre-123 behaviour
+        // (a tap inside the in-flight window is dropped) so the UI tests can show before/after.
+        if ProcessInfo.processInfo.environment["TOSKA_SIM_LEGACY_DROP"] == "1" { return }
+        #endif
+        let deadline = Date().addingTimeInterval(maxWait)
+        Task { @MainActor in
+            while isBusy() && Date() < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            action()
+        }
+    }
+
     private var inFlightLikes: [String: Date] = [:]
     private static let inFlightTimeout: TimeInterval = 10
     func isLikeInFlight(_ postId: String) -> Bool {
@@ -137,7 +158,24 @@ class RateLimiter {
         return true
     }
     func markLikeInFlight(_ postId: String) { inFlightLikes[postId] = Date() }
-    func markLikeComplete(_ postId: String) { inFlightLikes[postId] = nil }
+    func markLikeComplete(_ postId: String) { Self.afterDebugLatency { self.inFlightLikes[postId] = nil } }
+
+    // DEBUG-only slow-network stand-in (build 123): TOSKA_SIM_LATENCY_MS in the launch
+    // environment keeps every in-flight flag set that much longer after the real write
+    // completes — the same window a 3G/Edge connection opens — so the UI tests can prove
+    // that a tap landing inside it is queued, not dropped. Compiled out of Release.
+    static func afterDebugLatency(_ clear: @escaping @MainActor () -> Void) {
+        #if DEBUG
+        if let ms = ProcessInfo.processInfo.environment["TOSKA_SIM_LATENCY_MS"].flatMap(Double.init), ms > 0 {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(ms * 1_000_000))
+                clear()
+            }
+            return
+        }
+        #endif
+        clear()
+    }
 
     // Same in-flight pattern for repost/unrepost, keyed by the post (or reply) id.
     // Because repost AND unrepost both check + mark this, they serialize against
@@ -151,7 +189,7 @@ class RateLimiter {
         return true
     }
     func markRepostInFlight(_ id: String) { inFlightReposts[id] = Date() }
-    func markRepostComplete(_ id: String) { inFlightReposts[id] = nil }
+    func markRepostComplete(_ id: String) { Self.afterDebugLatency { self.inFlightReposts[id] = nil } }
 
     // Same in-flight pattern for save/unsave, keyed by the post (or "reply_{id}")
     // id. The lastSaveTime rate window alone can't stop a save→unsave interleave
@@ -166,7 +204,7 @@ class RateLimiter {
         return true
     }
     func markSaveInFlight(_ id: String) { inFlightSaves[id] = Date() }
-    func markSaveComplete(_ id: String) { inFlightSaves[id] = nil }
+    func markSaveComplete(_ id: String) { Self.afterDebugLatency { self.inFlightSaves[id] = nil } }
 
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
     func recordSave(for postId: String) {

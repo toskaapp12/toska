@@ -18,6 +18,10 @@ final class ListReviewTourTests: XCTestCase {
         app = XCUIApplication()
         applyAppCheckDebugToken(app)
         if night { app.launchEnvironment["TOSKA_FORCE_NIGHT"] = "1" }
+        // Slow-network stand-in (build 123): TEST_RUNNER_TOSKA_SIM_LATENCY_MS=<ms> keeps every in-flight
+        // flag set that much longer after the write lands (RateLimiter.afterDebugLatency, DEBUG only).
+        if let ms = ProcessInfo.processInfo.environment["TOSKA_SIM_LATENCY_MS"] { app.launchEnvironment["TOSKA_SIM_LATENCY_MS"] = ms }
+        if let d = ProcessInfo.processInfo.environment["TOSKA_SIM_LEGACY_DROP"] { app.launchEnvironment["TOSKA_SIM_LEGACY_DROP"] = d }
         app.launch()
     }
     func snap(_ name: String) {
@@ -354,6 +358,126 @@ final class ListReviewTourTests: XCTestCase {
             XCTAssertLessThanOrEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "everyone is being quiet right now.")).count, 1, "hidden most-felt column leaks into the tree on \(p)")
         }
         let a = XCTAttachment(string: log); a.name = "a11y-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Build 123: every action with an in-flight guard, under the slow-network stand-in — felt, save (quick
+    /// toggle pairs must end where the LAST tap left them), follow→unfollow→follow on another profile, a
+    /// reply sent twice quickly (second shows the spacing notice, nothing silently dropped), and a post.
+    func test15_actionsUnderLatency() {
+        launch(night: false); signInIfNeeded("lat")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        var log = "latency=\(ProcessInfo.processInfo.environment["TOSKA_SIM_LATENCY_MS"] ?? "0") ms\n"
+        guard let row = findRow(containing: "b123 w", swipes: 10) else { XCTFail("no seeded w row in the feed"); return }
+        func tapC(_ e: XCUIElement) { e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        func rowButton(_ label: String) -> XCUIElement {
+            app.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex
+                .filter { $0.frame.minY > row.frame.minY && $0.frame.minY < row.frame.maxY + 80 }.first ?? app.buttons[label].firstMatch
+        }
+        // FELT: like, unlike, like — three quick single taps → ends liked
+        let like = rowButton("Like post"); XCTAssertTrue(like.waitForExistence(timeout: 4)); tapC(like); usleep(250_000)
+        let unlike = rowButton("Unlike post"); if unlike.waitForExistence(timeout: 2) { tapC(unlike) }; usleep(250_000)
+        let like2 = rowButton("Like post"); if like2.waitForExistence(timeout: 2) { tapC(like2) }
+        sleep(6); let endsLiked = rowButton("Unlike post").exists; log += "felt like→unlike→like ends liked: \(endsLiked)\n"
+        XCTAssertTrue(endsLiked, "quick like/unlike/like did not end liked")
+        // SAVE: save, unsave — ends unsaved
+        let save = rowButton("Save post"); XCTAssertTrue(save.waitForExistence(timeout: 4)); tapC(save); usleep(250_000)
+        let unsave = rowButton("Unsave post"); if unsave.waitForExistence(timeout: 2) { tapC(unsave) }
+        sleep(6); let endsUnsaved = rowButton("Save post").exists; log += "save→unsave ends unsaved: \(endsUnsaved)\n"
+        XCTAssertTrue(endsUnsaved, "quick save/unsave did not end unsaved")
+        snap("lat-01-feed-after-toggles")
+        // FOLLOW: open the post, tap the author's handle in the detail header (a Button) → other profile →
+        // follow, unfollow, follow with quick single taps → ends following
+        forceTap(row); sleep(3)
+        let handleBtn = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "_")).allElementsBoundByIndex
+            .filter { $0.frame.minY < 400 && !$0.label.contains(" ") && $0.label.count > 6 }.first
+        if let hb = handleBtn { tapC(hb); sleep(3) } else { log += "no handle button in detail header\n"; snap("lat-02-no-handle") }
+        let follow = app.buttons["follow"].firstMatch
+        if follow.waitForExistence(timeout: 5) {
+            tapC(follow); usleep(250_000)
+            let following = app.buttons["following"].firstMatch; if following.waitForExistence(timeout: 2) { tapC(following) }; usleep(250_000)
+            let follow2 = app.buttons["follow"].firstMatch; if follow2.waitForExistence(timeout: 2) { tapC(follow2) }
+            sleep(6); let endsFollowing = app.buttons["following"].firstMatch.exists; log += "follow→unfollow→follow ends following: \(endsFollowing)\n"; snap("lat-02-profile-follow")
+            XCTAssertTrue(endsFollowing, "quick follow/unfollow/follow did not end following")
+            if endsFollowing { tapC(app.buttons["following"].firstMatch); sleep(3) }   // leave unfollowed
+            back(); sleep(1)
+        } else { log += "follow button not found on other profile\n"; snap("lat-02-no-follow") }
+        if app.buttons["back"].exists { back(); sleep(1) }
+        // REPLY twice quickly: first sends, second shows the spacing notice (never silent)
+        tapBar(0.15); scrollToTop(6)
+        if let r2 = findRow(containing: "b123 w", swipes: 10) { forceTap(r2); sleep(3)
+            let field = app.textFields["replyField"].firstMatch.exists ? app.textFields["replyField"].firstMatch : app.textViews["replyField"].firstMatch
+            if field.waitForExistence(timeout: 4) {
+                let send = app.buttons["send"].firstMatch
+                field.tap(); field.typeText("lat reply one"); sleep(1); if send.exists { tapC(send) }; sleep(2)
+                snap("lat-03a-after-first-send")
+                let fieldAgain = app.textFields["replyField"].firstMatch.exists ? app.textFields["replyField"].firstMatch : app.textViews["replyField"].firstMatch
+                fieldAgain.tap(); fieldAgain.typeText("lat reply two"); sleep(1); if send.exists { tapC(send) }; usleep(900_000)
+                let notice = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "one reply at a time")).firstMatch.exists
+                let firstPosted = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "lat reply one")).firstMatch.exists
+                log += "first reply posted: \(firstPosted); second quick reply showed spacing notice: \(notice)\n"; snap("lat-03-reply-notice")
+                XCTAssertTrue(notice || !firstPosted, "second quick reply was dropped silently")
+            } else { log += "reply field not found\n" }
+            back(); sleep(1)
+        }
+        let a = XCTAttachment(string: log); a.name = "lat-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Build 123 repro + regression (owner 2026-11-05: "undoing a repost takes two taps"): repost a row by another
+    /// author with ONE tap, undo with ONE tap — once quickly (≈1 s after the repost) and once after the write has
+    /// settled (6 s) — logging the row's repost button label ("Repost" / "Undo repost") and the "you reposted" line.
+    func test14_repostUndoSingleTap() {
+        launch(night: false); signInIfNeeded("undo")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        var log = ""
+        func state(_ tag: String) -> String {
+            let undo = app.buttons["Undo repost"].firstMatch.exists, re = app.buttons["Repost"].firstMatch.exists
+            // The row is one accessibility element (NavigationLink label) — its label carries "you reposted".
+            let youReposted = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "you reposted")).firstMatch.exists
+            let s = "\(tag): undoButton=\(undo) repostButton=\(re) youReposted=\(youReposted)"; log += s + "\n"; return s
+        }
+        guard let row = findRow(containing: "b123 w0") else { XCTFail("no w0 row"); return }
+        // Button inside this row: first "Repost"/"Undo repost" below the row's text.
+        func rowButton(_ label: String) -> XCUIElement {
+            app.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex
+                .filter { $0.frame.minY > row.frame.minY && $0.frame.minY < row.frame.maxY + 80 }.first ?? app.buttons[label].firstMatch
+        }
+        _ = state("start")
+        // 0) repost, then undo IMMEDIATELY (≈0.2 s) — before the repost's dedup query / author read /
+        //    transaction can finish; PostInteractionManager.unrepost drops the tap while isRepostInFlight.
+        let rb0 = rowButton("Repost"); XCTAssertTrue(rb0.waitForExistence(timeout: 4)); rb0.tap(); usleep(200_000)
+        let ub0 = rowButton("Undo repost")
+        if ub0.exists { ub0.tap(); sleep(4); _ = state("after IMMEDIATE undo tap (+4 s)"); snap("undo-00-after-immediate-undo") } else { log += "no undo button 0.2 s after repost\n" }
+        let immediateWorked = !rowButton("Undo repost").exists
+        log += "IMMEDIATE undo worked with one tap: \(immediateWorked)\n"
+        if !immediateWorked { let u = rowButton("Undo repost"); if u.exists { u.tap(); sleep(4); _ = state("after SECOND undo tap") } }
+        sleep(2)
+        // 1) repost (single tap), undo QUICKLY (single tap)
+        let rb = rowButton("Repost"); XCTAssertTrue(rb.waitForExistence(timeout: 4)); rb.tap(); sleep(1); _ = state("after repost tap (+1 s)"); snap("undo-01-after-repost")
+        let ub = rowButton("Undo repost")
+        if ub.waitForExistence(timeout: 2) { ub.tap(); sleep(3); _ = state("after QUICK undo tap (+3 s)"); snap("undo-02-after-quick-undo") } else { log += "no undo button 1 s after repost\n" }
+        let quickWorked = !app.buttons["Undo repost"].firstMatch.exists
+        log += "QUICK undo worked with one tap: \(quickWorked)\n"
+        if !quickWorked { let ub2 = rowButton("Undo repost"); if ub2.exists { ub2.tap(); sleep(3); _ = state("after SECOND undo tap") } }
+        // 2) repost again, wait for the write to settle, undo (single tap)
+        sleep(3)
+        let rb2 = rowButton("Repost"); if rb2.waitForExistence(timeout: 4) { rb2.tap() }
+        sleep(6); _ = state("after repost tap (+6 s)")
+        let ub3 = rowButton("Undo repost")
+        if ub3.waitForExistence(timeout: 2) { ub3.tap(); sleep(3); _ = state("after SETTLED undo tap (+3 s)"); snap("undo-03-after-settled-undo") }
+        let settledWorked = !app.buttons["Undo repost"].firstMatch.exists
+        log += "SETTLED undo worked with one tap: \(settledWorked)\n"
+        // 3) repost → undo → repost, all single taps, no waiting between them
+        let rb3 = rowButton("Repost"); if rb3.waitForExistence(timeout: 4) { rb3.tap() }; usleep(300_000)
+        let ub4 = rowButton("Undo repost"); if ub4.waitForExistence(timeout: 2) { ub4.tap() }; usleep(300_000)
+        let rb4 = rowButton("Repost"); if rb4.waitForExistence(timeout: 2) { rb4.tap() }
+        sleep(6); _ = state("after repost→undo→repost chain (+6 s)"); snap("undo-04-after-chain")
+        let chainEndsReposted = rowButton("Undo repost").exists
+        log += "CHAIN repost→undo→repost ends reposted: \(chainEndsReposted)\n"
+        // leave it un-reposted for the next run
+        let ub5 = rowButton("Undo repost"); if ub5.exists { ub5.tap(); sleep(3) }
+        XCTAssertTrue(chainEndsReposted, "repost → undo → repost with single taps did not end reposted")
+        let a = XCTAttachment(string: log); a.name = "undo-log"; a.lifetime = .keepAlways; add(a)
+        XCTAssertTrue(settledWorked, "undo after a settled repost needed more than one tap")
+        XCTAssertTrue(quickWorked, "undo right after a repost needed more than one tap")
+        XCTAssertTrue(immediateWorked, "undo immediately after a repost was dropped (in-flight guard)")
     }
     /// Build 122: share / report / block / context menu still work from rows after the per-row covers and
     /// dialogs moved to the single app-level RowPresenter — feed, search, profile, most felt → detail, detail.

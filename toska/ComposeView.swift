@@ -1678,28 +1678,59 @@ struct StableGifPreview: View {
                 image = cached
                 return
             }
+            // Build 123 (owner): never blank. A cached FIRST FRAME shows at once while
+            // the full animation decodes; otherwise the soft placeholder stays up.
+            if let still = GifLoadGuard.firstFrameCache.object(forKey: urlString as NSString) {
+                image = still
+            }
             guard URL(string: urlString) != nil else { failed = true; return }
             failed = false
             do {
                 // Prefer the WebP variant (smaller/faster to decode); fall back to
                 // the stored .gif if WebP isn't available (404 → nil decode).
                 let webpStr = GifLoadGuard.webpVariant(urlString)
-                var decoded = try await Self.fetchAndDecode(webpStr)
-                if decoded == nil, webpStr != urlString {
-                    decoded = try await Self.fetchAndDecode(urlString)
+                var data = try await Self.fetchData(webpStr)
+                if data == nil, webpStr != urlString { data = try await Self.fetchData(urlString) }
+                guard let data else { if image == nil { failed = true }; return }
+                // 1) first frame (480 px thumbnail) — ~10 ms off-main — shown immediately.
+                if image == nil, let still = await Self.decodeFirstFrame(data) {
+                    GifLoadGuard.firstFrameCache.setObject(still, forKey: urlString as NSString)
+                    try Task.checkCancellation()
+                    withAnimation(.easeIn(duration: 0.15)) { image = still }
                 }
-                if let decoded {
+                // 2) every frame, then swap the still for the animation.
+                if let decoded = await Self.decodeAll(data) {
                     GifLoadGuard.decodedCache.setObject(decoded, forKey: urlString as NSString)
-                    withAnimation(.easeIn(duration: 0.2)) { image = decoded }
-                } else {
+                    try Task.checkCancellation()
+                    if decoded.images != nil || image == nil { image = decoded }
+                } else if image == nil {
                     failed = true
                 }
             } catch is CancellationError {
                 // URL changed or view torn down — don't flip to failed.
             } catch {
-                failed = true
+                if image == nil { failed = true }
             }
         }
+    }
+
+    /// Download only (host-allowlisted, byte-capped). nil on a disallowed host / oversize / non-2xx.
+    static func fetchData(_ s: String) async throws -> Data? {
+        guard let url = URL(string: s), GifLoadGuard.isAllowedHost(url) else { return nil }
+        let (downloaded, response) = try await URLSession.shared.data(from: url)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) { return nil }
+        guard downloaded.count <= GifLoadGuard.maxBytes else { return nil }
+        return downloaded
+    }
+    /// First frame as a fully-decoded 480 px still — off the main actor.
+    static func decodeFirstFrame(_ data: Data) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) { AnimatedGifImageView.firstFrame(from: data) }.value
+    }
+    /// All frames (animated) or a decoded still — off the main actor.
+    static func decodeAll(_ data: Data) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) {
+            AnimatedGifImageView.animatedImage(from: data) ?? UIImage(data: data)?.preparingForDisplay()
+        }.value
     }
 
     // Download + decode OFF the main thread. The per-frame ImageIO decode used to
@@ -1707,14 +1738,9 @@ struct StableGifPreview: View {
     // placeholder" jank); now it happens once on a background task and the result
     // is cached by URL. Host-allowlisted; byte-capped before decoding.
     static func fetchAndDecode(_ s: String) async throws -> UIImage? {
-        guard let url = URL(string: s), GifLoadGuard.isAllowedHost(url) else { return nil }
-        let (downloaded, _) = try await URLSession.shared.data(from: url)
-        guard downloaded.count <= GifLoadGuard.maxBytes else { return nil }
-        return await Task.detached(priority: .userInitiated) {
-            // Stills (1-frame GIF/PNG/JPG) are lazy too — force the bitmap decode here.
-            // Both callees are nonisolated, so this closure stays off the main actor.
-            AnimatedGifImageView.animatedImage(from: downloaded) ?? UIImage(data: downloaded)?.preparingForDisplay()
-        }.value
+        guard let data = try await fetchData(s) else { return nil }
+        if let still = await decodeFirstFrame(data) { GifLoadGuard.firstFrameCache.setObject(still, forKey: s as NSString) }
+        return await decodeAll(data)
     }
 
     // Warm an upcoming GIF into the decoded cache (download + decode off the main
@@ -1751,6 +1777,13 @@ enum GifLoadGuard {
     static let decodedCache: NSCache<NSString, UIImage> = {
         let c = NSCache<NSString, UIImage>()
         c.countLimit = 60
+        return c
+    }()
+    // First frames (build 123): tiny, so a longer memory life — revisiting a GIF row
+    // shows its still instantly even after the animation was evicted.
+    static let firstFrameCache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 200
         return c
     }()
 
@@ -1840,6 +1873,19 @@ private struct AnimatedGifImageView: UIViewRepresentable {
         // UIImageView automatically animates an animatedImage with the given
         // duration once startAnimating() is called.
         return UIImage.animatedImage(with: frames, duration: totalDuration)
+    }
+
+    /// Frame 0 only, decoded + downsampled (480 px) — the "show something now" path (build 123).
+    nonisolated static func firstFrame(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0 else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 480,
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, opts as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     nonisolated static func frameDelay(at index: Int, source: CGImageSource) -> Double {

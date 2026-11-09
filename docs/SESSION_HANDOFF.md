@@ -288,9 +288,13 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   publish storms; launch = paper grain on main + keyboard prewarm. → **build 122** (thumbnail-API decode off-main;
   one app-level RowPresenter; interaction sets only in InteractionStateStore; ReconnectReconcile observes two
   publishers; grain off-main; prewarm after first feed paint). BUGS.md PERF-2026-11-05.
-  **Next:** install 122 on the owner's phone (`xcrun devicectl device install app … dd-device/…/toska.app`, phone on
-  USB), re-run `record.sh` sessions A/B/C, before/after numbers (no hang > 250 ms, hitch drop) → TestFlight 122 →
-  owner pass → go →
+  122 measured on the phone: 0 hangs ≥ 250 ms (was 3.27 s), scrolling busy 17.7 → 11.8 %, hitches 22 → 14/min;
+  TestFlight 122 shipped. **Prod web + validatePost deployed and commits pushed (owner go, 2026-11-05).**
+  Owner on 122: GIFs blank ~1 s, profile blank on open, repost undo needs two taps → **build 123** (first-frame GIF
+  path + first-frame cache + prefetch-ahead; ProfileSnapshotCache + skeleton; queue-instead-of-drop for every
+  in-flight guard incl. follow, reply spacing notice, pending-write listener merge; DEBUG slow-network stand-in
+  `TOSKA_SIM_LATENCY_MS` / `TOSKA_SIM_LEGACY_DROP` for the UI tests). BUGS.md B122-PASS-2026-11-05.
+  **Next:** 123 Session A on the owner's phone (no new hangs) → TestFlight 123 → owner pass →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

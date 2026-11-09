@@ -35,6 +35,7 @@ struct OtherProfileView: View {
     @State private var showReportOfflineAlert = false
     @State private var showBlockFailedAlert = false
     @State private var lastFollowTime: Date? = nil
+    @State private var followInFlight = false
     @State private var hasFetchedInitial = false
     @State private var showFollowerCount = false
     // H2: surface a profile-load failure instead of showing a blank/default
@@ -417,7 +418,14 @@ struct OtherProfileView: View {
     func toggleFollow() {
             guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
             guard NetworkMonitor.shared.isConnected else { return }
-            if let last = lastFollowTime, Date().timeIntervalSince(last) < 1 { return }
+            // Build 123: a follow/unfollow tap that lands while the previous write is still
+            // in flight is queued (re-invoked when it clears), never dropped — the old 1 s
+            // rule swallowed "follow, then unfollow right away" on a slow network.
+            if followInFlight {
+                RateLimiter.shared.whenClear({ self.followInFlight }) { self.toggleFollow() }
+                return
+            }
+            followInFlight = true
             lastFollowTime = Date()
         HapticManager.play(.feltThis)
 
@@ -439,6 +447,7 @@ struct OtherProfileView: View {
                 batch.deleteDocument(followingRef)
                 batch.deleteDocument(followerRef)
                 batch.commit { error in
+                    Task { @MainActor in self.followInFlight = false }
                     if error != nil {
                         // Roll back optimistic update — but only if the active
                         // user is still the one who issued this action. Without
@@ -493,6 +502,7 @@ struct OtherProfileView: View {
                     batch.setData(["handle": theirHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followingRef)
                     batch.setData(["handle": myHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followerRef)
                     batch.commit { error in
+                    Task { @MainActor in self.followInFlight = false }
                     if error != nil {
                         // Roll back optimistic update — same uid recheck as
                         // the unfollow path above.

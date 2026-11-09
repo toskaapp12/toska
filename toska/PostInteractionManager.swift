@@ -46,7 +46,13 @@ class PostInteractionManager {
                // existing-like-doc check), but the user sees the heart
                // toggle twice. Marking in-flight here and clearing in the
                // completion handler closes the window cleanly.
-               guard !RateLimiter.shared.isLikeInFlight(postId) else { return }
+               if RateLimiter.shared.isLikeInFlight(postId) {
+                   // Build 123: queue the tap behind the in-flight write instead of dropping it.
+                   RateLimiter.shared.whenClear({ RateLimiter.shared.isLikeInFlight(postId) }) {
+                       toggleLike(postId: postId, authorId: authorId, currentlyLiked: currentlyLiked, currentCount: currentCount, onUpdate: onUpdate)
+                   }
+                   return
+               }
                guard NetworkMonitor.shared.isConnected else {
                    // Offline: queue the desired end-state (coalesced) and
                    // reflect it optimistically — it syncs on reconnect.
@@ -180,7 +186,13 @@ class PostInteractionManager {
                 // can't stop a save→unsave interleave slower than the window —
                 // the second toggle reads the not-yet-committed doc and no-ops,
                 // leaving server and UI disagreeing. Serialize on the post id.
-                guard !RateLimiter.shared.isSaveInFlight(postId) else { return }
+                if RateLimiter.shared.isSaveInFlight(postId) {
+                    // Build 123: queue the tap behind the in-flight write instead of dropping it.
+                    RateLimiter.shared.whenClear({ RateLimiter.shared.isSaveInFlight(postId) }) {
+                        toggleSave(postId: postId, authorId: authorId, currentlySaved: currentlySaved, onUpdate: onUpdate)
+                    }
+                    return
+                }
                 // Record on attempt, not success — same rationale as
                 // toggleLike. With a 1-second gate, this also serializes
                 // the save↔unsave order: a rapid save→unsave→save sequence
@@ -303,7 +315,13 @@ class PostInteractionManager {
                // slower than the 2s rate window would otherwise re-enter and stack
                // a second +1. Serialize on the shared repost key (same one unrepost
                // uses) and clear it on EVERY exit below.
-               guard !RateLimiter.shared.isRepostInFlight(postId) else { return }
+               if RateLimiter.shared.isRepostInFlight(postId) {
+                   // Build 123: queue the tap behind the in-flight write instead of dropping it.
+                   RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(postId) }) {
+                       repost(postId: postId, postText: postText, postTag: postTag, authorId: authorId, originalHandle: originalHandle, currentCount: currentCount, onUpdate: onUpdate)
+                   }
+                   return
+               }
                RateLimiter.shared.markRepostInFlight(postId)
 
                // Owner report (2026-09-22): the flip used to wait for two
@@ -614,7 +632,13 @@ class PostInteractionManager {
         }
         // Serialize against a concurrent repost/unrepost on the same post so a
         // double-tap can't fire two optimistic decrements (count drift).
-        guard !RateLimiter.shared.isRepostInFlight(postId) else { return }
+        if RateLimiter.shared.isRepostInFlight(postId) {
+            // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(postId) }) {
+                unrepost(postId: postId, currentCount: currentCount, onUpdate: onUpdate)
+            }
+            return
+        }
         RateLimiter.shared.markRepostInFlight(postId)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
@@ -815,7 +839,13 @@ class PostInteractionManager {
         // it can't collide with the post-like keyspace.
         let rlKey = "reply_\(replyId)"
         // No time gate — see toggleLike (quick toggle-back is legitimate).
-        guard !RateLimiter.shared.isLikeInFlight(rlKey) else { return }
+        if RateLimiter.shared.isLikeInFlight(rlKey) {
+            // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            RateLimiter.shared.whenClear({ RateLimiter.shared.isLikeInFlight(rlKey) }) {
+                toggleReplyLike(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlyLiked: currentlyLiked, currentCount: currentCount, onUpdate: onUpdate)
+            }
+            return
+        }
         RateLimiter.shared.recordLike(for: rlKey)
         RateLimiter.shared.markLikeInFlight(rlKey)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -914,8 +944,13 @@ class PostInteractionManager {
         // interleave could leave the bookmark opposite the server). Keyed
         // "reply_{id}" so it never collides with post-save state.
         let rlKey = "reply_\(replyId)"
-        if let last = RateLimiter.shared.lastSaveTime(for: rlKey), Date().timeIntervalSince(last) < 1 { return }
-        guard !RateLimiter.shared.isSaveInFlight(rlKey) else { return }
+        if RateLimiter.shared.isSaveInFlight(rlKey) {
+            // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            RateLimiter.shared.whenClear({ RateLimiter.shared.isSaveInFlight(rlKey) }) {
+                toggleReplySave(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlySaved: currentlySaved, onUpdate: onUpdate)
+            }
+            return
+        }
         RateLimiter.shared.recordSave(for: rlKey)
         RateLimiter.shared.markSaveInFlight(rlKey)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1002,12 +1037,17 @@ class PostInteractionManager {
         // repostReply fired an optimistic +1 on every tap, so a rapid double-tap
         // stacked two increments while the server wrote once — inflating the
         // reply's repost count by one until refresh.
-        if let last = RateLimiter.shared.lastRepostTime(for: replyId), Date().timeIntervalSince(last) < 2 { return }
         // In-flight guard (shared key with unrepostReply) so a write slower than
         // the 2s rate window can't let a second optimistic +1 land while the first
         // transaction is still open.
         let flightKey = "reply_\(replyId)"
-        guard !RateLimiter.shared.isRepostInFlight(flightKey) else { return }
+        if RateLimiter.shared.isRepostInFlight(flightKey) {
+            // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(flightKey) }) {
+                repostReply(postId: postId, replyId: replyId, replyText: replyText, replyAuthorId: replyAuthorId, replyAuthorHandle: replyAuthorHandle, currentCount: currentCount, onUpdate: onUpdate)
+            }
+            return
+        }
         RateLimiter.shared.markRepostInFlight(flightKey)
         RateLimiter.shared.recordRepost(for: replyId)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -1166,7 +1206,13 @@ class PostInteractionManager {
         // "reply_<id>" so it shares the guard with repostReply below and can't
         // collide with the post-repost keyspace.
         let flightKey = "reply_\(replyId)"
-        guard !RateLimiter.shared.isRepostInFlight(flightKey) else { return }
+        if RateLimiter.shared.isRepostInFlight(flightKey) {
+            // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(flightKey) }) {
+                unrepostReply(replyId: replyId, currentCount: currentCount, onUpdate: onUpdate)
+            }
+            return
+        }
         RateLimiter.shared.markRepostInFlight(flightKey)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))

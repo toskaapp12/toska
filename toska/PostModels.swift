@@ -83,7 +83,7 @@ struct SavedPost: Identifiable, Equatable {
 }
 
 /// Used in ProfileView for myPosts (has handle in last position)
-struct MyPost: Identifiable {
+struct MyPost: Identifiable, Codable {  // Codable (build 123): cached on device for an instant profile open
     let id: String          // doc ID
     let text: String
     let tag: String?

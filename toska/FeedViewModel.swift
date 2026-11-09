@@ -1207,8 +1207,16 @@ class FeedViewModel: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self,
                           Auth.auth().currentUser?.uid == capturedUid else { return }
-                    let ids = snapshot?.documents.compactMap { $0.data()["originalPostId"] as? String } ?? []
-                    self.repostedPostIds = Set(ids)
+                    let ids = Set(snapshot?.documents.compactMap { $0.data()["originalPostId"] as? String } ?? [])
+                    // Build 123: a snapshot with pending writes can be missing the repost that was
+                    // just written (its serverTimestamp isn't set yet, and the query orders by it),
+                    // which flipped the fresh in-place repost row back to "not reposted" until the
+                    // server acked. Merge while pending; replace only on a server-confirmed snapshot.
+                    if snapshot?.metadata.hasPendingWrites == true {
+                        self.repostedPostIds.formUnion(ids)
+                    } else {
+                        self.repostedPostIds = ids
+                    }
                 }
             }
     }

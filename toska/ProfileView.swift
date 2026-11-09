@@ -46,6 +46,9 @@ struct ProfileView: View {
     @State private var profileLoadFailed = false
     @State private var hasLoadedProfileOnce = false
     @State private var hasFetchedInitial = false
+    // Build 123: false until the posts list has been painted from cache or network —
+    // the posts tab shows a skeleton (not an empty state) before that.
+    @State private var postsLoadedOnce = false
     @State private var presenceStreak = 0
     @State private var totalNights = 0
     // Gates the streak-share button while ImageRenderer rasterizes. Mirrors
@@ -251,6 +254,15 @@ struct ProfileView: View {
         .onAppear {
                     if !hasFetchedInitial {
                         hasFetchedInitial = true
+                        // Build 123 (owner: "profile shows blank for a second"): paint the last
+                        // snapshot from the on-device cache immediately, then refresh below.
+                        if myPosts.isEmpty, let cached = ProfileSnapshotCache.load() {
+                            userHandle = cached.handle; followerCount = cached.followerCount
+                            followingCount = cached.followingCount; totalLikes = cached.totalLikes
+                            postCount = cached.postCount; joinedDate = cached.joinedDate
+                            myPosts = cached.posts
+                            postsLoadedOnce = true
+                        }
                         // IMPROVE (2026-06-11): lazy-load tabs. Previously all six
                         // datasets (posts + liked posts/replies + saved posts/replies
                         // + my replies) were fetched on every profile open — most
@@ -295,6 +307,8 @@ struct ProfileView: View {
         // the previous account's posts before the fresh fetches land.
         .onReceive(NotificationCenter.default.publisher(for: .userDidSignOut)) { _ in
             hasFetchedInitial = false
+            postsLoadedOnce = false
+            ProfileSnapshotCache.clear()
             loadedTabs = []
             myPosts = []
             likedPosts = []
@@ -698,6 +712,7 @@ struct ProfileView: View {
                    let (allCount, repostCount) = await (allSnap, repostSnap)
                    guard Auth.auth().currentUser?.uid == uid else { return }
                    postCount = max(0, Int(truncating: allCount?.count ?? 0) - Int(truncating: repostCount?.count ?? 0))
+                   saveProfileSnapshot()
                } catch {
                    debugLog("⚠️ loadProfile failed: \(error)")
                    // H2: only surface the banner if we still have nothing to
@@ -809,6 +824,7 @@ struct ProfileView: View {
                         return
                     }
                     guard let documents = snapshot?.documents else { return }
+                    defer { postsLoadedOnce = true; saveProfileSnapshot() }
                     myPosts = documents.compactMap { doc in
                         let data = doc.data()
                         if let expiresAt = data["expiresAt"] as? Timestamp, expiresAt.dateValue() < Date() { return nil }
@@ -1315,7 +1331,10 @@ struct ProfileView: View {
                                         switch index {
                                                                 case 0:
                                                                     let authoredPosts = myPosts.filter { !$0.isRepost }
-                                                                    if authoredPosts.isEmpty {
+                                                                    if authoredPosts.isEmpty && !postsLoadedOnce {
+                                                                        // Build 123: loading, nothing cached yet → skeleton, never empty space.
+                                                                        SkeletonFeed(kind: .post, count: 3)
+                                                                    } else if authoredPosts.isEmpty {
                                                                         emptyState(icon: "square.and.pencil", title: "nothing here yet.", subtitle: "say the thing you cant say anywhere else.")
                                                                     } else {
                                                                         // Build 121: no outer Button around the row. FeedPostRow's own
@@ -2110,5 +2129,51 @@ func pendingReasonLabelFor(_ reason: String?) -> String? {
     case "rate_limit":       return "posting too fast — held for review"
     case nil:                return nil
     default:                 return "held for review"
+    }
+}
+
+// MARK: - Profile snapshot cache (build 123)
+//
+// The last-loaded header + posts, as JSON in Caches/, keyed by uid. Read once
+// on the first appear so a cold launch paints the profile at once; refreshed
+// after every successful header/posts fetch. Small (≤ 50 posts of text).
+struct ProfileSnapshot: Codable {
+    var handle: String
+    var followerCount: Int
+    var followingCount: Int
+    var totalLikes: Int
+    var postCount: Int
+    var joinedDate: String
+    var posts: [MyPost]
+    var savedAt: Date
+}
+
+enum ProfileSnapshotCache {
+    private static func url() -> URL? {
+        guard let uid = Auth.auth().currentUser?.uid,
+              let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        return dir.appendingPathComponent("profile-snapshot-\(uid).json")
+    }
+    static func load() -> ProfileSnapshot? {
+        guard let u = url(), let data = try? Data(contentsOf: u) else { return nil }
+        return try? JSONDecoder().decode(ProfileSnapshot.self, from: data)
+    }
+    static func save(_ snap: ProfileSnapshot) {
+        guard let u = url(), let data = try? JSONEncoder().encode(snap) else { return }
+        Task.detached(priority: .utility) { try? data.write(to: u, options: .atomic) }
+    }
+    static func clear() {
+        guard let u = url() else { return }
+        try? FileManager.default.removeItem(at: u)
+    }
+}
+
+extension ProfileView {
+    func saveProfileSnapshot() {
+        guard userHandle != "anonymous" || !myPosts.isEmpty else { return }
+        ProfileSnapshotCache.save(ProfileSnapshot(handle: userHandle, followerCount: followerCount,
+                                                  followingCount: followingCount, totalLikes: totalLikes,
+                                                  postCount: postCount, joinedDate: joinedDate,
+                                                  posts: Array(myPosts.prefix(50)), savedAt: Date()))
     }
 }

@@ -2081,7 +2081,13 @@ struct PostDetailView: View {
         guard Auth.auth().currentUser?.uid != nil, !postId.isEmpty else { return }
         if UserHandleCache.shared.isRestricted { return }
         if BlockedUsersCache.shared.isHiddenAuthor(authorUserId) { return }
-        if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 { return }
+        // Build 123: the 5 s reply spacing stays (anti-spam) but is never a silent drop.
+        if let last = RateLimiter.shared.lastReplyTime, Date().timeIntervalSince(last) < 5 {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                            userInfo: ["text": "one reply at a time — give it a few seconds."])
+            return
+        }
         if let violation = contentViolation(in: trimmed) {
             replyContentWarningMessage = contentViolationMessage(for: violation)
             showReplyContentWarning = true

@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in build 118; staging web verified headless; prod web deploy + push HELD for the owner's go after the 118 device pass; prod is on the 117 web + validatePost)._
+_Last updated: 2026-11-10 (full simulator audit → BUGS.md AUDIT-SIM-2026-11-10; builds 121–125 in TestFlight; earlier: list-integrity review → repost dedupe + 11 fixes in build 118; staging web verified headless; prod web deploy + push HELD for the owner's go after the 118 device pass; prod is on the 117 web + validatePost)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -308,7 +308,16 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   InteractionStateStore (no per-row copy), identity back to post.id. BUGS.md B123-PASS-2026-11-09 items 4–7.
   Owner wants X behaviour (row stays put): 125 drops the in-place swap entirely — store-driven "you reposted" on the
   original row; collapse keeps the original when your own repost is in the batch (iOS + web parity, 12 cases).
-  **Web (collapse rule) not yet deployed — staging first, prod on go.**
+  **Web (collapse rule) not yet deployed — staging first, prod on go.** 125 is in TestFlight (internal group);
+  the X-like build is also installed dev-signed on the owner's phone. Commits 2985bfa/3069d04/98c4882/0baa3bf are
+  local only (push on go).
+  **Full simulator audit (2026-11-10, owner: "test everything like a human would"):** every XCUITest suite on the
+  iOS 26 simulator against staging (BUGS.md AUDIT-SIM-2026-11-10; local `AUDIT_2026-11-10.md`). Every screen is
+  sound; the one real class of bug is rapid repeated taps on the same control ending in the wrong state (measured:
+  like→unlike→like ends unliked 3/3; backend write order shows the older queued intent landing last) — same queue
+  shape for save/repost/follow. Proposed 126: per-post "desired end state" coalescing (latest tap wins, one
+  follow-up write, reconcile from server) + never-silent repost offline guard + pin the author's fresh post.
+  Staging-only infra fix applied: `reconcilemycounts` invoker binding (prod already had it).
   **Next:** owner pass on 125 → push → deploy web collapse change (staging → prod) →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch

@@ -420,6 +420,104 @@ final class ListReviewTourTests: XCTestCase {
         }
         let a = XCTAttachment(string: log); a.name = "lat-log"; a.lifetime = .keepAlways; add(a)
     }
+    /// Audit 2026-11-10 repro: the walkthrough's repost test tapped "1 repost" on a row that is SOMEONE ELSE'S
+    /// repost (header "<handle> reposted") and nothing changed for 6 s. Tap the same control on a repost row and
+    /// on a plain row, sampling the button's value every 100 ms, so the log shows whether the optimistic flip ever
+    /// happened and whether anything rolled it back. Leaves both posts un-reposted.
+    func test16_repostOnRepostRow() {
+        launch(night: false); signInIfNeeded("rr")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        var log = ""
+        func tapC(_ e: XCUIElement) { e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        func stat(in row: XCUIElement) -> XCUIElement? {
+            app.buttons.matching(NSPredicate(format: "label IN %@", ["Repost", "Undo repost"])).allElementsBoundByIndex
+                .first { $0.frame.minY > row.frame.minY && $0.frame.minY < row.frame.maxY + 80 }
+        }
+        func notices() -> String {
+            let p = NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@", "offline", "can't be reposted", "reposted")
+            return app.staticTexts.matching(p).allElementsBoundByIndex.prefix(4).map { $0.label }.joined(separator: " | ")
+        }
+        func drive(_ name: String, rowText: String) {
+            scrollToTop(6)
+            guard let row = findRow(containing: rowText, swipes: 8) else { log += "\(name): row '\(rowText)' not found\n"; return }
+            nudge(row)
+            guard let s = stat(in: row) else { log += "\(name): no repost stat in row\n"; return }
+            log += "\(name): before label=\(s.label) value=\(s.value ?? "-") hittable=\(s.isHittable) frame=\(s.frame)\n"
+            snap("rr-\(name)-before")
+            tapC(s)
+            var samples: [String] = []
+            for _ in 0..<30 { usleep(100_000); let cur = stat(in: row); samples.append("\(cur?.label ?? "?")/\(cur?.value ?? "-")") }
+            log += "\(name): 3 s of samples after tap: \(samples.joined(separator: ","))\n"
+            log += "\(name): notices: \(notices())\n"
+            sleep(4)
+            let fin = stat(in: row)
+            log += "\(name): after 7 s label=\(fin?.label ?? "?") value=\(fin?.value ?? "-")\n"
+            snap("rr-\(name)-after")
+            if fin?.label == "Undo repost" { tapC(fin!); sleep(4); log += "\(name): undone → \(stat(in: row)?.label ?? "?")\n" }
+        }
+        func nudge(_ row: XCUIElement) {
+            for _ in 0..<3 {
+                let f = row.frame; let maxY = app.frame.maxY - 200; let minY: CGFloat = 160
+                let delta: CGFloat = f.maxY > maxY ? -min(f.maxY - maxY + 40, 400) : (f.minY < minY ? min(minY - f.minY + 40, 400) : 0)
+                if delta == 0 { return }
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+                start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta))); usleep(700_000)
+            }
+        }
+        drive("repostrow", rowText: "reposted")
+        drive("plainrow", rowText: "b126 w")
+        let a = XCTAttachment(string: log); a.name = "rr-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Audit 2026-11-10 repro: the walkthrough tapped repost within seconds of a cold launch and nothing happened;
+    /// the same tap 30 s later worked. Three cold launches, tapping the first visible repost stat as soon as the
+    /// feed is up, sampling 100 ms for 3 s; undoes whatever stuck.
+    func test18_repostRightAfterLaunch() {
+        launch(night: false); signInIfNeeded("rl")
+        var log = ""
+        func tapC(_ e: XCUIElement) { e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        for i in 1...3 {
+            app.terminate(); usleep(800_000)
+            let t0 = Date(); app.launch()
+            let feedUp = app.buttons["for you"].waitForExistence(timeout: 60)
+            let stat = app.buttons.matching(NSPredicate(format: "label == %@ AND enabled == true", "Repost")).firstMatch
+            let found = stat.waitForExistence(timeout: 10)
+            let dt = Date().timeIntervalSince(t0)
+            guard feedUp, found, stat.frame.minY > 100, stat.frame.maxY < app.frame.maxY - 120 else { log += "launch \(i): feed=\(feedUp) stat=\(found) frame=\(stat.frame) — skipped\n"; continue }
+            tapC(stat)
+            var samples: [String] = []
+            for _ in 0..<30 { usleep(100_000); samples.append("\(stat.exists ? stat.label : "?")/\(stat.value ?? "-")") }
+            let undo = app.buttons.matching(NSPredicate(format: "label == %@", "Undo repost")).firstMatch
+            log += "launch \(i): tapped \(String(format: "%.1f", dt)) s after launch; samples=\(Array(Set(samples)).sorted().joined(separator: " | ")); undoExists=\(undo.exists)\n"
+            if undo.exists { tapC(undo); sleep(4) }
+            sleep(2)
+        }
+        let a = XCTAttachment(string: log); a.name = "rl-log"; a.lifetime = .keepAlways; add(a)
+    }
+    /// Audit 2026-11-10 repro: quick felt like→unlike→like (250 ms apart, no latency stand-in) ended UNLIKED once.
+    /// Three rounds, logging the heart's end state; resets to unliked between rounds.
+    func test17_likeRace() {
+        launch(night: false); signInIfNeeded("lr")
+        let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
+        var log = ""
+        func tapC(_ e: XCUIElement) { e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
+        guard let row = findRow(containing: "b126 w", swipes: 10) else { XCTFail("no seeded w row"); return }
+        func heart() -> XCUIElement? {
+            app.buttons.matching(NSPredicate(format: "label IN %@", ["Like post", "Unlike post"])).allElementsBoundByIndex
+                .first { $0.frame.minY > row.frame.minY && $0.frame.minY < row.frame.maxY + 80 }
+        }
+        for round in 1...3 {
+            if heart()?.label == "Unlike post" { tapC(heart()!); sleep(4) }
+            let start = heart()?.label ?? "?"
+            for _ in 0..<3 { if let h = heart() { tapC(h) }; usleep(250_000) }
+            var samples: [String] = []
+            for _ in 0..<20 { usleep(250_000); samples.append(heart()?.label == "Unlike post" ? "L" : "u") }
+            let end = heart()?.label ?? "?"
+            log += "round \(round): start=\(start) taps=like,unlike,like samples=\(samples.joined()) end=\(end)\n"
+        }
+        snap("lr-final")
+        let a = XCTAttachment(string: log); a.name = "lr-log"; a.lifetime = .keepAlways; add(a)
+        XCTAssertFalse(log.contains("end=Like post"), "a like→unlike→like round ended unliked")
+    }
     /// Build 123 repro + regression (owner 2026-11-05: "undoing a repost takes two taps"): repost a row by another
     /// author with ONE tap, undo with ONE tap — once quickly (≈1 s after the repost) and once after the write has
     /// settled (6 s) — logging the row's repost button label ("Repost" / "Undo repost") and the "you reposted" line.

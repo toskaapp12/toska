@@ -415,19 +415,25 @@ struct OtherProfileView: View {
     
     // MARK: - Toggle Follow
     
-    func toggleFollow() {
+    func toggleFollow(alreadyFlipped: Bool = false) {
             guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
             guard NetworkMonitor.shared.isConnected else { return }
-            // Build 123: a follow/unfollow tap that lands while the previous write is still
-            // in flight is queued (re-invoked when it clears), never dropped — the old 1 s
-            // rule swallowed "follow, then unfollow right away" on a slow network.
+            // Build 123/124: a follow/unfollow tap that lands while the previous write is still
+            // in flight FLIPS NOW (haptic + optimistic) and is re-invoked when the write clears
+            // to do its own write; never dropped, never delayed on screen.
             if followInFlight {
-                RateLimiter.shared.whenClear({ self.followInFlight }) { self.toggleFollow() }
+                if !alreadyFlipped {
+                    HapticManager.play(.feltThis)
+                    let was = isFollowing
+                    isFollowing = !was
+                    followerCount = max(0, followerCount + (was ? -1 : 1))
+                }
+                RateLimiter.shared.whenClear({ self.followInFlight }) { self.toggleFollow(alreadyFlipped: true) }
                 return
             }
             followInFlight = true
             lastFollowTime = Date()
-        HapticManager.play(.feltThis)
+        if !alreadyFlipped { HapticManager.play(.feltThis) }
 
             let db = Firestore.firestore()
             let myRef = db.collection("users").document(uid)
@@ -436,9 +442,13 @@ struct OtherProfileView: View {
             let followerRef = theirRef.collection("followers").document(uid)
 
             // Optimistic UI update
-            let wasFollowing = isFollowing
-            isFollowing = !wasFollowing
-            followerCount = max(0, followerCount + (wasFollowing ? -1 : 1))
+            // On a re-invocation the UI already flipped at tap time: the write direction is
+            // the CURRENT state (we're now following → write a follow), not its inverse.
+            let wasFollowing = alreadyFlipped ? !isFollowing : isFollowing
+            if !alreadyFlipped {
+                isFollowing = !wasFollowing
+                followerCount = max(0, followerCount + (wasFollowing ? -1 : 1))
+            }
 
             if wasFollowing {
                 // Unfollow: delete subcollection docs. Counter decrements

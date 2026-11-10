@@ -294,7 +294,17 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   path + first-frame cache + prefetch-ahead; ProfileSnapshotCache + skeleton; queue-instead-of-drop for every
   in-flight guard incl. follow, reply spacing notice, pending-write listener merge; DEBUG slow-network stand-in
   `TOSKA_SIM_LATENCY_MS` / `TOSKA_SIM_LEGACY_DROP` for the UI tests). BUGS.md B122-PASS-2026-11-05.
-  **Next:** 123 Session A on the owner's phone (no new hangs) → TestFlight 123 → owner pass →
+  123: Session A 0 hangs, TestFlight 123 shipped; owner: GIFs/profile/reply ✓, repost undo STILL two taps → traced on
+  the device (temporary RepostTrace over USB console): queued taps had no immediate feedback, a leftover 2 s repost
+  rule, and a late listener snapshot flipping the restored row → **build 124** (flip-now for every queued action incl.
+  follow, rule deleted, listener honours the last tap for 3 s). BUGS.md B123-PASS-2026-11-09. On-device verification
+  trick: `xcrun devicectl device process launch --console --terminate-existing com.toskaapp.toska` streams NSLog.
+  Live verification (2026-11-10) found three more: profile reloaded from the server 0.7 s after a tap (undone repost
+  came back), the detail re-applied the stale server count ("2 reposts"), and a swapped-out feed row returned with
+  its old @State (the restored original still "reposted" → repost tap undid). All fixed (local removal + reload after
+  in-flight clears; 4 s count hold; row identity = post id + last tap time). Owner confirmed feed, detail and profile.
+  Trace removed; **TestFlight 124**. BUGS.md B123-PASS-2026-11-09 items 4–6.
+  **Next:** owner pass on 124 → push → prod web/functions unchanged since 2026-11-05 →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

@@ -131,6 +131,16 @@ class RateLimiter {
     // swallowed the first undo tap on a real network (the repost pipeline is four
     // round trips; on cellular that is 1–3 s). Polls every 100 ms up to `maxWait`,
     // then runs anyway (the in-flight timeout below clears stale flags).
+    /// Build 124: on the re-invocation of a queued action the optimistic callback already ran at
+    /// tap time — swallow the first onUpdate so counts don't move twice; later results pass through.
+    static func skipFirst<T>(_ f: @escaping (T) -> Void) -> (T) -> Void {
+        var skipped = false
+        return { value in
+            if !skipped { skipped = true; return }
+            f(value)
+        }
+    }
+
     func whenClear(_ isBusy: @escaping () -> Bool, maxWait: TimeInterval = 8, then action: @escaping () -> Void) {
         guard isBusy() else { action(); return }
         #if DEBUG

@@ -81,6 +81,8 @@ class FeedViewModel: ObservableObject {
         set { InteractionStateStore.shared.savedPostIds = newValue }
     }
     @Published var postGifUrls: [String: String] = [:]
+    // Build 124: the last repost/undo tap per post, so a late listener snapshot can't undo it (see fetchRepostedPostIds).
+    var recentRepostTaps: [String: (reposted: Bool, at: Date)] = [:]
     var midnightPostIds: Set<String> = []
     var letterPostIds: Set<String> = []
     var whisperPostIds: Set<String> = []
@@ -1068,6 +1070,7 @@ class FeedViewModel: ObservableObject {
         case "save":
             if value { savedPostIds.insert(postId) } else { savedPostIds.remove(postId) }
         case "repost":
+            recentRepostTaps[postId] = (reposted: value, at: Date())
             // Mirror likes/saves — without this, a repost tapped from
             // PostDetailView or the feed's context menu doesn't flip the
             // repost state on other rendered copies of the same post, so
@@ -1212,11 +1215,17 @@ class FeedViewModel: ObservableObject {
                     // just written (its serverTimestamp isn't set yet, and the query orders by it),
                     // which flipped the fresh in-place repost row back to "not reposted" until the
                     // server acked. Merge while pending; replace only on a server-confirmed snapshot.
-                    if snapshot?.metadata.hasPendingWrites == true {
-                        self.repostedPostIds.formUnion(ids)
-                    } else {
-                        self.repostedPostIds = ids
+                    // Build 124: a snapshot can describe the state from BEFORE the latest tap
+                    // (the owner's trace: a "count=1" snapshot landed 100 ms after the undo and
+                    // flipped the restored row back to "reposted"). Ids changed by a tap in the
+                    // last 3 s keep the tap's value until the window closes.
+                    var merged = snapshot?.metadata.hasPendingWrites == true ? self.repostedPostIds.union(ids) : ids
+                    let now = Date()
+                    for (id, change) in self.recentRepostTaps where now.timeIntervalSince(change.at) < 3 {
+                        if change.reposted { merged.insert(id) } else { merged.remove(id) }
                     }
+                    self.recentRepostTaps = self.recentRepostTaps.filter { now.timeIntervalSince($0.value.at) < 3 }
+                    self.repostedPostIds = merged
                 }
             }
     }

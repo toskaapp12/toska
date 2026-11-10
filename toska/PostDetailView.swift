@@ -150,6 +150,8 @@ struct PostDetailView: View {
     @State private var likePulseTask: Task<Void, Never>? = nil
     @State private var liveListener: ListenerRegistration? = nil
     @State private var suppressListenerUntil: Date = .distantPast
+    @State private var suppressRepostUntil: Date = .distantPast
+    @State private var pendingServerRepostCount: Int? = nil
     @State private var showDeleteAlert = false
     @State private var showAdminDeleteAlert = false
     @State private var showEditSheet = false
@@ -911,6 +913,16 @@ struct PostDetailView: View {
             .font(ToskaFont.sans(11.5))
             .foregroundColor(ToskaColor.handle)
 
+            // Build 124 (owner): the detail now says it, like the feed row does.
+            if isReposted {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.2.squarepath").font(.toska(10, weight: .regular, relativeTo: .caption2))
+                    Text("you reposted").font(ToskaFont.sans(11.5, weight: .medium))
+                }
+                .foregroundColor(ToskaColor.accentText)
+                .padding(.top, 8)
+                .transition(.opacity)
+            }
             if let promptDate = promptDate {
                 PromptContextLine(promptDate: promptDate, lineLimit: nil)
                     .padding(.top, 12)
@@ -1249,8 +1261,16 @@ struct PostDetailView: View {
                     // it used to show the frozen init param) and seeds unrepost
                     // math; keep it live so an unrepost after a push-pop
                     // decrements from the current base rather than a stale value.
+                    // Build 124 (device trace): a snapshot arriving between an undo and the next
+                    // repost tap re-applied the server's not-yet-decremented count, and the tap
+                    // then added one on top ("2 reposts"). Hold the optimistic count for 4 s after
+                    // a tap; the latest server value is applied when the window ends.
                     if let snapReposts = data["repostCount"] as? Int, snapReposts != localRepostCount {
-                        localRepostCount = max(0, snapReposts)
+                        if Date() > suppressRepostUntil {
+                            localRepostCount = max(0, snapReposts)
+                        } else {
+                            pendingServerRepostCount = max(0, snapReposts)
+                        }
                     }
                     // replyCount feeds the stats row + the skeleton-vs-empty
                     // reply gating; the init param is 0 on the push path.
@@ -1361,6 +1381,14 @@ struct PostDetailView: View {
     // MARK: - Repost
 
     func repostPost() {
+        suppressRepostUntil = Date().addingTimeInterval(4.0)
+        pendingServerRepostCount = nil
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 4_100_000_000)
+            if Date() > suppressRepostUntil, let pending = pendingServerRepostCount {
+                localRepostCount = pending; pendingServerRepostCount = nil
+            }
+        }
         // Toggle: undo the repost if already reposted, else create it.
         if isReposted {
             PostInteractionManager.unrepost(

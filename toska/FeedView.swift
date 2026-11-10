@@ -1222,7 +1222,8 @@ struct FeedPostRow: View, Equatable {
                     if !postId.isEmpty && Date() > suppressSaveListenerUntil { isSaved = newValue }
                 }
                 .onChange(of: isAlreadyReposted) { _, newValue in
-                    if !postId.isEmpty && Date() > suppressRepostListenerUntil { isReposted = newValue }
+                    let accepted = !postId.isEmpty && Date() > suppressRepostListenerUntil
+                    if accepted { isReposted = newValue }
                 }
                 // Adopt the latest server counts when the same post id is
                 // re-delivered by a feed refresh — without these, the row keeps
@@ -1457,7 +1458,7 @@ struct FeedPostRow: View, Equatable {
             }
             // C-3: arm the suppression window so the feed listener echo doesn't
             // clobber the optimistic count (mirrors toggleLike).
-            suppressRepostListenerUntil = Date().addingTimeInterval(2.0)
+            suppressRepostListenerUntil = Date().addingTimeInterval(4.0)
 
             // Toggle: if already reposted, UNDO it (delete the repost doc).
             if isReposted {
@@ -1467,7 +1468,7 @@ struct FeedPostRow: View, Equatable {
                 ) { result in
                     isReposted = result.isReposted
                     localRepostCount = result.newCount
-                    suppressRepostListenerUntil = Date().addingTimeInterval(1.5)
+                    suppressRepostListenerUntil = Date().addingTimeInterval(4.0)   // build 124: fan-out can take ~3 s
                 }
                 return
             }
@@ -1482,7 +1483,7 @@ struct FeedPostRow: View, Equatable {
             ) { result in
                 isReposted = result.isReposted
                 localRepostCount = result.newCount
-                suppressRepostListenerUntil = Date().addingTimeInterval(1.5)
+                suppressRepostListenerUntil = Date().addingTimeInterval(4.0)   // build 124: fan-out can take ~3 s
                 if result.isReposted {
                                     repostPulse = true
                                     repostPulseTask?.cancel()
@@ -1985,7 +1986,11 @@ struct FeedColumn: View {
                                                                                                                                                         promptDate: post.promptDate
                                                                                                                                                                                                                                                                                                     )
                                                                                                                                                                                                                                                                                                     .equatable()
-                                                                                                                                                                                                                                                                                                    .id(post.id)
+                                                                                                                                                                                                                                                                                                    // Build 124 (device trace): a row swapped out and back within the removal animation
+                                                                                                                                                                                                                                                                                                    // came back with its OLD @State (the restored original still said isReposted=true, so
+                                                                                                                                                                                                                                                                                                    // the next tap undid instead of reposting). Every repost/undo tap mints a new identity
+                                                                                                                                                                                                                                                                                                    // (tap time), so the row is always rebuilt and seeds from the store's truth.
+                                                                                                                                                                                                                                                                                                    .id("\(post.id)#\(vm.recentRepostTaps[post.originalPostId ?? post.id].map { String(Int($0.at.timeIntervalSince1970 * 1000)) } ?? "0")")
                                                                                                                                                                                                                                                                                                     .onAppear {
                                                                                                                                                                                                                                                                                                         // Build 123: warm the GIFs of the next few rows (download + first frame + frames,
                                                                                                                                                                                                                                                                                                         // all off-main, cached by URL) so they are on screen before the row is.

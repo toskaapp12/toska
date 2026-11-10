@@ -21,8 +21,10 @@ class PostInteractionManager {
         authorId: String,
         currentlyLiked: Bool,
         currentCount: Int,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (LikeResult) -> Void
     ) {
+        let onUpdate: (LikeResult) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         // FIX #2: Guard auth BEFORE optimistic update — session expiry means
         // we can't roll back, so don't show the update at all if auth is gone.
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
@@ -48,8 +50,14 @@ class PostInteractionManager {
                // completion handler closes the window cleanly.
                if RateLimiter.shared.isLikeInFlight(postId) {
                    // Build 123: queue the tap behind the in-flight write instead of dropping it.
+                   // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+                   if !alreadyFlipped {
+                       UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                       onUpdate(LikeResult(isLiked: !currentlyLiked, newCount: max(0, currentCount + (!currentlyLiked ? 1 : -1))))
+                       NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "like", "value": !currentlyLiked])
+                   }
                    RateLimiter.shared.whenClear({ RateLimiter.shared.isLikeInFlight(postId) }) {
-                       toggleLike(postId: postId, authorId: authorId, currentlyLiked: currentlyLiked, currentCount: currentCount, onUpdate: onUpdate)
+                       toggleLike(postId: postId, authorId: authorId, currentlyLiked: currentlyLiked, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
                    }
                    return
                }
@@ -74,7 +82,7 @@ class PostInteractionManager {
                // of outcome — cleaner UI, same server guarantee.
                RateLimiter.shared.recordLike(for: postId)
                RateLimiter.shared.markLikeInFlight(postId)
-               UIImpactFeedbackGenerator(style: .light).impactOccurred()
+               if !alreadyFlipped { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
                Telemetry.likeTapped()
 
         let db = Firestore.firestore()
@@ -165,8 +173,10 @@ class PostInteractionManager {
         postId: String,
         authorId: String,
         currentlySaved: Bool,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (Bool) -> Void
     ) {
+        let onUpdate: (Bool) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
                     if Auth.auth().currentUser == nil {
                         ContentView.postAuthSessionExpired()
@@ -188,8 +198,14 @@ class PostInteractionManager {
                 // leaving server and UI disagreeing. Serialize on the post id.
                 if RateLimiter.shared.isSaveInFlight(postId) {
                     // Build 123: queue the tap behind the in-flight write instead of dropping it.
+                    // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+                    if !alreadyFlipped {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onUpdate(!currentlySaved)
+                        NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "save", "value": !currentlySaved])
+                    }
                     RateLimiter.shared.whenClear({ RateLimiter.shared.isSaveInFlight(postId) }) {
-                        toggleSave(postId: postId, authorId: authorId, currentlySaved: currentlySaved, onUpdate: onUpdate)
+                        toggleSave(postId: postId, authorId: authorId, currentlySaved: currentlySaved, alreadyFlipped: true, onUpdate: onUpdate)
                     }
                     return
                 }
@@ -202,7 +218,7 @@ class PostInteractionManager {
                 // opposite state from what they intended.
                 RateLimiter.shared.recordSave(for: postId)
                 RateLimiter.shared.markSaveInFlight(postId)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if !alreadyFlipped { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
         let db = Firestore.firestore()
         let saveRef = db.collection("users").document(uid).collection("saved").document(postId)
         let newSaved = !currentlySaved
@@ -281,17 +297,20 @@ class PostInteractionManager {
         authorId: String,
         originalHandle: String,
         currentCount: Int,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (RepostResult) -> Void
     ) {
+        let onUpdate: (RepostResult) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
                     if Auth.auth().currentUser == nil {
                         ContentView.postAuthSessionExpired()
                     }
                     return
                 }
-        if let last = RateLimiter.shared.lastRepostTime(for: postId), Date().timeIntervalSince(last) < 2 { return }
+        // (build 124) the 2 s same-post rule is gone: it silently dropped a repost tapped within
+        // 2 s of the previous one (three dropped taps in a row in the owner's trace). The in-flight
+        // queue below serializes the writes; validatePost's burst limiter covers abuse.
         // No self-repost (owner re-ruling 2026-09-22 eve; rules enforce too).
-        guard uid != authorId else { return }
                guard NetworkMonitor.shared.isConnected else {
                    debugLog("⚠️ repost — offline, skipping")
                    return
@@ -317,8 +336,14 @@ class PostInteractionManager {
                // uses) and clear it on EVERY exit below.
                if RateLimiter.shared.isRepostInFlight(postId) {
                    // Build 123: queue the tap behind the in-flight write instead of dropping it.
+                   // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+                   if !alreadyFlipped {
+                       UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                       onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
+                       NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": true])
+                   }
                    RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(postId) }) {
-                       repost(postId: postId, postText: postText, postTag: postTag, authorId: authorId, originalHandle: originalHandle, currentCount: currentCount, onUpdate: onUpdate)
+                       repost(postId: postId, postText: postText, postTag: postTag, authorId: authorId, originalHandle: originalHandle, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
                    }
                    return
                }
@@ -331,7 +356,7 @@ class PostInteractionManager {
                // corrected state, which doubles as the rollback (FIX #6's
                // guarantee — never a silently wrong resting state — holds).
                onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
-               UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+               if !alreadyFlipped { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
 
                // B94-2: broadcast like like/save do, so the shared
                // repostedPostIds (and every other rendered copy of this post)
@@ -620,8 +645,10 @@ class PostInteractionManager {
     static func unrepost(
         postId: String,
         currentCount: Int,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (RepostResult) -> Void
     ) {
+        let onUpdate: (RepostResult) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty else {
             if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
             return
@@ -634,13 +661,19 @@ class PostInteractionManager {
         // double-tap can't fire two optimistic decrements (count drift).
         if RateLimiter.shared.isRepostInFlight(postId) {
             // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            if !alreadyFlipped {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
+                NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": false])
+            }
             RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(postId) }) {
-                unrepost(postId: postId, currentCount: currentCount, onUpdate: onUpdate)
+                unrepost(postId: postId, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
         }
         RateLimiter.shared.markRepostInFlight(postId)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if !alreadyFlipped { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 
         // Optimistic: flip off + decrement, and broadcast so other surfaces match.
         onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
@@ -819,8 +852,10 @@ class PostInteractionManager {
         replyAuthorId: String,
         currentlyLiked: Bool,
         currentCount: Int,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (LikeResult) -> Void
     ) {
+        let onUpdate: (LikeResult) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty, !replyId.isEmpty else {
             if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
             onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
@@ -841,14 +876,19 @@ class PostInteractionManager {
         // No time gate — see toggleLike (quick toggle-back is legitimate).
         if RateLimiter.shared.isLikeInFlight(rlKey) {
             // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            if !alreadyFlipped {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onUpdate(LikeResult(isLiked: !currentlyLiked, newCount: max(0, currentCount + (!currentlyLiked ? 1 : -1))))
+            }
             RateLimiter.shared.whenClear({ RateLimiter.shared.isLikeInFlight(rlKey) }) {
-                toggleReplyLike(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlyLiked: currentlyLiked, currentCount: currentCount, onUpdate: onUpdate)
+                toggleReplyLike(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlyLiked: currentlyLiked, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
         }
         RateLimiter.shared.recordLike(for: rlKey)
         RateLimiter.shared.markLikeInFlight(rlKey)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if !alreadyFlipped { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 
         let db = Firestore.firestore()
         let likeRef = db.collection("posts").document(postId)
@@ -929,8 +969,10 @@ class PostInteractionManager {
         replyHandle: String,
         replyAuthorId: String = "",
         currentlySaved: Bool,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (Bool) -> Void
     ) {
+        let onUpdate: (Bool) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty, !replyId.isEmpty else {
             if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
             return
@@ -946,14 +988,19 @@ class PostInteractionManager {
         let rlKey = "reply_\(replyId)"
         if RateLimiter.shared.isSaveInFlight(rlKey) {
             // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            if !alreadyFlipped {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onUpdate(!currentlySaved)
+            }
             RateLimiter.shared.whenClear({ RateLimiter.shared.isSaveInFlight(rlKey) }) {
-                toggleReplySave(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlySaved: currentlySaved, onUpdate: onUpdate)
+                toggleReplySave(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlySaved: currentlySaved, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
         }
         RateLimiter.shared.recordSave(for: rlKey)
         RateLimiter.shared.markSaveInFlight(rlKey)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if !alreadyFlipped { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
 
         let db = Firestore.firestore()
         let saveRef = db.collection("users").document(uid)
@@ -1022,8 +1069,10 @@ class PostInteractionManager {
         replyAuthorId: String,
         replyAuthorHandle: String,
         currentCount: Int,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (RepostResult) -> Void
     ) {
+        let onUpdate: (RepostResult) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !postId.isEmpty, !replyId.isEmpty else {
             if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
             return
@@ -1043,14 +1092,19 @@ class PostInteractionManager {
         let flightKey = "reply_\(replyId)"
         if RateLimiter.shared.isRepostInFlight(flightKey) {
             // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            if !alreadyFlipped {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
+            }
             RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(flightKey) }) {
-                repostReply(postId: postId, replyId: replyId, replyText: replyText, replyAuthorId: replyAuthorId, replyAuthorHandle: replyAuthorHandle, currentCount: currentCount, onUpdate: onUpdate)
+                repostReply(postId: postId, replyId: replyId, replyText: replyText, replyAuthorId: replyAuthorId, replyAuthorHandle: replyAuthorHandle, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
         }
         RateLimiter.shared.markRepostInFlight(flightKey)
         RateLimiter.shared.recordRepost(for: replyId)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if !alreadyFlipped { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
 
         let db = Firestore.firestore()
         Task { @MainActor in
@@ -1191,8 +1245,10 @@ class PostInteractionManager {
     static func unrepostReply(
         replyId: String,
         currentCount: Int,
+        alreadyFlipped: Bool = false,   // build 124: re-invocation after a queued tap
         onUpdate: @escaping (RepostResult) -> Void
     ) {
+        let onUpdate: (RepostResult) -> Void = alreadyFlipped ? RateLimiter.skipFirst(onUpdate) : onUpdate
         guard let uid = Auth.auth().currentUser?.uid, !replyId.isEmpty else {
             if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
             return
@@ -1208,13 +1264,18 @@ class PostInteractionManager {
         let flightKey = "reply_\(replyId)"
         if RateLimiter.shared.isRepostInFlight(flightKey) {
             // Build 123: queue the tap behind the in-flight write instead of dropping it.
+            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            if !alreadyFlipped {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
+            }
             RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(flightKey) }) {
-                unrepostReply(replyId: replyId, currentCount: currentCount, onUpdate: onUpdate)
+                unrepostReply(replyId: replyId, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
         }
         RateLimiter.shared.markRepostInFlight(flightKey)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if !alreadyFlipped { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
         onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
 
         let db = Firestore.firestore()

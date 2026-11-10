@@ -390,14 +390,32 @@ struct ProfileView: View {
             }
             guard loadedTabs.contains(affected) else { return }
             let uid = Auth.auth().currentUser?.uid
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 700_000_000)
-                guard Auth.auth().currentUser?.uid == uid else { return }
-                switch affected {
-                case 0: loadMyPosts()
-                case 1: loadLikedPosts(); loadLikedReplies()
-                case 2: loadSavedPosts(); loadSavedReplies()
-                default: break
+            let postId = notif.userInfo?["postId"] as? String ?? ""
+            let value = notif.userInfo?["value"] as? Bool
+            // Build 124 (device trace): this reload used to fire 0.7 s after the tap, while the
+            // write was still landing — the server still had the undone repost, so the row came
+            // BACK on the reposts tab and read as "undo didn't work". Apply the change locally at
+            // once, and reload only after the in-flight write clears (+0.8 s for the fan-out).
+            if action == "repost", value == false, !postId.isEmpty {
+                myPosts.removeAll { $0.isRepost && $0.originalPostId == postId }
+            }
+            let busy: () -> Bool = {
+                switch action {
+                case "repost": return RateLimiter.shared.isRepostInFlight(postId)
+                case "like":   return RateLimiter.shared.isLikeInFlight(postId)
+                default:       return RateLimiter.shared.isSaveInFlight(postId)
+                }
+            }
+            RateLimiter.shared.whenClear(busy) {
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    guard Auth.auth().currentUser?.uid == uid else { return }
+                    switch affected {
+                    case 0: loadMyPosts()
+                    case 1: loadLikedPosts(); loadLikedReplies()
+                    case 2: loadSavedPosts(); loadSavedReplies()
+                    default: break
+                    }
                 }
             }
         }

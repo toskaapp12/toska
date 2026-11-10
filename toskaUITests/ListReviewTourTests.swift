@@ -366,7 +366,7 @@ final class ListReviewTourTests: XCTestCase {
         launch(night: false); signInIfNeeded("lat")
         let notNowLate = app.buttons["Not Now"]; if notNowLate.waitForExistence(timeout: 3) { notNowLate.tap() }
         var log = "latency=\(ProcessInfo.processInfo.environment["TOSKA_SIM_LATENCY_MS"] ?? "0") ms\n"
-        guard let row = findRow(containing: "b124 w", swipes: 10) else { XCTFail("no seeded w row in the feed"); return }
+        guard let row = findRow(containing: "b125 w", swipes: 10) else { XCTFail("no seeded w row in the feed"); return }
         func tapC(_ e: XCUIElement) { e.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap() }
         func rowButton(_ label: String) -> XCUIElement {
             app.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex
@@ -403,7 +403,7 @@ final class ListReviewTourTests: XCTestCase {
         if app.buttons["back"].exists { back(); sleep(1) }
         // REPLY twice quickly: first sends, second shows the spacing notice (never silent)
         tapBar(0.15); scrollToTop(6)
-        if let r2 = findRow(containing: "b124 w", swipes: 10) { forceTap(r2); sleep(3)
+        if let r2 = findRow(containing: "b125 w", swipes: 10) { forceTap(r2); sleep(3)
             let field = app.textFields["replyField"].firstMatch.exists ? app.textFields["replyField"].firstMatch : app.textViews["replyField"].firstMatch
             if field.waitForExistence(timeout: 4) {
                 let send = app.buttons["send"].firstMatch
@@ -433,7 +433,7 @@ final class ListReviewTourTests: XCTestCase {
             let youReposted = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "you reposted")).firstMatch.exists
             let s = "\(tag): undoButton=\(undo) repostButton=\(re) youReposted=\(youReposted)"; log += s + "\n"; return s
         }
-        guard let row = findRow(containing: "b124 w0") else { XCTFail("no w0 row"); return }
+        guard let row = findRow(containing: "b125 w0") else { XCTFail("no w0 row"); return }
         // Button inside this row: first "Repost"/"Undo repost" below the row's text.
         func rowButton(_ label: String) -> XCUIElement {
             app.buttons.matching(NSPredicate(format: "label == %@", label)).allElementsBoundByIndex

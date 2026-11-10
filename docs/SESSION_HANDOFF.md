@@ -303,8 +303,10 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   came back), the detail re-applied the stale server count ("2 reposts"), and a swapped-out feed row returned with
   its old @State (the restored original still "reposted" → repost tap undid). All fixed (local removal + reload after
   in-flight clears; 4 s count hold; row identity = post id + last tap time). Owner confirmed feed, detail and profile.
-  Trace removed; **TestFlight 124**. BUGS.md B123-PASS-2026-11-09 items 4–6.
-  **Next:** owner pass on 124 → push → prod web/functions unchanged since 2026-11-05 →
+  Trace removed; TestFlight 124. Owner on 124: some taps lost the +1 / highlight → the per-tap identity rebuilt rows
+  and reset counts; the highlight still lived in row @State → **build 125**: `FeedPostRow.isReposted` reads the
+  InteractionStateStore (no per-row copy), identity back to post.id. BUGS.md B123-PASS-2026-11-09 items 4–7.
+  **Next:** owner pass on 125 → push → prod web/functions unchanged since 2026-11-05 →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

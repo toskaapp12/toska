@@ -799,7 +799,13 @@ struct FeedPostRow: View, Equatable {
 
         @State private var isSaved = false
         @State private var isLiked = false
-        @State private var isReposted = false
+        // Build 124b (device trace): the reposted flag is NOT row state any more. A row swapped
+        // out and back kept its old @State ("reposted" while the store said no), so taps ran the
+        // wrong action. The store is updated synchronously by every tap (postInteractionChanged →
+        // FeedViewModel) and holds the tap's value for 3 s against late listener snapshots, so
+        // reading it here is always right — on every screen that shows rows.
+        @ObservedObject private var interactions = InteractionStateStore.shared
+        private var isReposted: Bool { interactions.repostedPostIds.contains(interactionPostId) }
         @State private var localLikeCount: Int = 0
         @State private var localRepostCount: Int = 0
     @State private var hasInitialized = false
@@ -1204,7 +1210,6 @@ struct FeedPostRow: View, Equatable {
                                                         localRepostCount = reposts
                                                         isLiked = isAlreadyLiked
                                                         isSaved = isAlreadySaved
-                                                        isReposted = isAlreadyReposted
                                                     }
                                                 }
                                 .onDisappear {
@@ -1220,10 +1225,6 @@ struct FeedPostRow: View, Equatable {
                 }
                 .onChange(of: isAlreadySaved) { _, newValue in
                     if !postId.isEmpty && Date() > suppressSaveListenerUntil { isSaved = newValue }
-                }
-                .onChange(of: isAlreadyReposted) { _, newValue in
-                    let accepted = !postId.isEmpty && Date() > suppressRepostListenerUntil
-                    if accepted { isReposted = newValue }
                 }
                 // Adopt the latest server counts when the same post id is
                 // re-delivered by a feed refresh — without these, the row keeps
@@ -1466,7 +1467,6 @@ struct FeedPostRow: View, Equatable {
                     postId: interactionPostId,
                     currentCount: localRepostCount
                 ) { result in
-                    isReposted = result.isReposted
                     localRepostCount = result.newCount
                     suppressRepostListenerUntil = Date().addingTimeInterval(4.0)   // build 124: fan-out can take ~3 s
                 }
@@ -1481,7 +1481,6 @@ struct FeedPostRow: View, Equatable {
                 originalHandle: handle,
                 currentCount: localRepostCount
             ) { result in
-                isReposted = result.isReposted
                 localRepostCount = result.newCount
                 suppressRepostListenerUntil = Date().addingTimeInterval(4.0)   // build 124: fan-out can take ~3 s
                 if result.isReposted {
@@ -1986,11 +1985,7 @@ struct FeedColumn: View {
                                                                                                                                                         promptDate: post.promptDate
                                                                                                                                                                                                                                                                                                     )
                                                                                                                                                                                                                                                                                                     .equatable()
-                                                                                                                                                                                                                                                                                                    // Build 124 (device trace): a row swapped out and back within the removal animation
-                                                                                                                                                                                                                                                                                                    // came back with its OLD @State (the restored original still said isReposted=true, so
-                                                                                                                                                                                                                                                                                                    // the next tap undid instead of reposting). Every repost/undo tap mints a new identity
-                                                                                                                                                                                                                                                                                                    // (tap time), so the row is always rebuilt and seeds from the store's truth.
-                                                                                                                                                                                                                                                                                                    .id("\(post.id)#\(vm.recentRepostTaps[post.originalPostId ?? post.id].map { String(Int($0.at.timeIntervalSince1970 * 1000)) } ?? "0")")
+                                                                                                                                                                                                                                                                                                    .id(post.id)
                                                                                                                                                                                                                                                                                                     .onAppear {
                                                                                                                                                                                                                                                                                                         // Build 123: warm the GIFs of the next few rows (download + first frame + frames,
                                                                                                                                                                                                                                                                                                         // all off-main, cached by URL) so they are on screen before the row is.

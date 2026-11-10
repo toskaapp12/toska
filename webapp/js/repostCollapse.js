@@ -14,13 +14,19 @@ export function collapseReposts(rows, { viewer, seen }) {
     const isRepost = ([, d]) => d.originalPostId != null;
     const wordsAuthor = ([, d]) => d.originalAuthorId ?? d.authorId;
     const winner = new Map(); // key -> index
+
+    // Build 125: keys the VIEWER reposted in this batch (order-independent; mirrors RepostCollapse.swift).
+    const viewerReposted = new Set(rows.filter((r) => isRepost(r) && r[1].authorId === viewer).map(key));
     rows.forEach((row, i) => {
         const k = key(row);
         if (seen.has(k)) return;
         const ownOriginal = wordsAuthor(row) === viewer;
+        // Build 125 (X-like, mirrors RepostCollapse.swift): the viewer's own repost never replaces the
+        // original row when that row is present — the original stays put and is marked "you reposted".
+        const preferOriginal = ownOriginal || viewerReposted.has(k);
         if (winner.has(k)) {
             const cur = rows[winner.get(k)];
-            if (ownOriginal) { if (!isRepost(row) && isRepost(cur)) winner.set(k, i); }
+            if (preferOriginal) { if (!isRepost(row) && isRepost(cur)) winner.set(k, i); }
             else if (isRepost(row) && !isRepost(cur)) winner.set(k, i);
         } else {
             winner.set(k, i);

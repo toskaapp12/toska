@@ -1076,7 +1076,11 @@ class FeedViewModel: ObservableObject {
             // repost state on other rendered copies of the same post, so
             // the button stays in its pre-action state until a full refresh.
             if value { repostedPostIds.insert(postId) } else { repostedPostIds.remove(postId) }
-            if value { showRepostInPlace(of: postId) } else { restoreOriginalAfterUnrepost(of: postId) }
+            // Build 125 (owner: "it should just stay on the feed where it is, like X"): no row swap
+            // any more. The original row stays put; FeedPostRow reads the store for the highlight,
+            // the "you reposted" line and the count. The swap/restore pair below is kept only for
+            // the server-side copy that a later fetch may bring in (collapse keeps the ORIGINAL for
+            // your own reposts, so it normally never shows).
         default: break
         }
     }

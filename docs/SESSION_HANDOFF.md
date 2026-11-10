@@ -306,7 +306,10 @@ _Last updated: 2026-11-04 (list-integrity review → repost dedupe + 11 fixes in
   Trace removed; TestFlight 124. Owner on 124: some taps lost the +1 / highlight → the per-tap identity rebuilt rows
   and reset counts; the highlight still lived in row @State → **build 125**: `FeedPostRow.isReposted` reads the
   InteractionStateStore (no per-row copy), identity back to post.id. BUGS.md B123-PASS-2026-11-09 items 4–7.
-  **Next:** owner pass on 125 → push → prod web/functions unchanged since 2026-11-05 →
+  Owner wants X behaviour (row stays put): 125 drops the in-place swap entirely — store-driven "you reposted" on the
+  original row; collapse keeps the original when your own repost is in the batch (iOS + web parity, 12 cases).
+  **Web (collapse rule) not yet deployed — staging first, prod on go.**
+  **Next:** owner pass on 125 → push → deploy web collapse change (staging → prod) →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

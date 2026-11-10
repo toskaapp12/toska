@@ -34,13 +34,21 @@ enum RepostCollapse {
     static func keptIndices(_ items: [Item], viewer: String, seen: inout Set<String>) -> [Int] {
         // Pass 1: pick a winner per key within this batch.
         var winner: [String: Int] = [:]
+
+        // Build 125: keys the VIEWER reposted in this batch — order-independent, so the original wins
+        // whether the viewer's repost comes before or after it (and over other people's reposts).
+        let viewerReposted = Set(items.filter { $0.isRepost && $0.authorId == viewer }.map { $0.key })
         for (i, item) in items.enumerated() {
             let k = item.key
             if seen.contains(k) { continue }
             let ownOriginal = item.wordsAuthor == viewer
+            // Build 125 (X-like): YOUR repost of someone's words never replaces their original row
+            // when that row is present — the original stays where it is and shows "you reposted"
+            // from the interaction store (iOS) / the viewer's reposted set (web).
+            let preferOriginal = ownOriginal || viewerReposted.contains(k)
             if let current = winner[k] {
                 let cur = items[current]
-                if ownOriginal {
+                if preferOriginal {
                     // viewer's own words: the original row wins over any repost
                     if !item.isRepost && cur.isRepost { winner[k] = i }
                 } else {

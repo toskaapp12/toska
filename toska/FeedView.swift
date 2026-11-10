@@ -896,6 +896,19 @@ struct FeedPostRow: View, Equatable {
                 // than the original author. Only renders when reposterHandle
                 // is set (FeedView passes it for reposts; other call sites
                 // pass nil so this row is hidden there).
+                // Build 125 (X-like): the original row itself says "you reposted" when the store
+                // says so — no row swap, the row stays where it is and keeps its scroll position.
+                if reposterHandle == nil, !isRepostPost, !isOwnPost, isReposted {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.2.squarepath")
+                            .font(.toska(10, weight: .regular, relativeTo: .caption2))
+                        Text("you reposted")
+                            .font(ToskaFont.sans(11.5, weight: .medium))
+                    }
+                    .foregroundColor(ToskaColor.accentText)
+                    .padding(.bottom, 10)
+                    .transition(.opacity)
+                }
                 if let reposter = reposterHandle, !reposter.isEmpty {
                     // "you reposted" for your own reposts (owner 2026-09-22) —
                     // parroting your random handle back at you hid that the

@@ -604,7 +604,7 @@ struct PostDetailView: View {
 
                         // Hairline + "27 REPLIES" eyebrow (design 2026-09-16).
                         Rectangle().fill(ToskaColor.divider).frame(height: 1)
-                        let replyEyebrowCount = replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList))
+                        let replyEyebrowCount = displayedReplyCount
                         if replyEyebrowCount > 0 {
                             Text(replyEyebrowCount == 1 ? "1 reply" : "\(replyEyebrowCount) replies")
                                 .font(ToskaFont.sans(10.5, weight: .semibold))
@@ -963,7 +963,7 @@ struct PostDetailView: View {
                 // server count (localReplyCount — the `replies` init param
                 // is 0 on the push path and never updates). (2026-08-05)
                 Button { replyFocused = true } label: {
-                    detailStatText(replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList)), "reply", "replies")
+                    detailStatText(displayedReplyCount, "reply", "replies")
                         .padding(.vertical, 11)
                 }
                 .buttonStyle(.plain)
@@ -1103,6 +1103,16 @@ struct PostDetailView: View {
 
     /// Total number of replies in the threaded tree (root + all nested), for the
     /// "N replies" stat — replyList.count is root-only and undercounts.
+    /// Build 126 (owner on the 126 dev build: "one reply but it says 2"): the stats row and the eyebrow
+    /// used max(server replyCount, replies on screen). The server counter increments the moment a reply
+    /// doc is CREATED (still pending validation), so for a few seconds — or for good, if the reply is
+    /// held — it runs one ahead of the live list. Once the thread has loaded (and fits in one page),
+    /// what the person can see is the truth; the server count only fills in before that.
+    var displayedReplyCount: Int {
+        if hasLoadedReplies, replyList.count < 100 { return countAllReplies(replyList) }
+        return replyList.isEmpty ? localReplyCount : max(localReplyCount, countAllReplies(replyList))
+    }
+
     func countAllReplies(_ replies: [ThreadedReply]) -> Int {
         replies.reduce(0) { $0 + 1 + countAllReplies($1.children) }
     }

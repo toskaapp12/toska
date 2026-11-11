@@ -5,7 +5,7 @@ data here by design (this file is in the public repo and served by Pages).
 Credentials live only in the gitignored local file; infra ids live in the
 Firebase/GCP consoles.
 
-_Last updated: 2026-11-10 (full simulator audit → BUGS.md AUDIT-SIM-2026-11-10; builds 121–125 in TestFlight; earlier: list-integrity review → repost dedupe + 11 fixes in build 118; staging web verified headless; prod web deploy + push HELD for the owner's go after the 118 device pass; prod is on the 117 web + validatePost)._
+_Last updated: 2026-11-10 (build 126 in TestFlight: coalesced tap intents + never-silent actions, BUGS.md B126-PASS-2026-11-10; full simulator audit → AUDIT-SIM-2026-11-10; earlier: list-integrity review → repost dedupe + 11 fixes in build 118; staging web verified headless; prod web deploy + push HELD for the owner's go after the 118 device pass; prod is on the 117 web + validatePost)._
 
 ## 2026-10-28 — multi-user audit + A1 fix (PROD)
 
@@ -318,7 +318,13 @@ _Last updated: 2026-11-10 (full simulator audit → BUGS.md AUDIT-SIM-2026-11-10
   shape for save/repost/follow. Proposed 126: per-post "desired end state" coalescing (latest tap wins, one
   follow-up write, reconcile from server) + never-silent repost offline guard + pin the author's fresh post.
   Staging-only infra fix applied: `reconcilemycounts` invoker binding (prod already had it).
-  **Next:** owner pass on 125 → push → deploy web collapse change (staging → prod) →
+  **Build 126 (2026-11-10 16:25, TestFlight internal):** the audit's A1–A4 fixes (BUGS.md B126-PASS-2026-11-10) —
+  latest-tap-wins coalescing with a server reconcile for every tap target, never-silent repost/follow/reply
+  actions, own fresh posts pinned, prompt-card / 500-cap / followers-contrast minors — plus the owner's dev-build
+  findings (profile felt/saved rows drop at once; a reply-count display fix that landed AFTER the archive,
+  commit 472d3e8, for the next build). Owner-verified over the USB console before the archive. Freeze after 126:
+  only serious bugs, then submission. Local commits not pushed: 2985bfa … 472d3e8 (push on go).
+  **Next:** owner confirms 126 → push → deploy web collapse change (staging → prod) →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

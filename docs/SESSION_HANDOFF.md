@@ -337,8 +337,9 @@ _Last updated: 2026-11-10 (build 126 in TestFlight: coalesced tap intents + neve
   Node pins: `web-tap-coalesce.mjs` (8 scenarios) + `feed-order-parity.mjs` (10 cases) in `npm run test:pins`.
   **Deployed to staging hosting (toskastaging.web.app) and verified in Chrome** (three opposite-ending bursts on
   the fixture post + reload = server state; cap offer; post lands first; "be the first"). Prod on go — the collapse
-  rule rides along.
-  **Next:** owner confirms 126 → push → deploy web (collapse + 126 parity) to prod →
+  rule rides along. **Deployed to PROD hosting 2026-11-11 (owner: "deploy it to prod")** — collapse rule + 126
+  parity live on app.toskaapp.com.
+  **Next:** owner confirms 126 → push →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

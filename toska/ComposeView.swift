@@ -149,6 +149,10 @@ struct ComposeView: View {
     // First-save-only: explains where the draft went (Settings › Drafts).
     @State private var showDraftLocationHint = false
     @State private var expiresAtMidnight = false
+    // Build 126: the 500-cap offers the letter mode once per compose (pop-up), instead of silently
+    // swallowing keystrokes.
+    @State private var showOverLimitAlert = false
+    @State private var overLimitOffered = false
     @State private var isWhisper = false
     @State private var isLetter = false
     private let letterCharLimit = 2000
@@ -387,7 +391,9 @@ struct ComposeView: View {
 
                 // Char counter — lives HERE (not over the editor) so it never
                 // collides with the words; warning colours near the limit.
-                Text("\(activeCharLimit - text.utf16.count) left")
+                // Build 126 (audit A4): over the limit, say how to fix it instead of a bare negative.
+                let remaining = activeCharLimit - text.utf16.count
+                Text(remaining >= 0 ? "\(remaining) left" : "\(-remaining) over")
                     .font(ToskaFont.sans(11.5))
                     .foregroundColor(
                         text.utf16.count >= activeCharLimit
@@ -586,6 +592,12 @@ struct ComposeView: View {
                                             endIdx = newValue.index(after: endIdx)
                                         }
                                         text = String(newValue[..<endIdx])
+                                        // Build 126 (owner: "should give a pop-up warning"): the cap
+                                        // used to swallow keystrokes silently. Offer the letter once.
+                                        if !isLetter, !overLimitOffered {
+                                            overLimitOffered = true
+                                            showOverLimitAlert = true
+                                        }
                                     }
                                     if showRateLimitWarning { showRateLimitWarning = false }
                                     if showOfflineWarning { showOfflineWarning = false }
@@ -1003,6 +1015,12 @@ struct ComposeView: View {
             Button("got it") { dismiss() }
         } message: {
             Text("find it anytime in settings › drafts — you can edit it or post it whenever you're ready.")
+        }
+        .alert("that's 500 characters", isPresented: $showOverLimitAlert) {
+            Button("switch to letter") { isLetter = true }
+            Button("keep it short", role: .cancel) {}
+        } message: {
+            Text("a letter can hold up to 2,000 — switch and keep writing.")
         }
         } // close NavigationStack
     }

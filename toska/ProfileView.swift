@@ -399,6 +399,11 @@ struct ProfileView: View {
             if action == "repost", value == false, !postId.isEmpty {
                 myPosts.removeAll { $0.isRepost && $0.originalPostId == postId }
             }
+            // Build 126 (owner on the 126 dev build: "undid a felt on my profile and it's still
+            // there, then it went"): the felt / saved rows lingered for the in-flight wait + 0.8 s
+            // and then jumped away on the reload. Drop them at once, same as the repost rows.
+            if action == "like", value == false, !postId.isEmpty { likedPosts.removeAll { $0.id == postId } }
+            if action == "save", value == false, !postId.isEmpty { savedPosts.removeAll { $0.id == postId } }
             let busy: () -> Bool = {
                 switch action {
                 case "repost": return RateLimiter.shared.isRepostInFlight(postId)
@@ -1801,7 +1806,9 @@ private struct FollowRow: View {
         HStack(spacing: 12) {
             Text(handle)
                 .font(ToskaFont.sans(15, weight: .semibold))
-                .foregroundColor(Color.toskaBlue)
+                // Build 126 (audit A4): the muted brand blue (#9198a8) reads ~3:1 on the paper
+                // background; the accent text colour the feed uses for handles clears 4.5:1.
+                .foregroundColor(ToskaColor.accentText)
                 .lineLimit(1)
 
             Spacer()

@@ -8,7 +8,6 @@ import FirebaseFirestore
 @MainActor
 class NetworkMonitor {
     static let shared = NetworkMonitor()
-    
     var isConnected = true
         var showOfflineBanner = false
 
@@ -168,7 +167,39 @@ class RateLimiter {
         return true
     }
     func markLikeInFlight(_ postId: String) { inFlightLikes[postId] = Date() }
-    func markLikeComplete(_ postId: String) { Self.afterDebugLatency { self.inFlightLikes[postId] = nil } }
+    func markLikeComplete(_ postId: String, then: @escaping @MainActor () -> Void = {}) {
+        Self.afterDebugLatency { self.inFlightLikes[postId] = nil; then() }
+    }
+
+    // MARK: - Desired end state (build 126)
+    //
+    // Audit 2026-11-10: a tap that landed while the same action was in flight used to queue its
+    // OWN re-invocation behind a 100 ms poller; two queued taps (unlike, like) woke independently
+    // and could run in the wrong order, so the older intent was written last (like→unlike→like
+    // ended unliked 3/3 on the simulator; the staging write log showed the trailing delete).
+    // Now each (kind, key) holds exactly ONE pending intent — the latest tap — plus the closure
+    // that performs it. The in-flight write's completion drains it: if the pending intent differs
+    // from what was just written, that one follow-up runs; otherwise nothing. Latest tap wins,
+    // never more than one follow-up write, no reordering.
+    struct PendingIntent {
+        let value: Bool               // the end state the user wants
+        let perform: @MainActor () -> Void   // the write that gets there (already-flipped re-invocation)
+    }
+    private var pendingIntents: [String: PendingIntent] = [:]
+    func setPendingIntent(_ kind: String, _ key: String, value: Bool, perform: @escaping @MainActor () -> Void) {
+        pendingIntents["\(kind):\(key)"] = PendingIntent(value: value, perform: perform)
+    }
+    func takePendingIntent(_ kind: String, _ key: String) -> PendingIntent? {
+        pendingIntents.removeValue(forKey: "\(kind):\(key)")
+    }
+    /// After a write for (kind, key) landed with `written` as its end state: run the single pending
+    /// follow-up if the latest intent differs, else `reconcile` (read the server doc and correct the row).
+    func drainPendingIntent(_ kind: String, _ key: String, written: Bool, reconcile: @MainActor () -> Void) {
+        if let p = takePendingIntent(kind, key) {
+            if p.value != written { p.perform(); return }
+        }
+        reconcile()
+    }
 
     // DEBUG-only slow-network stand-in (build 123): TOSKA_SIM_LATENCY_MS in the launch
     // environment keeps every in-flight flag set that much longer after the real write
@@ -199,7 +230,9 @@ class RateLimiter {
         return true
     }
     func markRepostInFlight(_ id: String) { inFlightReposts[id] = Date() }
-    func markRepostComplete(_ id: String) { Self.afterDebugLatency { self.inFlightReposts[id] = nil } }
+    func markRepostComplete(_ id: String, then: @escaping @MainActor () -> Void = {}) {
+        Self.afterDebugLatency { self.inFlightReposts[id] = nil; then() }
+    }
 
     // Same in-flight pattern for save/unsave, keyed by the post (or "reply_{id}")
     // id. The lastSaveTime rate window alone can't stop a save→unsave interleave
@@ -214,7 +247,9 @@ class RateLimiter {
         return true
     }
     func markSaveInFlight(_ id: String) { inFlightSaves[id] = Date() }
-    func markSaveComplete(_ id: String) { Self.afterDebugLatency { self.inFlightSaves[id] = nil } }
+    func markSaveComplete(_ id: String, then: @escaping @MainActor () -> Void = {}) {
+        Self.afterDebugLatency { self.inFlightSaves[id] = nil; then() }
+    }
 
     func lastSaveTime(for postId: String) -> Date? { lastSaveByPost[postId] }
     func recordSave(for postId: String) {
@@ -245,6 +280,7 @@ class RateLimiter {
         inFlightLikes.removeAll()
         inFlightReposts.removeAll()
         inFlightSaves.removeAll()
+        pendingIntents.removeAll()
     }
 
     private init() {
@@ -261,3 +297,4 @@ class RateLimiter {
         }
     }
 }
+

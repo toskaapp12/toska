@@ -36,6 +36,8 @@ struct OtherProfileView: View {
     @State private var showBlockFailedAlert = false
     @State private var lastFollowTime: Date? = nil
     @State private var followInFlight = false
+    // Build 126: the latest follow/unfollow intent tapped while a write was in flight (nil = none).
+    @State private var pendingFollow: Bool? = nil
     @State private var hasFetchedInitial = false
     @State private var showFollowerCount = false
     // H2: surface a profile-load failure instead of showing a blank/default
@@ -50,15 +52,12 @@ struct OtherProfileView: View {
     // successful snapshot; failed drives the shared ToskaErrorBanner.
     @State private var postsLoaded = false
     @State private var postsLoadFailed = false
-    
     var isOwnProfile: Bool {
         userId == Auth.auth().currentUser?.uid
     }
-    
     var body: some View {
         ZStack {
             LateNightTheme.background.ignoresSafeArea()
-            
             VStack(spacing: 0) {
                 ToskaHeader(
                     title: handle,
@@ -165,7 +164,6 @@ struct OtherProfileView: View {
                         .padding(.horizontal, 28)
                         .padding(.top, 16)
                         .padding(.bottom, 16)
-                        
                         // Posts header (2026-10-07 review): the "replies" tab is
                         // GONE, not hidden. Its collectionGroup("replies")
                         // .where(authorId == otherUser) query has been
@@ -190,9 +188,7 @@ struct OtherProfileView: View {
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 28)
-                        
                         Rectangle().fill(ToskaColor.divider).frame(height: 1)
-                        
                         Group {
                             if postsLoadFailed {
                                 // Failure state (2026-08-05) — was the empty
@@ -230,7 +226,6 @@ struct OtherProfileView: View {
                                 }
                             }
                         }
-                        
                         Color.clear.frame(height: 40)
                     }
                 }
@@ -294,7 +289,6 @@ struct OtherProfileView: View {
     }
 
     // MARK: - Check Blocked
-    
     func loadIfNotBlocked() {
             // Own profile or unauthed: no block relationship to check — load directly.
             guard let uid = Auth.auth().currentUser?.uid, uid != userId else {
@@ -322,9 +316,7 @@ struct OtherProfileView: View {
                 }
             }
         }
-    
     // MARK: - Load Profile
-    
     func loadProfile() {
         Firestore.firestore().collection("users").document(userId).getDocument { snapshot, error in
             Task { @MainActor in
@@ -354,9 +346,7 @@ struct OtherProfileView: View {
             }
         }
     }
-    
     // MARK: - Load Posts
-    
     func loadPosts() {
         Firestore.firestore().collection("posts")
             // moderationStatus filter required by firestore.rules
@@ -394,9 +384,7 @@ struct OtherProfileView: View {
                 }
             }
     }
-    
     // MARK: - Check Following
-    
     func checkFollowing() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         // Capture the uid this read is for. After the async round-trip the
@@ -412,15 +400,42 @@ struct OtherProfileView: View {
             }
         }
     }
-    
     // MARK: - Toggle Follow
-    
+
+    /// Build 126: a follow write finished with the server now at `serverState` (the written state on
+    /// success, the pre-write state on failure). Run the one pending follow-up if the latest tap wants
+    /// the other state; otherwise read the server doc and correct the pill if it disagrees.
+    private func finishFollow(uid: String, serverState: Bool) {
+        followInFlight = false
+        if let want = pendingFollow {
+            pendingFollow = nil
+            if want != serverState {
+                toggleFollow(alreadyFlipped: isFollowing == want)
+                return
+            }
+        }
+        let target = userId
+        Firestore.firestore().collection("users").document(uid).collection("following").document(target)
+            .getDocument(source: .server) { snap, error in
+                Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == uid, let snap, error == nil else { return }
+                    guard !self.followInFlight, self.pendingFollow == nil else { return }
+                    if snap.exists != self.isFollowing {
+                        self.followerCount = max(0, self.followerCount + (snap.exists ? 1 : -1))
+                        self.isFollowing = snap.exists
+                    } else {
+                    }
+                }
+            }
+    }
+
     func toggleFollow(alreadyFlipped: Bool = false) {
             guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
-            guard NetworkMonitor.shared.isConnected else { return }
+            guard NetworkMonitor.shared.isConnected else { PostInteractionManager.offlineNotice(); return }
             // Build 123/124: a follow/unfollow tap that lands while the previous write is still
-            // in flight FLIPS NOW (haptic + optimistic) and is re-invoked when the write clears
-            // to do its own write; never dropped, never delayed on screen.
+            // in flight FLIPS NOW (haptic + optimistic). Build 126: it records the LATEST intent;
+            // the in-flight write's completion runs at most one follow-up toward it (see
+            // finishFollow) — never dropped, never reordered, never delayed on screen.
             if followInFlight {
                 if !alreadyFlipped {
                     HapticManager.play(.feltThis)
@@ -428,7 +443,7 @@ struct OtherProfileView: View {
                     isFollowing = !was
                     followerCount = max(0, followerCount + (was ? -1 : 1))
                 }
-                RateLimiter.shared.whenClear({ self.followInFlight }) { self.toggleFollow(alreadyFlipped: true) }
+                pendingFollow = isFollowing
                 return
             }
             followInFlight = true
@@ -457,22 +472,25 @@ struct OtherProfileView: View {
                 batch.deleteDocument(followingRef)
                 batch.deleteDocument(followerRef)
                 batch.commit { error in
-                    Task { @MainActor in self.followInFlight = false }
-                    if error != nil {
-                        // Roll back optimistic update — but only if the active
-                        // user is still the one who issued this action. Without
-                        // the recheck, a sign-out (or account switch) between
-                        // the tap and the rollback callback would mutate the
-                        // new user's state with the previous user's revert.
-                        Task { @MainActor in
-                            guard Auth.auth().currentUser?.uid == uid else { return }
-                            self.isFollowing = true
-                            self.followerCount += 1
+                    Task { @MainActor in
+                        if error != nil {
+                            // Roll back optimistic update — but only if the active
+                            // user is still the one who issued this action. Without
+                            // the recheck, a sign-out (or account switch) between
+                            // the tap and the rollback callback would mutate the
+                            // new user's state with the previous user's revert.
+                            if Auth.auth().currentUser?.uid == uid {
+                                self.isFollowing = true
+                                self.followerCount += 1
+                            }
+                            PostInteractionManager.failureNotice("unfollow")
+                            self.finishFollow(uid: uid, serverState: true)
+                            return
                         }
-                        return
+                        // Unfollow landed — tell the feed to drop their posts now.
+                        NotificationCenter.default.post(name: .userFollowingChanged, object: nil)
+                        self.finishFollow(uid: uid, serverState: false)
                     }
-                    // Unfollow landed — tell the feed to drop their posts now.
-                    NotificationCenter.default.post(name: .userFollowingChanged, object: nil)
                 }
             } else {
                 // Follow: batch subcollection writes + atomic count increments.
@@ -512,16 +530,21 @@ struct OtherProfileView: View {
                     batch.setData(["handle": theirHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followingRef)
                     batch.setData(["handle": myHandle, "createdAt": FieldValue.serverTimestamp()], forDocument: followerRef)
                     batch.commit { error in
-                    Task { @MainActor in self.followInFlight = false }
                     if error != nil {
                         // Roll back optimistic update — same uid recheck as
                         // the unfollow path above.
                         Task { @MainActor in
-                            guard Auth.auth().currentUser?.uid == uid else { return }
-                            self.isFollowing = false
-                            self.followerCount = max(0, self.followerCount - 1)
+                            if Auth.auth().currentUser?.uid == uid {
+                                self.isFollowing = false
+                                self.followerCount = max(0, self.followerCount - 1)
+                            }
+                            PostInteractionManager.failureNotice("follow")
+                            self.finishFollow(uid: uid, serverState: false)
                         }
                         return
+                    }
+                    Task { @MainActor in
+                        self.finishFollow(uid: uid, serverState: true)
                     }
                     // Counter increments handled by Cloud Function on follow doc create.
                     // Send follow notification
@@ -544,7 +567,6 @@ struct OtherProfileView: View {
         }
 
     // MARK: - Block User
-    
     func blockUser() {
                 guard let uid = Auth.auth().currentUser?.uid, uid != userId else { return }
                 // Offline: surface it instead of a silent no-op tap.
@@ -595,9 +617,7 @@ struct OtherProfileView: View {
                 showBlockedAlert = true
             }
         }
-    
     // MARK: - Report User
-    
     func reportUser() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         // Offline guard (2026-08-05): addDocument's completion never fires

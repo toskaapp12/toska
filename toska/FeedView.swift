@@ -1459,9 +1459,10 @@ struct FeedPostRow: View, Equatable {
             // lacks originalPostId (legacy doc): the manager's cannot-repost-
             // a-repost guard still catches that server-side.
             guard !isRepostPost || originalPostId != nil else { return }
-            // M4: same offline feedback as toggleLike — the manager no-ops.
+            // Build 126 (audit A2): never silent — a momentary offline path used to swallow the tap
+            // with nothing but a buzz.
             guard NetworkMonitor.shared.isConnected else {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                PostInteractionManager.offlineNotice()
                 return
             }
             // Own words can't be reposted (web parity, owner 2026-11-03).
@@ -1663,7 +1664,8 @@ struct FeedHeaderCard: View {
                                             promptDate: vm.todaysPromptDateString)
                             .navigationBarHidden(true)
                     } label: {
-                        Text("what others said…")
+                        // Build 126 (audit A4): nobody has answered yet → "be the first".
+                        Text(vm.todaysPromptAnswerCount == 0 ? "be the first" : "what others said…")
                             .font(ToskaFont.sans(12.5, weight: .semibold))
                             .foregroundColor(ToskaColor.accentText)
                             .padding(.top, 8)
@@ -1671,7 +1673,7 @@ struct FeedHeaderCard: View {
                             .contentShape(Rectangle().inset(by: -10))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("What others said")
+                    .accessibilityLabel(vm.todaysPromptAnswerCount == 0 ? "Be the first" : "What others said")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

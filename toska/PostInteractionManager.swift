@@ -49,14 +49,18 @@ class PostInteractionManager {
                // toggle twice. Marking in-flight here and clearing in the
                // completion handler closes the window cleanly.
                if RateLimiter.shared.isLikeInFlight(postId) {
-                   // Build 123: queue the tap behind the in-flight write instead of dropping it.
-                   // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+                   // Build 124: the tap flips NOW (haptic + optimistic state); only the write waits.
+                   // Build 126: it records the LATEST intent instead of queuing its own re-invocation —
+                   // the in-flight write's completion runs at most one follow-up toward it (see
+                   // RateLimiter.setPendingIntent). Latest tap wins; nothing is reordered or dropped.
+                   let wanted = !currentlyLiked
+                   let wantedCount = max(0, currentCount + (wanted ? 1 : -1))
                    if !alreadyFlipped {
                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                       onUpdate(LikeResult(isLiked: !currentlyLiked, newCount: max(0, currentCount + (!currentlyLiked ? 1 : -1))))
-                       NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "like", "value": !currentlyLiked])
+                       onUpdate(LikeResult(isLiked: wanted, newCount: wantedCount))
+                       NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "like", "value": wanted])
                    }
-                   RateLimiter.shared.whenClear({ RateLimiter.shared.isLikeInFlight(postId) }) {
+                   RateLimiter.shared.setPendingIntent("like", postId, value: wanted) {
                        toggleLike(postId: postId, authorId: authorId, currentlyLiked: currentlyLiked, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
                    }
                    return
@@ -135,18 +139,24 @@ class PostInteractionManager {
         }, completion: { object, error in
             Task { @MainActor in
                 // Always clear the in-flight marker, regardless of success
-                // or failure, so a later legitimate tap can re-enter.
-                RateLimiter.shared.markLikeComplete(postId)
-                if let error = error {
-                    // Roll back optimistic update.
-                    onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
-                    NotificationCenter.default.post(
-                                         name: .postInteractionChanged,
-                                         object: nil,
-                                         userInfo: ["postId": postId, "action": "like", "value": currentlyLiked]
-                                     )
-                    debugLog("⚠️ toggleLike transaction failed: \(error)")
-                } else {
+                // or failure, so a later legitimate tap can re-enter. Build 126: the
+                // pending intent (a tap that landed meanwhile) is drained right after.
+                RateLimiter.shared.markLikeComplete(postId) {
+                    if let error = error {
+                        // Roll back optimistic update.
+                        onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
+                        NotificationCenter.default.post(
+                                             name: .postInteractionChanged,
+                                             object: nil,
+                                             userInfo: ["postId": postId, "action": "like", "value": currentlyLiked]
+                                         )
+                        debugLog("⚠️ toggleLike transaction failed: \(error)")
+                        // The latest tap still wants its end state — start over from the rolled-back one.
+                        if let p = RateLimiter.shared.takePendingIntent("like", postId), p.value != currentlyLiked {
+                            toggleLike(postId: postId, authorId: authorId, currentlyLiked: currentlyLiked, currentCount: currentCount, onUpdate: onUpdate)
+                        }
+                        return
+                    }
                     // Rate-limit timestamp is now set on attempt (above), not
                     // here on success — keeps double-tap behaviour consistent
                     // whether the transaction succeeds, fails, or hits a
@@ -161,9 +171,99 @@ class PostInteractionManager {
                             sendNotification(postId: postId, toUserId: authorId, type: "like", message: "")
                         }
                     }
+                    RateLimiter.shared.drainPendingIntent("like", postId, written: newLiked) {
+                        reconcileFlag(kind: "like", key: postId, uid: uid, shown: newLiked,
+                                      ref: db.collection("users").document(uid).collection("liked").document(postId),
+                                      inFlight: { RateLimiter.shared.isLikeInFlight(postId) }) { server in
+                            onUpdate(LikeResult(isLiked: server, newCount: max(0, newCount + (server ? 1 : -1))))
+                            NotificationCenter.default.post(name: .postInteractionChanged, object: nil,
+                                                            userInfo: ["postId": postId, "action": "like", "value": server])
+                        }
+                    }
                 }
             }
         })
+    }
+
+    // MARK: - Build 126: never-silent offline, server reconcile
+
+    /// Audit 2026-11-10 (A2): reposts, reply actions and follow used to return silently (haptic at most)
+    /// when the path monitor reported a momentary offline state — the "tap did nothing" class. Likes and
+    /// saves queue offline; everything else says so.
+    /// A write that failed after the optimistic flip rolled back: say so. In airplane mode the path
+    /// monitor can still report "connected" for a few seconds, so the offline guard never fired and the
+    /// repost silently flipped back (owner on the 126 dev build: "no notice when offline").
+    @MainActor
+    static func failureNotice(_ what: String) {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                        userInfo: ["text": "couldn't \(what) — check your connection and try again."])
+    }
+
+    @MainActor
+    static func offlineNotice() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                        userInfo: ["text": "no connection — try again in a moment."])
+    }
+
+    /// After the LAST write of a tap chain (no pending intent left), read the flag doc from the SERVER and
+    /// correct the row if it disagrees with what the chain left on screen. Skipped when a newer write for
+    /// the same key has started meanwhile — that chain reconciles itself.
+    @MainActor
+    static func reconcileFlag(kind: String, key: String, uid: String, shown: Bool, ref: DocumentReference,
+                              inFlight: @escaping @MainActor () -> Bool, correct: @escaping @MainActor (Bool) -> Void) {
+        ref.getDocument(source: .server) { snap, error in
+            Task { @MainActor in
+                guard Auth.auth().currentUser?.uid == uid else { return }
+                guard let snap, error == nil else {
+                    return
+                }
+                guard !inFlight() else { return }
+                let server = snap.exists
+                if server != shown {
+                    correct(server)
+                } else {
+                }
+            }
+        }
+    }
+
+    /// Repost flavour of reconcileFlag: legacy reposts have random ids, so existence is a query, not a doc.
+    @MainActor
+    static func reconcileRepost(postId: String, uid: String, shown: Bool, count: Int, onUpdate: @escaping (RepostResult) -> Void) {
+        Firestore.firestore().collection("posts")
+            .whereField("authorId", isEqualTo: uid)
+            .whereField("isRepost", isEqualTo: true)
+            .whereField("originalPostId", isEqualTo: postId)
+            .limit(to: 1)
+            .getDocuments(source: .server) { snap, error in
+                Task { @MainActor in
+                    guard Auth.auth().currentUser?.uid == uid else { return }
+                    guard let snap, error == nil else {
+                        return
+                    }
+                    guard !RateLimiter.shared.isRepostInFlight(postId) else { return }
+                    let server = !snap.documents.isEmpty
+                    if server != shown {
+                        onUpdate(RepostResult(isReposted: server, newCount: max(0, count + (server ? 1 : -1))))
+                        NotificationCenter.default.post(name: .postInteractionChanged, object: nil,
+                                                        userInfo: ["postId": postId, "action": "repost", "value": server])
+                    } else {
+                    }
+                }
+            }
+    }
+
+    /// Repost chains end here: clear the in-flight flag, run the one pending follow-up if the latest tap
+    /// wants the other state, else reconcile against the server.
+    @MainActor
+    static func finishRepost(postId: String, uid: String, written: Bool, count: Int, onUpdate: @escaping (RepostResult) -> Void) {
+        RateLimiter.shared.markRepostComplete(postId) {
+            RateLimiter.shared.drainPendingIntent("repost", postId, written: written) {
+                reconcileRepost(postId: postId, uid: uid, shown: written, count: count, onUpdate: onUpdate)
+            }
+        }
     }
 
     // MARK: - Save
@@ -197,14 +297,14 @@ class PostInteractionManager {
                 // the second toggle reads the not-yet-committed doc and no-ops,
                 // leaving server and UI disagreeing. Serialize on the post id.
                 if RateLimiter.shared.isSaveInFlight(postId) {
-                    // Build 123: queue the tap behind the in-flight write instead of dropping it.
-                    // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+                    // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
+                    let wanted = !currentlySaved
                     if !alreadyFlipped {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onUpdate(!currentlySaved)
-                        NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "save", "value": !currentlySaved])
+                        onUpdate(wanted)
+                        NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "save", "value": wanted])
                     }
-                    RateLimiter.shared.whenClear({ RateLimiter.shared.isSaveInFlight(postId) }) {
+                    RateLimiter.shared.setPendingIntent("save", postId, value: wanted) {
                         toggleSave(postId: postId, authorId: authorId, currentlySaved: currentlySaved, alreadyFlipped: true, onUpdate: onUpdate)
                     }
                     return
@@ -263,20 +363,32 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
-                RateLimiter.shared.markSaveComplete(postId)
-                if let error = error {
-                    debugLog("⚠️ toggleSave transaction failed: \(error)")
-                    // Roll back optimistic update.
-                    onUpdate(currentlySaved)
-                    NotificationCenter.default.post(
-                        name: .postInteractionChanged,
-                        object: nil,
-                        userInfo: ["postId": postId, "action": "save", "value": currentlySaved]
-                    )
-                    return
-                }
-                if newSaved, !authorId.isEmpty, authorId != uid {
-                    sendNotification(postId: postId, toUserId: authorId, type: "save", message: "")
+                RateLimiter.shared.markSaveComplete(postId) {
+                    if let error = error {
+                        debugLog("⚠️ toggleSave transaction failed: \(error)")
+                        // Roll back optimistic update.
+                        onUpdate(currentlySaved)
+                        NotificationCenter.default.post(
+                            name: .postInteractionChanged,
+                            object: nil,
+                            userInfo: ["postId": postId, "action": "save", "value": currentlySaved]
+                        )
+                        if let p = RateLimiter.shared.takePendingIntent("save", postId), p.value != currentlySaved {
+                            toggleSave(postId: postId, authorId: authorId, currentlySaved: currentlySaved, onUpdate: onUpdate)
+                        }
+                        return
+                    }
+                    if newSaved, !authorId.isEmpty, authorId != uid {
+                        sendNotification(postId: postId, toUserId: authorId, type: "save", message: "")
+                    }
+                    RateLimiter.shared.drainPendingIntent("save", postId, written: newSaved) {
+                        reconcileFlag(kind: "save", key: postId, uid: uid, shown: newSaved, ref: saveRef,
+                                      inFlight: { RateLimiter.shared.isSaveInFlight(postId) }) { server in
+                            onUpdate(server)
+                            NotificationCenter.default.post(name: .postInteractionChanged, object: nil,
+                                                            userInfo: ["postId": postId, "action": "save", "value": server])
+                        }
+                    }
                 }
             }
         })
@@ -312,7 +424,8 @@ class PostInteractionManager {
         // queue below serializes the writes; validatePost's burst limiter covers abuse.
         // No self-repost (owner re-ruling 2026-09-22 eve; rules enforce too).
                guard NetworkMonitor.shared.isConnected else {
-                   debugLog("⚠️ repost — offline, skipping")
+                   debugLog("⚠️ repost — offline")
+                   offlineNotice()
                    return
                }
                // Own post: nothing to repost (web parity — toggleRepost returns
@@ -335,14 +448,13 @@ class PostInteractionManager {
                // a second +1. Serialize on the shared repost key (same one unrepost
                // uses) and clear it on EVERY exit below.
                if RateLimiter.shared.isRepostInFlight(postId) {
-                   // Build 123: queue the tap behind the in-flight write instead of dropping it.
-                   // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+                   // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
                    if !alreadyFlipped {
                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                        onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
                        NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": true])
                    }
-                   RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(postId) }) {
+                   RateLimiter.shared.setPendingIntent("repost", postId, value: true) {
                        repost(postId: postId, postText: postText, postTag: postTag, authorId: authorId, originalHandle: originalHandle, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
                    }
                    return
@@ -383,14 +495,16 @@ class PostInteractionManager {
                     // check pass with stale cached data. Correct check: any error → fail safe.
                     if let error = error {
                         debugLog("⚠️ repost dedup check failed: \(error)")
-                        RateLimiter.shared.markRepostComplete(postId)
+                        failureNotice("repost")
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                        NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": false])
+                        finishRepost(postId: postId, uid: uid, written: false, count: currentCount, onUpdate: onUpdate)
                         return
                     }
                     if let docs = existingSnap?.documents, !docs.isEmpty {
                         // Already reposted — reflect that in the UI.
-                        RateLimiter.shared.markRepostComplete(postId)
                         onUpdate(RepostResult(isReposted: true, newCount: currentCount))
+                        finishRepost(postId: postId, uid: uid, written: true, count: currentCount, onUpdate: onUpdate)
                         return
                     }
 
@@ -405,20 +519,27 @@ class PostInteractionManager {
                             snapshot = try await db.collection("posts").document(postId).getDocumentAsync()
                         } catch {
                             debugLog("⚠️ repost post fetch failed: \(error)")
-                            RateLimiter.shared.markRepostComplete(postId)
+                            failureNotice("repost")
                             onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                            NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": false])
+                            finishRepost(postId: postId, uid: uid, written: false, count: currentCount, onUpdate: onUpdate)
                             return
                         }
+                            // Build 126: every bail-out below rolls the flip back on EVERY surface (the
+                            // store too), then finishes the chain (pending intent + reconcile).
+                            @MainActor func bail(_ why: String) {
+                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": false])
+                                finishRepost(postId: postId, uid: uid, written: false, count: currentCount, onUpdate: onUpdate)
+                            }
                             guard let data = snapshot?.data() else {
                                 // Post was deleted.
-                                RateLimiter.shared.markRepostComplete(postId)
-                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                bail("post deleted")
                                 return
                             }
                             if data["isRepost"] as? Bool == true {
                                 // Cannot repost a repost — no change.
-                                RateLimiter.shared.markRepostComplete(postId)
-                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                bail("target is itself a repost")
                                 return
                             }
                             if data["isWhisper"] as? Bool == true || data["isMidnightPost"] as? Bool == true {
@@ -429,8 +550,9 @@ class PostInteractionManager {
                                 // promised disappears. Rules + validatePost enforce
                                 // this server-side; bailing here keeps the button
                                 // from flashing a doomed optimistic state.
-                                RateLimiter.shared.markRepostComplete(postId)
-                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                bail("whisper / midnight original")
+                                NotificationCenter.default.post(name: .gentleNotice, object: nil,
+                                                                userInfo: ["text": "this one disappears — it can't be reposted."])
                                 return
                             }
 
@@ -478,8 +600,7 @@ class PostInteractionManager {
                             // authorId): no copy, roll the flip back, say so gently
                             // (owner 2026-11-04).
                             if freshAuthorId == uid {
-                                RateLimiter.shared.markRepostComplete(postId)
-                                onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                                bail("own words")
                                 NotificationCenter.default.post(name: .gentleNotice, object: nil,
                                                                 userInfo: ["text": "your own words can't be reposted."])
                                 return
@@ -583,9 +704,9 @@ class PostInteractionManager {
 
                             }, completion: { _, txError in
                                 Task { @MainActor in
-                                    RateLimiter.shared.markRepostComplete(postId)
                                     if let txError = txError {
                                         debugLog("⚠️ repost transaction failed: \(txError)")
+                                        failureNotice("repost")
                                         // Roll back the optimistic update (locally and
                                         // across other surfaces that mirrored it).
                                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
@@ -594,8 +715,10 @@ class PostInteractionManager {
                                             object: nil,
                                             userInfo: ["postId": postId, "action": "repost", "value": false]
                                         )
+                                        finishRepost(postId: postId, uid: uid, written: false, count: currentCount, onUpdate: onUpdate)
                                         return
                                     }
+                                    finishRepost(postId: postId, uid: uid, written: true, count: currentCount + 1, onUpdate: onUpdate)
                                     // Atomic write succeeded. Rate-limit timestamp
                                     // is set on attempt (above), not here.
                                     if !authorId.isEmpty, authorId != uid {
@@ -654,20 +777,20 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            debugLog("⚠️ unrepost — offline, skipping")
+            debugLog("⚠️ unrepost — offline")
+            offlineNotice()
             return
         }
         // Serialize against a concurrent repost/unrepost on the same post so a
         // double-tap can't fire two optimistic decrements (count drift).
         if RateLimiter.shared.isRepostInFlight(postId) {
-            // Build 123: queue the tap behind the in-flight write instead of dropping it.
-            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
             if !alreadyFlipped {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
                 NotificationCenter.default.post(name: .postInteractionChanged, object: nil, userInfo: ["postId": postId, "action": "repost", "value": false])
             }
-            RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(postId) }) {
+            RateLimiter.shared.setPendingIntent("repost", postId, value: false) {
                 unrepost(postId: postId, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
@@ -687,13 +810,14 @@ class PostInteractionManager {
 
         func rollback(_ error: Error?) {
             Task { @MainActor in
-                RateLimiter.shared.markRepostComplete(postId)
                 debugLog("⚠️ unrepost failed: \(String(describing: error))")
+                failureNotice("undo the repost")
                 onUpdate(RepostResult(isReposted: true, newCount: currentCount))
                 NotificationCenter.default.post(
                     name: .postInteractionChanged, object: nil,
                     userInfo: ["postId": postId, "action": "repost", "value": true]
                 )
+                finishRepost(postId: postId, uid: uid, written: true, count: currentCount, onUpdate: onUpdate)
             }
         }
 
@@ -720,8 +844,8 @@ class PostInteractionManager {
                     ref.delete { e in if firstErr == nil { firstErr = e }; group.leave() }
                 }
                 group.notify(queue: .main) {
-                    RateLimiter.shared.markRepostComplete(postId)
                     if let e = firstErr { rollback(e); return }
+                    finishRepost(postId: postId, uid: uid, written: false, count: max(0, currentCount - 1), onUpdate: onUpdate)
                     // Owner (2026-09-22): strip the (now-deleted) repost rows
                     // from any in-memory feed immediately — the .postDeleted
                     // handlers already remove by id, so an un-repost makes the
@@ -862,7 +986,8 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            debugLog("⚠️ toggleReplyLike — offline, skipping")
+            debugLog("⚠️ toggleReplyLike — offline")
+            offlineNotice()
             return
         }
         // F-P2-1: no self-like on your own reply — mirrors toggleLike; the
@@ -875,13 +1000,13 @@ class PostInteractionManager {
         let rlKey = "reply_\(replyId)"
         // No time gate — see toggleLike (quick toggle-back is legitimate).
         if RateLimiter.shared.isLikeInFlight(rlKey) {
-            // Build 123: queue the tap behind the in-flight write instead of dropping it.
-            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
+            let wanted = !currentlyLiked
             if !alreadyFlipped {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onUpdate(LikeResult(isLiked: !currentlyLiked, newCount: max(0, currentCount + (!currentlyLiked ? 1 : -1))))
+                onUpdate(LikeResult(isLiked: wanted, newCount: max(0, currentCount + (wanted ? 1 : -1))))
             }
-            RateLimiter.shared.whenClear({ RateLimiter.shared.isLikeInFlight(rlKey) }) {
+            RateLimiter.shared.setPendingIntent("replyLike", replyId, value: wanted) {
                 toggleReplyLike(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlyLiked: currentlyLiked, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
@@ -939,10 +1064,22 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
-                RateLimiter.shared.markLikeComplete(rlKey)
-                if let error = error {
-                    onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
-                    debugLog("⚠️ toggleReplyLike transaction failed: \(error)")
+                RateLimiter.shared.markLikeComplete(rlKey) {
+                    if let error = error {
+                        onUpdate(LikeResult(isLiked: currentlyLiked, newCount: currentCount))
+                        debugLog("⚠️ toggleReplyLike transaction failed: \(error)")
+                        failureNotice("save that")
+                        if let p = RateLimiter.shared.takePendingIntent("replyLike", replyId), p.value != currentlyLiked {
+                            toggleReplyLike(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlyLiked: currentlyLiked, currentCount: currentCount, onUpdate: onUpdate)
+                        }
+                        return
+                    }
+                    RateLimiter.shared.drainPendingIntent("replyLike", replyId, written: newLiked) {
+                        reconcileFlag(kind: "replyLike", key: replyId, uid: uid, shown: newLiked, ref: userLikedReplyRef,
+                                      inFlight: { RateLimiter.shared.isLikeInFlight(rlKey) }) { server in
+                            onUpdate(LikeResult(isLiked: server, newCount: max(0, newCount + (server ? 1 : -1))))
+                        }
+                    }
                 }
             }
         })
@@ -978,7 +1115,8 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            debugLog("⚠️ toggleReplySave — offline, skipping")
+            debugLog("⚠️ toggleReplySave — offline")
+            offlineNotice()
             return
         }
         // Rate-limit + in-flight guard (previously toggleReplySave had NEITHER,
@@ -987,13 +1125,13 @@ class PostInteractionManager {
         // "reply_{id}" so it never collides with post-save state.
         let rlKey = "reply_\(replyId)"
         if RateLimiter.shared.isSaveInFlight(rlKey) {
-            // Build 123: queue the tap behind the in-flight write instead of dropping it.
-            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
+            let wanted = !currentlySaved
             if !alreadyFlipped {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onUpdate(!currentlySaved)
+                onUpdate(wanted)
             }
-            RateLimiter.shared.whenClear({ RateLimiter.shared.isSaveInFlight(rlKey) }) {
+            RateLimiter.shared.setPendingIntent("replySave", replyId, value: wanted) {
                 toggleReplySave(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlySaved: currentlySaved, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
@@ -1042,13 +1180,38 @@ class PostInteractionManager {
             return nil
         }, completion: { _, error in
             Task { @MainActor in
-                RateLimiter.shared.markSaveComplete(rlKey)
-                if let error = error {
-                    debugLog("⚠️ toggleReplySave transaction failed: \(error)")
-                    onUpdate(currentlySaved)
+                RateLimiter.shared.markSaveComplete(rlKey) {
+                    if let error = error {
+                        debugLog("⚠️ toggleReplySave transaction failed: \(error)")
+                        failureNotice("save that")
+                        onUpdate(currentlySaved)
+                        if let p = RateLimiter.shared.takePendingIntent("replySave", replyId), p.value != currentlySaved {
+                            toggleReplySave(postId: postId, replyId: replyId, replyText: replyText, replyHandle: replyHandle, replyAuthorId: replyAuthorId, currentlySaved: currentlySaved, onUpdate: onUpdate)
+                        }
+                        return
+                    }
+                    RateLimiter.shared.drainPendingIntent("replySave", replyId, written: newSaved) {
+                        reconcileFlag(kind: "replySave", key: replyId, uid: uid, shown: newSaved, ref: saveRef,
+                                      inFlight: { RateLimiter.shared.isSaveInFlight(rlKey) }) { server in onUpdate(server) }
+                    }
                 }
             }
         })
+    }
+
+    /// Reply-repost chains end here (deterministic doc id, so existence is a plain GET).
+    @MainActor
+    static func finishReplyRepost(replyId: String, uid: String, written: Bool, count: Int, onUpdate: @escaping (RepostResult) -> Void) {
+        let flightKey = "reply_\(replyId)"
+        RateLimiter.shared.markRepostComplete(flightKey) {
+            RateLimiter.shared.drainPendingIntent("replyRepost", replyId, written: written) {
+                reconcileFlag(kind: "replyRepost", key: replyId, uid: uid, shown: written,
+                              ref: Firestore.firestore().collection("posts").document("\(uid)_replyrepost_\(replyId)"),
+                              inFlight: { RateLimiter.shared.isRepostInFlight(flightKey) }) { server in
+                    onUpdate(RepostResult(isReposted: server, newCount: max(0, count + (server ? 1 : -1))))
+                }
+            }
+        }
     }
 
     // MARK: - Reply Repost
@@ -1077,9 +1240,13 @@ class PostInteractionManager {
             if Auth.auth().currentUser == nil { ContentView.postAuthSessionExpired() }
             return
         }
-        guard uid != replyAuthorId else { return }
+        guard uid != replyAuthorId else {
+            NotificationCenter.default.post(name: .gentleNotice, object: nil, userInfo: ["text": "your own words can't be reposted."])
+            return
+        }
         guard NetworkMonitor.shared.isConnected else {
-            debugLog("⚠️ repostReply — offline, skipping")
+            debugLog("⚠️ repostReply — offline")
+            offlineNotice()
             return
         }
         // Rate-limit on the reply id (mirrors repost()). Without this gate,
@@ -1091,13 +1258,12 @@ class PostInteractionManager {
         // transaction is still open.
         let flightKey = "reply_\(replyId)"
         if RateLimiter.shared.isRepostInFlight(flightKey) {
-            // Build 123: queue the tap behind the in-flight write instead of dropping it.
-            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
             if !alreadyFlipped {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onUpdate(RepostResult(isReposted: true, newCount: currentCount + 1))
             }
-            RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(flightKey) }) {
+            RateLimiter.shared.setPendingIntent("replyRepost", replyId, value: true) {
                 repostReply(postId: postId, replyId: replyId, replyText: replyText, replyAuthorId: replyAuthorId, replyAuthorHandle: replyAuthorHandle, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
@@ -1198,17 +1364,20 @@ class PostInteractionManager {
                 return false
             }, completion: { object, error in
                 Task { @MainActor in
-                    RateLimiter.shared.markRepostComplete(flightKey)
                     if let error = error {
                         debugLog("⚠️ repostReply transaction failed: \(error)")
+                        failureNotice("repost")
                         onUpdate(RepostResult(isReposted: false, newCount: currentCount))
+                        finishReplyRepost(replyId: replyId, uid: uid, written: false, count: currentCount, onUpdate: onUpdate)
                         return
                     }
                     // Already reposted (stamping missed it): keep it reposted but
                     // correct the count back to currentCount (mirrors repost()).
-                    if let wasNoOp = object as? Bool, wasNoOp {
+                    let wasNoOp = (object as? Bool) == true
+                    if wasNoOp {
                         onUpdate(RepostResult(isReposted: true, newCount: currentCount))
                     }
+                    finishReplyRepost(replyId: replyId, uid: uid, written: true, count: wasNoOp ? currentCount : currentCount + 1, onUpdate: onUpdate)
                     // Counter increment + reply-author notification handled by
                     // Cloud Function (onReplyRepostCreatedUpdateCount). The
                     // notification surface for "your reply was reposted" is
@@ -1254,7 +1423,8 @@ class PostInteractionManager {
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            debugLog("⚠️ unrepostReply — offline, skipping")
+            debugLog("⚠️ unrepostReply — offline")
+            offlineNotice()
             return
         }
         // Serialize against a concurrent repost/unrepost on the same reply so a
@@ -1263,13 +1433,12 @@ class PostInteractionManager {
         // collide with the post-repost keyspace.
         let flightKey = "reply_\(replyId)"
         if RateLimiter.shared.isRepostInFlight(flightKey) {
-            // Build 123: queue the tap behind the in-flight write instead of dropping it.
-            // Build 124: the queued tap flips NOW (haptic + optimistic state); only the write waits.
+            // Build 124: flips NOW; build 126: records the LATEST intent (see toggleLike).
             if !alreadyFlipped {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onUpdate(RepostResult(isReposted: false, newCount: max(0, currentCount - 1)))
             }
-            RateLimiter.shared.whenClear({ RateLimiter.shared.isRepostInFlight(flightKey) }) {
+            RateLimiter.shared.setPendingIntent("replyRepost", replyId, value: false) {
                 unrepostReply(replyId: replyId, currentCount: currentCount, alreadyFlipped: true, onUpdate: onUpdate)
             }
             return
@@ -1281,11 +1450,14 @@ class PostInteractionManager {
         let db = Firestore.firestore()
         db.collection("posts").document("\(uid)_replyrepost_\(replyId)").delete { error in
             Task { @MainActor in
-                RateLimiter.shared.markRepostComplete(flightKey)
                 if let error = error {
                     debugLog("⚠️ unrepostReply failed: \(error)")
+                    failureNotice("undo the repost")
                     onUpdate(RepostResult(isReposted: true, newCount: currentCount))
+                    finishReplyRepost(replyId: replyId, uid: uid, written: true, count: currentCount, onUpdate: onUpdate)
+                    return
                 }
+                finishReplyRepost(replyId: replyId, uid: uid, written: false, count: max(0, currentCount - 1), onUpdate: onUpdate)
             }
         }
     }

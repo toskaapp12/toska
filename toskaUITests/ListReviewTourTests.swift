@@ -505,10 +505,22 @@ final class ListReviewTourTests: XCTestCase {
             app.buttons.matching(NSPredicate(format: "label IN %@", ["Like post", "Unlike post"])).allElementsBoundByIndex
                 .first { $0.frame.minY > row.frame.minY && $0.frame.minY < row.frame.maxY + 80 }
         }
+        // Bring the row into the safe band and pin the heart's screen position ONCE: re-querying between
+        // taps raced the layout and the 2nd/3rd taps landed on a different row (2026-11-10 run trace).
+        for _ in 0..<3 {
+            let f = row.frame; let maxY = app.frame.maxY - 220; let minY: CGFloat = 180
+            let delta: CGFloat = f.maxY > maxY ? -min(f.maxY - maxY + 40, 400) : (f.minY < minY ? min(minY - f.minY + 40, 400) : 0)
+            if delta == 0 { break }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: delta))); usleep(700_000)
+        }
+        guard let h0 = heart() else { XCTFail("no heart in the seeded row"); return }
+        let heartPoint = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: h0.frame.midX, dy: h0.frame.midY))
+        log += "row frame \(row.frame) heart frame \(h0.frame)\n"
         for round in 1...3 {
-            if heart()?.label == "Unlike post" { tapC(heart()!); sleep(4) }
+            if heart()?.label == "Unlike post" { heartPoint.tap(); sleep(4) }
             let start = heart()?.label ?? "?"
-            for _ in 0..<3 { if let h = heart() { tapC(h) }; usleep(250_000) }
+            for _ in 0..<3 { heartPoint.tap(); usleep(250_000) }
             var samples: [String] = []
             for _ in 0..<20 { usleep(250_000); samples.append(heart()?.label == "Unlike post" ? "L" : "u") }
             let end = heart()?.label ?? "?"

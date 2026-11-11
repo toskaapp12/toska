@@ -678,6 +678,9 @@ class FeedViewModel: ObservableObject {
     /// responded yet (or hasn't loaded yet). FeedHeaderCard reads this to
     /// flip the prompt card between "respond" and "your response."
     @Published var todaysPromptResponse: FeedPost? = nil
+    /// Build 126 (audit A4): how many live answers today's prompt has (nil until read) — the feed card
+    /// says "be the first" at zero instead of pointing at an empty "what others said" page.
+    @Published var todaysPromptAnswerCount: Int? = nil
 
     /// One-shot fetch of the user's response to today's prompt. Cheap (one
     /// query, at most one doc returned) and called on initial load,
@@ -697,6 +700,15 @@ class FeedViewModel: ObservableObject {
         // fetchFollowingPosts / fetchLikedPostIds / startLiveListener.
         let capturedUid = uid
         Task { @MainActor in
+            // Build 126: live answer count for the card's "be the first" wording (same filters as
+            // PromptResponsesView; equality-only, so no composite index needed). Best effort.
+            if let agg = try? await Firestore.firestore().collection("posts")
+                .whereField("promptDate", isEqualTo: today)
+                .whereField("moderationStatus", isEqualTo: "live")
+                .count.getAggregation(source: .server),
+               Auth.auth().currentUser?.uid == capturedUid {
+                todaysPromptAnswerCount = agg.count.intValue
+            }
             do {
                 let snap = try await Firestore.firestore().collection("posts")
                     .whereField("authorId", isEqualTo: uid)
@@ -988,6 +1000,23 @@ class FeedViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 700_000_000)
             self.fetchPosts()
         }
+    }
+
+    /// Build 126 (audit A3, owner: "why is the older one above the post I just made"): the author's own
+    /// posts from the last 10 minutes sit ABOVE the ranked list, newest first — the way X shows you your
+    /// own fresh post. The score boost alone ordered several fresh own posts by score, so a tagged longer
+    /// post from 8 minutes ago beat the one just published. Author only: nobody else's ranking moves.
+    static func pinOwnFresh(_ ranked: [(doc: QueryDocumentSnapshot, score: Double)]) -> [(doc: QueryDocumentSnapshot, score: Double)] {
+        guard let uid = Auth.auth().currentUser?.uid else { return ranked }
+        let cutoff = Date().addingTimeInterval(-600)
+        func created(_ d: QueryDocumentSnapshot) -> Date { (d.data()["createdAt"] as? Timestamp)?.dateValue() ?? .distantPast }
+        func isFreshOwn(_ d: QueryDocumentSnapshot) -> Bool {
+            let data = d.data()
+            return (data["authorId"] as? String) == uid && (data["isRepost"] as? Bool) != true && created(d) > cutoff
+        }
+        let pinned = ranked.filter { isFreshOwn($0.doc) }.sorted { created($0.doc) > created($1.doc) }
+        guard !pinned.isEmpty else { return ranked }
+        return pinned + ranked.filter { !isFreshOwn($0.doc) }
     }
 
     func handleNewPostCreated() {
@@ -1561,7 +1590,7 @@ class FeedViewModel: ObservableObject {
                         return (doc: doc, score: score)
                     }
 
-                    let ranked = scored.sorted { $0.score > $1.score }
+                    let ranked = Self.pinOwnFresh(scored.sorted { $0.score > $1.score })
                     // Render ALL scored docs from this page, not just the top 20.
                     // Previously we displayed prefix(20) but set the pagination
                     // cursor to documents.last (the 60th by createdAt), so the 40

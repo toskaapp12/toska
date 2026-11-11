@@ -5,6 +5,7 @@ import {
     getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, deleteDoc,
     updateDoc, query, where, limit, runTransaction, serverTimestamp, Timestamp,
 } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+import { settle, resetCoalesce } from "./coalesce.js";
 
 let db, uid;
 export function initWrites(database, userId) {
@@ -53,18 +54,12 @@ export async function isRestricted() {
     const until = untilRaw?.toDate?.();
     return !until || until > new Date();
 }
-export function resetWriteCaches() { cachedProfile = null; cachedPrivate = null; inFlight.clear(); }
+export function resetWriteCaches() { cachedProfile = null; cachedPrivate = null; resetCoalesce(); }
 
-// in-flight + rate-limit guards, per iOS PostInteractionManager
-const inFlight = new Set();
+// Tap handling (iOS build 126 parity): no in-flight drop and no time gap any
+// more — every tap is kept as the latest desired end state per target and
+// settled by coalesce.js (latest tap wins, one follow-up write, server read).
 const lastAt = {};
-function guard(key, minGapMs) {
-    if (inFlight.has(key)) return false;
-    if (lastAt[key] && Date.now() - lastAt[key] < minGapMs) return false;
-    inFlight.add(key); lastAt[key] = Date.now();
-    return true;
-}
-function done(key) { inFlight.delete(key); }
 
 // Deterministic-id notification; never carries `message` (server enriches).
 // Best-effort: recipient-blocked-me denials are expected and swallowed.
@@ -151,112 +146,113 @@ export async function createReply(postId, { text, parentReplyId, parentPostText,
 }
 
 // ------------------------------------------------------------ like / save
-// Returns true/false (new liked state) | "own_post" | null.
-export async function toggleLike(postId, liked, postAuthorId) {
+// setLike / setSave / setRepost (iOS build 126 parity): `wanted` is the end
+// state the tap asks for. Resolves null when the tap was queued behind an
+// in-flight write for the same post (that call reconciles the button), else
+// { state, error } — the SERVER state once every write landed, and the last
+// write error that no later successful write superseded.
+async function writeLike(postId, wanted, postAuthorId) {
     // X-parity (owner 2026-09-22): self-like allowed — rules flipped too.
-    const key = `like_${postId}`;
-    if (!guard(key, 800)) return null;
-    try {
-        const likeRef = doc(db, "posts", postId, "likes", uid);
-        const likedRef = doc(db, "users", uid, "liked", postId);
-        await runTransaction(db, async (txn) => {
-            // liked/saved allow create+delete but NOT update — a set on an
-            // existing doc is an update and denies the whole transaction, so
-            // both writes are existence-guarded (UI state can be stale).
-            const cur = await txn.get(likeRef);
-            const curLiked = await txn.get(likedRef);
-            if (liked) { // unlike
-                if (cur.exists()) txn.delete(likeRef);
-                if (curLiked.exists()) txn.delete(likedRef);
-            } else {
-                if (!cur.exists()) txn.set(likeRef, { createdAt: serverTimestamp() });
-                // postId field (2026-09-21): cascade-sweepable reverse ref.
-                if (!curLiked.exists()) txn.set(likedRef, { createdAt: serverTimestamp(), postId });
-            }
-        });
-        if (!liked) notify(postAuthorId, "like", postId);
-        return !liked;
-    } finally { done(key); }
-}
-
-export async function toggleSave(postId, saved, postAuthorId) {
-    const key = `save_${postId}`;
-    if (!guard(key, 1000)) return null;
-    try {
-        const ref = doc(db, "users", uid, "saved", postId);
-        if (saved) await deleteDoc(ref);
-        else {
-            // no update rule on saved/ — skip the set if it already exists
-            const cur = await getDoc(ref);
-            if (!cur.exists()) {
-                // postId field (2026-09-21): cascade-sweepable reverse ref.
-                await setDoc(ref, { createdAt: serverTimestamp(), postId });
-                notify(postAuthorId, "save", postId);
-            }
+    const likeRef = doc(db, "posts", postId, "likes", uid);
+    const likedRef = doc(db, "users", uid, "liked", postId);
+    await runTransaction(db, async (txn) => {
+        // liked/saved allow create+delete but NOT update — a set on an
+        // existing doc is an update and denies the whole transaction, so
+        // both writes are existence-guarded (UI state can be stale).
+        const cur = await txn.get(likeRef);
+        const curLiked = await txn.get(likedRef);
+        if (!wanted) { // unlike
+            if (cur.exists()) txn.delete(likeRef);
+            if (curLiked.exists()) txn.delete(likedRef);
+        } else {
+            if (!cur.exists()) txn.set(likeRef, { createdAt: serverTimestamp() });
+            // postId field (2026-09-21): cascade-sweepable reverse ref.
+            if (!curLiked.exists()) txn.set(likedRef, { createdAt: serverTimestamp(), postId });
         }
-        return !saved;
-    } finally { done(key); }
+    });
+    if (wanted) notify(postAuthorId, "like", postId);
+}
+export function setLike(postId, wanted, postAuthorId) {
+    return settle(`like_${postId}`, wanted, (w) => writeLike(postId, w, postAuthorId), () => isLiked(postId, { throwOnError: true }));
 }
 
-export async function isLiked(postId) {
-    try { return (await getDoc(doc(db, "users", uid, "liked", postId))).exists(); } catch { return false; }
+async function writeSave(postId, wanted, postAuthorId) {
+    const ref = doc(db, "users", uid, "saved", postId);
+    if (!wanted) { await deleteDoc(ref); return; }
+    // no update rule on saved/ — skip the set if it already exists
+    const cur = await getDoc(ref);
+    if (!cur.exists()) {
+        // postId field (2026-09-21): cascade-sweepable reverse ref.
+        await setDoc(ref, { createdAt: serverTimestamp(), postId });
+        notify(postAuthorId, "save", postId);
+    }
 }
-export async function isSaved(postId) {
-    try { return (await getDoc(doc(db, "users", uid, "saved", postId))).exists(); } catch { return false; }
+export function setSave(postId, wanted, postAuthorId) {
+    return settle(`save_${postId}`, wanted, (w) => writeSave(postId, w, postAuthorId), () => isSaved(postId, { throwOnError: true }));
+}
+
+export async function isLiked(postId, { throwOnError = false } = {}) {
+    try { return (await getDoc(doc(db, "users", uid, "liked", postId))).exists(); }
+    catch (e) { if (throwOnError) throw e; return false; }
+}
+export async function isSaved(postId, { throwOnError = false } = {}) {
+    try { return (await getDoc(doc(db, "users", uid, "saved", postId))).exists(); }
+    catch (e) { if (throwOnError) throw e; return false; }
 }
 
 // ------------------------------------------------------------ repost
-// Returns "reposted" | "unreposted" | "blocked_ephemeral" | "own_post" | null.
-export async function toggleRepost(postId) {
-    const key = `repost_${postId}`;
-    if (!guard(key, 2000)) return null;
-    try {
-        const mine = await getDocs(query(collection(db, "posts"),
-            where("authorId", "==", uid), where("isRepost", "==", true),
-            where("originalPostId", "==", postId), limit(1)));
-        if (!mine.empty) { // un-repost
-            for (const d of mine.docs) await deleteDoc(d.ref);
-            return "unreposted";
-        }
-        const orig = await getDoc(doc(db, "posts", postId));
-        if (!orig.exists()) return null;
-        const o = orig.data();
-        // No self-repost (owner re-ruling 2026-09-22 eve; self-like stays).
-        if (o.authorId === uid) return "own_post";
-        if (o.isWhisper === true || o.isMidnightPost === true) return "blocked_ephemeral";
-        const handle = await myHandle();
-        const data = {
-            authorId: uid,
-            authorHandle: handle,
-            text: o.text, // fresh original text — rules pin equality
-            likeCount: 0, repostCount: 0, replyCount: 0,
-            isShareable: o.isShareable ?? true,
-            isRepost: true,
-            originalPostId: postId,
-            originalAuthorId: o.authorId,
-            createdAt: serverTimestamp(),
-            moderationStatus: "pending_validation",
-        };
-        if (o.tag) data.tag = o.tag;
-        // Owner spec (2026-09-22): reposts show the full original, media
-        // included — rules pin the copy's gifUrl to the original's exactly.
-        if (o.gifUrl) data.gifUrl = o.gifUrl;
-        try { // originalHandle only if it matches the live user doc; omit otherwise
-            const ou = await getDoc(doc(db, "users", o.authorId));
-            if (ou.exists() && ou.data().handle) data.originalHandle = ou.data().handle;
-        } catch {}
-        await setDoc(doc(db, "posts", `${uid}_repost_${postId}`), data);
-        notify(o.authorId, "repost", postId);
-        return "reposted";
-    } finally { done(key); }
+// A refused repost throws { code: "own_post" | "blocked_ephemeral" | "gone" }
+// so the tap settles back to the server state (no repost) with that reason.
+class RepostRefused extends Error { constructor(code) { super(code); this.code = code; this.refused = true; } }
+async function myRepostDocs(postId) {
+    return getDocs(query(collection(db, "posts"),
+        where("authorId", "==", uid), where("isRepost", "==", true),
+        where("originalPostId", "==", postId), limit(1)));
 }
-export async function isReposted(postId) {
-    try {
-        const mine = await getDocs(query(collection(db, "posts"),
-            where("authorId", "==", uid), where("isRepost", "==", true),
-            where("originalPostId", "==", postId), limit(1)));
-        return !mine.empty;
-    } catch { return false; }
+async function writeRepost(postId, wanted) {
+    if (!wanted) { // undo: delete my repost row(s) of this post
+        const mine = await myRepostDocs(postId);
+        for (const d of mine.docs) await deleteDoc(d.ref);
+        return;
+    }
+    const orig = await getDoc(doc(db, "posts", postId));
+    if (!orig.exists()) throw new RepostRefused("gone");
+    const o = orig.data();
+    // No self-repost (owner re-ruling 2026-09-22 eve; self-like stays).
+    if (o.authorId === uid) throw new RepostRefused("own_post");
+    if (o.isWhisper === true || o.isMidnightPost === true) throw new RepostRefused("blocked_ephemeral");
+    const handle = await myHandle();
+    const data = {
+        authorId: uid,
+        authorHandle: handle,
+        text: o.text, // fresh original text — rules pin equality
+        likeCount: 0, repostCount: 0, replyCount: 0,
+        isShareable: o.isShareable ?? true,
+        isRepost: true,
+        originalPostId: postId,
+        originalAuthorId: o.authorId,
+        createdAt: serverTimestamp(),
+        moderationStatus: "pending_validation",
+    };
+    if (o.tag) data.tag = o.tag;
+    // Owner spec (2026-09-22): reposts show the full original, media
+    // included — rules pin the copy's gifUrl to the original's exactly.
+    if (o.gifUrl) data.gifUrl = o.gifUrl;
+    try { // originalHandle only if it matches the live user doc; omit otherwise
+        const ou = await getDoc(doc(db, "users", o.authorId));
+        if (ou.exists() && ou.data().handle) data.originalHandle = ou.data().handle;
+    } catch {}
+    // Deterministic id: a second create of the same repost is an update the
+    // rules deny — never a duplicate row.
+    await setDoc(doc(db, "posts", `${uid}_repost_${postId}`), data);
+    notify(o.authorId, "repost", postId);
+}
+export function setRepost(postId, wanted) {
+    return settle(`repost_${postId}`, wanted, (w) => writeRepost(postId, w), () => isReposted(postId, { throwOnError: true }));
+}
+export async function isReposted(postId, { throwOnError = false } = {}) {
+    try { return !(await myRepostDocs(postId)).empty; }
+    catch (e) { if (throwOnError) throw e; return false; }
 }
 
 // ------------------------------------------------------------ edit / delete

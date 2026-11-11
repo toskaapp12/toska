@@ -324,7 +324,21 @@ _Last updated: 2026-11-10 (build 126 in TestFlight: coalesced tap intents + neve
   findings (profile felt/saved rows drop at once; a reply-count display fix that landed AFTER the archive,
   commit 472d3e8, for the next build). Owner-verified over the USB console before the archive. Freeze after 126:
   only serious bugs, then submission. Local commits not pushed: 2985bfa … 472d3e8 (push on go).
-  **Next:** owner confirms 126 → push → deploy web collapse change (staging → prod) →
+  **Simulator re-review of the 126 code (2026-11-10 eve → 11-11 morning):** no app regression; every failure a
+  harness artefact (stale labels, fixture seed pre-check reading the main-doc adult flag that mirrorModerationState
+  relocates, tap/swipe races). Details in local `AUDIT_2026-11-10.md`.
+  **Web parity for 126 (2026-11-11, owner: "we need to make sure it is"):** `webapp/js/coalesce.js` (one desired
+  end state per target — latest tap wins, one follow-up write per landing, then a server read) behind
+  `setLike/setSave/setRepost` in writes.js (old in-flight drop + 800/1000/2000 ms gaps removed); post-detail taps
+  flip at once, settle on the server state, never silent (offline notice up front, "couldn't … — check your
+  connection" after, refusals toast); a late initial state read can no longer flip a tapped button back; felt/repost
+  counts follow the button; reply count follows the loaded thread; `feedOrder.js` pinOwnFresh on for-you; prompt
+  card "be the first" via a count aggregation; compose offers "switch to letter" the moment a short post passes 500.
+  Node pins: `web-tap-coalesce.mjs` (8 scenarios) + `feed-order-parity.mjs` (10 cases) in `npm run test:pins`.
+  **Deployed to staging hosting (toskastaging.web.app) and verified in Chrome** (three opposite-ending bursts on
+  the fixture post + reload = server state; cap offer; post lands first; "be the first"). Prod on go — the collapse
+  rule rides along.
+  **Next:** owner confirms 126 → push → deploy web (collapse + 126 parity) to prod →
   `firebase deploy --only hosting --project toska-4ebf4`,
   `firebase deploy --only functions:validatePost --project toska-4ebf4 --force`, logs, push. Post-launch
   log: 29 prompts never surface (#0, #367–#394) and the 100-answer cap has no load-more.

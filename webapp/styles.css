@@ -358,6 +358,7 @@ a.plain:hover { text-decoration: underline; }
 .tag-picker { display: flex; gap: 7px; flex-wrap: wrap; margin: 14px 0 4px; }
 .compose-toggles { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .mode-note { font-size: 12px; color: var(--accent-text); margin-top: 8px; }
+.cap-offer .tab { margin-left: 6px; }
 
 /* action row on post detail — quiet text actions, like the stats line */
 .action-row { display: flex; gap: 16px; margin: 4px 0 6px; padding: 0 28px; align-items: center; }

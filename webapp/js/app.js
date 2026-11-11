@@ -3,6 +3,7 @@
 // PostDetailView / ProfileView) — the rules deny any broader read.
 import { FIREBASE_CONFIG, IS_PROD, RECAPTCHA_SITE_KEY, POLICY_VERSION } from "./config.js";
 import { collapseReposts } from "./repostCollapse.js";
+import { pinOwnFresh } from "./feedOrder.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
 import {
     getAuth, onAuthStateChanged, signInWithEmailAndPassword,
@@ -17,7 +18,7 @@ import {
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
 import {
     initWrites, resetWriteCaches, createPost, createReply, postRateLimited,
-    toggleLike, toggleSave, toggleRepost, isLiked, isSaved, isReposted,
+    setLike, setSave, setRepost, isLiked, isSaved, isReposted,
     submitReport, blockUser, unblockUser, isRestricted,
     editPost, editReply, deletePost, deleteReply,
     POST_TAGS, REPORT_REASONS,
@@ -795,14 +796,24 @@ function tagChip(tag) {
 }
 // "41 felt this | 2 replies | 3 reposts" — always shown, zeros included, so
 // every row has the same shape (design: tabular numerals, hairline dividers).
-function statsRow(d) {
-    const n = (v) => Math.max(0, v ?? 0);
-    const item = (count, one, many) => el("span", {}, el("b", {}, String(count)), ` ${count === 1 ? one : many}`);
-    return el("div", { class: "post-stats" },
-        item(n(d.likeCount), "felt this", "felt this"),
-        item(n(d.replyCount), "reply", "replies"),
-        item(n(d.repostCount), "repost", "reposts"));
+const n0 = (v) => Math.max(0, v ?? 0);
+const STAT_WORDS = { likes: ["felt this", "felt this"], replies: ["reply", "replies"], reposts: ["repost", "reposts"] };
+function statItem(key, count) {
+    const [one, many] = STAT_WORDS[key];
+    return el("span", { "data-stat": key }, el("b", {}, String(count)), ` ${count === 1 ? one : many}`);
 }
+function statsRow(d) {
+    return el("div", { class: "post-stats" },
+        statItem("likes", n0(d.likeCount)),
+        statItem("replies", n0(d.replyCount)),
+        statItem("reposts", n0(d.repostCount)));
+}
+// Rewrites one stat in a rendered row (post detail keeps its line live).
+function setStat(root, key, count) {
+    const cur = root.querySelector(`[data-stat="${key}"]`);
+    if (cur) cur.replaceWith(statItem(key, Math.max(0, count)));
+}
+const OFFLINE_NOTICE = "no connection — try again in a moment.";
 // "whisper · fades in 42m" / "midnight · fades at midnight" chips on
 // ephemeral posts (web-only affordance; iOS shows the state in compose).
 function ephemeralChip(d) {
@@ -1176,9 +1187,14 @@ async function viewFeed() {
             location.hash = "#/compose";
         };
         const action = el("span", {}, respond);
-        const others = el("a", { class: "plain", href: "#/prompt",
-            style: "font-size:12.5px; font-weight:600; color:var(--accent-text);" },
-            "what others said…");
+        // iOS build 126 parity: with no answers yet the card says "be the first"
+        // instead of "what others said…" (a count aggregation, like iOS).
+        const others = el("a", { class: "plain", href: "#/prompt", "aria-label": "see today's answers",
+            style: "font-size:12.5px; font-weight:600; color:var(--accent-text);" }, "");
+        getCountFromServer(query(collection(db, "posts"),
+            where("promptDate", "==", pDate), where("moderationStatus", "==", "live")))
+            .then((s) => { if (promptCard.dataset.promptDate === pDate) others.textContent = s.data().count === 0 ? "be the first" : "what others said…"; })
+            .catch((e) => { console.warn("prompt answer count", e?.code || e); others.textContent = "what others said…"; });
         promptCard.replaceChildren(
             el("div", { class: "eyebrow" }, "today's prompt"),
             el("div", { class: "post-text" }, pText),
@@ -1273,7 +1289,9 @@ async function viewFeed() {
         // screen (or scroll the window) for a view that's no longer mounted.
         if (feedTab !== tab || !list.isConnected) return;
         mount.querySelector(".spinner")?.remove();
-        const rows = cache.rows.filter(([, d]) => postVisible(d));
+        // iOS build 126 parity: your own posts under 10 minutes old lead your for-you feed.
+        const visible = cache.rows.filter(([, d]) => postVisible(d));
+        const rows = tab === "for you" ? pinOwnFresh(visible, me?.uid) : visible;
         if (!rows.length) {
             list.append(emptyState("it's quiet here right now."));
             return;
@@ -1491,10 +1509,26 @@ function viewCompose() {
             el("button", { class: "tab", "aria-label": "dismiss", onclick: () => { nudgeDismissed = true; renderNudge(); } }, "×")) : "");
     };
     const nudgeDebounced = debounce(renderNudge, 400);
+    // Over the short cap (iOS build 126 parity, owner: "should give a pop-up
+    // warning"): the moment a short post passes 500 characters, offer the
+    // letter right there — "switch to letter" flips the mode, "keep it short"
+    // hides the offer until the text drops back under the cap.
+    const capBox = el("div");
+    let capDismissed = false;
+    const renderCap = (n) => {
+        const over = !isLetter && n > 500;
+        if (!over) { capDismissed = false; capBox.replaceChildren(); return; }
+        if (capDismissed) { capBox.replaceChildren(); return; }
+        capBox.replaceChildren(el("p", { class: "note mode-note cap-offer" },
+            "that's 500 characters — a letter can hold up to 2,000. ",
+            el("button", { class: "tab", onclick: () => { isLetter = true; render(); } }, "switch to letter"),
+            el("button", { class: "tab", onclick: () => { capDismissed = true; renderCap(ta.value.length); } }, "keep it short")));
+    };
     ta.addEventListener("input", () => {
         const n = ta.value.length;
         count.textContent = `${n} / ${limit()}`;
         count.classList.toggle("over", n > limit());
+        renderCap(n);
         persistDraft();
         nudgeDebounced();
     });
@@ -1587,6 +1621,7 @@ function viewCompose() {
             tagRow,
             toggleRow,
             noteBox,
+            capBox,
             nudgeBox,
             // Promise line (owner 2026-11-02): above the editor with the other notes, not under the keyboard.
             el("p", { class: "note mode-note" }, "no name, no photo. read by a safety check before it goes live."),
@@ -1837,26 +1872,46 @@ async function viewPost(postId) {
         // un-felting still works; it re-disables after that unlike.
         if (targetAuthorId === me.uid) likeBtn.disabled = true;
 
-        likeBtn.onclick = async () => {
-            const on = likeBtn.classList.contains("on-like");
-            setOn(likeBtn, !on, "felt this", "felt"); // optimistic
-            const r = await toggleLike(targetPostId, on, targetAuthorId).catch((e) => { console.error("like failed", e); return null; });
-            if (r === null) setOn(likeBtn, on, "felt this", "felt"); // revert
+        // Tap handling (iOS build 126 parity): every tap flips the button at
+        // once and records the end state it wants; writes.js keeps one desired
+        // state per post — latest tap wins, at most one follow-up write — then
+        // the button settles on the SERVER state. A refused or failed write
+        // says so (never silent): offline notice up front, failure notice after.
+        // The stats line follows the button (felt / repost counts move by one
+        // against the state the page loaded with).
+        const baseline = { like: null, repost: null }; // state the page loaded with (counts move against it)
+        const tapped = { like: false, save: false, repost: false }; // a late initial read never overrides a tap
+        const countFor = (key, state) => {
+            if (!(key in baseline) || baseline[key] === null) return;
+            setStat(body, key === "like" ? "likes" : "reposts", (key === "like" ? n0(d.likeCount) : n0(d.repostCount)) + (state === baseline[key] ? 0 : state ? 1 : -1));
         };
-        saveBtn.onclick = async () => {
-            const on = saveBtn.classList.contains("on-save");
-            setOn(saveBtn, !on, "saved", "save");
-            const r = await toggleSave(targetPostId, on, targetAuthorId).catch((e) => { console.error("save failed", e); return null; });
-            if (r === null) setOn(saveBtn, on, "saved", "save");
+        const tapHandler = (btn, key, onLabel, offLabel, perform, opts = {}) => async () => {
+            const want = !btn.classList.contains(btn.dataset.on);
+            if (!navigator.onLine) { toast(OFFLINE_NOTICE); return; }
+            tapped[key] = true;
+            if (key in baseline && baseline[key] === null) baseline[key] = !want; // the state the button showed before the tap
+            setOn(btn, want, onLabel, offLabel); countFor(key, want);
+            const r = await perform(want);
+            if (!r) return; // queued behind the in-flight write — that one reconciles
+            setOn(btn, r.state, onLabel, offLabel); countFor(key, r.state);
+            if (r.error?.refused) { opts.onRefused?.(r.error.code); return; }
+            if (r.error) { console.error(`${key} failed`, r.error); toast(`couldn't ${want ? opts.verb : opts.undoVerb} — check your connection and try again.`); return; }
+            opts.onSettled?.(r.state);
         };
-        repostBtn.onclick = async () => {
-            const on = repostBtn.classList.contains("on-repost");
-            setOn(repostBtn, !on, "reposted", "repost");
-            const r = await toggleRepost(targetPostId).catch((e) => { console.error("repost failed", e); return null; });
-            if (r === "blocked_ephemeral") { setOn(repostBtn, false, "reposted", "repost"); toast("whispers stay ephemeral — they can't be reposted."); }
-            else if (r === "own_post" || r === null) setOn(repostBtn, on, "reposted", "repost");
-            else invalidateFeedCache(); // a repost row appeared or vanished from the feed
-        };
+        likeBtn.onclick = tapHandler(likeBtn, "like", "felt this", "felt",
+            (w) => setLike(targetPostId, w, targetAuthorId), { verb: "mark this felt", undoVerb: "undo that felt" });
+        saveBtn.onclick = tapHandler(saveBtn, "save", "saved", "save",
+            (w) => setSave(targetPostId, w, targetAuthorId), { verb: "save this", undoVerb: "unsave this" });
+        repostBtn.onclick = tapHandler(repostBtn, "repost", "reposted", "repost",
+            (w) => setRepost(targetPostId, w), {
+                verb: "repost", undoVerb: "undo the repost",
+                onRefused: (code) => {
+                    if (code === "blocked_ephemeral") toast("this one disappears — it can't be reposted.");
+                    else if (code === "own_post") toast("your own words can't be reposted.");
+                    else if (code === "gone") { dropFromFeedCache(targetPostId); toast("this post isn't available anymore."); }
+                },
+                onSettled: () => invalidateFeedCache(), // a repost row appeared or vanished from the feed
+            });
         moreBtn.onclick = () => {
             const handle = d.isRepost ? (d.originalHandle ?? "anonymous") : (d.authorHandle ?? "anonymous");
             const items = [];
@@ -2006,17 +2061,22 @@ async function viewPost(postId) {
             el("h3", { style: "margin:18px 0 4px; padding:0 28px; font-weight:500;" }, "replies"), repliesBox, spinner());
         // Interaction-state reads fire after the body is on screen (§ perf):
         // three exists() doc reads that shouldn't contend with first paint.
+        // (If a tap already happened, the tap's settle is the truth — these must not flip the button back.)
         isLiked(targetPostId).then(v => {
-            setOn(likeBtn, v, "felt this", "felt");
+            if (tapped.like) return;
+            baseline.like = v; setOn(likeBtn, v, "felt this", "felt");
             if (v) likeBtn.disabled = false; // legacy self-like — allow un-felt
         });
-        isSaved(targetPostId).then(v => setOn(saveBtn, v, "saved", "save"));
-        if (!repostBtn.disabled) isReposted(targetPostId).then(v => setOn(repostBtn, v, "reposted", "repost"));
+        isSaved(targetPostId).then(v => { if (!tapped.save) setOn(saveBtn, v, "saved", "save"); });
+        if (!repostBtn.disabled) isReposted(targetPostId).then(v => { if (tapped.repost) return; baseline.repost = v; setOn(repostBtn, v, "reposted", "repost"); });
         const replies = (targetPostId === postId ? await earlyReplies : null)
             ?? await fetchReplies(targetPostId);
         mount.querySelector(".spinner")?.remove();
         if (!replies.length) repliesBox.append(emptyState("no replies yet. someone will find this."));
         renderThread(repliesBox, replies, null, 0, onReplyTo);
+        // iOS build 126 parity (472d3e8): once the thread is in, the reply count follows what
+        // is actually shown — the server counter runs one ahead while a reply is pending validation.
+        if (replies.length < 100) setStat(body, "replies", replies.length);
     } catch (e) {
         mount.querySelector(".spinner")?.remove();
         mount.append(emptyState("this post isn't available."));
